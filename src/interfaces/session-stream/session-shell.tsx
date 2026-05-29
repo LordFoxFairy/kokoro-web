@@ -1,6 +1,18 @@
 "use client"
 
-import { createPreviewSessionState } from "@/application/session-stream-preview"
+import { useEffect, useState } from "react"
+
+import {
+  createPreviewSessionState,
+  openDemoSessionStream,
+  resolveSessionBaseUrl,
+  startDemoSession,
+} from "@/application/session-stream-preview"
+import {
+  applySessionEvent,
+  createSessionStreamState,
+  type SessionStreamState,
+} from "@/application/session-stream-reducer"
 import {
   Card,
   CardContent,
@@ -13,14 +25,57 @@ import { cn } from "@/lib/utils"
 import { ArtifactPreview } from "./artifact-preview"
 
 export function SessionShell() {
-  const state = createPreviewSessionState()
+  const [state, setState] = useState<SessionStreamState>(() =>
+    createPreviewSessionState(),
+  )
+  const [transportLabel, setTransportLabel] = useState("preview fallback")
+
+  useEffect(() => {
+    if (typeof fetch === "undefined") {
+      return
+    }
+
+    let disposed = false
+    let stopStream = () => {}
+    let liveState = createSessionStreamState()
+
+    const connectSession = async () => {
+      try {
+        await startDemoSession()
+
+        if (disposed) {
+          return
+        }
+
+        setTransportLabel(`live replay · ${resolveSessionBaseUrl()}`)
+        stopStream = openDemoSessionStream((event) => {
+          liveState = applySessionEvent(liveState, event)
+
+          if (!disposed) {
+            setState(liveState)
+          }
+        })
+      } catch {
+        if (!disposed) {
+          setTransportLabel("preview fallback")
+        }
+      }
+    }
+
+    void connectSession()
+
+    return () => {
+      disposed = true
+      stopStream()
+    }
+  }, [])
 
   return (
     <main className="min-h-screen bg-[var(--background)] px-6 py-10 text-[var(--foreground)]">
       <div className="mx-auto flex max-w-6xl flex-col gap-6 lg:grid lg:grid-cols-[minmax(0,1.4fr)_minmax(320px,0.9fr)]">
         <Card>
           <CardHeader className="space-y-3 border-b border-[color:var(--brand-wood-soft)] pb-6">
-            <p className="kk-eyebrow">Kokoro / session stream preview</p>
+            <p className="kk-eyebrow">Kokoro / session stream</p>
             <h1 className="text-3xl font-semibold tracking-tight text-[var(--foreground)]">
               Protocol-first chat shell for AGUI + SSE replay.
             </h1>
@@ -31,14 +86,17 @@ export function SessionShell() {
           </CardHeader>
 
           <CardContent className="pt-6">
-            <div className="kk-soft-panel flex items-center justify-between">
+            <div className="kk-soft-panel flex items-center justify-between gap-4">
               <div>
                 <p className="kk-eyebrow">run status</p>
                 <p className="kk-copy-muted mt-1">
                   replay reducer folds duplicate and terminal events.
                 </p>
               </div>
-              <span className="kk-status-pill">{state.runStatus}</span>
+              <div className="text-right">
+                <span className="kk-status-pill">{state.runStatus}</span>
+                <p className="kk-copy-muted mt-2 text-xs">{transportLabel}</p>
+              </div>
             </div>
 
             <div className="mt-6 space-y-4">
