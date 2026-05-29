@@ -2,6 +2,7 @@ import { z } from "zod"
 
 import type { SessionStreamEvent } from "@/domain/shared/session-stream-event"
 
+// 传输层先严格解析线上的 session envelope，再向内映射成领域可消费事件。
 const eventEnvelopeSchema = z
   .object({
     event: z.enum([
@@ -137,7 +138,7 @@ export function toSessionStreamEvent(
   switch (event.event) {
     case "session.created":
       return {
-        kind: event.event,
+        kind: "session-created",
         eventId: event.event_id,
         sessionId: event.session_id,
         conversationId: event.conversation_id,
@@ -147,7 +148,7 @@ export function toSessionStreamEvent(
       }
     case "message.delta":
       return {
-        kind: event.event,
+        kind: "message-delta",
         eventId: event.event_id,
         sessionId: event.session_id,
         conversationId: event.conversation_id,
@@ -158,7 +159,7 @@ export function toSessionStreamEvent(
       }
     case "message.completed":
       return {
-        kind: event.event,
+        kind: "message-completed",
         eventId: event.event_id,
         sessionId: event.session_id,
         conversationId: event.conversation_id,
@@ -169,7 +170,7 @@ export function toSessionStreamEvent(
       }
     case "run.completed":
       return {
-        kind: event.event,
+        kind: "run-completed",
         eventId: event.event_id,
         sessionId: event.session_id,
         conversationId: event.conversation_id,
@@ -179,7 +180,7 @@ export function toSessionStreamEvent(
       }
     case "run.failed":
       return {
-        kind: event.event,
+        kind: "run-failed",
         eventId: event.event_id,
         sessionId: event.session_id,
         conversationId: event.conversation_id,

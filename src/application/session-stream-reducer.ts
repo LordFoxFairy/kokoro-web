@@ -24,6 +24,7 @@ export function applySessionEvent(
   state: SessionStreamState,
   event: SessionStreamEvent,
 ): SessionStreamState {
+  // 先按 eventId 去重，保证 replay / resume 的幂等收敛。
   if (state.seenEventIds.includes(event.eventId)) {
     return state
   }
@@ -34,13 +35,18 @@ export function applySessionEvent(
     messages: [...state.messages],
   }
 
-  if (event.kind === "message.delta") {
-    const existing = nextState.messages.find(
+  if (event.kind === "message-delta") {
+    const index = nextState.messages.findIndex(
       (message) => message.id === event.messageId,
     )
 
-    if (existing) {
-      existing.content += event.delta
+    if (index >= 0) {
+      const existing = nextState.messages[index]
+
+      nextState.messages[index] = {
+        ...existing,
+        content: `${existing?.content ?? ""}${event.delta}`,
+      }
     } else {
       nextState.messages.push({
         id: event.messageId,
@@ -50,11 +56,12 @@ export function applySessionEvent(
     }
   }
 
-  if (event.kind === "message.completed") {
+  if (event.kind === "message-completed") {
     const index = nextState.messages.findIndex(
       (message) => message.id === event.messageId,
     )
 
+    // completed 事件必须覆盖增量正文，避免 replay 后残留半句内容。
     if (index >= 0) {
       nextState.messages[index] = {
         id: event.messageId,
@@ -70,11 +77,11 @@ export function applySessionEvent(
     }
   }
 
-  if (event.kind === "run.completed") {
+  if (event.kind === "run-completed") {
     nextState.runStatus = "completed"
   }
 
-  if (event.kind === "run.failed") {
+  if (event.kind === "run-failed") {
     nextState.runStatus = "failed"
   }
 

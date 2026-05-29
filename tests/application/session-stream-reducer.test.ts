@@ -79,6 +79,36 @@ describe("applySessionEvent", () => {
     expect(state.messages[0]?.content).toBe("Hello")
   })
 
+  it("does not mutate previously returned state when a second delta arrives", () => {
+    const firstDelta = requireDomainEvent({
+      event: "message.delta",
+      event_id: "evt_01",
+      session_id: "ses_01",
+      conversation_id: "conv_01",
+      run_id: "run_01",
+      cursor: "1748428800-000012",
+      timestamp: "2026-05-28T12:00:00.000Z",
+      payload: { message_id: "msg_01", delta: "He", role: "assistant" },
+    })
+    const secondDelta = requireDomainEvent({
+      event: "message.delta",
+      event_id: "evt_02",
+      session_id: "ses_01",
+      conversation_id: "conv_01",
+      run_id: "run_01",
+      cursor: "1748428800-000013",
+      timestamp: "2026-05-28T12:00:01.000Z",
+      payload: { message_id: "msg_01", delta: "llo", role: "assistant" },
+    })
+
+    const firstState = applySessionEvent(createSessionStreamState(), firstDelta)
+    const secondState = applySessionEvent(firstState, secondDelta)
+
+    expect(firstState.messages[0]?.content).toBe("He")
+    expect(secondState.messages[0]?.content).toBe("Hello")
+    expect(firstState.messages[0]).not.toBe(secondState.messages[0])
+  })
+
   it("marks failed runs without duplicating terminal transitions", () => {
     const state = [
       requireDomainEvent({

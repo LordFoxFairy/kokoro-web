@@ -25,7 +25,7 @@ describe("parseSessionEvent", () => {
     const event = toSessionStreamEvent(transportEvent)
 
     expect(event).toEqual({
-      kind: "message.delta",
+      kind: "message-delta",
       eventId: "evt_01",
       sessionId: "ses_01",
       conversationId: "conv_01",

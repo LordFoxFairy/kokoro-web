@@ -5,23 +5,27 @@
   --foreground: #2b2520;
   --surface: #ffffff;
   --surface-soft: #fbf6ec;
+  --surface-user-soft: #f7faf3;
   --border-soft: #ebe0cf;
+  --border-user-soft: #d8e0cf;
   --brand-wood: #8b6f47;
+  --brand-wood-hover: #7b5f39;
   --brand-wood-soft: #f3ead6;
-  --brand-green-soft: #f7faf3;
+  --shadow-panel: 0 24px 80px rgba(139, 111, 71, 0.08);
+  --shadow-card: 0 18px 48px rgba(139, 111, 71, 0.08);
+  --radius-panel: 28px;
+  --radius-card: 24px;
+  --radius-soft: 20px;
 
   --a2ui-color-background: var(--surface-soft);
   --a2ui-color-surface: var(--surface);
   --a2ui-color-on-background: var(--foreground);
   --a2ui-color-on-surface: var(--foreground);
   --a2ui-color-primary: var(--brand-wood);
-  --a2ui-color-primary-hover: #7b5f39;
+  --a2ui-color-primary-hover: var(--brand-wood-hover);
   --a2ui-color-on-primary: #fffdf9;
   --a2ui-color-border: var(--border-soft);
   --a2ui-font-family-title: var(--font-geist-sans);
-  --a2ui-border-radius: 20px;
-  --a2ui-spacing-m: 0.75rem;
-  --a2ui-spacing-l: 1rem;
 }
 
 @theme inline {
@@ -51,6 +55,64 @@ a {
   text-decoration: none;
 }
 
+.kk-panel {
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-panel);
+  background: var(--surface);
+  box-shadow: var(--shadow-panel);
+}
+
+.kk-soft-panel {
+  border-radius: var(--radius-soft);
+  background: var(--surface-soft);
+  padding: 0.75rem 1rem;
+}
+
+.kk-status-pill {
+  border-radius: 999px;
+  background: var(--surface);
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--brand-wood);
+  box-shadow: 0 4px 18px rgba(139, 111, 71, 0.08);
+}
+
+.kk-chat-bubble {
+  border-radius: var(--radius-card);
+  border: 1px solid var(--border-soft);
+  padding: 1rem 1.25rem;
+  box-shadow: 0 6px 24px rgba(139, 111, 71, 0.05);
+}
+
+.kk-chat-bubble--assistant {
+  background: #fffdf9;
+}
+
+.kk-chat-bubble--user {
+  border-color: var(--border-user-soft);
+  background: var(--surface-user-soft);
+}
+
+.kk-eyebrow {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.24em;
+  color: var(--brand-wood);
+}
+
+.kk-copy-muted {
+  font-size: 0.875rem;
+  line-height: 1.75rem;
+  color: rgba(43, 37, 32, 0.72);
+}
+
+.kk-a2ui-preview {
+  border-radius: var(--radius-card);
+  background: var(--surface-soft);
+  padding: 1rem;
+}
+
 .a2ui-surface {
   display: flex;
 }
@@ -58,9 +120,9 @@ a {
 .a2ui-card {
   width: 100%;
   border: 1px solid var(--a2ui-color-border);
-  border-radius: 24px;
+  border-radius: var(--radius-card);
   background: var(--a2ui-color-surface);
-  box-shadow: 0 18px 48px rgba(139, 111, 71, 0.08);
+  box-shadow: var(--shadow-card);
 }
 
 .a2ui-card > section {

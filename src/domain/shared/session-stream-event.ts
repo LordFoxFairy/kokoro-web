@@ -2,7 +2,7 @@ export type SessionMessageRole = "assistant" | "user"
 
 export type SessionStreamEvent =
   | {
-      kind: "session.created"
+      kind: "session-created"
       eventId: string
       sessionId: string
       conversationId: string
@@ -11,7 +11,7 @@ export type SessionStreamEvent =
       ownerId: string
     }
   | {
-      kind: "message.delta"
+      kind: "message-delta"
       eventId: string
       sessionId: string
       conversationId: string
@@ -21,7 +21,7 @@ export type SessionStreamEvent =
       delta: string
     }
   | {
-      kind: "message.completed"
+      kind: "message-completed"
       eventId: string
       sessionId: string
       conversationId: string
@@ -31,7 +31,7 @@ export type SessionStreamEvent =
       content: string
     }
   | {
-      kind: "run.completed"
+      kind: "run-completed"
       eventId: string
       sessionId: string
       conversationId: string
@@ -40,7 +40,7 @@ export type SessionStreamEvent =
       artifactIds?: string[]
     }
   | {
-      kind: "run.failed"
+      kind: "run-failed"
       eventId: string
       sessionId: string
       conversationId: string
