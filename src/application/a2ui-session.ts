@@ -1,4 +1,4 @@
-import type { MessageProcessor } from "@a2ui/web_core/v0_9"
+import type { A2uiMessage, MessageProcessor } from "@a2ui/web_core/v0_9"
 import type { ReactComponentImplementation } from "@a2ui/react/v0_9"
 
 export function resolveSessionBaseUrl(): string {
@@ -24,7 +24,7 @@ export function feedA2uiLine(processor: MessageProcessor<ReactComponentImplement
     return
   }
   try {
-    processor.processMessages([op] as never)
+    processor.processMessages([op] as A2uiMessage[])
   } catch {
     // 单条 op 适配失败不撕毁整条流
   }

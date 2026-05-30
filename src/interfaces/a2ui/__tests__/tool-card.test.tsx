@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react"
 import { describe, expect, it } from "vitest"
 import { A2uiSurface } from "@a2ui/react/v0_9"
-import { MessageProcessor } from "@a2ui/web_core/v0_9"
+import { MessageProcessor, type A2uiMessage } from "@a2ui/web_core/v0_9"
 import { kokoroChatCatalog } from "../catalog"
 
 function surfaceFor(status: string) {
@@ -12,7 +12,7 @@ function surfaceFor(status: string) {
       { id: "root", component: "Thread", children: ["c1"] },
       { id: "c1", component: "ToolCard", toolName: "echo_search", status },
     ] } },
-  ] as never)
+  ] as A2uiMessage[])
   return processor.model.getSurface("s")!
 }
 

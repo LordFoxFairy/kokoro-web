@@ -1,12 +1,12 @@
 import { render, screen } from "@testing-library/react"
 import { describe, expect, it } from "vitest"
 import { A2uiSurface } from "@a2ui/react/v0_9"
-import { MessageProcessor } from "@a2ui/web_core/v0_9"
+import { MessageProcessor, type A2uiMessage } from "@a2ui/web_core/v0_9"
 import { kokoroChatCatalog } from "../catalog"
 
-function surfaceFor(messages: unknown[]) {
+function surfaceFor(messages: A2uiMessage[]) {
   const processor = new MessageProcessor([kokoroChatCatalog])
-  processor.processMessages(messages as never)
+  processor.processMessages(messages)
   return processor.model.getSurface("s")!
 }
 
