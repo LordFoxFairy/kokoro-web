@@ -211,6 +211,14 @@ a {
 .kk-composer__field { flex: 1; resize: none; border: none; outline: none; background: transparent; font-size: 0.95rem; line-height: 1.5rem; color: var(--foreground); }
 .kk-composer__mode { font-size: 0.75rem; color: var(--brand-wood); border: 1px solid var(--brand-wood-soft); border-radius: 999px; padding: 0.125rem 0.5rem; }
 
+/* Plan component (CC/Gemini-style todo checklist) */
+.kk-plan { border: 1px solid var(--border-soft); border-radius: var(--radius-soft); background: var(--surface-soft); padding: 0.625rem 0.875rem; }
+.kk-plan__list { display: flex; flex-direction: column; gap: 0.25rem; list-style: none; margin: 0; padding: 0; }
+.kk-todo { display: flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; color: var(--foreground); }
+.kk-todo__mark { width: 1rem; text-align: center; color: var(--brand-wood); }
+.kk-todo[data-status="completed"] .kk-todo__text { color: rgba(43,37,32,0.45); text-decoration: line-through; }
+.kk-todo[data-status="in_progress"] .kk-todo__mark { color: var(--brand-wood); font-weight: 700; }
+
 /* chat page layout */
 .kk-app { display: flex; min-height: 100vh; background: var(--background); }
 .kk-main { flex: 1; display: flex; flex-direction: column; max-width: 56rem; margin: 0 auto; padding: 2rem 1.5rem; }
