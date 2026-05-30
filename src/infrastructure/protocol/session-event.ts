@@ -11,6 +11,9 @@ const eventEnvelopeSchema = z
       "message.completed",
       "artifact.available",
       "permission.required",
+      "tool.started",
+      "tool.completed",
+      "thinking.summary",
       "run.completed",
       "run.failed",
     ]),
@@ -91,6 +94,43 @@ const permissionRequiredSchema = eventEnvelopeSchema.extend({
     .strict(),
 })
 
+const toolStartedSchema = eventEnvelopeSchema.extend({
+  event: z.literal("tool.started"),
+  payload: z
+    .object({
+      tool_call_id: z.string().min(1),
+      tool_name: z.string().min(1),
+      display_label: z.string().min(1).optional(),
+      input_summary: z.string().optional(),
+    })
+    .strict(),
+})
+
+const toolCompletedSchema = eventEnvelopeSchema.extend({
+  event: z.literal("tool.completed"),
+  payload: z
+    .object({
+      tool_call_id: z.string().min(1),
+      tool_name: z.string().min(1),
+      status: z.string().min(1),
+      result_summary: z.string().optional(),
+      duration_ms: z.number().optional(),
+    })
+    .strict(),
+})
+
+const thinkingSummarySchema = eventEnvelopeSchema.extend({
+  event: z.literal("thinking.summary"),
+  payload: z
+    .object({
+      run_id: z.string().min(1),
+      summary: z.string(),
+      stage: z.string().min(1).optional(),
+      progress_label: z.string().min(1).optional(),
+    })
+    .strict(),
+})
+
 const runCompletedSchema = eventEnvelopeSchema.extend({
   event: z.literal("run.completed"),
   payload: z
@@ -122,6 +162,9 @@ export const sessionEventSchema = z.union([
   messageCompletedSchema,
   artifactAvailableSchema,
   permissionRequiredSchema,
+  toolStartedSchema,
+  toolCompletedSchema,
+  thinkingSummarySchema,
   runCompletedSchema,
   runFailedSchema,
 ])
@@ -167,6 +210,36 @@ export function toSessionStreamEvent(
         messageId: event.payload.message_id,
         role: event.payload.role,
         content: event.payload.content,
+      }
+    case "tool.started":
+      return {
+        kind: "tool-started",
+        eventId: event.event_id,
+        sessionId: event.session_id,
+        conversationId: event.conversation_id,
+        runId: event.run_id,
+        toolCallId: event.payload.tool_call_id,
+        toolName: event.payload.tool_name,
+      }
+    case "tool.completed":
+      return {
+        kind: "tool-completed",
+        eventId: event.event_id,
+        sessionId: event.session_id,
+        conversationId: event.conversation_id,
+        runId: event.run_id,
+        toolCallId: event.payload.tool_call_id,
+        toolName: event.payload.tool_name,
+        status: event.payload.status,
+      }
+    case "thinking.summary":
+      return {
+        kind: "thinking-summary",
+        eventId: event.event_id,
+        sessionId: event.session_id,
+        conversationId: event.conversation_id,
+        runId: event.run_id,
+        summary: event.payload.summary,
       }
     case "run.completed":
       return {

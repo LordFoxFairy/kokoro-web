@@ -53,6 +53,9 @@ const transportEventNames = [
   "session.created",
   "message.delta",
   "message.completed",
+  "tool.started",
+  "tool.completed",
+  "thinking.summary",
   "run.completed",
   "run.failed",
 ] as const

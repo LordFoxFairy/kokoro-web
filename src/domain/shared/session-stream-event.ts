@@ -31,6 +31,33 @@ export type SessionStreamEvent =
       content: string
     }
   | {
+      kind: "tool-started"
+      eventId: string
+      sessionId: string
+      conversationId: string
+      runId: string
+      toolCallId: string
+      toolName: string
+    }
+  | {
+      kind: "tool-completed"
+      eventId: string
+      sessionId: string
+      conversationId: string
+      runId: string
+      toolCallId: string
+      toolName: string
+      status: string
+    }
+  | {
+      kind: "thinking-summary"
+      eventId: string
+      sessionId: string
+      conversationId: string
+      runId: string
+      summary: string
+    }
+  | {
       kind: "run-completed"
       eventId: string
       sessionId: string
