@@ -109,6 +109,198 @@ describe("applySessionEvent", () => {
     expect(firstState.messages[0]).not.toBe(secondState.messages[0])
   })
 
+  it("builds an ordered timeline interleaving thinking, tool, and message items", () => {
+    const events = [
+      {
+        event: "thinking.summary",
+        event_id: "evt_01",
+        session_id: "ses_01",
+        conversation_id: "conv_01",
+        run_id: "run_01",
+        cursor: "1748428800-000010",
+        timestamp: "2026-05-28T12:00:00.000Z",
+        payload: { run_id: "run_01", summary: "decide to search" },
+      },
+      {
+        event: "tool.started",
+        event_id: "evt_02",
+        session_id: "ses_01",
+        conversation_id: "conv_01",
+        run_id: "run_01",
+        cursor: "1748428800-000011",
+        timestamp: "2026-05-28T12:00:01.000Z",
+        payload: { tool_call_id: "call_01", tool_name: "echo_search" },
+      },
+      {
+        event: "tool.completed",
+        event_id: "evt_03",
+        session_id: "ses_01",
+        conversation_id: "conv_01",
+        run_id: "run_01",
+        cursor: "1748428800-000012",
+        timestamp: "2026-05-28T12:00:02.000Z",
+        payload: {
+          tool_call_id: "call_01",
+          tool_name: "echo_search",
+          status: "ok",
+        },
+      },
+      {
+        event: "message.delta",
+        event_id: "evt_04",
+        session_id: "ses_01",
+        conversation_id: "conv_01",
+        run_id: "run_01",
+        cursor: "1748428800-000013",
+        timestamp: "2026-05-28T12:00:03.000Z",
+        payload: { message_id: "msg_01", delta: "He", role: "assistant" },
+      },
+      {
+        event: "message.delta",
+        event_id: "evt_05",
+        session_id: "ses_01",
+        conversation_id: "conv_01",
+        run_id: "run_01",
+        cursor: "1748428800-000014",
+        timestamp: "2026-05-28T12:00:04.000Z",
+        payload: { message_id: "msg_01", delta: "llo", role: "assistant" },
+      },
+      {
+        event: "message.completed",
+        event_id: "evt_06",
+        session_id: "ses_01",
+        conversation_id: "conv_01",
+        run_id: "run_01",
+        cursor: "1748428800-000015",
+        timestamp: "2026-05-28T12:00:05.000Z",
+        payload: { message_id: "msg_01", role: "assistant", content: "Hello" },
+      },
+      {
+        event: "run.completed",
+        event_id: "evt_07",
+        session_id: "ses_01",
+        conversation_id: "conv_01",
+        run_id: "run_01",
+        cursor: "1748428800-000016",
+        timestamp: "2026-05-28T12:00:06.000Z",
+        payload: { run_id: "run_01", status: "completed" },
+      },
+    ] as const
+
+    const state = events
+      .map(requireDomainEvent)
+      .reduce(applySessionEvent, createSessionStreamState())
+
+    expect(state.timeline).toEqual([
+      { type: "thinking", summary: "decide to search" },
+      {
+        type: "tool",
+        toolCallId: "call_01",
+        toolName: "echo_search",
+        status: "done",
+      },
+      { type: "message", id: "msg_01", role: "assistant", content: "Hello" },
+    ])
+    expect(state.runStatus).toBe("completed")
+    // messages view stays derivable for existing consumers.
+    expect(state.messages).toEqual([
+      { id: "msg_01", role: "assistant", content: "Hello" },
+    ])
+  })
+
+  it("keeps a tool item running until its completion arrives", () => {
+    const started = requireDomainEvent({
+      event: "tool.started",
+      event_id: "evt_01",
+      session_id: "ses_01",
+      conversation_id: "conv_01",
+      run_id: "run_01",
+      cursor: "1748428800-000010",
+      timestamp: "2026-05-28T12:00:00.000Z",
+      payload: { tool_call_id: "call_01", tool_name: "echo_search" },
+    })
+
+    const runningState = applySessionEvent(createSessionStreamState(), started)
+    expect(runningState.timeline).toEqual([
+      {
+        type: "tool",
+        toolCallId: "call_01",
+        toolName: "echo_search",
+        status: "running",
+      },
+    ])
+
+    const completed = requireDomainEvent({
+      event: "tool.completed",
+      event_id: "evt_02",
+      session_id: "ses_01",
+      conversation_id: "conv_01",
+      run_id: "run_01",
+      cursor: "1748428800-000011",
+      timestamp: "2026-05-28T12:00:01.000Z",
+      payload: {
+        tool_call_id: "call_01",
+        tool_name: "echo_search",
+        status: "ok",
+      },
+    })
+
+    const doneState = applySessionEvent(runningState, completed)
+    expect(doneState.timeline).toEqual([
+      {
+        type: "tool",
+        toolCallId: "call_01",
+        toolName: "echo_search",
+        status: "done",
+      },
+    ])
+  })
+
+  it("is idempotent when the interleaved sequence is replayed", () => {
+    const inputs = [
+      {
+        event: "thinking.summary",
+        event_id: "evt_01",
+        session_id: "ses_01",
+        conversation_id: "conv_01",
+        run_id: "run_01",
+        cursor: "1748428800-000010",
+        timestamp: "2026-05-28T12:00:00.000Z",
+        payload: { run_id: "run_01", summary: "think" },
+      },
+      {
+        event: "tool.started",
+        event_id: "evt_02",
+        session_id: "ses_01",
+        conversation_id: "conv_01",
+        run_id: "run_01",
+        cursor: "1748428800-000011",
+        timestamp: "2026-05-28T12:00:01.000Z",
+        payload: { tool_call_id: "call_01", tool_name: "echo_search" },
+      },
+      {
+        event: "tool.completed",
+        event_id: "evt_03",
+        session_id: "ses_01",
+        conversation_id: "conv_01",
+        run_id: "run_01",
+        cursor: "1748428800-000012",
+        timestamp: "2026-05-28T12:00:02.000Z",
+        payload: {
+          tool_call_id: "call_01",
+          tool_name: "echo_search",
+          status: "ok",
+        },
+      },
+    ].map(requireDomainEvent)
+
+    const once = inputs.reduce(applySessionEvent, createSessionStreamState())
+    const twice = inputs.reduce(applySessionEvent, once)
+
+    expect(twice.timeline).toEqual(once.timeline)
+    expect(twice.seenEventIds).toEqual(["evt_01", "evt_02", "evt_03"])
+  })
+
   it("marks failed runs without duplicating terminal transitions", () => {
     const state = [
       requireDomainEvent({
