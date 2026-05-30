@@ -37,6 +37,7 @@ function PlanRender({ props }: ReactA2uiComponentProps<PlanProps>) {
   const todos = Array.isArray(props.todosPath) ? (props.todosPath as TodoItem[]) : []
   return (
     <div className="kk-plan">
+      <p className="kk-plan__title">📋 计划</p>
       <ul className="kk-plan__list">
         {todos.map((t, i) => (
           <li key={i} className="kk-todo" data-testid="kk-todo" data-status={t.status}>
