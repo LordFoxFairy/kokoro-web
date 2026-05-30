@@ -20,6 +20,8 @@ import {
 import { cn } from "@/lib/utils"
 
 import { ArtifactPreview } from "./artifact-preview"
+import { ThinkingBlock } from "./thinking-block"
+import { ToolCard } from "./tool-card"
 
 export function SessionShell() {
   const [state, setState] = useState<SessionStreamState>(() =>
@@ -98,22 +100,44 @@ export function SessionShell() {
             </div>
 
             <div className="mt-6 space-y-4">
-              {state.messages.map((message) => (
-                <article
-                  key={message.id}
-                  className={cn(
-                    "kk-chat-bubble",
-                    message.role === "assistant"
-                      ? "kk-chat-bubble--assistant"
-                      : "kk-chat-bubble--user",
-                  )}
-                >
-                  <p className="kk-eyebrow mb-2">{message.role}</p>
-                  <p className="text-sm leading-7 text-[var(--foreground)]">
-                    {message.content}
-                  </p>
-                </article>
-              ))}
+              {state.timeline.map((item, index) => {
+                if (item.type === "thinking") {
+                  return (
+                    <ThinkingBlock
+                      key={`thinking-${index}`}
+                      summary={item.summary}
+                    />
+                  )
+                }
+
+                if (item.type === "tool") {
+                  return (
+                    <ToolCard
+                      key={`tool-${item.toolCallId}`}
+                      toolName={item.toolName}
+                      toolCallId={item.toolCallId}
+                      status={item.status}
+                    />
+                  )
+                }
+
+                return (
+                  <article
+                    key={`message-${item.id}`}
+                    className={cn(
+                      "kk-chat-bubble",
+                      item.role === "assistant"
+                        ? "kk-chat-bubble--assistant"
+                        : "kk-chat-bubble--user",
+                    )}
+                  >
+                    <p className="kk-eyebrow mb-2">{item.role}</p>
+                    <p className="text-sm leading-7 text-[var(--foreground)]">
+                      {item.content}
+                    </p>
+                  </article>
+                )
+              })}
             </div>
           </CardContent>
         </Card>
