@@ -61,7 +61,19 @@ export const demoSessionId = "ses_01"
 export const demoConversationId = "conv_01"
 
 export function resolveSessionBaseUrl() {
-  return process.env.NEXT_PUBLIC_KOKORO_SESSION_BASE_URL ?? "http://127.0.0.1:3001"
+  if (process.env.NEXT_PUBLIC_KOKORO_SESSION_BASE_URL) {
+    return process.env.NEXT_PUBLIC_KOKORO_SESSION_BASE_URL
+  }
+
+  if (typeof window !== "undefined") {
+    const sessionHost = window.location.hostname === "localhost"
+      ? "localhost"
+      : "127.0.0.1"
+
+    return `http://${sessionHost}:3001`
+  }
+
+  return "http://127.0.0.1:3001"
 }
 
 export function createPreviewSessionState(): SessionStreamState {
