@@ -1,5 +1,5 @@
-import { SessionShell } from "@/interfaces/session-stream/session-shell"
+import { ChatPage } from "@/interfaces/chat/chat-page"
 
-export default function Home() {
-  return <SessionShell />
+export default function Page() {
+  return <ChatPage />
 }
