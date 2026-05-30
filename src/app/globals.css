@@ -161,3 +161,31 @@ a {
   font-size: 0.95rem;
   line-height: 1.6;
 }
+
+/* kokoro/chat/v1 component styles */
+.kk-msg { display: flex; flex-direction: column; }
+.kk-msg--ai { align-items: flex-start; }
+.kk-msg--user { align-items: flex-end; }
+.kk-msg__text {
+  max-width: 42rem;
+  font-size: 0.95rem;
+  line-height: 1.75rem;
+  color: var(--foreground);
+  white-space: pre-wrap;
+}
+.kk-msg--user .kk-msg__text {
+  border: 1px solid var(--border-user-soft);
+  background: var(--surface-user-soft);
+  border-radius: var(--radius-soft);
+  padding: 0.625rem 0.875rem;
+}
+
+.kk-thread { display: flex; flex-direction: column; gap: 1.25rem; }
+
+.kk-thinking { border: 1px solid var(--border-soft); border-radius: var(--radius-soft); background: var(--surface-soft); padding: 0.5rem 0.875rem; }
+.kk-thinking__summary { cursor: pointer; font-size: 0.8125rem; color: var(--brand-wood); list-style: none; }
+.kk-thinking__body { margin-top: 0.5rem; font-size: 0.875rem; line-height: 1.6rem; color: rgba(43,37,32,0.78); white-space: pre-wrap; }
+
+.kk-tool { display: inline-flex; align-items: center; gap: 0.5rem; border: 1px solid var(--border-soft); border-radius: 999px; background: var(--surface); padding: 0.375rem 0.75rem; font-size: 0.8125rem; color: var(--foreground); }
+.kk-tool[data-status="running"] .kk-tool__mark { animation: kk-pulse 1.8s ease-in-out infinite; }
+@keyframes kk-pulse { 0%,100% { opacity: 0.4; } 50% { opacity: 1; } }
