@@ -3,16 +3,13 @@
 import { useEffect, useState } from "react"
 
 import {
+  consumeLiveSession,
   createPreviewSessionState,
-  openDemoSessionStream,
+  demoSessionId,
+  type LiveSessionHandle,
   resolveSessionBaseUrl,
-  startDemoSession,
 } from "@/application/session-stream-preview"
-import {
-  applySessionEvent,
-  createSessionStreamState,
-  type SessionStreamState,
-} from "@/application/session-stream-reducer"
+import type { SessionStreamState } from "@/application/session-stream-reducer"
 import {
   Card,
   CardContent,
@@ -36,25 +33,26 @@ export function SessionShell() {
     }
 
     let disposed = false
-    let stopStream = () => {}
-    let liveState = createSessionStreamState()
+    let handle: LiveSessionHandle = { close: () => {} }
 
     const connectSession = async () => {
       try {
-        await startDemoSession()
+        handle = await consumeLiveSession({
+          input: "hello kokoro",
+          sessionId: demoSessionId,
+          onState: (snapshot) => {
+            if (!disposed) {
+              setState(snapshot)
+            }
+          },
+        })
 
         if (disposed) {
+          handle.close()
           return
         }
 
         setTransportLabel(`live replay · ${resolveSessionBaseUrl()}`)
-        stopStream = openDemoSessionStream((event) => {
-          liveState = applySessionEvent(liveState, event)
-
-          if (!disposed) {
-            setState(liveState)
-          }
-        })
       } catch {
         if (!disposed) {
           setTransportLabel("preview fallback")
@@ -66,7 +64,7 @@ export function SessionShell() {
 
     return () => {
       disposed = true
-      stopStream()
+      handle.close()
     }
   }, [])
 
