@@ -201,3 +201,12 @@ a {
 .kk-nav-item:hover { background: var(--brand-wood-soft); }
 .kk-nav-item--primary { color: var(--brand-wood); font-weight: 600; }
 .kk-sidebar__user { margin-top: auto; padding: 0.5rem 0.625rem; font-size: 0.8125rem; color: rgba(43,37,32,0.72); }
+
+/* composer input-pill */
+:root { --radius-pill: 24px; }
+.kk-composer { display: flex; align-items: center; gap: 0.5rem; border: 1px solid var(--border-soft); border-radius: var(--radius-pill); background: var(--surface); padding: 0.5rem 0.75rem; box-shadow: 0 6px 24px rgba(139,111,71,0.06); }
+.kk-composer__attach, .kk-composer__send { width: 2rem; height: 2rem; border-radius: 999px; border: none; cursor: pointer; font-size: 1rem; }
+.kk-composer__attach { background: transparent; color: var(--brand-wood); }
+.kk-composer__send { background: var(--brand-wood); color: #fffdf9; }
+.kk-composer__field { flex: 1; resize: none; border: none; outline: none; background: transparent; font-size: 0.95rem; line-height: 1.5rem; color: var(--foreground); }
+.kk-composer__mode { font-size: 0.75rem; color: var(--brand-wood); border: 1px solid var(--brand-wood-soft); border-radius: 999px; padding: 0.125rem 0.5rem; }
