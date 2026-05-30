@@ -108,12 +108,7 @@ export function openDemoSessionStream(
   const source = new EventSource(streamUrl.toString())
 
   const handleEvent: EventListener = (event) => {
-    if (!(event instanceof MessageEvent)) {
-      return
-    }
-
-    const transportEvent = parseSessionEvent(JSON.parse(event.data) as unknown)
-    const sessionEvent = toSessionStreamEvent(transportEvent)
+    const sessionEvent = decodeStreamMessage(event)
 
     if (sessionEvent) {
       onEvent(sessionEvent)
@@ -130,4 +125,105 @@ export function openDemoSessionStream(
     }
     source.close()
   }
+}
+
+// 严格解析 SSE 载荷；任何畸形/未知事件被拒绝且不允许中断整条流。
+function decodeStreamMessage(event: Event): SessionStreamEvent | null {
+  if (!(event instanceof MessageEvent)) {
+    return null
+  }
+
+  try {
+    const raw: unknown = JSON.parse(event.data as string)
+    return toSessionStreamEvent(parseSessionEvent(raw))
+  } catch {
+    return null
+  }
+}
+
+export type SessionStreamSnapshot = SessionStreamState
+
+export type LiveSessionHandle = {
+  close: () => void
+}
+
+export type ConsumeLiveSessionInput = {
+  input: string
+  baseUrl?: string
+  sessionId?: string
+  conversationId?: string
+  onState: (snapshot: SessionStreamSnapshot) => void
+  onError?: (event: Event) => void
+}
+
+function buildRunUrl(input: ConsumeLiveSessionInput, baseUrl: string) {
+  const sessionId = input.sessionId ?? demoSessionId
+  const conversationId = input.conversationId ?? demoConversationId
+  const requestUrl = new URL(`/sessions/${sessionId}/runs`, baseUrl)
+  requestUrl.searchParams.set("conversation_id", conversationId)
+  requestUrl.searchParams.set("input", input.input)
+  requestUrl.searchParams.set("execution_style", "default")
+  return { requestUrl, sessionId }
+}
+
+// 纯渲染消费者：POST 触发 run，开 EventSource，把 AGUI 事件折进 reducer，
+// run.completed/run.failed 关闭流，onerror 进可恢复态而不崩。
+export async function consumeLiveSession(
+  input: ConsumeLiveSessionInput,
+): Promise<LiveSessionHandle> {
+  const baseUrl = input.baseUrl ?? resolveSessionBaseUrl()
+  const { requestUrl, sessionId } = buildRunUrl(input, baseUrl)
+
+  const response = await fetch(requestUrl.toString(), { method: "POST" })
+
+  if (!response.ok) {
+    throw new Error(`session start failed with status ${response.status}`)
+  }
+
+  let state = createSessionStreamState()
+
+  const noop: LiveSessionHandle = { close: () => {} }
+
+  if (typeof EventSource === "undefined") {
+    return noop
+  }
+
+  const streamUrl = new URL(`/sessions/${sessionId}/stream`, baseUrl)
+  const source = new EventSource(streamUrl.toString())
+
+  const close = () => {
+    for (const eventName of transportEventNames) {
+      source.removeEventListener(eventName, handleEvent)
+    }
+    source.close()
+  }
+
+  const handleEvent: EventListener = (event) => {
+    const sessionEvent = decodeStreamMessage(event)
+
+    if (!sessionEvent) {
+      return
+    }
+
+    state = applySessionEvent(state, sessionEvent)
+    input.onState(state)
+
+    if (
+      sessionEvent.kind === "run-completed" ||
+      sessionEvent.kind === "run-failed"
+    ) {
+      close()
+    }
+  }
+
+  for (const eventName of transportEventNames) {
+    source.addEventListener(eventName, handleEvent)
+  }
+
+  source.onerror = (event) => {
+    // 传输瞬断进入可恢复态：保留 EventSource 让浏览器自动重连，不撕毁状态。
+    input.onError?.(event)
+  }
+
+  return { close }
 }
