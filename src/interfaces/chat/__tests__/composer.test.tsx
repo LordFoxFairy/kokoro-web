@@ -19,4 +19,23 @@ describe("Composer", () => {
     fireEvent.click(screen.getByRole("button", { name: "发送" }))
     expect(onSend).not.toHaveBeenCalled()
   })
+
+  it("submits on Enter and clears", () => {
+    const onSend = vi.fn()
+    render(<Composer onSend={onSend} />)
+    const field = screen.getByPlaceholderText("把想说的告诉我。") as HTMLTextAreaElement
+    fireEvent.change(field, { target: { value: "  你好  " } })
+    fireEvent.keyDown(field, { key: "Enter" })
+    expect(onSend).toHaveBeenCalledWith("你好")
+    expect(field.value).toBe("")
+  })
+
+  it("does not submit on Shift+Enter", () => {
+    const onSend = vi.fn()
+    render(<Composer onSend={onSend} />)
+    const field = screen.getByPlaceholderText("把想说的告诉我。") as HTMLTextAreaElement
+    fireEvent.change(field, { target: { value: "你好" } })
+    fireEvent.keyDown(field, { key: "Enter", shiftKey: true })
+    expect(onSend).not.toHaveBeenCalled()
+  })
 })

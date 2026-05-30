@@ -16,6 +16,7 @@
   --radius-panel: 28px;
   --radius-card: 24px;
   --radius-soft: 20px;
+  --radius-pill: 24px;
 
   --a2ui-color-background: var(--surface-soft);
   --a2ui-color-surface: var(--surface);
@@ -203,7 +204,6 @@ a {
 .kk-sidebar__user { margin-top: auto; padding: 0.5rem 0.625rem; font-size: 0.8125rem; color: rgba(43,37,32,0.72); }
 
 /* composer input-pill */
-:root { --radius-pill: 24px; }
 .kk-composer { display: flex; align-items: center; gap: 0.5rem; border: 1px solid var(--border-soft); border-radius: var(--radius-pill); background: var(--surface); padding: 0.5rem 0.75rem; box-shadow: 0 6px 24px rgba(139,111,71,0.06); }
 .kk-composer__attach, .kk-composer__send { width: 2rem; height: 2rem; border-radius: 999px; border: none; cursor: pointer; font-size: 1rem; }
 .kk-composer__attach { background: transparent; color: var(--brand-wood); }
