@@ -38,3 +38,6 @@ vitest-report/
 
 # local agent helper
 CLAUDE.md
+
+# local screenshot/output artifacts
+.playwright-mcp/
