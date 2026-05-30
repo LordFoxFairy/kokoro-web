@@ -23,7 +23,7 @@ const planSchema = z.object({
 })
 
 type PlanProps = ResolveA2uiProps<z.infer<typeof planSchema>>
-type TodoItem = { content: string; status: string }
+type TodoItem = { content: string; status: "pending" | "in_progress" | "completed" }
 
 const MARK: Record<string, string> = {
   pending: "○",
