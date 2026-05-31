@@ -8,7 +8,7 @@ import { kokoroChatCatalog } from "./catalog"
 import { startA2uiSession, type A2uiSessionHandle } from "@/application/a2ui-session"
 
 // 起一个 run 并把 A2UI op 流折进 processor，surface 变化时触发重渲染。
-export function useA2uiSurface(input: { text: string; sessionId: string }) {
+export function useA2uiSurface(input: { text: string; sessionId: string; fixture?: "permission" }) {
   const [surface, setSurface] = useState<SurfaceModel<ReactComponentImplementation> | null>(null)
   const [tick, setTick] = useState(0)
 
@@ -31,6 +31,7 @@ export function useA2uiSurface(input: { text: string; sessionId: string }) {
       processor,
       input: input.text,
       sessionId: input.sessionId,
+      fixture: input.fixture,
       onOp: sync,
     })
       .then((h) => {
@@ -47,7 +48,7 @@ export function useA2uiSurface(input: { text: string; sessionId: string }) {
       // deps 变更时清掉上一个 surface，避免新 session 短暂闪现旧会话内容。
       setSurface(null)
     }
-  }, [input.text, input.sessionId])
+  }, [input.text, input.sessionId, input.fixture])
 
   return { surface, tick }
 }

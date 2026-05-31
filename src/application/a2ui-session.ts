@@ -32,6 +32,43 @@ export function feedA2uiLine(processor: MessageProcessor<ReactComponentImplement
 
 export type A2uiSessionHandle = { close: () => void }
 
+export function buildRunUrl(opts: {
+  baseUrl: string
+  sessionId: string
+  conversationId: string
+  input: string
+  fixture?: "permission"
+}): string {
+  const runUrl = new URL(`/sessions/${opts.sessionId}/runs`, opts.baseUrl)
+  runUrl.searchParams.set("conversation_id", opts.conversationId)
+  runUrl.searchParams.set("input", opts.input)
+  runUrl.searchParams.set("execution_style", "thinking")
+  if (opts.fixture) {
+    runUrl.searchParams.set("fixture", opts.fixture)
+  }
+  return runUrl.toString()
+}
+
+export async function submitPermissionDecision(opts: {
+  sessionId: string
+  requestId: string
+  decision:
+    | { decision: "allow"; scope: "once" | "session" }
+    | { decision: "deny" }
+  baseUrl?: string
+}): Promise<void> {
+  const baseUrl = opts.baseUrl ?? resolveSessionBaseUrl()
+  const res = await fetch(
+    `${baseUrl}/sessions/${opts.sessionId}/permissions/${opts.requestId}/decision`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(opts.decision),
+    },
+  )
+  if (!res.ok) throw new Error(`permission decision failed: ${res.status}`)
+}
+
 // POST 触发 run，开 EventSource 订阅 a2ui.op，逐条喂 processor。onOp 回调供 React 重渲染节流。
 export async function startA2uiSession(opts: {
   processor: MessageProcessor<ReactComponentImplementation>
@@ -40,15 +77,19 @@ export async function startA2uiSession(opts: {
   conversationId?: string
   onOp?: () => void
   baseUrl?: string
+  fixture?: "permission"
 }): Promise<A2uiSessionHandle> {
   const baseUrl = opts.baseUrl ?? resolveSessionBaseUrl()
   const conversationId = opts.conversationId ?? opts.sessionId
-  const runUrl = new URL(`/sessions/${opts.sessionId}/runs`, baseUrl)
-  runUrl.searchParams.set("conversation_id", conversationId)
-  runUrl.searchParams.set("input", opts.input)
-  runUrl.searchParams.set("execution_style", "thinking")
+  const runUrl = buildRunUrl({
+    baseUrl,
+    sessionId: opts.sessionId,
+    conversationId,
+    input: opts.input,
+    fixture: opts.fixture,
+  })
 
-  const res = await fetch(runUrl.toString(), { method: "POST" })
+  const res = await fetch(runUrl, { method: "POST" })
   if (!res.ok) throw new Error(`session start failed: ${res.status}`)
 
   if (typeof EventSource === "undefined") return { close: () => {} }

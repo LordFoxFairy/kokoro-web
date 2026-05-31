@@ -13,9 +13,14 @@ function makeSessionId(): string {
   return "ses_demo"
 }
 
+export function readPermissionFixture(search: string): "permission" | undefined {
+  const value = new URLSearchParams(search).get("fixture")
+  return value === "permission" ? "permission" : undefined
+}
+
 export function ChatPage() {
-  const [run, setRun] = useState<{ text: string; sessionId: string } | null>(null)
-  const { surface } = useA2uiSurface(run ?? { text: "", sessionId: "" })
+  const [run, setRun] = useState<{ text: string; sessionId: string; fixture?: "permission" } | null>(null)
+  const { surface } = useA2uiSurface(run ?? { text: "", sessionId: "", fixture: undefined })
 
   return (
     <div className="kk-app">
@@ -31,7 +36,13 @@ export function ChatPage() {
           {surface && <A2uiSurface surface={surface} />}
         </div>
         <div className="kk-composer-dock">
-          <Composer onSend={(text) => setRun({ text, sessionId: makeSessionId() })} />
+          <Composer onSend={(text) => setRun({
+            text,
+            sessionId: makeSessionId(),
+            fixture: typeof window !== "undefined"
+              ? readPermissionFixture(window.location.search)
+              : undefined,
+          })} />
         </div>
       </main>
     </div>

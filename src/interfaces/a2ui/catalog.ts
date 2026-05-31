@@ -18,6 +18,7 @@
  */
 import { Catalog } from "@a2ui/web_core/v0_9"
 import { messageComponent } from "./components/message"
+import { permissionCardComponent } from "./components/permission-card"
 import { planComponent } from "./components/plan"
 import { threadComponent } from "./components/thread"
 import { thinkingBlockComponent } from "./components/thinking-block"
@@ -32,4 +33,5 @@ export const kokoroChatCatalog = new Catalog(KOKORO_CHAT_CATALOG_ID, [
   thinkingBlockComponent,
   toolCardComponent,
   planComponent,
+  permissionCardComponent,
 ])
