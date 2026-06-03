@@ -16,6 +16,8 @@
   --radius-panel: 28px;
   --radius-card: 24px;
   --radius-soft: 20px;
+  /* 统一内容列宽：对话线、输入框、首屏共用一栏，保证消息与聊天框对齐。 */
+  --kk-content-width: 48rem;
 
   --a2ui-color-background: var(--surface-soft);
   --a2ui-color-surface: var(--surface);
@@ -61,6 +63,8 @@ a {
   height: 100dvh;
   overflow: hidden;
   grid-template-columns: 15.5rem minmax(0, 1fr);
+  /* 单行锁死到视口高度（minmax 的 0 下限让网格项可收缩，子级才能内部滚动）。 */
+  grid-template-rows: minmax(0, 1fr);
   background: var(--background);
   transition: grid-template-columns 160ms ease;
 }
@@ -283,6 +287,9 @@ a {
   position: relative;
   display: flex;
   min-width: 0;
+  /* 关键：网格项默认 min-height:auto 会被内容撑高，必须显式归零，
+     主区才会被锁在视口行内，让 .kk-thread 在内部出现滚动条而非顶开整页。 */
+  min-height: 0;
   flex-direction: column;
 }
 
@@ -358,17 +365,17 @@ a {
 
 .kk-thread__inner {
   display: flex;
-  width: min(720px, 100%);
+  width: min(var(--kk-content-width), 100%);
   margin: 0 auto;
   flex-direction: column;
-  gap: 0.7rem;
+  gap: 1.15rem;
 }
 
 /* 左右对话布局：assistant 靠左带头像气泡，user 靠右气泡。 */
 .kk-msg {
   display: flex;
-  align-items: flex-end;
-  gap: 0.5rem;
+  align-items: flex-start;
+  gap: 0.6rem;
 }
 
 .kk-msg--assistant {
@@ -393,21 +400,24 @@ a {
 }
 
 .kk-msg__bubble {
-  max-width: 76%;
-  border-radius: 1.05rem;
-  padding: 0.55rem 0.8rem;
+  max-width: 100%;
+  border-radius: 0.95rem;
+  padding: 0.6rem 0.9rem;
 }
 
+/* assistant 占内容列宽：长回复自然成段，短回复自适应收窄；缺角朝头像。 */
 .kk-msg--assistant .kk-msg__bubble {
   border: 1px solid var(--border-soft);
   background: var(--surface);
-  border-bottom-left-radius: 0.3rem;
+  border-top-left-radius: 0.35rem;
 }
 
+/* user 气泡保持紧凑靠右。 */
 .kk-msg--user .kk-msg__bubble {
+  max-width: 80%;
   border: 1px solid var(--border-user-soft);
   background: var(--surface-user-soft);
-  border-bottom-right-radius: 0.3rem;
+  border-top-right-radius: 0.35rem;
 }
 
 .kk-msg__body {
@@ -580,7 +590,7 @@ a {
 
 .kk-composer {
   display: flex;
-  width: min(720px, 100%);
+  width: min(var(--kk-content-width), 100%);
   align-items: center;
   gap: 0.55rem;
   border: 1.5px solid color-mix(in srgb, var(--brand-wood) 60%, var(--border-soft) 40%);
