@@ -93,6 +93,11 @@ function subscribePersistedSeed(onChange: () => void): () => void {
   return () => window.removeEventListener("storage", onChange)
 }
 
+// 水合探针：无订阅、稳定快照；配合 useSyncExternalStore 判定客户端首帧后状态。
+function subscribeNoop(): () => void {
+  return () => {}
+}
+
 type SessionShellProps = {
   // 注入点：默认走真实 kokoro-session（后端缺席则本地模拟），测试可注入同步桩。
   startReply?: StartReply
@@ -114,6 +119,11 @@ export function SessionShell({
   const [draft, setDraft] = useState("")
   const [isStreaming, setIsStreaming] = useState(false)
   const [transportLabel, setTransportLabel] = useState("")
+  const [railCollapsed, setRailCollapsed] = useState(false)
+  // 水合后才渲染主内容：rail 与 composer 立即就位，会话线随后淡入。
+  // 服务端与首帧客户端一致（空占位），消除“空首屏→恢复历史”的刷新闪跳。
+  // 用 useSyncExternalStore 取代 setState-in-effect：SSR/首帧为 false，水合后翻 true。
+  const mounted = useSyncExternalStore(subscribeNoop, () => true, () => false)
 
   const replyHandleRef = useRef<LiveSessionHandle | null>(null)
   const threadEndRef = useRef<HTMLDivElement | null>(null)
@@ -299,16 +309,40 @@ export function SessionShell({
       className="kk-shell"
       data-run-status={thread.runStatus}
       data-transport-label={transportLabel}
+      data-rail-collapsed={railCollapsed ? "true" : "false"}
     >
       <aside className="kk-rail" aria-label="会话导航">
-        <div className="kk-rail__brand">
-          <div className="kk-rail__brand-mark" aria-hidden>
-            心
+        <div className="kk-rail__head">
+          <div className="kk-rail__brand">
+            <div className="kk-rail__brand-mark" aria-hidden>
+              心
+            </div>
+            <div className="kk-rail__brand-text">
+              <p className="kk-rail__brand-title">Kokoro</p>
+              <p className="kk-rail__brand-subtitle">こころ</p>
+            </div>
           </div>
-          <div>
-            <p className="kk-rail__brand-title">Kokoro</p>
-            <p className="kk-rail__brand-subtitle">こころ</p>
-          </div>
+
+          <button
+            className="kk-rail__collapse"
+            type="button"
+            onClick={() => setRailCollapsed((value) => !value)}
+            aria-label={railCollapsed ? "展开侧栏" : "收起侧栏"}
+            aria-expanded={!railCollapsed}
+          >
+            <svg className="kk-rail__icon" viewBox="0 0 24 24" fill="none" aria-hidden>
+              <rect
+                x="3"
+                y="4"
+                width="18"
+                height="16"
+                rx="2.5"
+                stroke="currentColor"
+                strokeWidth="1.7"
+              />
+              <line x1="9.5" y1="4" x2="9.5" y2="20" stroke="currentColor" strokeWidth="1.7" />
+            </svg>
+          </button>
         </div>
 
         <button
@@ -316,21 +350,27 @@ export function SessionShell({
           type="button"
           onClick={startNewChat}
         >
-          <span aria-hidden>＋</span>
-          <span>新对话</span>
+          <svg className="kk-rail__icon" viewBox="0 0 24 24" fill="none" aria-hidden>
+            <line x1="12" y1="5" x2="12" y2="19" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+            <line x1="5" y1="12" x2="19" y2="12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+          </svg>
+          <span className="kk-rail__action-label">新对话</span>
         </button>
 
         <button className="kk-rail__action kk-rail__search" type="button">
           <span className="kk-rail__search-label">
-            <span aria-hidden>⌕</span>
-            <span>搜索</span>
+            <svg className="kk-rail__icon" viewBox="0 0 24 24" fill="none" aria-hidden>
+              <circle cx="11" cy="11" r="6.5" stroke="currentColor" strokeWidth="1.7" />
+              <line x1="20" y1="20" x2="16.2" y2="16.2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+            </svg>
+            <span className="kk-rail__action-label">搜索</span>
           </span>
           <span className="kk-rail__search-shortcut">⌘K</span>
         </button>
 
         <div className="kk-rail__user-card">
           <div className="kk-rail__user-avatar" aria-hidden />
-          <div>
+          <div className="kk-rail__user-text">
             <p className="kk-rail__user-name">当前用户</p>
             <p className="kk-rail__user-meta">本地会话</p>
           </div>
@@ -338,7 +378,9 @@ export function SessionShell({
       </aside>
 
       <section className="kk-shell__main">
-        {hasMessages ? (
+        {!mounted ? (
+          <div className="kk-shell__stage" aria-hidden />
+        ) : hasMessages ? (
           <div
             className="kk-thread"
             role="log"
