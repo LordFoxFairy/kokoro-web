@@ -58,56 +58,58 @@ a {
 .kk-shell {
   display: grid;
   min-height: 100vh;
-  grid-template-columns: 18.5rem minmax(0, 1fr);
+  grid-template-columns: 15.5rem minmax(0, 1fr);
   background: var(--background);
 }
 
 .kk-rail {
   display: flex;
   flex-direction: column;
-  gap: 0.9rem;
+  gap: 0.45rem;
   border-right: 1px solid var(--border-soft);
-  padding: 1.5rem 1rem;
+  padding: 0.85rem 0.65rem;
   background: color-mix(in srgb, var(--background) 88%, white 12%);
 }
 
 .kk-rail__brand {
   display: flex;
   align-items: center;
-  gap: 0.875rem;
-  padding: 0.5rem;
+  gap: 0.55rem;
+  padding: 0.3rem 0.35rem;
 }
 
 .kk-rail__brand-mark {
   display: flex;
-  height: 3rem;
-  width: 3rem;
+  height: 2.1rem;
+  width: 2.1rem;
   align-items: center;
   justify-content: center;
-  border-radius: 0.9rem;
+  border-radius: 0.6rem;
   background: var(--brand-wood);
   color: #fffdf9;
-  font-size: 1.25rem;
+  font-size: 0.95rem;
 }
 
 .kk-rail__brand-title {
-  font-size: 1.5rem;
+  font-size: 1.05rem;
   font-weight: 600;
   color: var(--foreground);
 }
 
 .kk-rail__brand-subtitle {
-  margin-top: 0.15rem;
-  font-size: 0.875rem;
-  letter-spacing: 0.2em;
-  color: rgba(43, 37, 32, 0.45);
+  margin-top: 0.05rem;
+  font-size: 0.65rem;
+  letter-spacing: 0.18em;
+  /* 0.65 alpha 在该浅底上达 ~4.7:1，满足 WCAG AA 正文对比度。 */
+  color: rgba(43, 37, 32, 0.65);
 }
 
 .kk-rail__action,
 .kk-rail__user-card {
-  border-radius: 1.5rem;
+  border-radius: 0.85rem;
 }
 
+/* 导航按钮的悬停只改底色与阴影，键盘聚焦才显暖木描边——均不改变盒模型，无回流。 */
 .kk-rail__action {
   display: flex;
   width: 100%;
@@ -115,13 +117,17 @@ a {
   justify-content: space-between;
   border: 1px solid var(--border-soft);
   background: var(--surface);
-  padding: 1rem 1.1rem;
+  padding: 0.6rem 0.8rem;
   color: var(--foreground);
+  font-size: 0.9rem;
   text-align: left;
+  transition:
+    background-color 120ms ease,
+    box-shadow 120ms ease;
 }
 
 .kk-rail__new-chat {
-  gap: 0.875rem;
+  gap: 0.55rem;
   justify-content: flex-start;
 }
 
@@ -130,50 +136,67 @@ a {
   color: rgba(43, 37, 32, 0.68);
 }
 
+.kk-rail__action:hover {
+  background: color-mix(in srgb, var(--brand-wood-soft) 55%, white 45%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--border-soft) 80%, white 20%);
+}
+
+.kk-rail__action:focus-visible {
+  outline: 2px solid var(--brand-wood);
+  outline-offset: 2px;
+}
+
+/* 用户卡片整体可聚焦时（焦点落入内部）显描边，不改变盒模型。 */
+.kk-rail__user-card:focus-within {
+  outline: 2px solid var(--brand-wood);
+  outline-offset: 2px;
+}
+
 .kk-rail__search-label {
   display: inline-flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0.5rem;
 }
 
 .kk-rail__search-shortcut {
   border: 1px solid var(--border-soft);
-  border-radius: 0.75rem;
-  padding: 0.2rem 0.55rem;
-  font-size: 0.8125rem;
+  border-radius: 0.45rem;
+  padding: 0.12rem 0.4rem;
+  font-size: 0.7rem;
 }
 
 .kk-rail__user-card {
   margin-top: auto;
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: 0.6rem;
   border: 1px solid color-mix(in srgb, var(--border-soft) 65%, white 35%);
   background: color-mix(in srgb, var(--surface-soft) 82%, white 18%);
-  padding: 1.1rem 1.2rem;
+  padding: 0.6rem 0.7rem;
 }
 
 .kk-rail__user-avatar {
-  height: 4.5rem;
-  width: 4.5rem;
+  height: 2.1rem;
+  width: 2.1rem;
   flex-shrink: 0;
   border-radius: 999px;
   background: color-mix(in srgb, var(--brand-wood-soft) 55%, var(--brand-wood) 45%);
 }
 
 .kk-rail__user-name {
-  font-size: 1.375rem;
+  font-size: 0.9rem;
   font-weight: 600;
   color: var(--foreground);
 }
 
 .kk-rail__user-meta {
-  margin-top: 0.2rem;
-  font-size: 1rem;
-  color: rgba(43, 37, 32, 0.42);
+  margin-top: 0.05rem;
+  font-size: 0.75rem;
+  color: rgba(43, 37, 32, 0.65);
 }
 
 .kk-shell__main {
+  position: relative;
   display: flex;
   min-width: 0;
   flex-direction: column;
@@ -185,39 +208,280 @@ a {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 2rem;
+  padding: 1.5rem;
   text-align: center;
 }
 
 .kk-shell__headline {
-  font-size: clamp(3.5rem, 6vw, 5.75rem);
-  line-height: 1.05;
+  font-size: clamp(1.75rem, 3.4vw, 2.5rem);
+  line-height: 1.15;
   font-weight: 600;
   color: color-mix(in srgb, var(--foreground) 84%, var(--brand-wood) 16%);
 }
 
 .kk-shell__subhead {
-  margin-top: 1rem;
-  font-size: clamp(1.4rem, 2.2vw, 1.875rem);
+  margin-top: 0.5rem;
+  font-size: clamp(0.95rem, 1.4vw, 1.0625rem);
   color: color-mix(in srgb, var(--brand-wood) 62%, white 38%);
+}
+
+/* 活跃态：有消息时主区让位给可滚动的对话线，composer 沉到底部。 */
+.kk-thread {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 1.25rem 1.25rem 0.5rem;
+  /* 纤细暖木滚动条：Firefox 走标准属性，复用调色板而非新色。 */
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--brand-wood) 50%, transparent) transparent;
+}
+
+/* WebKit 同款纤细暖木滚动条，与上方 Firefox 标准属性对齐。 */
+.kk-thread::-webkit-scrollbar {
+  width: 8px;
+}
+
+.kk-thread::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--brand-wood) 50%, transparent);
+}
+
+.kk-thread::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.kk-thread__inner {
+  display: flex;
+  width: min(720px, 100%);
+  margin: 0 auto;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+/* 左右对话布局：assistant 靠左带头像气泡，user 靠右气泡。 */
+.kk-msg {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.5rem;
+}
+
+.kk-msg--assistant {
+  justify-content: flex-start;
+}
+
+.kk-msg--user {
+  justify-content: flex-end;
+}
+
+.kk-msg__avatar {
+  display: flex;
+  height: 1.75rem;
+  width: 1.75rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--brand-wood);
+  color: #fffdf9;
+  font-size: 0.78rem;
+}
+
+.kk-msg__bubble {
+  max-width: 76%;
+  border-radius: 1.05rem;
+  padding: 0.55rem 0.8rem;
+}
+
+.kk-msg--assistant .kk-msg__bubble {
+  border: 1px solid var(--border-soft);
+  background: var(--surface);
+  border-bottom-left-radius: 0.3rem;
+}
+
+.kk-msg--user .kk-msg__bubble {
+  border: 1px solid var(--border-user-soft);
+  background: var(--surface-user-soft);
+  border-bottom-right-radius: 0.3rem;
+}
+
+.kk-msg__body {
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.kk-thread__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  align-self: flex-start;
+  margin-left: 2.25rem;
+  color: rgba(43, 37, 32, 0.65);
+  font-size: 0.82rem;
+  letter-spacing: 0.04em;
+}
+
+/* CSS-only 流式脉冲：三点，仅在用户未要求减少动态时律动，
+   减少动态时降为静态实心点——不改变行高/尺寸，避免抖动。 */
+.kk-thread__pulse {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.22rem;
+}
+
+.kk-thread__pulse span {
+  display: block;
+  height: 0.32rem;
+  width: 0.32rem;
+  border-radius: 999px;
+  background: var(--brand-wood);
+  opacity: 0.45;
+}
+
+@keyframes kk-pulse {
+  0%,
+  80%,
+  100% {
+    opacity: 0.3;
+  }
+  40% {
+    opacity: 0.9;
+  }
+}
+
+/* 气泡入场：一次性的 250ms 淡入（仅首帧），让新消息柔和出现而非突现。
+   只改 opacity，不位移、不改尺寸，保持紧凑克制；减少动态时不应用。 */
+@keyframes kk-message-enter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .kk-thread__pulse span {
+    animation: kk-pulse 1.2s ease-in-out infinite;
+  }
+
+  .kk-thread__pulse span:nth-child(2) {
+    animation-delay: 0.18s;
+  }
+
+  .kk-thread__pulse span:nth-child(3) {
+    animation-delay: 0.36s;
+  }
+
+  .kk-msg__bubble {
+    animation: kk-message-enter 250ms ease-out;
+  }
+}
+
+/* 用户明确要求减少动态时，全局收敛任何过渡与动画到瞬时完成——
+   覆盖上面所有 transition/animation，杜绝抖动与律动。 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+.kk-thread__error {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  align-self: flex-start;
+  max-width: 76%;
+  border: 1px solid color-mix(in srgb, #b4584f 32%, var(--border-soft) 68%);
+  background: color-mix(in srgb, #b4584f 8%, var(--surface) 92%);
+  border-radius: 0.9rem;
+  padding: 0.5rem 0.75rem;
+  color: #7a3a33;
+  font-size: 0.82rem;
+}
+
+/* 重试入口：暖木描边胶囊，固定尺寸；hover/focus 只换底色与阴影，绝不改变盒子大小。 */
+.kk-thread__retry {
+  flex-shrink: 0;
+  border: 1px solid color-mix(in srgb, var(--brand-wood) 55%, var(--border-soft) 45%);
+  border-radius: 999px;
+  background: var(--surface);
+  padding: 0.2rem 0.7rem;
+  color: var(--brand-wood);
+  font-size: 0.8rem;
+  transition:
+    background-color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.kk-thread__retry:hover,
+.kk-thread__retry:focus-visible {
+  background: color-mix(in srgb, var(--brand-wood-soft) 70%, white 30%);
+  box-shadow: inset 0 0 0 1px var(--brand-wood);
+  outline: none;
+}
+
+/* 回到最新：悬浮在对话区底部、composer 之上。绝对定位脱离滚动流，
+   固定尺寸；hover/focus 仅改底色与阴影，避免布局抖动。 */
+.kk-shell__jump {
+  position: absolute;
+  left: 50%;
+  bottom: 6.5rem;
+  transform: translateX(-50%);
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border: 1px solid color-mix(in srgb, var(--brand-wood) 45%, var(--border-soft) 55%);
+  border-radius: 999px;
+  background: var(--surface);
+  padding: 0.35rem 0.85rem;
+  color: var(--brand-wood);
+  font-size: 0.82rem;
+  box-shadow: var(--shadow-card);
+  transition:
+    background-color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.kk-shell__jump:hover,
+.kk-shell__jump:focus-visible {
+  background: color-mix(in srgb, var(--brand-wood-soft) 70%, white 30%);
+  box-shadow:
+    var(--shadow-card),
+    inset 0 0 0 1px var(--brand-wood);
+  outline: none;
 }
 
 .kk-shell__composer-wrap {
   display: flex;
-  justify-content: center;
-  padding: 0 2rem 1.75rem;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0 1.5rem 1.25rem;
+}
+
+.kk-shell__transport {
+  color: rgba(43, 37, 32, 0.65);
+  font-size: 0.72rem;
+  letter-spacing: 0.02em;
 }
 
 .kk-composer {
   display: flex;
-  width: min(980px, 100%);
+  width: min(720px, 100%);
   align-items: center;
-  gap: 0.9rem;
-  border: 2px solid color-mix(in srgb, var(--brand-wood) 72%, var(--border-soft) 28%);
-  border-radius: 2rem;
+  gap: 0.55rem;
+  border: 1.5px solid color-mix(in srgb, var(--brand-wood) 60%, var(--border-soft) 40%);
+  border-radius: 1.4rem;
   background: var(--surface);
-  padding: 1rem 1.15rem;
-  box-shadow: 0 10px 28px rgba(139, 111, 71, 0.12);
+  padding: 0.5rem 0.65rem;
+  box-shadow: 0 6px 18px rgba(139, 111, 71, 0.1);
 }
 
 .kk-composer__add,
@@ -231,40 +495,94 @@ a {
 
 .kk-composer__add {
   display: flex;
-  height: 2.75rem;
-  width: 2.75rem;
+  height: 2.05rem;
+  width: 2.05rem;
   flex-shrink: 0;
   align-items: center;
   justify-content: center;
   border-radius: 999px;
   background: color-mix(in srgb, var(--brand-wood-soft) 82%, white 18%);
   color: var(--brand-wood);
-  font-size: 1.4rem;
+  font-size: 1.1rem;
 }
 
-.kk-composer__input-copy {
+/* 圆形操作键的悬停只加深底色，键盘聚焦才显暖木描边——均不改变盒模型，无回流。 */
+.kk-composer__add,
+.kk-composer__mic {
+  transition: background-color 120ms ease;
+}
+
+.kk-composer__add:hover {
+  background: color-mix(in srgb, var(--brand-wood-soft) 92%, var(--brand-wood) 8%);
+}
+
+.kk-composer__mic:hover {
+  background: color-mix(in srgb, var(--brand-wood-soft) 60%, white 40%);
+}
+
+.kk-composer__add:focus-visible,
+.kk-composer__mic:focus-visible,
+.kk-composer__mode:focus-visible,
+.kk-composer__send:focus-visible {
+  outline: 2px solid var(--brand-wood);
+  outline-offset: 2px;
+}
+
+.kk-composer__input {
   min-width: 0;
   flex: 1;
-  color: rgba(43, 37, 32, 0.58);
-  font-size: 1.25rem;
+  resize: none;
+  border: 0;
+  background: transparent;
+  color: var(--foreground);
+  font-family: inherit;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  max-height: 7rem;
+  overflow-y: auto;
+  padding: 0.25rem 0;
 }
 
+.kk-composer__input::placeholder {
+  color: rgba(43, 37, 32, 0.55);
+}
+
+.kk-composer__input:focus {
+  outline: none;
+}
+
+/* 键盘聚焦才显描边：outline + offset 不改变盒模型，无回流抖动。 */
+.kk-composer__input:focus-visible {
+  outline: 2px solid var(--brand-wood);
+  outline-offset: 2px;
+}
+
+.kk-composer__input:disabled {
+  color: rgba(43, 37, 32, 0.55);
+  cursor: not-allowed;
+}
+
+.kk-composer__send:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* 固定尺寸，hover/focus 只换底色与描边——不改变布局，避免聊天框抖动。 */
 .kk-composer__mode {
   display: inline-flex;
   align-items: center;
-  gap: 0.45rem;
+  gap: 0.3rem;
   border-radius: 999px;
-  padding: 0.55rem 0.25rem;
+  padding: 0.35rem 0.6rem;
+  font-size: 0.85rem;
   color: color-mix(in srgb, var(--foreground) 78%, var(--brand-wood) 22%);
   transition:
     background-color 120ms ease,
-    padding 120ms ease,
     box-shadow 120ms ease;
 }
 
 .kk-composer:hover .kk-composer__mode,
 .kk-composer:focus-within .kk-composer__mode {
-  padding: 0.7rem 1rem;
   background: color-mix(in srgb, var(--surface-soft) 82%, white 18%);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--border-soft) 82%, white 18%);
 }
@@ -273,19 +591,44 @@ a {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.35rem;
+  font-size: 1.05rem;
 }
 
 .kk-composer__send {
   display: flex;
-  height: 2.75rem;
-  width: 2.75rem;
+  height: 2.05rem;
+  width: 2.05rem;
   flex-shrink: 0;
   align-items: center;
   justify-content: center;
   border-radius: 999px;
   background: #9fd1ff;
-  font-size: 1.35rem;
+  font-size: 1rem;
+  transition:
+    background-color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+/* 可发送时悬停略加深蓝并加阴影；禁用态不响应——仅改色与阴影，尺寸不变。 */
+.kk-composer__send:not(:disabled):hover {
+  background: color-mix(in srgb, #9fd1ff 86%, var(--brand-wood) 14%);
+  box-shadow: 0 4px 12px rgba(139, 111, 71, 0.16);
+}
+
+/* 停止态复用相同的 2.05rem 圆形盒子，只换暖木色调与描边——
+   hover/focus 仅改色与阴影，绝不改变尺寸，避免布局抖动。 */
+.kk-composer__send--stop {
+  background: var(--brand-wood-soft);
+  color: var(--brand-wood);
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--brand-wood) 55%, var(--border-soft) 45%);
+  font-size: 0.78rem;
+}
+
+.kk-composer__send--stop:hover,
+.kk-composer__send--stop:focus-visible {
+  background: color-mix(in srgb, var(--brand-wood-soft) 80%, white 20%);
+  box-shadow: inset 0 0 0 1.5px var(--brand-wood);
+  outline: none;
 }
 
 @media (max-width: 960px) {
@@ -299,34 +642,42 @@ a {
   }
 
   .kk-shell__hero {
-    padding-top: 3rem;
+    padding-top: 2rem;
   }
 }
 
 @media (max-width: 640px) {
   .kk-rail {
-    padding: 1rem;
+    padding: 0.85rem;
   }
 
   .kk-shell__headline {
-    font-size: clamp(2.5rem, 12vw, 3.5rem);
+    font-size: clamp(1.5rem, 7vw, 2rem);
   }
 
   .kk-shell__subhead {
-    font-size: 1.125rem;
+    font-size: 0.95rem;
   }
 
   .kk-shell__composer-wrap {
-    padding: 0 1rem 1rem;
+    padding: 0 0.85rem 0.85rem;
   }
 
   .kk-composer {
     flex-wrap: wrap;
   }
 
-  .kk-composer__input-copy {
+  .kk-composer__input {
     width: 100%;
     order: 5;
-    font-size: 1rem;
+    font-size: 0.95rem;
+  }
+
+  .kk-thread {
+    padding: 1rem 0.85rem 0.5rem;
+  }
+
+  .kk-msg__bubble {
+    max-width: 86%;
   }
 }
