@@ -38,3 +38,7 @@ vitest-report/
 
 # local agent helper
 CLAUDE.md
+
+# local agent / MCP tooling scratch
+.playwright-mcp/
+.superpowers/
