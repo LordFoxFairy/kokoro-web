@@ -1,9 +1,15 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 import {
+  buildSimulatedReplyEvents,
   consumeLiveSession,
+  simulateAssistantReply,
   type SessionStreamSnapshot,
 } from "@/application/session-stream-preview"
+import {
+  appendUserMessage,
+  createSessionStreamState,
+} from "@/application/session-stream-reducer"
 
 type Listener = (event: MessageEvent) => void
 
@@ -67,6 +73,7 @@ afterEach(() => {
   MockEventSource.instances = []
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
+  vi.useRealTimers()
 })
 
 describe("consumeLiveSession", () => {
@@ -271,6 +278,111 @@ describe("consumeLiveSession", () => {
     expect(source?.closed).toBe(true)
   })
 
+  it("folds a new run on top of a provided initialState (multi-turn thread)", async () => {
+    // 多轮：本轮 run 的 assistant 事件必须折在已有 thread（含上一轮+用户气泡）之上，
+    // 而不是从空状态重来，否则刷新/换轮会丢历史。
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(null, { status: 202 })),
+    )
+    vi.stubGlobal("EventSource", MockEventSource as unknown as typeof EventSource)
+
+    const initialState = appendUserMessage(createSessionStreamState(), {
+      id: "local_user_1",
+      content: "继续",
+    })
+
+    const snapshots: SessionStreamSnapshot[] = []
+    const settled: boolean[] = []
+    await consumeLiveSession({
+      input: "继续",
+      baseUrl: "http://127.0.0.1:3001",
+      initialState,
+      onState: (snapshot) => snapshots.push(snapshot),
+      onSettled: () => settled.push(true),
+    })
+
+    const source = MockEventSource.instances[0]
+    source?.emit(
+      "message.completed",
+      envelope("message.completed", "evt_reply", {
+        message_id: "msg_turn2",
+        role: "assistant",
+        content: "第二轮回答。",
+      }),
+    )
+    source?.emit(
+      "run.completed",
+      envelope("run.completed", "evt_done2", {
+        run_id: "run_01",
+        status: "completed",
+      }),
+    )
+
+    const final = snapshots.at(-1)
+    expect(final?.messages.map((m) => m.role)).toEqual(["user", "assistant"])
+    expect(final?.messages[0]?.content).toBe("继续")
+    expect(final?.messages[1]?.content).toBe("第二轮回答。")
+    expect(settled).toEqual([true])
+  })
+
+  it("registers the discarded transport listeners and folds a large completed body", async () => {
+    // artifact.available / permission.required 必须有监听器（有意丢弃而非漏听），
+    // 且它们的注册不能影响 assistant 轮次的折叠；超大正文须完整落入。
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(null, { status: 202 })),
+    )
+    vi.stubGlobal("EventSource", MockEventSource as unknown as typeof EventSource)
+
+    const snapshots: SessionStreamSnapshot[] = []
+    await consumeLiveSession({
+      input: "hello",
+      baseUrl: "http://127.0.0.1:3001",
+      onState: (snapshot) => snapshots.push(snapshot),
+    })
+
+    const source = MockEventSource.instances[0]
+    expect(source?.listenerCount("artifact.available")).toBe(1)
+    expect(source?.listenerCount("permission.required")).toBe(1)
+
+    // 被丢弃的事件不得改动 state，也不得抛错。
+    expect(() =>
+      source?.emit(
+        "artifact.available",
+        envelope("artifact.available", "evt_art", {
+          artifact_id: "art_01",
+          artifact_kind: "doc",
+          title: "Spec",
+        }),
+      ),
+    ).not.toThrow()
+    expect(snapshots).toHaveLength(0)
+
+    const hugeBody = "答".repeat(50_000)
+    source?.emit(
+      "message.completed",
+      envelope("message.completed", "evt_big", {
+        message_id: "msg_big",
+        role: "assistant",
+        content: hugeBody,
+      }),
+    )
+    source?.emit(
+      "run.completed",
+      envelope("run.completed", "evt_done_big", {
+        run_id: "run_01",
+        status: "completed",
+      }),
+    )
+
+    const final = snapshots.at(-1)
+    expect(final?.messages).toHaveLength(1)
+    expect(final?.messages[0]?.role).toBe("assistant")
+    expect(final?.messages[0]?.content).toBe(hugeBody)
+    expect(final?.runStatus).toBe("completed")
+  })
+
   it("stays alive on transient transport errors via onerror", async () => {
     vi.stubGlobal(
       "fetch",
@@ -292,5 +404,94 @@ describe("consumeLiveSession", () => {
     expect(() => source?.onerror?.(new Event("error"))).not.toThrow()
     expect(recoverableCalls).toBe(1)
     expect(source?.closed).toBe(false)
+  })
+})
+
+describe("buildSimulatedReplyEvents", () => {
+  it("is deterministic and terminates with run-completed", () => {
+    const ids = { runId: "run_x", messageId: "msg_x" }
+    const first = buildSimulatedReplyEvents("讲讲今天", ids)
+    const second = buildSimulatedReplyEvents("讲讲今天", ids)
+
+    expect(first).toEqual(second)
+    expect(first.at(-1)?.kind).toBe("run-completed")
+
+    const completed = first.find((event) => event.kind === "message-completed")
+    expect(completed).toBeDefined()
+    // 所有增量必须归属同一条 assistant 消息，才能正确归并成一段流式正文。
+    const deltas = first.filter((event) => event.kind === "message-delta")
+    expect(deltas.length).toBeGreaterThan(0)
+    expect(deltas.every((event) => event.messageId === "msg_x")).toBe(true)
+  })
+
+  it("lightly echoes the user input so the reply is grounded", () => {
+    const events = buildSimulatedReplyEvents("买杯咖啡", {
+      runId: "run_y",
+      messageId: "msg_y",
+    })
+    const completed = events.find((event) => event.kind === "message-completed")
+
+    expect(completed?.kind === "message-completed" && completed.content).toContain(
+      "买杯咖啡",
+    )
+  })
+})
+
+describe("simulateAssistantReply", () => {
+  it("streams a reply on top of initialState to completion", () => {
+    vi.useFakeTimers()
+
+    const initialState = appendUserMessage(createSessionStreamState(), {
+      id: "local_user_1",
+      content: "你好",
+    })
+
+    const snapshots: SessionStreamSnapshot[] = []
+    let settledCount = 0
+
+    simulateAssistantReply({
+      input: "你好",
+      initialState,
+      ids: { runId: "run_sim", messageId: "msg_sim" },
+      stepMs: 1,
+      onState: (snapshot) => snapshots.push(snapshot),
+      onSettled: () => {
+        settledCount += 1
+      },
+    })
+
+    // 首个增量同步出现：用户气泡 + 正在成形的 assistant 气泡。
+    expect(snapshots[0]?.messages.map((m) => m.role)).toEqual([
+      "user",
+      "assistant",
+    ])
+
+    vi.runAllTimers()
+
+    const final = snapshots.at(-1)
+    expect(final?.messages).toHaveLength(2)
+    expect(final?.messages[0]?.content).toBe("你好")
+    expect(final?.messages[1]?.content).toContain("你好")
+    expect(final?.runStatus).toBe("completed")
+    expect(settledCount).toBe(1)
+  })
+
+  it("stops streaming when closed early", () => {
+    vi.useFakeTimers()
+
+    const snapshots: SessionStreamSnapshot[] = []
+    const handle = simulateAssistantReply({
+      input: "停",
+      ids: { runId: "run_stop", messageId: "msg_stop" },
+      stepMs: 1,
+      onState: (snapshot) => snapshots.push(snapshot),
+    })
+
+    const countAfterFirst = snapshots.length
+    handle.close()
+    vi.runAllTimers()
+
+    // 关闭后不得再有新的状态推送，避免卸载后 setState 泄漏。
+    expect(snapshots.length).toBe(countAfterFirst)
   })
 })

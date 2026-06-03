@@ -10,56 +10,21 @@ import {
   type SessionStreamState,
 } from "./session-stream-reducer"
 
-const previewEvents: SessionStreamEvent[] = [
-  {
-    kind: "session-created",
-    eventId: "evt_00",
-    sessionId: "ses_01",
-    conversationId: "conv_01",
-    runId: "run_01",
-    ownerId: "usr_01",
-    title: "Warm launch preview",
-  },
-  {
-    kind: "message-delta",
-    eventId: "evt_01",
-    sessionId: "ses_01",
-    conversationId: "conv_01",
-    runId: "run_01",
-    messageId: "msg_01",
-    role: "assistant",
-    delta: "Hello ",
-  },
-  {
-    kind: "message-completed",
-    eventId: "evt_02",
-    sessionId: "ses_01",
-    conversationId: "conv_01",
-    runId: "run_01",
-    messageId: "msg_01",
-    role: "assistant",
-    content: "Hello from replay-safe shell.",
-  },
-  {
-    kind: "run-completed",
-    eventId: "evt_03",
-    sessionId: "ses_01",
-    conversationId: "conv_01",
-    runId: "run_01",
-  },
-]
-
+// 传输层监听的事件名全集。artifact.available / permission.required 当前由
+// toSessionStreamEvent 显式丢弃，但仍需注册监听器，让丢弃是有意为之而非漏听。
 const transportEventNames = [
   "session.created",
   "run.created",
   "message.delta",
   "message.completed",
+  "artifact.available",
+  "permission.required",
   "run.completed",
   "run.failed",
 ] as const
 
-export const demoSessionId = "ses_01"
-export const demoConversationId = "conv_01"
+const demoSessionId = "ses_01"
+const demoConversationId = "conv_01"
 
 export function resolveSessionBaseUrl() {
   if (process.env.NEXT_PUBLIC_KOKORO_SESSION_BASE_URL) {
@@ -75,57 +40,6 @@ export function resolveSessionBaseUrl() {
   }
 
   return "http://127.0.0.1:3001"
-}
-
-export function createPreviewSessionState(): SessionStreamState {
-  // 预览数据在应用层先折叠成稳定 state，接口层只负责展示结果。
-  return previewEvents.reduce(applySessionEvent, createSessionStreamState())
-}
-
-export async function startDemoSession(baseUrl = resolveSessionBaseUrl()) {
-  const requestUrl = new URL(`/sessions/${demoSessionId}/runs`, baseUrl)
-  requestUrl.searchParams.set("conversation_id", demoConversationId)
-  requestUrl.searchParams.set("input", "hello kokoro")
-  requestUrl.searchParams.set("execution_style", "default")
-
-  const response = await fetch(requestUrl.toString(), {
-    method: "POST",
-  })
-
-  if (!response.ok) {
-    throw new Error(`session start failed with status ${response.status}`)
-  }
-}
-
-export function openDemoSessionStream(
-  onEvent: (event: SessionStreamEvent) => void,
-  baseUrl = resolveSessionBaseUrl(),
-) {
-  if (typeof EventSource === "undefined") {
-    return () => {}
-  }
-
-  const streamUrl = new URL(`/sessions/${demoSessionId}/stream`, baseUrl)
-  const source = new EventSource(streamUrl.toString())
-
-  const handleEvent: EventListener = (event) => {
-    const sessionEvent = decodeStreamMessage(event)
-
-    if (sessionEvent) {
-      onEvent(sessionEvent)
-    }
-  }
-
-  for (const eventName of transportEventNames) {
-    source.addEventListener(eventName, handleEvent)
-  }
-
-  return () => {
-    for (const eventName of transportEventNames) {
-      source.removeEventListener(eventName, handleEvent)
-    }
-    source.close()
-  }
 }
 
 // 严格解析 SSE 载荷；任何畸形/未知事件被拒绝且不允许中断整条流。
@@ -153,7 +67,10 @@ export type ConsumeLiveSessionInput = {
   baseUrl?: string
   sessionId?: string
   conversationId?: string
+  // 持久会话线：让本轮 run 的 assistant 事件折在已有 thread 之上，而不是每轮清零。
+  initialState?: SessionStreamState
   onState: (snapshot: SessionStreamSnapshot) => void
+  onSettled?: () => void
   onError?: (event: Event) => void
 }
 
@@ -181,7 +98,7 @@ export async function consumeLiveSession(
     throw new Error(`session start failed with status ${response.status}`)
   }
 
-  let state = createSessionStreamState()
+  let state = input.initialState ?? createSessionStreamState()
 
   const noop: LiveSessionHandle = { close: () => {} }
 
@@ -214,6 +131,7 @@ export async function consumeLiveSession(
       sessionEvent.kind === "run-failed"
     ) {
       close()
+      input.onSettled?.()
     }
   }
 
@@ -227,4 +145,197 @@ export async function consumeLiveSession(
   }
 
   return { close }
+}
+
+let localIdCounter = 0
+
+// 本地稳定 id：优先用 crypto.randomUUID，回退到自增计数器；
+// 不依赖 Date.now / Math.random，避免 SSR 注水抖动与不确定性。
+export function createLocalId(prefix: string): string {
+  const cryptoRef =
+    typeof globalThis !== "undefined" ? globalThis.crypto : undefined
+
+  if (cryptoRef?.randomUUID) {
+    return `${prefix}_${cryptoRef.randomUUID()}`
+  }
+
+  localIdCounter += 1
+  return `${prefix}_local_${localIdCounter}`
+}
+
+function buildSimulatedReplyText(input: string): string {
+  const trimmed = input.trim()
+  const echo = trimmed.length > 40 ? `${trimmed.slice(0, 40)}…` : trimmed
+  // 温和、明确为本地预览：真实回答接上 kokoro-session 后从同一处流出。
+  return `嗯，我听到了。你说的是「${echo}」。\n\n这是本地预览的流式回复——接上 kokoro-session 后，真实回答会从同一处流出来。`
+}
+
+function chunkText(text: string, size = 2): string[] {
+  const chunks: string[] = []
+
+  for (let index = 0; index < text.length; index += size) {
+    chunks.push(text.slice(index, index + size))
+  }
+
+  return chunks
+}
+
+// 纯函数：把一段模拟回复展开成与真实流完全同形的有序 domain 事件，
+// 以 run-completed 收尾。可被确定性断言，无需计时器。
+export function buildSimulatedReplyEvents(
+  input: string,
+  ids: { runId: string; messageId: string },
+): SessionStreamEvent[] {
+  const reply = buildSimulatedReplyText(input)
+  const envelope = {
+    sessionId: demoSessionId,
+    conversationId: demoConversationId,
+    runId: ids.runId,
+  }
+
+  const deltas: SessionStreamEvent[] = chunkText(reply).map((delta, index) => ({
+    kind: "message-delta",
+    eventId: `${ids.messageId}-d${index}`,
+    ...envelope,
+    messageId: ids.messageId,
+    role: "assistant",
+    delta,
+  }))
+
+  return [
+    ...deltas,
+    {
+      kind: "message-completed",
+      eventId: `${ids.messageId}-c`,
+      ...envelope,
+      messageId: ids.messageId,
+      role: "assistant",
+      content: reply,
+    },
+    {
+      kind: "run-completed",
+      eventId: `${ids.runId}-done`,
+      ...envelope,
+    },
+  ]
+}
+
+export type SimulateAssistantReplyInput = {
+  input: string
+  initialState?: SessionStreamState
+  ids?: { runId: string; messageId: string }
+  stepMs?: number
+  onState: (snapshot: SessionStreamSnapshot) => void
+  onSettled?: () => void
+}
+
+// 后端缺席时的优雅降级：把模拟事件按节奏折进同一个 reducer，
+// 让 streaming UX 与真实流一致；返回 close() 取消未完成的节拍。
+export function simulateAssistantReply(
+  args: SimulateAssistantReplyInput,
+): LiveSessionHandle {
+  const ids = args.ids ?? {
+    runId: createLocalId("run"),
+    messageId: createLocalId("msg"),
+  }
+  const events = buildSimulatedReplyEvents(args.input, ids)
+  const stepMs = args.stepMs ?? 28
+
+  let state = args.initialState ?? createSessionStreamState()
+  let index = 0
+  let timer: ReturnType<typeof setTimeout> | undefined
+  let cancelled = false
+
+  const step = () => {
+    if (cancelled) {
+      return
+    }
+
+    const event = events[index]
+
+    if (!event) {
+      args.onSettled?.()
+      return
+    }
+
+    index += 1
+    state = applySessionEvent(state, event)
+    args.onState(state)
+    timer = setTimeout(step, stepMs)
+  }
+
+  // 首个增量同步出现，streaming 态即时可见；其余按节拍流出。
+  step()
+
+  return {
+    close: () => {
+      cancelled = true
+
+      if (timer) {
+        clearTimeout(timer)
+      }
+    },
+  }
+}
+
+export type ReplyMode = "live" | "preview"
+
+export type StartReplyInput = {
+  input: string
+  initialState: SessionStreamState
+  onState: (snapshot: SessionStreamSnapshot) => void
+  onSettled?: (mode: ReplyMode) => void
+  baseUrl?: string
+  sessionId?: string
+}
+
+export type StartReply = (args: StartReplyInput) => LiveSessionHandle
+
+// 编排器：优先真实 kokoro-session；POST/传输不可用时本地模拟，
+// 让对话在 kokoro-web 单仓内也能完整跑通。settled 时回报落到哪条链路。
+export const startSessionReply: StartReply = (args) => {
+  let closed = false
+  let active: LiveSessionHandle = { close: () => {} }
+
+  const fallbackToPreview = () => {
+    if (closed) {
+      return
+    }
+
+    active = simulateAssistantReply({
+      input: args.input,
+      initialState: args.initialState,
+      onState: args.onState,
+      onSettled: () => args.onSettled?.("preview"),
+    })
+  }
+
+  void (async () => {
+    try {
+      const handle = await consumeLiveSession({
+        input: args.input,
+        baseUrl: args.baseUrl,
+        sessionId: args.sessionId,
+        initialState: args.initialState,
+        onState: args.onState,
+        onSettled: () => args.onSettled?.("live"),
+      })
+
+      if (closed) {
+        handle.close()
+        return
+      }
+
+      active = handle
+    } catch {
+      fallbackToPreview()
+    }
+  })()
+
+  return {
+    close: () => {
+      closed = true
+      active.close()
+    },
+  }
 }
