@@ -10,16 +10,6 @@ import {
   resolveSessionBaseUrl,
 } from "@/application/session-stream-preview"
 import type { SessionStreamState } from "@/application/session-stream-reducer"
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
-import { cn } from "@/lib/utils"
-
-import { ArtifactPreview } from "./artifact-preview"
 
 export function SessionShell() {
   const [state, setState] = useState<SessionStreamState>(() =>
@@ -69,72 +59,73 @@ export function SessionShell() {
   }, [])
 
   return (
-    <main className="min-h-screen bg-[var(--background)] px-6 py-10 text-[var(--foreground)]">
-      <div className="mx-auto flex max-w-6xl flex-col gap-6 lg:grid lg:grid-cols-[minmax(0,1.4fr)_minmax(320px,0.9fr)]">
-        <Card>
-          <CardHeader className="space-y-3 border-b border-[color:var(--brand-wood-soft)] pb-6">
-            <p className="kk-eyebrow">Kokoro / session stream</p>
-            <h1 className="text-3xl font-semibold tracking-tight text-[var(--foreground)]">
-              Protocol-first chat shell for AGUI + SSE replay.
-            </h1>
-            <CardDescription className="max-w-2xl">
-              先把协议收敛逻辑锁住，再把真实 session transport 接上来，避免浏览器层背负
-              Redis 与 agent 细节。
-            </CardDescription>
-          </CardHeader>
+    <main
+      className="kk-shell"
+      data-run-status={state.runStatus}
+      data-transport-label={transportLabel}
+    >
+      <aside className="kk-rail" aria-label="会话导航">
+        <div className="kk-rail__brand">
+          <div className="kk-rail__brand-mark" aria-hidden>
+            心
+          </div>
+          <div>
+            <p className="kk-rail__brand-title">Kokoro</p>
+            <p className="kk-rail__brand-subtitle">こころ</p>
+          </div>
+        </div>
 
-          <CardContent className="pt-6">
-            <div className="kk-soft-panel flex items-center justify-between gap-4">
-              <div>
-                <p className="kk-eyebrow">run status</p>
-                <p className="kk-copy-muted mt-1">
-                  replay reducer folds duplicate and terminal events.
-                </p>
-              </div>
-              <div className="text-right">
-                <span className="kk-status-pill">{state.runStatus}</span>
-                <p className="kk-copy-muted mt-2 text-xs">{transportLabel}</p>
-              </div>
-            </div>
+        <button className="kk-rail__action kk-rail__new-chat" type="button">
+          <span aria-hidden>＋</span>
+          <span>新对话</span>
+        </button>
 
-            <div className="mt-6 space-y-4">
-              {state.messages.map((message) => (
-                <article
-                  key={message.id}
-                  className={cn(
-                    "kk-chat-bubble",
-                    message.role === "assistant"
-                      ? "kk-chat-bubble--assistant"
-                      : "kk-chat-bubble--user",
-                  )}
-                >
-                  <p className="kk-eyebrow mb-2">{message.role}</p>
-                  <p className="text-sm leading-7 text-[var(--foreground)]">
-                    {message.content}
-                  </p>
-                </article>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+        <button className="kk-rail__action kk-rail__search" type="button">
+          <span className="kk-rail__search-label">
+            <span aria-hidden>⌕</span>
+            <span>搜索</span>
+          </span>
+          <span className="kk-rail__search-shortcut">⌘K</span>
+        </button>
 
-        <Card>
-          <CardHeader className="border-b border-[color:var(--brand-wood-soft)] pb-5">
-            <p className="kk-eyebrow">Artifact lane</p>
-            <CardTitle>A2UI artifact preview</CardTitle>
-            <CardDescription>
-              当前先用静态 v0.9 surface 证明渲染边界存在，后续再切到真实 SSE message
-              feed。
-            </CardDescription>
-          </CardHeader>
+        <div className="kk-rail__user-card">
+          <div className="kk-rail__user-avatar" aria-hidden />
+          <div>
+            <p className="kk-rail__user-name">当前用户</p>
+            <p className="kk-rail__user-meta">placeholder</p>
+          </div>
+        </div>
+      </aside>
 
-          <CardContent className="pt-5">
-            <div className="kk-a2ui-preview">
-              <ArtifactPreview />
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      <section className="kk-shell__main">
+        <div className="kk-shell__hero">
+          <h1 className="kk-shell__headline">今天想做什么？</h1>
+          <p className="kk-shell__subhead">不急，先把想法说给我</p>
+        </div>
+
+        <div className="kk-shell__composer-wrap">
+          <form className="kk-composer" aria-label="开始新对话">
+            <button className="kk-composer__add" type="button" aria-label="附加内容">
+              <span aria-hidden>＋</span>
+            </button>
+
+            <div className="kk-composer__input-copy">把想说的告诉我。</div>
+
+            <button className="kk-composer__mode" type="button" aria-label="切换模式">
+              <span>Fast</span>
+              <span aria-hidden>▾</span>
+            </button>
+
+            <button className="kk-composer__mic" type="button" aria-label="语音输入">
+              <span aria-hidden>◉</span>
+            </button>
+
+            <button className="kk-composer__send" type="button" aria-label="发送消息">
+              <span aria-hidden>↑</span>
+            </button>
+          </form>
+        </div>
+      </section>
     </main>
   )
 }
