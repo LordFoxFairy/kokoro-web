@@ -51,6 +51,7 @@ const previewEvents: SessionStreamEvent[] = [
 
 const transportEventNames = [
   "session.created",
+  "run.created",
   "message.delta",
   "message.completed",
   "run.completed",

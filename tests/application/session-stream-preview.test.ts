@@ -35,6 +35,10 @@ class MockEventSource {
     this.closed = true
   }
 
+  listenerCount(name: string) {
+    return this.listeners.get(name)?.size ?? 0
+  }
+
   emit(name: string, payload: unknown) {
     const event = new MessageEvent(name, { data: JSON.stringify(payload) })
 
@@ -102,6 +106,12 @@ describe("consumeLiveSession", () => {
         conversation_id: "conv_01",
         owner_id: "usr_01",
         title: "Warm launch",
+      }),
+    )
+    source?.emit(
+      "run.created",
+      envelope("run.created", "evt_00b", {
+        run_id: "run_01",
       }),
     )
     source?.emit(
@@ -185,6 +195,52 @@ describe("consumeLiveSession", () => {
     const final = snapshots.at(-1)
     expect(final?.messages).toHaveLength(1)
     expect(final?.messages[0]?.content).toBe("Recovered.")
+  })
+
+  it("keeps the stream convergent when run.created arrives before message events", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(null, { status: 202 })),
+    )
+    vi.stubGlobal("EventSource", MockEventSource as unknown as typeof EventSource)
+
+    const snapshots: SessionStreamSnapshot[] = []
+    await consumeLiveSession({
+      input: "hello",
+      baseUrl: "http://127.0.0.1:3001",
+      onState: (snapshot) => snapshots.push(snapshot),
+    })
+
+    const source = MockEventSource.instances[0]
+    expect(source?.listenerCount("run.created")).toBe(1)
+
+    source?.emit(
+      "run.created",
+      envelope("run.created", "evt_run_created", {
+        run_id: "run_01",
+      }),
+    )
+    source?.emit(
+      "message.completed",
+      envelope("message.completed", "evt_msg", {
+        message_id: "msg_01",
+        role: "assistant",
+        content: "Recovered after run.created.",
+      }),
+    )
+    source?.emit(
+      "run.completed",
+      envelope("run.completed", "evt_done", {
+        run_id: "run_01",
+        status: "completed",
+      }),
+    )
+
+    expect(snapshots).toHaveLength(2)
+    expect(snapshots[0]?.messages).toHaveLength(1)
+    expect(snapshots[0]?.messages[0]?.content).toBe("Recovered after run.created.")
+    expect(snapshots[1]?.runStatus).toBe("completed")
+    expect(source?.closed).toBe(true)
   })
 
   it("closes the stream on run.failed and surfaces a failed status", async () => {

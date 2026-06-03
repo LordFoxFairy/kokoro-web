@@ -7,6 +7,7 @@ const eventEnvelopeSchema = z
   .object({
     event: z.enum([
       "session.created",
+      "run.created",
       "message.delta",
       "message.completed",
       "artifact.available",
@@ -34,6 +35,15 @@ const sessionCreatedSchema = eventEnvelopeSchema.extend({
       workspace_id: z.string().min(1).optional(),
       created_by: z.string().min(1).optional(),
       initial_mode: z.string().min(1).optional(),
+    })
+    .strict(),
+})
+
+const runCreatedSchema = eventEnvelopeSchema.extend({
+  event: z.literal("run.created"),
+  payload: z
+    .object({
+      run_id: z.string().min(1),
     })
     .strict(),
 })
@@ -118,6 +128,7 @@ const runFailedSchema = eventEnvelopeSchema.extend({
 
 export const sessionEventSchema = z.union([
   sessionCreatedSchema,
+  runCreatedSchema,
   messageDeltaSchema,
   messageCompletedSchema,
   artifactAvailableSchema,
@@ -146,6 +157,8 @@ export function toSessionStreamEvent(
         title: event.payload.title,
         ownerId: event.payload.owner_id,
       }
+    case "run.created":
+      return null
     case "message.delta":
       return {
         kind: "message-delta",
