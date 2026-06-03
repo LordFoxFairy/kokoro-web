@@ -36,6 +36,42 @@ describe("parseSessionEvent", () => {
     })
   })
 
+  it("accepts run.created envelopes and maps them to no domain event", () => {
+    const transportEvent = parseSessionEvent({
+      event: "run.created",
+      event_id: "evt_00",
+      session_id: "ses_01",
+      conversation_id: "conv_01",
+      run_id: "run_01",
+      cursor: "1748428800-000011",
+      timestamp: "2026-05-28T11:59:59.000Z",
+      payload: {
+        run_id: "run_01",
+      },
+    })
+
+    expect(toSessionStreamEvent(transportEvent)).toBeNull()
+  })
+
+  it("keeps session.created title required", () => {
+    expect(() =>
+      parseSessionEvent({
+        event: "session.created",
+        event_id: "evt_title",
+        session_id: "ses_01",
+        conversation_id: "conv_01",
+        run_id: "run_01",
+        cursor: "1748428800-000010",
+        timestamp: "2026-05-28T11:59:58.000Z",
+        payload: {
+          session_id: "ses_01",
+          conversation_id: "conv_01",
+          owner_id: "usr_01",
+        },
+      }),
+    ).toThrowError(/title/i)
+  })
+
   it("rejects extra top-level fields", () => {
     expect(() =>
       parseSessionEvent({
