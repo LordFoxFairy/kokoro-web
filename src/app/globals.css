@@ -57,9 +57,17 @@ a {
 
 .kk-shell {
   display: grid;
-  min-height: 100vh;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
   grid-template-columns: 15.5rem minmax(0, 1fr);
   background: var(--background);
+  transition: grid-template-columns 160ms ease;
+}
+
+/* 收起态：rail 缩成纤细图标列。 */
+.kk-shell[data-rail-collapsed="true"] {
+  grid-template-columns: 3.5rem minmax(0, 1fr);
 }
 
 .kk-rail {
@@ -71,11 +79,52 @@ a {
   background: color-mix(in srgb, var(--background) 93%, white 7%);
 }
 
-.kk-rail__brand {
+.kk-rail__head {
   display: flex;
   align-items: center;
+  gap: 0.3rem;
+  padding: 0.35rem 0.2rem 0.75rem 0.4rem;
+}
+
+.kk-rail__brand {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
   gap: 0.55rem;
-  padding: 0.35rem 0.5rem 0.85rem;
+}
+
+.kk-rail__collapse {
+  display: flex;
+  height: 2rem;
+  width: 2rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 0.6rem;
+  background: transparent;
+  color: rgba(43, 37, 32, 0.55);
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
+}
+
+.kk-rail__collapse:hover {
+  background: color-mix(in srgb, var(--brand-wood-soft) 55%, white 45%);
+  color: var(--foreground);
+}
+
+.kk-rail__collapse:focus-visible {
+  outline: 2px solid var(--brand-wood);
+  outline-offset: 2px;
+}
+
+.kk-rail__icon {
+  width: 1.05rem;
+  height: 1.05rem;
+  flex-shrink: 0;
 }
 
 .kk-rail__brand-mark {
@@ -194,11 +243,69 @@ a {
   color: rgba(43, 37, 32, 0.55);
 }
 
+/* 收起态：隐藏文字标签，图标居中成纤细图标列。 */
+.kk-shell[data-rail-collapsed="true"] .kk-rail {
+  padding: 0.85rem 0.4rem;
+  align-items: center;
+}
+
+.kk-shell[data-rail-collapsed="true"] .kk-rail__head {
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.35rem 0 0.6rem;
+}
+
+.kk-shell[data-rail-collapsed="true"] .kk-rail__brand {
+  flex: none;
+  justify-content: center;
+}
+
+.kk-shell[data-rail-collapsed="true"] .kk-rail__brand-text,
+.kk-shell[data-rail-collapsed="true"] .kk-rail__action-label,
+.kk-shell[data-rail-collapsed="true"] .kk-rail__search-shortcut,
+.kk-shell[data-rail-collapsed="true"] .kk-rail__user-text {
+  display: none;
+}
+
+.kk-shell[data-rail-collapsed="true"] .kk-rail__action {
+  width: 2.4rem;
+  margin: 0 auto;
+  justify-content: center;
+  padding: 0.5rem;
+}
+
+.kk-shell[data-rail-collapsed="true"] .kk-rail__user-card {
+  justify-content: center;
+  padding: 0.4rem;
+}
+
 .kk-shell__main {
   position: relative;
   display: flex;
   min-width: 0;
   flex-direction: column;
+}
+
+/* 首帧占位：rail 与 composer 立即就位，主内容水合后淡入——刷新不闪、不跳。 */
+.kk-shell__stage {
+  flex: 1;
+  min-height: 0;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .kk-shell__hero,
+  .kk-thread {
+    animation: kk-stage-in 220ms ease both;
+  }
+}
+
+@keyframes kk-stage-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 .kk-shell__hero {
@@ -481,6 +588,17 @@ a {
   background: var(--surface);
   padding: 0.5rem 0.65rem;
   box-shadow: 0 6px 18px rgba(139, 111, 71, 0.1);
+  transition:
+    border-color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+/* 整框聚焦：仅加深描边 + 柔和外环，盒模型不变——平滑，无框中框矩形。 */
+.kk-composer:focus-within {
+  border-color: color-mix(in srgb, var(--brand-wood) 82%, var(--border-soft) 18%);
+  box-shadow:
+    0 6px 18px rgba(139, 111, 71, 0.12),
+    0 0 0 3px color-mix(in srgb, var(--brand-wood-soft) 65%, transparent);
 }
 
 .kk-composer__add,
@@ -546,14 +664,10 @@ a {
   color: rgba(43, 37, 32, 0.55);
 }
 
-.kk-composer__input:focus {
-  outline: none;
-}
-
-/* 键盘聚焦才显描边：outline + offset 不改变盒模型，无回流抖动。 */
+/* 输入框本身不画内框：聚焦指示交给整框 .kk-composer:focus-within，避免框中框。 */
+.kk-composer__input:focus,
 .kk-composer__input:focus-visible {
-  outline: 2px solid var(--brand-wood);
-  outline-offset: 2px;
+  outline: none;
 }
 
 .kk-composer__input:disabled {
@@ -631,13 +745,22 @@ a {
 }
 
 @media (max-width: 960px) {
-  .kk-shell {
+  /* 窄屏：rail 堆叠到顶部，主区填满剩余高度并内部滚动；折叠仅桌面生效。 */
+  .kk-shell,
+  .kk-shell[data-rail-collapsed="true"] {
     grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
   }
 
   .kk-rail {
     border-right: 0;
     border-bottom: 1px solid var(--border-soft);
+  }
+
+  .kk-shell[data-rail-collapsed="true"] .kk-rail__brand-text,
+  .kk-shell[data-rail-collapsed="true"] .kk-rail__action-label,
+  .kk-shell[data-rail-collapsed="true"] .kk-rail__user-text {
+    display: revert;
   }
 
   .kk-shell__hero {
