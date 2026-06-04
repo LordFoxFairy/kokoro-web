@@ -86,6 +86,7 @@ type Conversation = {
   thread: SessionStreamState
   draft: string
   setDraft: (value: string) => void
+  prefillDraft: (value: string) => void
   isStreaming: boolean
   transportLabel: string
   composerRef: RefObject<HTMLTextAreaElement | null>
@@ -248,6 +249,25 @@ export function useConversation(
     composerRef.current?.focus()
   }, [])
 
+  const prefillDraft = useCallback((value: string) => {
+    // 起始 chips 预填：填入草稿并聚焦，光标移到末尾便于直接续写。
+    // value 在下一帧才落进受控 textarea，故光标定位放到 rAF 后执行。
+    setDraft(value)
+    const focusEnd = () => {
+      const composer = composerRef.current
+      if (!composer) {
+        return
+      }
+      composer.focus()
+      composer.setSelectionRange(value.length, value.length)
+    }
+    if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(focusEnd)
+    } else {
+      focusEnd()
+    }
+  }, [])
+
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     // Enter 发送，Shift+Enter 换行——贴近主流对话输入习惯。
     if (event.key === "Enter" && !event.shiftKey) {
@@ -262,6 +282,7 @@ export function useConversation(
     thread,
     draft,
     setDraft,
+    prefillDraft,
     isStreaming,
     transportLabel,
     composerRef,

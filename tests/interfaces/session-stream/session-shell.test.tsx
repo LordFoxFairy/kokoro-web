@@ -231,6 +231,48 @@ describe("SessionShell first screen", () => {
   })
 })
 
+describe("SessionShell starter chips", () => {
+  it("offers starter template chips on the empty hero", () => {
+    // 为什么重要：空首屏给出创作模板入口，降低“从零打字”的启动成本（对齐原型 chip 行）。
+    render(<SessionShell startReply={instantReply((input) => input)} />)
+
+    expect(screen.getByRole("group", { name: "创作模板" })).toBeInTheDocument()
+    expect(screen.getByText("小红书风海报")).toBeInTheDocument()
+    expect(screen.getByText("学习课件")).toBeInTheDocument()
+  })
+
+  it("prefills the composer with a chip's prompt instead of sending", () => {
+    // 为什么重要：点击模板只预填输入框、把光标交给用户续写，绝不直接发起一轮——
+    // 用户仍要补全主题再发送。误把它做成立即发送会丢失用户意图。
+    const start = vi.fn(instantReply((input) => input))
+    render(<SessionShell startReply={start} />)
+
+    fireEvent.click(screen.getByText("学习课件"))
+
+    // 输入框被预填为该模板的起始句。
+    expect(screen.getByLabelText("对话输入")).toHaveValue(
+      "帮我做一份学习课件，讲清楚",
+    )
+    // 关键：没有发起任何回复，仍停留在空首屏（hero 在场）。
+    expect(start).not.toHaveBeenCalled()
+    expect(
+      screen.getByRole("heading", { name: "今天想做什么？" }),
+    ).toBeInTheDocument()
+  })
+
+  it("hides the starter chips once a conversation begins", () => {
+    // 为什么重要：chips 只属于空首屏；进入对话态后必须让位给对话线，不得残留。
+    render(<SessionShell startReply={instantReply((input) => `答：${input}`)} />)
+
+    send("开始聊")
+
+    expect(
+      screen.queryByRole("group", { name: "创作模板" }),
+    ).not.toBeInTheDocument()
+    expect(screen.queryByText("小红书风海报")).not.toBeInTheDocument()
+  })
+})
+
 describe("SessionShell conversation", () => {
   it("shows the user message immediately and renders the assistant reply", () => {
     render(<SessionShell startReply={instantReply((input) => `回声：${input}`)} />)

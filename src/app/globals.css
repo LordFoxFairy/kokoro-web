@@ -339,6 +339,53 @@ a {
   color: color-mix(in srgb, var(--brand-wood) 62%, white 38%);
 }
 
+/* 起始模板 chips：空首屏点击预填输入框，对齐原型 variant-a-mi-mu 的 .chip--template 行。
+   仅改 color/background/transform，不改盒尺寸——hover 不引发邻居回流（无抖动）。 */
+.kk-starter {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.75rem;
+  margin-top: 1.75rem;
+  width: min(var(--kk-content-width), 100%);
+}
+
+.kk-starter__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.875rem;
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  border-radius: 0.75rem;
+  font-size: 0.875rem;
+  color: var(--foreground);
+  cursor: pointer;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    transform 160ms ease;
+}
+
+.kk-starter__chip:hover {
+  background: var(--brand-wood-soft);
+  border-color: transparent;
+}
+
+.kk-starter__chip:active {
+  transform: translateY(1px);
+}
+
+.kk-starter__chip:focus-visible {
+  outline: 2px solid var(--brand-wood);
+  outline-offset: 2px;
+}
+
+.kk-starter__emoji {
+  font-size: 0.95rem;
+  line-height: 1;
+}
+
 /* 活跃态：有消息时主区让位给可滚动的对话线，composer 沉到底部。 */
 .kk-thread {
   flex: 1;
