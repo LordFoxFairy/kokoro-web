@@ -1,9 +1,26 @@
-import type { ChangeEvent, FormEvent, KeyboardEvent, RefObject } from "react"
-
 import {
-  MAX_INPUT_LENGTH,
-  resizeComposer,
-} from "../hooks/use-conversation"
+  type ChangeEvent,
+  type FormEvent,
+  type KeyboardEvent,
+  type RefObject,
+  useState,
+} from "react"
+
+import { MAX_INPUT_LENGTH, resizeComposer } from "../hooks/use-conversation"
+import { ComposerMenu, type MenuOption } from "./composer-menu"
+import { ChevronIcon, MicIcon, PlusIcon, SendIcon, StopIcon } from "./icons"
+
+// 附加菜单：先放基础入口（参考 Gemini 的 +）。上传链路接后端前为占位项。
+const ATTACH_OPTIONS: MenuOption[] = [
+  { key: "image", label: "上传图片" },
+  { key: "file", label: "上传文件" },
+]
+
+// 模式：Fast / Thinking 下拉单选。当前只切换显示，接入 run 的 execution_style 后生效。
+const MODE_OPTIONS: MenuOption[] = [
+  { key: "fast", label: "Fast", hint: "更快回应" },
+  { key: "thinking", label: "Thinking", hint: "更深的思考" },
+]
 
 type ComposerProps = {
   draft: string
@@ -28,20 +45,21 @@ export function Composer({
   transportLabel,
   composerRef,
 }: ComposerProps) {
+  const [mode, setMode] = useState("fast")
+  const modeLabel = mode === "thinking" ? "Thinking" : "Fast"
+
   return (
     <div className="kk-shell__composer-wrap">
-      <form
-        className="kk-composer"
-        aria-label="消息编辑区"
-        onSubmit={onSubmit}
-      >
-        <button
-          className="kk-composer__add"
-          type="button"
-          aria-label="附加内容"
-        >
-          <span aria-hidden>＋</span>
-        </button>
+      <form className="kk-composer" aria-label="消息编辑区" onSubmit={onSubmit}>
+        <ComposerMenu
+          triggerClassName="kk-composer__add"
+          triggerLabel="附加内容"
+          trigger={<PlusIcon className="kk-composer__glyph" />}
+          options={ATTACH_OPTIONS}
+          onSelect={() => {
+            // 占位：上传链路接入后在此处理所选来源。
+          }}
+        />
 
         <textarea
           ref={composerRef}
@@ -59,17 +77,23 @@ export function Composer({
           disabled={isStreaming}
         />
 
-        <button
-          className="kk-composer__mode"
-          type="button"
-          aria-label="切换模式"
-        >
-          <span>Fast</span>
-          <span aria-hidden>▾</span>
-        </button>
+        <ComposerMenu
+          triggerClassName="kk-composer__mode"
+          triggerLabel="切换模式"
+          trigger={
+            <>
+              <span>{modeLabel}</span>
+              <ChevronIcon className="kk-composer__chevron" />
+            </>
+          }
+          options={MODE_OPTIONS}
+          selectedKey={mode}
+          onSelect={setMode}
+          align="end"
+        />
 
         <button className="kk-composer__mic" type="button" aria-label="语音输入">
-          <span aria-hidden>◉</span>
+          <MicIcon className="kk-composer__glyph" />
         </button>
 
         {isStreaming ? (
@@ -79,7 +103,7 @@ export function Composer({
             aria-label="停止生成"
             onClick={onStop}
           >
-            <span aria-hidden>■</span>
+            <StopIcon className="kk-composer__glyph" />
           </button>
         ) : (
           <button
@@ -88,7 +112,7 @@ export function Composer({
             aria-label="发送消息"
             disabled={!canSend}
           >
-            <span aria-hidden>↑</span>
+            <SendIcon className="kk-composer__glyph" />
           </button>
         )}
       </form>
