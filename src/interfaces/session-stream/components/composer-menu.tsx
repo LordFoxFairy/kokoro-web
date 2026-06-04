@@ -6,14 +6,22 @@ export type MenuOption = {
   key: string
   label: string
   hint?: string
+  icon?: ReactNode
+}
+
+export type MenuSection = {
+  label?: string
+  items: MenuOption[]
 }
 
 type ComposerMenuProps = {
   triggerClassName: string
   triggerLabel: string
   trigger: ReactNode
-  options: MenuOption[]
-  // 提供 selectedKey 时为单选菜单（如 Fast/Thinking），渲染勾选并用 menuitemradio。
+  // 两种形态：flat options（如 Fast/Thinking 单选）或 sections（如 + 附件，带分组与图标）。
+  options?: MenuOption[]
+  sections?: MenuSection[]
+  // 提供 selectedKey 时为单选菜单，渲染勾选并用 menuitemradio。
   selectedKey?: string
   onSelect: (key: string) => void
   align?: "start" | "end"
@@ -26,6 +34,7 @@ export function ComposerMenu({
   triggerLabel,
   trigger,
   options,
+  sections,
   selectedKey,
   onSelect,
   align = "start",
@@ -60,6 +69,37 @@ export function ComposerMenu({
 
   const isRadio = selectedKey !== undefined
 
+  const renderItem = (option: MenuOption) => {
+    const selected = selectedKey === option.key
+    return (
+      <button
+        key={option.key}
+        type="button"
+        role={isRadio ? "menuitemradio" : "menuitem"}
+        aria-checked={isRadio ? selected : undefined}
+        className="kk-menu__item"
+        data-selected={selected ? "true" : "false"}
+        onClick={() => {
+          onSelect(option.key)
+          setOpen(false)
+        }}
+      >
+        {option.icon ? (
+          <span className="kk-menu__item-icon" aria-hidden>
+            {option.icon}
+          </span>
+        ) : null}
+        <span className="kk-menu__item-label">
+          <span>{option.label}</span>
+          {option.hint ? (
+            <span className="kk-menu__item-hint">{option.hint}</span>
+          ) : null}
+        </span>
+        {isRadio ? <CheckIcon className="kk-menu__check" /> : null}
+      </button>
+    )
+  }
+
   return (
     <div className="kk-menu" ref={rootRef}>
       <button
@@ -76,33 +116,17 @@ export function ComposerMenu({
 
       {open ? (
         <div className="kk-menu__popover" role="menu" id={menuId} data-align={align}>
-          {options.map((option) => {
-            const selected = selectedKey === option.key
-            return (
-              <button
-                key={option.key}
-                type="button"
-                role={isRadio ? "menuitemradio" : "menuitem"}
-                aria-checked={isRadio ? selected : undefined}
-                className="kk-menu__item"
-                data-selected={selected ? "true" : "false"}
-                onClick={() => {
-                  onSelect(option.key)
-                  setOpen(false)
-                }}
-              >
-                <span className="kk-menu__item-label">
-                  <span>{option.label}</span>
-                  {option.hint ? (
-                    <span className="kk-menu__item-hint">{option.hint}</span>
+          {sections
+            ? sections.map((section, index) => (
+                <div className="kk-menu__section" key={section.label ?? index}>
+                  {index > 0 ? <div className="kk-menu__divider" /> : null}
+                  {section.label ? (
+                    <div className="kk-menu__group-label">{section.label}</div>
                   ) : null}
-                </span>
-                {isRadio ? (
-                  <CheckIcon className="kk-menu__check" />
-                ) : null}
-              </button>
-            )
-          })}
+                  {section.items.map(renderItem)}
+                </div>
+              ))
+            : options?.map(renderItem)}
         </div>
       ) : null}
     </div>

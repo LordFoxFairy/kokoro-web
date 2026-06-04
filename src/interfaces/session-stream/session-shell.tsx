@@ -84,9 +84,7 @@ export function SessionShell({
           />
         ) : (
           <div className="kk-shell__hero">
-            <h1 className="kk-shell__headline">
-              今天想做<span className="kk-shell__accent">什么</span>？
-            </h1>
+            <h1 className="kk-shell__headline">今天想做什么？</h1>
             <p className="kk-shell__subhead">不急，先把想法说给我</p>
           </div>
         )}
