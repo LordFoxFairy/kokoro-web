@@ -239,7 +239,8 @@ export function simulateAssistantReply(
     messageId: createLocalId("msg"),
   }
   const events = buildSimulatedReplyEvents(args.input, ids)
-  const stepMs = args.stepMs ?? 28
+  // 本地预览流速：放慢到自然阅读节奏，让"停止生成"键有足够时间被看到并点击。
+  const stepMs = args.stepMs ?? 60
 
   let state = args.initialState ?? createSessionStreamState()
   let index = 0
