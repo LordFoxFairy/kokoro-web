@@ -773,6 +773,97 @@ a {
   outline: none;
 }
 
+/* composer 内 SVG 图标统一尺寸（替代原先的字体字形）。 */
+.kk-composer__glyph {
+  width: 1.15rem;
+  height: 1.15rem;
+}
+
+.kk-composer__chevron {
+  width: 0.85rem;
+  height: 0.85rem;
+  opacity: 0.7;
+}
+
+/* 贴在 composer 上方弹出的浮层菜单（附加 / 模式）；绝对定位，不挤动控件。 */
+.kk-menu {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.kk-menu__popover {
+  position: absolute;
+  bottom: calc(100% + 0.5rem);
+  z-index: 20;
+  display: flex;
+  min-width: 11rem;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: 0.35rem;
+  border: 1px solid var(--border-soft);
+  border-radius: 0.9rem;
+  background: var(--surface);
+  box-shadow: 0 14px 36px rgba(139, 111, 71, 0.18);
+}
+
+.kk-menu__popover[data-align="start"] {
+  left: 0;
+}
+
+.kk-menu__popover[data-align="end"] {
+  right: 0;
+}
+
+.kk-menu__item {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border: 0;
+  border-radius: 0.6rem;
+  background: transparent;
+  padding: 0.5rem 0.6rem;
+  color: var(--foreground);
+  font-size: 0.9rem;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+.kk-menu__item:hover {
+  background: color-mix(in srgb, var(--brand-wood-soft) 50%, white 50%);
+}
+
+.kk-menu__item:focus-visible {
+  outline: 2px solid var(--brand-wood);
+  outline-offset: -2px;
+}
+
+.kk-menu__item-label {
+  display: inline-flex;
+  flex-direction: column;
+}
+
+.kk-menu__item-hint {
+  margin-top: 0.1rem;
+  font-size: 0.72rem;
+  color: rgba(43, 37, 32, 0.5);
+}
+
+.kk-menu__check {
+  width: 1rem;
+  height: 1rem;
+  flex-shrink: 0;
+  color: var(--brand-wood);
+  opacity: 0;
+}
+
+.kk-menu__item[data-selected="true"] .kk-menu__check {
+  opacity: 1;
+}
+
 @media (max-width: 960px) {
   /* 窄屏：rail 堆叠到顶部，主区填满剩余高度并内部滚动；折叠仅桌面生效。 */
   .kk-shell,
