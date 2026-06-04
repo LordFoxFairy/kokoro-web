@@ -9,8 +9,6 @@ type StarterTemplate = {
 }
 
 const STARTER_TEMPLATES: StarterTemplate[] = [
-  { emoji: "🎨", label: "小红书风海报", prompt: "帮我做一张小红书风格的海报，主题是" },
-  { emoji: "📊", label: "一页落地页", prompt: "帮我做一个一页落地页，主打" },
   { emoji: "📝", label: "学习课件", prompt: "帮我做一份学习课件，讲清楚" },
   { emoji: "💌", label: "写一封信", prompt: "帮我写一封信，写给" },
   { emoji: "💡", label: "想法可视化", prompt: "帮我把这个想法可视化：" },
