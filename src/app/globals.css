@@ -600,6 +600,8 @@ a {
 }
 
 .kk-shell__transport {
+  /* 常驻保留一行高度：标签为空时也占位，延后出现不会顶动 composer。 */
+  min-height: 1rem;
   color: rgba(43, 37, 32, 0.65);
   font-size: 0.72rem;
   letter-spacing: 0.02em;

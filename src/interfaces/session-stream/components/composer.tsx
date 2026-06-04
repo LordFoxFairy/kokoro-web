@@ -93,9 +93,8 @@ export function Composer({
         )}
       </form>
 
-      {transportLabel ? (
-        <p className="kk-shell__transport">{transportLabel}</p>
-      ) : null}
+      {/* 常驻保留高度：标签延后出现也不改变 composer 位置，避免聊天框跳动。 */}
+      <p className="kk-shell__transport">{transportLabel}</p>
     </div>
   )
 }
