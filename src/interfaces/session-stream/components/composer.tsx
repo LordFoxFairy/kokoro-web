@@ -7,13 +7,52 @@ import {
 } from "react"
 
 import { MAX_INPUT_LENGTH, resizeComposer } from "../hooks/use-conversation"
-import { ComposerMenu, type MenuOption } from "./composer-menu"
+import {
+  ComposerMenu,
+  type MenuOption,
+  type MenuSection,
+} from "./composer-menu"
 import { ChevronIcon, MicIcon, PlusIcon, SendIcon, StopIcon } from "./icons"
 
-// 附加菜单：先放基础入口（参考 Gemini 的 +）。上传链路接后端前为占位项。
-const ATTACH_OPTIONS: MenuOption[] = [
-  { key: "image", label: "上传图片" },
-  { key: "file", label: "上传文件" },
+// 附加菜单：图标 + 分组，样式对齐原型 variant-a-mi-mu 的 attach 菜单。
+// 语音输入仍走右侧独立麦克风键，避免重复；上传链路接后端前为占位项。
+const ATTACH_SECTIONS: MenuSection[] = [
+  {
+    label: "从这里加点什么",
+    items: [
+      {
+        key: "image",
+        label: "上传图片",
+        icon: (
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <rect x="2" y="3" width="12" height="10" rx="1.5" />
+            <circle cx="6" cy="7" r="1.2" />
+            <path d="M3 12l3.5-3 2.5 2 2-1.5 2 2" />
+          </svg>
+        ),
+      },
+      {
+        key: "file",
+        label: "上传文件",
+        icon: (
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M4 2h5l3 3v9H4z" />
+            <path d="M9 2v3h3" />
+          </svg>
+        ),
+      },
+      {
+        key: "camera",
+        label: "拍照",
+        icon: (
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M2 5h3l1-1.5h4L11 5h3v8H2z" />
+            <circle cx="8" cy="9" r="2.5" />
+          </svg>
+        ),
+      },
+    ],
+  },
 ]
 
 // 模式：Fast / Thinking 下拉单选。当前只切换显示，接入 run 的 execution_style 后生效。
@@ -55,7 +94,7 @@ export function Composer({
           triggerClassName="kk-composer__add"
           triggerLabel="附加内容"
           trigger={<PlusIcon className="kk-composer__glyph" />}
-          options={ATTACH_OPTIONS}
+          sections={ATTACH_SECTIONS}
           onSelect={() => {
             // 占位：上传链路接入后在此处理所选来源。
           }}
