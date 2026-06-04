@@ -16,8 +16,17 @@
   --radius-panel: 28px;
   --radius-card: 24px;
   --radius-soft: 20px;
-  /* 统一内容列宽：对话线、输入框、首屏共用一栏，保证消息与聊天框对齐。 */
-  --kk-content-width: 48rem;
+  /* 统一内容列宽：对话线、输入框、首屏共用一栏（对齐原型 720px）。 */
+  --kk-content-width: 45rem;
+
+  /* 暖色字体 + 补充语义色，取自原型设计系统(variant-a-mi-mu)。 */
+  --font-serif: "Songti SC", "Source Han Serif SC", "Noto Serif CJK SC", Georgia, "Times New Roman", serif;
+  --font-hand: "Kaiti SC", "STKaiti", "Caveat", cursive;
+  --color-bg-subtle: #f3eee5;
+  --color-surface-hover: #f7f2ea;
+  --color-text-secondary: #7a6f62;
+  --color-text-tertiary: #b8ac9c;
+  --color-border-strong: #d4c9b5;
 
   --a2ui-color-background: var(--surface-soft);
   --a2ui-color-surface: var(--surface);
@@ -326,16 +335,43 @@ a {
 }
 
 .kk-shell__headline {
-  font-size: clamp(1.75rem, 3.4vw, 2.5rem);
+  font-family: var(--font-serif);
+  font-size: clamp(2rem, 4vw, 2.75rem);
   line-height: 1.15;
-  font-weight: 600;
-  color: color-mix(in srgb, var(--foreground) 84%, var(--brand-wood) 16%);
+  font-weight: 400;
+  letter-spacing: -0.5px;
+  color: var(--foreground);
+}
+
+/* 衬线斜体强调 + 身后暖墨痕（取自原型 .greeting__accent）。 */
+.kk-shell__accent {
+  position: relative;
+  display: inline-block;
+  padding: 0 0.25rem;
+  font-style: italic;
+  font-weight: 500;
+  color: var(--brand-wood);
+}
+
+.kk-shell__accent::after {
+  content: "";
+  position: absolute;
+  left: 0.25rem;
+  right: 0.25rem;
+  bottom: 0.4rem;
+  height: 0.5rem;
+  border-radius: 3px;
+  background: var(--brand-wood-soft);
+  opacity: 0.7;
+  z-index: -1;
 }
 
 .kk-shell__subhead {
-  margin-top: 0.5rem;
-  font-size: clamp(0.95rem, 1.4vw, 1.0625rem);
-  color: color-mix(in srgb, var(--brand-wood) 62%, white 38%);
+  margin-top: 0.6rem;
+  font-family: var(--font-hand);
+  font-size: 1.0625rem;
+  letter-spacing: 0.5px;
+  color: var(--color-text-secondary);
 }
 
 /* 活跃态：有消息时主区让位给可滚动的对话线，composer 沉到底部。 */
@@ -611,23 +647,29 @@ a {
   display: flex;
   width: min(var(--kk-content-width), 100%);
   align-items: center;
-  gap: 0.55rem;
-  border: 1.5px solid color-mix(in srgb, var(--brand-wood) 60%, var(--border-soft) 40%);
-  border-radius: 1.4rem;
+  gap: 0.75rem;
+  border: 1px solid var(--border-soft);
+  border-radius: 1.5rem;
   background: var(--surface);
-  padding: 0.5rem 0.65rem;
-  box-shadow: 0 6px 18px rgba(139, 111, 71, 0.1);
+  padding: 0.5rem 0.5rem 0.5rem 1rem;
+  box-shadow: 0 1px 6px rgba(60, 45, 30, 0.05);
   transition:
-    border-color 120ms ease,
-    box-shadow 120ms ease;
+    border-color 200ms ease,
+    box-shadow 200ms ease,
+    background 200ms ease;
 }
 
-/* 整框聚焦：仅加深描边 + 柔和外环，盒模型不变——平滑，无框中框矩形。 */
+.kk-composer:hover {
+  border-color: var(--color-border-strong);
+}
+
+/* 整框聚焦：加深描边 + 柔和外环 + 微亮底色，盒模型不变，无框中框。 */
 .kk-composer:focus-within {
-  border-color: color-mix(in srgb, var(--brand-wood) 82%, var(--border-soft) 18%);
+  border-color: var(--brand-wood);
+  background: #fffefc;
   box-shadow:
-    0 6px 18px rgba(139, 111, 71, 0.12),
-    0 0 0 3px color-mix(in srgb, var(--brand-wood-soft) 65%, transparent);
+    0 0 0 4px rgba(139, 111, 71, 0.08),
+    0 2px 12px rgba(60, 45, 30, 0.06);
 }
 
 .kk-composer__add,
@@ -641,15 +683,23 @@ a {
 
 .kk-composer__add {
   display: flex;
-  height: 2.05rem;
-  width: 2.05rem;
+  height: 2rem;
+  width: 2rem;
   flex-shrink: 0;
   align-items: center;
   justify-content: center;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--brand-wood-soft) 82%, white 18%);
-  color: var(--brand-wood);
-  font-size: 1.1rem;
+  background: transparent;
+  color: var(--color-text-secondary);
+}
+
+/* + 打开时旋成 ×（取自原型 .attach[open] summary svg）。 */
+.kk-composer__add svg {
+  transition: transform 180ms ease;
+}
+
+.kk-composer__add[aria-expanded="true"] svg {
+  transform: rotate(45deg);
 }
 
 /* 圆形操作键的悬停只加深底色，键盘聚焦才显暖木描边——均不改变盒模型，无回流。 */
@@ -658,12 +708,10 @@ a {
   transition: background-color 120ms ease;
 }
 
-.kk-composer__add:hover {
-  background: color-mix(in srgb, var(--brand-wood-soft) 92%, var(--brand-wood) 8%);
-}
-
+.kk-composer__add:hover,
 .kk-composer__mic:hover {
-  background: color-mix(in srgb, var(--brand-wood-soft) 60%, white 40%);
+  background: var(--color-surface-hover);
+  color: var(--foreground);
 }
 
 .kk-composer__add:focus-visible,
@@ -710,51 +758,63 @@ a {
 }
 
 /* 固定尺寸，hover/focus 只换底色与描边——不改变布局，避免聊天框抖动。 */
+/* 模式选择器：常驻的低调 chip（取自原型 .chip--mode），不随 hover 改变尺寸。 */
 .kk-composer__mode {
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
-  border-radius: 999px;
-  padding: 0.35rem 0.6rem;
-  font-size: 0.85rem;
-  color: color-mix(in srgb, var(--foreground) 78%, var(--brand-wood) 22%);
+  height: 1.75rem;
+  border: 1px solid var(--border-soft);
+  border-radius: 0.5rem;
+  padding: 0 0.5rem 0 0.625rem;
+  background: var(--color-bg-subtle);
+  color: var(--color-text-secondary);
+  font-size: 0.8125rem;
   transition:
     background-color 120ms ease,
-    box-shadow 120ms ease;
+    color 120ms ease;
 }
 
-.kk-composer:hover .kk-composer__mode,
-.kk-composer:focus-within .kk-composer__mode {
-  background: color-mix(in srgb, var(--surface-soft) 82%, white 18%);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--border-soft) 82%, white 18%);
+.kk-composer__mode:hover {
+  background: var(--color-surface-hover);
+  color: var(--foreground);
 }
 
 .kk-composer__mic {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1.05rem;
-}
-
-.kk-composer__send {
-  display: flex;
-  height: 2.05rem;
-  width: 2.05rem;
+  height: 2rem;
+  width: 2rem;
   flex-shrink: 0;
   align-items: center;
   justify-content: center;
   border-radius: 999px;
-  background: #9fd1ff;
-  font-size: 1rem;
-  transition:
-    background-color 120ms ease,
-    box-shadow 120ms ease;
+  color: var(--color-text-secondary);
 }
 
-/* 可发送时悬停略加深蓝并加阴影；禁用态不响应——仅改色与阴影，尺寸不变。 */
-.kk-composer__send:not(:disabled):hover {
-  background: color-mix(in srgb, #9fd1ff 86%, var(--brand-wood) 14%);
-  box-shadow: 0 4px 12px rgba(139, 111, 71, 0.16);
+/* 发送键（取自原型 .send-btn）：空态柔木底，有草稿即升为实心暖木 + 白箭头。 */
+.kk-composer__send {
+  display: flex;
+  height: 2.125rem;
+  width: 2.125rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--brand-wood-soft);
+  color: var(--brand-wood);
+  transition:
+    background-color 120ms ease,
+    color 120ms ease,
+    filter 120ms ease;
+}
+
+.kk-composer__send[type="submit"]:not(:disabled) {
+  background: var(--brand-wood);
+  color: #fffdf9;
+}
+
+.kk-composer__send[type="submit"]:not(:disabled):hover {
+  filter: brightness(0.96);
 }
 
 /* 停止态复用相同的 2.05rem 圆形盒子，只换暖木色调与描边——
@@ -795,16 +855,18 @@ a {
 .kk-menu__popover {
   position: absolute;
   bottom: calc(100% + 0.5rem);
-  z-index: 20;
+  z-index: 40;
   display: flex;
-  min-width: 11rem;
+  min-width: 14.5rem;
   flex-direction: column;
-  gap: 0.1rem;
-  padding: 0.35rem;
+  gap: 0.05rem;
+  padding: 0.5rem;
   border: 1px solid var(--border-soft);
-  border-radius: 0.9rem;
+  border-radius: 1rem;
   background: var(--surface);
-  box-shadow: 0 14px 36px rgba(139, 111, 71, 0.18);
+  box-shadow:
+    0 12px 32px -10px rgba(60, 45, 30, 0.18),
+    0 2px 6px rgba(60, 45, 30, 0.06);
 }
 
 .kk-menu__popover[data-align="start"] {
@@ -833,7 +895,7 @@ a {
 }
 
 .kk-menu__item:hover {
-  background: color-mix(in srgb, var(--brand-wood-soft) 50%, white 50%);
+  background: var(--color-surface-hover);
 }
 
 .kk-menu__item:focus-visible {
