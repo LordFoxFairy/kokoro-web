@@ -66,7 +66,8 @@ a {
   /* 单行锁死到视口高度（minmax 的 0 下限让网格项可收缩，子级才能内部滚动）。 */
   grid-template-rows: minmax(0, 1fr);
   background: var(--background);
-  transition: grid-template-columns 160ms ease;
+  /* 折叠为即时切换：不动画列宽。动画期间内容布局会瞬切而宽度还在渐变，
+     造成图标悬浮、主区持续重排的"跳动+混乱"——即时切换给两个干净的稳定态。 */
 }
 
 /* 收起态：rail 缩成纤细图标列。 */
