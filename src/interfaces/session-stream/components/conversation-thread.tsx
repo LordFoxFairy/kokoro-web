@@ -45,16 +45,20 @@ export function ConversationThread({
           )
         })}
 
-        {isStreaming ? (
-          <p className="kk-thread__status">
-            正在输入
-            <span className="kk-thread__pulse" aria-hidden>
-              <span />
-              <span />
-              <span />
-            </span>
-          </p>
-        ) : null}
+        {/* 状态槽常驻并保留固定高度：流式结束后不塌陷，避免对话上下跳动。 */}
+        <p className="kk-thread__status">
+          {isStreaming ? (
+            <>
+              正在输入
+              <span className="kk-thread__pulse" aria-hidden>
+                <span />
+                <span />
+                <span />
+              </span>
+            </>
+          ) : null}
+        </p>
+
 
         {hasFailed ? (
           <div className="kk-thread__error" role="alert">
