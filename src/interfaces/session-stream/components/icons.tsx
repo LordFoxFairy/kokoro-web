@@ -36,3 +36,26 @@ export function SearchIcon({ className = "kk-rail__icon" }: IconProps) {
     </svg>
   )
 }
+
+// 助手头像：机器人(头 + 天线 + 双眼)，比抽象的「心」更直观表达 AI 身份。
+export function RobotIcon({ className }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden>
+      <rect x="4.5" y="8.5" width="15" height="10.5" rx="3" stroke="currentColor" strokeWidth="1.6" />
+      <line x1="12" y1="4.6" x2="12" y2="8.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+      <circle cx="12" cy="3.6" r="1.3" fill="currentColor" />
+      <circle cx="9.4" cy="13.6" r="1.2" fill="currentColor" />
+      <circle cx="14.6" cy="13.6" r="1.2" fill="currentColor" />
+    </svg>
+  )
+}
+
+// 用户头像：占位人形，给右侧消息一个对称的身份标识。
+export function UserIcon({ className }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden>
+      <circle cx="12" cy="8.4" r="3.5" stroke="currentColor" strokeWidth="1.6" />
+      <path d="M5.6 19.2a6.4 6.4 0 0 1 12.8 0" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  )
+}

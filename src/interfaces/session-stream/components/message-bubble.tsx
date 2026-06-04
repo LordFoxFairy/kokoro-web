@@ -1,5 +1,7 @@
 import type { SessionMessage } from "@/application/session-stream-reducer"
 
+import { RobotIcon, UserIcon } from "./icons"
+
 type MessageBubbleProps = {
   message: SessionMessage
   isStreamingAssistant: boolean
@@ -18,13 +20,18 @@ export function MessageBubble({
       aria-atomic={isStreamingAssistant ? true : undefined}
     >
       {message.role === "assistant" ? (
-        <div className="kk-msg__avatar" aria-hidden>
-          心
+        <div className="kk-msg__avatar kk-msg__avatar--bot" aria-hidden>
+          <RobotIcon />
         </div>
       ) : null}
       <div className="kk-msg__bubble">
         <p className="kk-msg__body">{message.content}</p>
       </div>
+      {message.role === "user" ? (
+        <div className="kk-msg__avatar kk-msg__avatar--user" aria-hidden>
+          <UserIcon />
+        </div>
+      ) : null}
     </article>
   )
 }
