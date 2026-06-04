@@ -1,6 +1,7 @@
 import type { SessionMessage } from "@/application/session-stream-reducer"
 
 import { RobotIcon, UserIcon } from "./icons"
+import { MarkdownMessage } from "./markdown-message"
 
 type MessageBubbleProps = {
   message: SessionMessage
@@ -25,7 +26,12 @@ export function MessageBubble({
         </div>
       ) : null}
       <div className="kk-msg__bubble">
-        <p className="kk-msg__body">{message.content}</p>
+        {message.role === "assistant" ? (
+          <MarkdownMessage content={message.content} />
+        ) : (
+          // 用户输入保持纯文本：原样呈现，绝不把用户键入的 markdown 记号当语法解析。
+          <p className="kk-msg__body">{message.content}</p>
+        )}
       </div>
       {message.role === "user" ? (
         <div className="kk-msg__avatar kk-msg__avatar--user" aria-hidden>

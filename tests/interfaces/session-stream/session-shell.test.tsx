@@ -237,8 +237,11 @@ describe("SessionShell starter chips", () => {
     render(<SessionShell startReply={instantReply((input) => input)} />)
 
     expect(screen.getByRole("group", { name: "创作模板" })).toBeInTheDocument()
-    expect(screen.getByText("小红书风海报")).toBeInTheDocument()
     expect(screen.getByText("学习课件")).toBeInTheDocument()
+    expect(screen.getByText("想法可视化")).toBeInTheDocument()
+    // 营销类（海报/落地页）已按用户要求去掉。
+    expect(screen.queryByText("小红书风海报")).not.toBeInTheDocument()
+    expect(screen.queryByText("一页落地页")).not.toBeInTheDocument()
   })
 
   it("prefills the composer with a chip's prompt instead of sending", () => {
@@ -911,5 +914,57 @@ describe("SessionShell accessibility roles and labels", () => {
     send("会失败的一轮")
 
     expect(screen.getByRole("alert")).toHaveTextContent("这一轮没能完成")
+  })
+})
+
+describe("SessionShell markdown rendering", () => {
+  it("renders assistant markdown as rich elements", () => {
+    // 为什么重要：真实 LLM 输出是 markdown——助手气泡必须把 **粗体**/`代码`/列表渲染成
+    // 对应元素，而不是把记号当字面文本糊在一起。
+    render(
+      <SessionShell
+        startReply={instantReply(() => "**粗体** 和 `代码`\n\n- 一\n- 二")}
+      />,
+    )
+
+    send("给点 markdown")
+
+    expect(screen.getByText("粗体").tagName).toBe("STRONG")
+    expect(screen.getByText("代码").tagName).toBe("CODE")
+    expect(screen.getByText("一").closest("li")).not.toBeNull()
+    expect(screen.getByText("二").closest("li")).not.toBeNull()
+  })
+
+  it("keeps user messages as plain text, not parsed markdown", () => {
+    // 为什么重要：用户键入的 markdown 记号属于其原话，必须原样呈现——
+    // 把用户输入也当 markdown 解析会篡改其表达，且扩大注入面。
+    render(<SessionShell startReply={instantReply(() => "收到")} />)
+
+    const input = screen.getByLabelText("对话输入")
+    fireEvent.change(input, { target: { value: "**不要加粗**" } })
+    fireEvent.keyDown(input, { key: "Enter" })
+
+    const userText = screen.getByText("**不要加粗**")
+    expect(userText.tagName).toBe("P")
+    // 关键：未被解析成 <strong>。
+    expect(userText.querySelector("strong")).toBeNull()
+  })
+
+  it("does not render raw HTML in assistant markdown (XSS-safe)", () => {
+    // 为什么重要：助手内容是半可信的；内嵌原始 HTML 绝不能变成可执行节点。
+    // react-markdown 未启用 rehype-raw，<img onerror> 被当文本而非元素——本测试守住这条线。
+    render(
+      <SessionShell
+        startReply={instantReply(
+          () => "<img src=x onerror=alert(1)>\n\n安全文本",
+        )}
+      />,
+    )
+
+    send("注入")
+
+    expect(screen.getByText("安全文本")).toBeInTheDocument()
+    // 关键：原始 HTML 不被渲染成真实元素。
+    expect(screen.getByRole("log").querySelector("img")).toBeNull()
   })
 })
