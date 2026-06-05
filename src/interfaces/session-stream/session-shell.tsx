@@ -78,6 +78,10 @@ export function SessionShell({
         ) : hasMessages ? (
           <ConversationThread
             messages={thread.messages}
+            thinking={thread.thinking}
+            todos={thread.todos}
+            toolCalls={thread.toolCalls}
+            subagents={thread.subagents}
             isStreaming={isStreaming}
             hasFailed={hasFailed}
             onRetry={retry}
