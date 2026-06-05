@@ -676,22 +676,59 @@ a {
   border-radius: 0.5rem;
 }
 
-/* 智能体活动面板：计划清单 / 工具 / 子智能体 / 思考。与助手气泡同列内缩（头像+间距）。 */
+/* 智能体活动面板：浮动卡片，钉在对话区右上角，不随消息滚走；可折叠成进度小条。 */
 .kk-activity {
+  position: absolute;
+  top: 0.85rem;
+  right: 1.1rem;
+  z-index: 5;
+  width: min(20rem, calc(100% - 2.2rem));
   display: flex;
   flex-direction: column;
-  gap: 0.55rem;
-  margin: 0 2.35rem;
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  border-radius: 0.9rem;
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+
+.kk-activity__toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 0.8rem;
+  cursor: pointer;
+  font-size: 0.82rem;
+  color: color-mix(in srgb, var(--brand-wood) 65%, var(--foreground) 35%);
+  background: var(--surface-soft);
+}
+
+.kk-activity__chevron {
+  width: 0.8rem;
+  height: 0.8rem;
+  flex-shrink: 0;
+  transition: transform 150ms ease;
+}
+
+/* 展开时箭头朝上（指示可收起）。 */
+.kk-activity[data-collapsed="false"] .kk-activity__chevron {
+  transform: rotate(180deg);
+}
+
+.kk-activity__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.6rem 0.75rem 0.7rem;
+  max-height: 60vh;
+  overflow-y: auto;
 }
 
 .kk-activity__group {
   display: flex;
   flex-direction: column;
   gap: 0.3rem;
-  padding: 0.6rem 0.8rem;
-  background: var(--surface-soft);
-  border: 1px solid var(--border-soft);
-  border-radius: 0.85rem;
 }
 
 .kk-activity__label {

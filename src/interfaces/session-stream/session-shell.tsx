@@ -7,6 +7,7 @@ import {
   type StartReply,
 } from "@/application/session-stream-preview"
 
+import { ActivityPanel } from "./components/activity-panel"
 import { Composer } from "./components/composer"
 import { ConversationThread } from "./components/conversation-thread"
 import { SessionRail } from "./components/session-rail"
@@ -89,10 +90,6 @@ export function SessionShell({
         ) : hasMessages ? (
           <ConversationThread
             messages={thread.messages}
-            thinking={thread.thinking}
-            todos={thread.todos}
-            toolCalls={thread.toolCalls}
-            subagents={thread.subagents}
             isStreaming={isStreaming}
             hasFailed={hasFailed}
             onRetry={retry}
@@ -106,6 +103,15 @@ export function SessionShell({
             <StarterChips onPick={prefillDraft} />
           </div>
         )}
+
+        {mounted ? (
+          <ActivityPanel
+            thinking={thread.thinking}
+            todos={thread.todos}
+            toolCalls={thread.toolCalls}
+            subagents={thread.subagents}
+          />
+        ) : null}
 
         {showJumpToLatest ? (
           <button
