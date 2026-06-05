@@ -16,11 +16,13 @@ import {
   parseStoredConversationStore,
   removeConversation,
   selectConversation as selectConversationOp,
+  setActivePending,
   sortedConversations,
   withActiveThread,
 } from "@/application/conversation-store"
 import {
   createLocalId,
+  reattachLiveSession,
   resolveSessionBaseUrl,
   type LiveSessionHandle,
   type ReplyMode,
@@ -124,9 +126,29 @@ function nowMs(): number {
   return Date.now()
 }
 
+// 中断恢复用的重连接口：不发新 POST，只重订阅某 session 的 SSE 续传。可注入以便测试。
+export type ReattachReply = (args: {
+  sessionId: string
+  initialState: SessionStreamState
+  onState: (snapshot: SessionStreamState) => void
+  onSettled: () => void
+}) => LiveSessionHandle
+
+const defaultReattach: ReattachReply = (args) =>
+  reattachLiveSession({
+    sessionId: args.sessionId,
+    initialState: args.initialState,
+    onState: args.onState,
+    onSettled: args.onSettled,
+  })
+
+// 重连兜底：若 90s 内未收到终态（后端已停/网络长断），放弃续传以免永久卡在 streaming。
+const REATTACH_TIMEOUT_MS = 90_000
+
 export function useConversation(
   startReply: StartReply,
   scrollToLatest: () => void,
+  reattach: ReattachReply = defaultReattach,
 ): Conversation {
   // 持久化种子：水合后才出现，作为会话 store 的初始值。
   const persistedStore = useSyncExternalStore(
@@ -137,6 +159,12 @@ export function useConversation(
   // 本会话内的所有变更都落在 liveStore；一旦出现就盖过种子。
   const [liveStore, setLiveStore] = useState<ConversationStore | null>(null)
   const store = liveStore ?? persistedStore
+  // 活跃会话是否有在途 live run（用于中断恢复）。在重连 effect 之前求出，避免 TDZ。
+  const pendingConvId =
+    store?.conversations.find((entry) => entry.id === store.activeId)
+      ?.pendingInput
+      ? store.activeId
+      : null
 
   const [draft, setDraft] = useState("")
   const [isStreaming, setIsStreaming] = useState(false)
@@ -148,6 +176,8 @@ export function useConversation(
   const requestInFlightRef = useRef(false)
   // 保留最近一次用户输入：失败后据此重试同一句，用户无需重新打字。
   const lastInputRef = useRef("")
+  // 已重连过的会话 id：避免对同一在途 run 重复重订阅；切换/新建时重置。
+  const reattachedRef = useRef<string | null>(null)
 
   useEffect(() => {
     return () => {
@@ -163,6 +193,57 @@ export function useConversation(
 
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(liveStore))
   }, [liveStore])
+
+  // 中断恢复：活跃会话有在途 run（pendingInput）时重订阅其 SSE，把剩余事件续上。
+  // 只依赖 pendingConvId（不随每个增量重跑）；每个 pending 会话只触发一次。
+  useEffect(() => {
+    if (!pendingConvId || reattachedRef.current === pendingConvId) {
+      return
+    }
+    // 闭包捕获 pendingConvId 变为非空那一刻的 store（含在途会话与其线程）。
+    const base = store
+    const entry = base?.conversations.find((e) => e.id === pendingConvId)
+    if (!base || !entry) {
+      return
+    }
+    reattachedRef.current = pendingConvId
+
+    // 重连即进入流式态并显示实时标签——订阅型 effect 启动时的合法状态更新（规则在此误报）。
+    /* eslint-disable react-hooks/set-state-in-effect */
+    setIsStreaming(true)
+    setTransportLabel(`实时 · ${resolveSessionBaseUrl()}`)
+    /* eslint-enable react-hooks/set-state-in-effect */
+    lastInputRef.current = entry.pendingInput ?? ""
+
+    const settle = () => {
+      setIsStreaming(false)
+      requestInFlightRef.current = false
+      setLiveStore((prev) => (prev ? setActivePending(prev, undefined) : prev))
+    }
+
+    const handle = reattach({
+      sessionId: pendingConvId,
+      initialState: entry.thread,
+      onState: (next) => {
+        setLiveStore((prev) => withActiveThread(prev ?? base, next, nowMs()))
+      },
+      onSettled: settle,
+    })
+    replyHandleRef.current = handle
+
+    // 兜底：长时间无终态（后端已停/网络长断）则放弃续传，避免永久卡在 streaming。
+    const timeout = setTimeout(() => {
+      handle.close()
+      settle()
+    }, REATTACH_TIMEOUT_MS)
+
+    return () => {
+      clearTimeout(timeout)
+    }
+    // 故意只依赖 pendingConvId/reattach：把 store 列入会让每个流式增量重跑此 effect、
+    // 误清兜底计时器。我们只需在 pending 会话变化时捕获一次当时的 store。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingConvId, reattach])
 
   const thread = store ? activeThreadOf(store) : createSessionStreamState()
   const conversations: ConversationSummary[] = store
@@ -189,9 +270,18 @@ export function useConversation(
       replyHandleRef.current = startReply({
         input: content,
         initialState: seededThread,
+        // 每个会话用自己的 backend session id（= 会话 id），replay 流互不混淆，
+        // 也让中断恢复能精确重订阅本会话的在途 run。
+        sessionId: storeAtStart.activeId,
         onState: (next: SessionStreamState) => {
           setLiveStore((prev) =>
             withActiveThread(prev ?? storeAtStart, next, nowMs()),
+          )
+        },
+        onLive: () => {
+          // 确认 live：标记在途 run，刷新/断线后可重连续传。
+          setLiveStore((prev) =>
+            prev ? setActivePending(prev, content) : prev,
           )
         },
         onSettled: (mode: ReplyMode) => {
@@ -200,6 +290,8 @@ export function useConversation(
           setTransportLabel(
             mode === "live" ? `实时 · ${resolveSessionBaseUrl()}` : "本地预览",
           )
+          // run 落定：清除在途标记，刷新后不再尝试重连。
+          setLiveStore((prev) => (prev ? setActivePending(prev, undefined) : prev))
           composerRef.current?.focus()
         },
       })
@@ -278,6 +370,8 @@ export function useConversation(
     replyHandleRef.current = null
     requestInFlightRef.current = false
     setIsStreaming(false)
+    // 手动中止也清除在途标记：刷新后不再自动重连这一轮。
+    setLiveStore((prev) => (prev ? setActivePending(prev, undefined) : prev))
   }, [])
 
   const startNewChat = useCallback(() => {
@@ -285,6 +379,7 @@ export function useConversation(
     replyHandleRef.current?.close()
     replyHandleRef.current = null
     requestInFlightRef.current = false
+    reattachedRef.current = null
     const id = createLocalId("conv")
     const now = nowMs()
     setLiveStore((prev) => addConversation(prev ?? persistedStore, id, now))
@@ -300,6 +395,8 @@ export function useConversation(
       replyHandleRef.current?.close()
       replyHandleRef.current = null
       requestInFlightRef.current = false
+      // 允许切到（含切回）有在途 run 的会话时重新续传。
+      reattachedRef.current = null
       setLiveStore((prev) => {
         const current = prev ?? persistedStore
         return current ? selectConversationOp(current, id) : current

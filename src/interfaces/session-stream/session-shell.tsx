@@ -12,16 +12,19 @@ import { ConversationThread } from "./components/conversation-thread"
 import { SessionRail } from "./components/session-rail"
 import { StarterChips } from "./components/starter-chips"
 import { useAutoScroll } from "./hooks/use-auto-scroll"
-import { useConversation } from "./hooks/use-conversation"
+import { useConversation, type ReattachReply } from "./hooks/use-conversation"
 import { useHydrated } from "./hooks/use-hydrated"
 
 type SessionShellProps = {
   // 注入点：默认走真实 kokoro-session（后端缺席则本地模拟），测试可注入同步桩。
   startReply?: StartReply
+  // 中断恢复的重连接口（默认重订阅真实 SSE）；测试可注入同步桩。
+  reattach?: ReattachReply
 }
 
 export function SessionShell({
   startReply = startSessionReply,
+  reattach,
 }: SessionShellProps = {}) {
   // 水合后才渲染主内容：rail 与 composer 立即就位，会话线随后淡入。
   const mounted = useHydrated()
@@ -55,7 +58,7 @@ export function SessionShell({
     activeId,
     selectConversation,
     deleteConversation,
-  } = useConversation(startReply, scrollToLatestSeam)
+  } = useConversation(startReply, scrollToLatestSeam, reattach)
 
   const { threadEndRef, isNearBottom, scrollToLatest, handleThreadScroll } =
     useAutoScroll(thread.messages, isStreaming, scrollToLatestRef)

@@ -12,6 +12,7 @@ import type {
   StartReply,
   StartReplyInput,
 } from "@/application/session-stream-preview"
+import type { ReattachReply } from "@/interfaces/session-stream/hooks/use-conversation"
 import { applySessionEvent } from "@/application/session-stream-reducer"
 import { SessionShell } from "@/interfaces/session-stream/session-shell"
 
@@ -1092,5 +1093,103 @@ describe("SessionShell sessions list", () => {
       screen.getByRole("heading", { name: "今天想做什么？" }),
     ).toBeInTheDocument()
     expect(screen.queryByText("待删除")).toBeNull()
+  })
+})
+
+describe("SessionShell interrupt recovery", () => {
+  it("re-attaches to an in-flight run persisted across a reload", () => {
+    // 为什么重要：刷新/断线时后端仍在跑这一轮、事件进 replay 流；web 重订阅即续传。
+    // 用带 pendingInput 的持久会话模拟「刷新时仍在途」，注入同步重连桩补完终态。
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        activeId: "c1",
+        conversations: [
+          {
+            id: "c1",
+            title: "未完成的一问",
+            updatedAt: 1,
+            pendingInput: "未完成的一问",
+            thread: {
+              seenEventIds: ["d1"],
+              messages: [
+                { id: "u1", role: "user", content: "未完成的一问" },
+                { id: "a1", role: "assistant", content: "已经生成了一半" },
+              ],
+              runStatus: "idle",
+            },
+          },
+        ],
+      }),
+    )
+
+    const reattachCalls: string[] = []
+    const reattach: ReattachReply = ({
+      sessionId,
+      initialState,
+      onState,
+      onSettled,
+    }) => {
+      reattachCalls.push(sessionId)
+      const done = applySessionEvent(
+        applySessionEvent(initialState, {
+          kind: "message-completed",
+          eventId: "re-c",
+          ...envelope,
+          runId: "r-re",
+          messageId: "a1",
+          role: "assistant",
+          content: "续传后补完的完整回答",
+        }),
+        { kind: "run-completed", eventId: "re-d", ...envelope, runId: "r-re" },
+      )
+      onState(done)
+      onSettled()
+      return { close: () => {} }
+    }
+
+    render(
+      <SessionShell startReply={instantReply((input) => input)} reattach={reattach} />,
+    )
+
+    // 重订阅了这一会话自己的 SSE（sessionId = 会话 id）。
+    expect(reattachCalls).toEqual(["c1"])
+    // 续传把半截回答补完，并退出流式态。
+    expect(inLog("续传后补完的完整回答")).toBeInTheDocument()
+    expect(screen.getByLabelText("对话输入")).not.toBeDisabled()
+  })
+
+  it("does not re-attach a conversation with no in-flight run", () => {
+    // 为什么重要：没有 pendingInput 的（已完成/全新）会话刷新后不得误触发重连。
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        activeId: "c1",
+        conversations: [
+          {
+            id: "c1",
+            title: "已完成",
+            updatedAt: 1,
+            thread: {
+              seenEventIds: [],
+              messages: [{ id: "u1", role: "user", content: "已完成" }],
+              runStatus: "completed",
+            },
+          },
+        ],
+      }),
+    )
+
+    const reattachCalls: string[] = []
+    const reattach: ReattachReply = ({ sessionId }) => {
+      reattachCalls.push(sessionId)
+      return { close: () => {} }
+    }
+
+    render(
+      <SessionShell startReply={instantReply((input) => input)} reattach={reattach} />,
+    )
+
+    expect(reattachCalls).toEqual([])
   })
 })
