@@ -14,6 +14,8 @@ export type ConversationEntry = {
   title: string
   updatedAt: number
   thread: SessionStreamState
+  // 在途 live run 的输入：刷新/断线后据此重连续传；run 落定即清除。
+  pendingInput?: string
 }
 
 export type ConversationStore = {
@@ -94,6 +96,19 @@ export function addConversation(
   return { activeId: id, conversations: [entry, ...store.conversations] }
 }
 
+// 标记/清除活跃会话的在途 run（pendingInput）。clear 传 undefined。
+export function setActivePending(
+  store: ConversationStore,
+  pendingInput: string | undefined,
+): ConversationStore {
+  return {
+    ...store,
+    conversations: store.conversations.map((entry) =>
+      entry.id === store.activeId ? { ...entry, pendingInput } : entry,
+    ),
+  }
+}
+
 export function selectConversation(
   store: ConversationStore,
   id: string,
@@ -131,6 +146,7 @@ const storedEntrySchema = z
     title: z.string(),
     updatedAt: z.number(),
     thread: storedSessionStateSchema,
+    pendingInput: z.string().optional(),
   })
   .strict()
 

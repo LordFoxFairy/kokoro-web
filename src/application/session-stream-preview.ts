@@ -90,29 +90,24 @@ function buildRunUrl(input: ConsumeLiveSessionInput, baseUrl: string) {
   return { requestUrl, sessionId }
 }
 
-// 纯渲染消费者：POST 触发 run，开 EventSource，把 AGUI 事件折进 reducer，
-// run.completed/run.failed 关闭流，onerror 进可恢复态而不崩。
-export async function consumeLiveSession(
-  input: ConsumeLiveSessionInput,
-): Promise<LiveSessionHandle> {
-  const baseUrl = input.baseUrl ?? resolveSessionBaseUrl()
-  const { requestUrl, sessionId } = buildRunUrl(input, baseUrl)
+type OpenSessionStreamArgs = {
+  sessionId: string
+  baseUrl: string
+  initialState: SessionStreamState
+  onState: (snapshot: SessionStreamSnapshot) => void
+  onSettled?: () => void
+  onError?: (event: Event) => void
+}
 
-  const response = await fetch(requestUrl.toString(), { method: "POST" })
-
-  if (!response.ok) {
-    throw new Error(`session start failed with status ${response.status}`)
-  }
-
-  let state = input.initialState ?? createSessionStreamState()
-
-  const noop: LiveSessionHandle = { close: () => {} }
-
+// 打开某 session 的 SSE，把 AGUI 事件折进 reducer，run.completed/run.failed 关闭流。
+// 由 consumeLiveSession（先 POST 再监听）与 reattachLiveSession（仅监听、断后续传）共用。
+function openSessionStream(args: OpenSessionStreamArgs): LiveSessionHandle {
   if (typeof EventSource === "undefined") {
-    return noop
+    return { close: () => {} }
   }
 
-  const streamUrl = new URL(`/sessions/${sessionId}/stream`, baseUrl)
+  let state = args.initialState
+  const streamUrl = new URL(`/sessions/${args.sessionId}/stream`, args.baseUrl)
   const source = new EventSource(streamUrl.toString())
 
   const close = () => {
@@ -130,14 +125,14 @@ export async function consumeLiveSession(
     }
 
     state = applySessionEvent(state, sessionEvent)
-    input.onState(state)
+    args.onState(state)
 
     if (
       sessionEvent.kind === "run-completed" ||
       sessionEvent.kind === "run-failed"
     ) {
       close()
-      input.onSettled?.()
+      args.onSettled?.()
     }
   }
 
@@ -147,10 +142,57 @@ export async function consumeLiveSession(
 
   source.onerror = (event) => {
     // 传输瞬断进入可恢复态：保留 EventSource 让浏览器自动重连，不撕毁状态。
-    input.onError?.(event)
+    args.onError?.(event)
   }
 
   return { close }
+}
+
+// 纯渲染消费者：POST 触发 run，再开 SSE 把 AGUI 事件折进 reducer。
+export async function consumeLiveSession(
+  input: ConsumeLiveSessionInput,
+): Promise<LiveSessionHandle> {
+  const baseUrl = input.baseUrl ?? resolveSessionBaseUrl()
+  const { requestUrl, sessionId } = buildRunUrl(input, baseUrl)
+
+  const response = await fetch(requestUrl.toString(), { method: "POST" })
+
+  if (!response.ok) {
+    throw new Error(`session start failed with status ${response.status}`)
+  }
+
+  return openSessionStream({
+    sessionId,
+    baseUrl,
+    initialState: input.initialState ?? createSessionStreamState(),
+    onState: input.onState,
+    onSettled: input.onSettled,
+    onError: input.onError,
+  })
+}
+
+export type ReattachLiveSessionInput = {
+  sessionId: string
+  baseUrl?: string
+  initialState: SessionStreamState
+  onState: (snapshot: SessionStreamSnapshot) => void
+  onSettled?: () => void
+  onError?: (event: Event) => void
+}
+
+// 中断恢复：不发新 POST，直接重订阅某 session 的 SSE。session 的 replay 从流首回放，
+// 刷新/断线后据此把在途 run 的剩余事件续上（已收到的 eventId 由 reducer 去重）。
+export function reattachLiveSession(
+  input: ReattachLiveSessionInput,
+): LiveSessionHandle {
+  return openSessionStream({
+    sessionId: input.sessionId,
+    baseUrl: input.baseUrl ?? resolveSessionBaseUrl(),
+    initialState: input.initialState,
+    onState: input.onState,
+    onSettled: input.onSettled,
+    onError: input.onError,
+  })
 }
 
 let localIdCounter = 0
@@ -292,6 +334,9 @@ export type StartReplyInput = {
   initialState: SessionStreamState
   onState: (snapshot: SessionStreamSnapshot) => void
   onSettled?: (mode: ReplyMode) => void
+  // 确认走真实 live 链路（POST 成功）时触发——用于标记「在途 run」以便中断恢复；
+  // 预览降级链路不会触发，从而不会把本地模拟误标为可重连。
+  onLive?: () => void
   baseUrl?: string
   sessionId?: string
 }
@@ -334,6 +379,8 @@ export const startSessionReply: StartReply = (args) => {
       }
 
       active = handle
+      // POST 成功 = live 链路确立：通知调用方标记在途 run（用于刷新后重连续传）。
+      args.onLive?.()
     } catch {
       fallbackToPreview()
     }
