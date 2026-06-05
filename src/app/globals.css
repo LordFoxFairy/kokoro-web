@@ -228,6 +228,75 @@ a {
   background: color-mix(in srgb, var(--brand-wood-soft) 50%, white 50%);
 }
 
+/* 历史会话列表：填充 search 与 user-card 之间，超出滚动。 */
+.kk-rail__list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  margin: 0.5rem 0 0.4rem;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--brand-wood) 40%, transparent)
+    transparent;
+}
+
+.kk-rail__item {
+  display: flex;
+  align-items: center;
+  border-radius: 0.6rem;
+  transition: background-color 120ms ease;
+}
+
+.kk-rail__item:hover,
+.kk-rail__item[data-active="true"] {
+  background: var(--brand-wood-soft);
+}
+
+.kk-rail__item-select {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  padding: 0.4rem 0.55rem;
+  font-size: 0.85rem;
+  color: var(--foreground);
+  cursor: pointer;
+}
+
+.kk-rail__item-title {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* 删除键只在 hover/active 时浮现，仅改透明度——不改盒尺寸，不引发列表抖动。 */
+.kk-rail__item-delete {
+  flex-shrink: 0;
+  opacity: 0;
+  padding: 0 0.45rem;
+  font-size: 1rem;
+  line-height: 1;
+  color: color-mix(in srgb, var(--foreground) 45%, white 55%);
+  cursor: pointer;
+  transition: opacity 120ms ease, color 120ms ease;
+}
+
+.kk-rail__item:hover .kk-rail__item-delete,
+.kk-rail__item[data-active="true"] .kk-rail__item-delete {
+  opacity: 1;
+}
+
+.kk-rail__item-delete:hover {
+  color: var(--brand-wood-hover);
+}
+
+/* 折叠态隐藏列表：标签都没了，列表无意义。 */
+.kk-shell[data-rail-collapsed="true"] .kk-rail__list {
+  display: none;
+}
+
 .kk-rail__user-avatar {
   height: 1.85rem;
   width: 1.85rem;

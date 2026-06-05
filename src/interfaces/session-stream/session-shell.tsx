@@ -51,6 +51,10 @@ export function SessionShell({
     canSend,
     hasMessages,
     hasFailed,
+    conversations,
+    activeId,
+    selectConversation,
+    deleteConversation,
   } = useConversation(startReply, scrollToLatestSeam)
 
   const { threadEndRef, isNearBottom, scrollToLatest, handleThreadScroll } =
@@ -70,6 +74,10 @@ export function SessionShell({
         collapsed={railCollapsed}
         onToggleCollapse={() => setRailCollapsed((value) => !value)}
         onNewChat={startNewChat}
+        conversations={conversations}
+        activeId={activeId}
+        onSelectConversation={selectConversation}
+        onDeleteConversation={deleteConversation}
       />
 
       <section className="kk-shell__main">

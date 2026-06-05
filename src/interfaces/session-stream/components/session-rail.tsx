@@ -1,15 +1,24 @@
+import type { ConversationSummary } from "../hooks/use-conversation"
 import { PanelIcon, PlusIcon, SearchIcon } from "./icons"
 
 type SessionRailProps = {
   collapsed: boolean
   onToggleCollapse: () => void
   onNewChat: () => void
+  conversations: ConversationSummary[]
+  activeId: string | null
+  onSelectConversation: (id: string) => void
+  onDeleteConversation: (id: string) => void
 }
 
 export function SessionRail({
   collapsed,
   onToggleCollapse,
   onNewChat,
+  conversations,
+  activeId,
+  onSelectConversation,
+  onDeleteConversation,
 }: SessionRailProps) {
   return (
     <aside className="kk-rail" aria-label="会话导航">
@@ -51,6 +60,39 @@ export function SessionRail({
         </span>
         <span className="kk-rail__search-shortcut">⌘K</span>
       </button>
+
+      {conversations.length > 0 ? (
+        <nav className="kk-rail__list" aria-label="历史会话">
+          {conversations.map((conversation) => (
+            <div
+              key={conversation.id}
+              className="kk-rail__item"
+              data-active={conversation.id === activeId ? "true" : "false"}
+            >
+              <button
+                className="kk-rail__item-select"
+                type="button"
+                onClick={() => onSelectConversation(conversation.id)}
+                aria-current={
+                  conversation.id === activeId ? "true" : undefined
+                }
+              >
+                <span className="kk-rail__item-title">
+                  {conversation.title}
+                </span>
+              </button>
+              <button
+                className="kk-rail__item-delete"
+                type="button"
+                aria-label={`删除会话 ${conversation.title}`}
+                onClick={() => onDeleteConversation(conversation.id)}
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </nav>
+      ) : null}
 
       <div className="kk-rail__user-card">
         <div className="kk-rail__user-avatar" aria-hidden />
