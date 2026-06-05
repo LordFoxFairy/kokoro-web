@@ -1,11 +1,21 @@
 import type { RefObject, UIEvent } from "react"
 
-import type { SessionMessage } from "@/application/session-stream-reducer"
+import type {
+  SessionMessage,
+  SessionSubagent,
+  SessionToolCall,
+} from "@/application/session-stream-reducer"
+import type { SessionTodo } from "@/domain/shared/session-stream-event"
 
+import { ActivityPanel } from "./activity-panel"
 import { MessageBubble } from "./message-bubble"
 
 type ConversationThreadProps = {
   messages: SessionMessage[]
+  thinking: string
+  todos: SessionTodo[]
+  toolCalls: SessionToolCall[]
+  subagents: SessionSubagent[]
   isStreaming: boolean
   hasFailed: boolean
   onRetry: () => void
@@ -15,6 +25,10 @@ type ConversationThreadProps = {
 
 export function ConversationThread({
   messages,
+  thinking,
+  todos,
+  toolCalls,
+  subagents,
   isStreaming,
   hasFailed,
   onRetry,
@@ -44,6 +58,13 @@ export function ConversationThread({
             />
           )
         })}
+
+        <ActivityPanel
+          thinking={thinking}
+          todos={todos}
+          toolCalls={toolCalls}
+          subagents={subagents}
+        />
 
         {/* 状态槽常驻并保留固定高度：流式结束后不塌陷，避免对话上下跳动。 */}
         <p className="kk-thread__status">

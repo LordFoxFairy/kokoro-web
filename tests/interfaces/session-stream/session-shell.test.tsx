@@ -968,3 +968,56 @@ describe("SessionShell markdown rendering", () => {
     expect(screen.getByRole("log").querySelector("img")).toBeNull()
   })
 })
+
+describe("SessionShell agent activity", () => {
+  it("renders the CC-style todo checklist alongside the answer", () => {
+    // 为什么重要：闭环的核心是把智能体活动「展示」出来——一轮里 todo 计划必须可见，
+    // 与最终答案并存，而不是只显示答案。
+    const withActivity: StartReply = ({
+      initialState,
+      onState,
+      onSettled,
+    }: StartReplyInput) => {
+      stubCounter += 1
+      const id = stubCounter
+      let next = applySessionEvent(initialState, {
+        kind: "todo-updated",
+        eventId: `todo-${id}`,
+        ...envelope,
+        runId: `r-${id}`,
+        todos: [
+          { content: "查天气", status: "completed" },
+          { content: "作答", status: "in_progress" },
+        ],
+      })
+      next = applySessionEvent(next, {
+        kind: "message-completed",
+        eventId: `c-${id}`,
+        ...envelope,
+        runId: `r-${id}`,
+        messageId: `m-${id}`,
+        role: "assistant",
+        content: "晴，适合出门。",
+      })
+      next = applySessionEvent(next, {
+        kind: "run-completed",
+        eventId: `done-${id}`,
+        ...envelope,
+        runId: `r-${id}`,
+      })
+      onState(next)
+      onSettled?.("preview")
+      return { close: () => {} }
+    }
+    render(<SessionShell startReply={withActivity} />)
+
+    send("北京适合出门吗")
+
+    // 计划清单（含两个条目）渲染。
+    expect(screen.getByRole("list", { name: "计划" })).toBeInTheDocument()
+    expect(screen.getByText("查天气")).toBeInTheDocument()
+    expect(screen.getByText("作答")).toBeInTheDocument()
+    // 最终答案与活动并存。
+    expect(screen.getByText("晴，适合出门。")).toBeInTheDocument()
+  })
+})

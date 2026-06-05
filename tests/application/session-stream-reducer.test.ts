@@ -507,4 +507,150 @@ describe("parseStoredSessionState", () => {
       createSessionStreamState(),
     )
   })
+
+  it("restores a legacy persisted state without activity fields", () => {
+    // 向后兼容：旧版落盘没有 todos/toolCalls/subagents/thinking，必须补默认值而非判脏。
+    const legacy = {
+      seenEventIds: ["e1"],
+      messages: [{ id: "a1", role: "assistant", content: "hi" }],
+      runStatus: "completed",
+    }
+    const restored = parseStoredSessionState(legacy)
+    expect(restored).not.toBeNull()
+    expect(restored?.todos).toEqual([])
+    expect(restored?.toolCalls).toEqual([])
+    expect(restored?.subagents).toEqual([])
+    expect(restored?.thinking).toBe("")
+  })
+})
+
+describe("applySessionEvent activity families", () => {
+  const base = {
+    session_id: "ses_01",
+    conversation_id: "conv_01",
+    run_id: "run_01",
+    timestamp: "2026-05-28T12:00:00.000Z",
+  }
+
+  it("todo.updated replaces the checklist with the latest list", () => {
+    const first = requireDomainEvent({
+      event: "todo.updated",
+      event_id: "evt_t1",
+      ...base,
+      cursor: "run_01:0001",
+      payload: {
+        todos: [
+          { content: "查天气", status: "in_progress" },
+          { content: "作答", status: "pending" },
+        ],
+      },
+    })
+    const second = requireDomainEvent({
+      event: "todo.updated",
+      event_id: "evt_t2",
+      ...base,
+      cursor: "run_01:0002",
+      payload: {
+        todos: [
+          { content: "查天气", status: "completed" },
+          { content: "作答", status: "in_progress" },
+        ],
+      },
+    })
+    let state = applySessionEvent(createSessionStreamState(), first)
+    expect(state.todos).toHaveLength(2)
+    state = applySessionEvent(state, second)
+    // 整表替换：只保留最新一版，不堆积。
+    expect(state.todos).toEqual([
+      { content: "查天气", status: "completed" },
+      { content: "作答", status: "in_progress" },
+    ])
+  })
+
+  it("tool.invoked then tool.returned builds one tool call with its result", () => {
+    const invoked = requireDomainEvent({
+      event: "tool.invoked",
+      event_id: "evt_i",
+      ...base,
+      cursor: "run_01:0001",
+      payload: { tool_id: "t1", name: "get_weather", args: { city: "北京" } },
+    })
+    const returned = requireDomainEvent({
+      event: "tool.returned",
+      event_id: "evt_r",
+      ...base,
+      cursor: "run_01:0002",
+      payload: { tool_id: "t1", name: "get_weather", result: "北京: 晴" },
+    })
+    let state = applySessionEvent(createSessionStreamState(), invoked)
+    expect(state.toolCalls).toEqual([
+      { id: "t1", name: "get_weather", args: { city: "北京" }, status: "running" },
+    ])
+    state = applySessionEvent(state, returned)
+    expect(state.toolCalls).toHaveLength(1)
+    expect(state.toolCalls[0]).toMatchObject({
+      id: "t1",
+      result: "北京: 晴",
+      status: "done",
+    })
+  })
+
+  it("subagent lifecycle marks started then done", () => {
+    const started = requireDomainEvent({
+      event: "subagent.started",
+      event_id: "evt_s1",
+      ...base,
+      cursor: "run_01:0001",
+      payload: { subagent_id: "sa1", name: "researcher", description: "查资料" },
+    })
+    const finished = requireDomainEvent({
+      event: "subagent.finished",
+      event_id: "evt_s2",
+      ...base,
+      cursor: "run_01:0002",
+      payload: { subagent_id: "sa1", name: "researcher" },
+    })
+    let state = applySessionEvent(createSessionStreamState(), started)
+    expect(state.subagents[0]).toMatchObject({ id: "sa1", status: "running" })
+    state = applySessionEvent(state, finished)
+    expect(state.subagents[0]?.status).toBe("done")
+  })
+
+  it("thinking.delta accumulates reasoning text", () => {
+    const a = requireDomainEvent({
+      event: "thinking.delta",
+      event_id: "evt_k1",
+      ...base,
+      cursor: "run_01:0001",
+      payload: { message_id: "m1", delta: "先想" },
+    })
+    const b = requireDomainEvent({
+      event: "thinking.delta",
+      event_id: "evt_k2",
+      ...base,
+      cursor: "run_01:0002",
+      payload: { message_id: "m1", delta: "再想" },
+    })
+    let state = applySessionEvent(createSessionStreamState(), a)
+    state = applySessionEvent(state, b)
+    expect(state.thinking).toBe("先想再想")
+  })
+
+  it("a new user turn resets the activity but keeps messages", () => {
+    const todoEvent = requireDomainEvent({
+      event: "todo.updated",
+      event_id: "evt_t",
+      ...base,
+      cursor: "run_01:0001",
+      payload: { todos: [{ content: "x", status: "completed" }] },
+    })
+    let state = applySessionEvent(createSessionStreamState(), todoEvent)
+    expect(state.todos).toHaveLength(1)
+    state = appendUserMessage(state, { id: "u2", content: "下一轮" })
+    expect(state.todos).toEqual([])
+    expect(state.toolCalls).toEqual([])
+    expect(state.messages.some((message) => message.content === "下一轮")).toBe(
+      true,
+    )
+  })
 })

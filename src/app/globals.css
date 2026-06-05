@@ -607,6 +607,95 @@ a {
   border-radius: 0.5rem;
 }
 
+/* 智能体活动面板：计划清单 / 工具 / 子智能体 / 思考。与助手气泡同列内缩（头像+间距）。 */
+.kk-activity {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  margin: 0 2.35rem;
+}
+
+.kk-activity__group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.6rem 0.8rem;
+  background: var(--surface-soft);
+  border: 1px solid var(--border-soft);
+  border-radius: 0.85rem;
+}
+
+.kk-activity__label {
+  font-size: 0.76rem;
+  letter-spacing: 0.05em;
+  color: color-mix(in srgb, var(--brand-wood) 60%, var(--foreground) 40%);
+  margin-bottom: 0.1rem;
+}
+
+.kk-todo {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.kk-todo__mark {
+  width: 1rem;
+  flex-shrink: 0;
+  text-align: center;
+}
+
+.kk-todo--completed {
+  color: color-mix(in srgb, var(--foreground) 42%, white 58%);
+}
+
+.kk-todo--completed .kk-todo__text {
+  text-decoration: line-through;
+}
+
+.kk-todo--in_progress {
+  color: var(--brand-wood);
+  font-weight: 500;
+}
+
+.kk-todo--pending {
+  color: color-mix(in srgb, var(--foreground) 68%, white 32%);
+}
+
+.kk-tool,
+.kk-subagent {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.88rem;
+}
+
+.kk-tool__name,
+.kk-subagent__name {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.82rem;
+}
+
+.kk-tool--done .kk-tool__state {
+  color: var(--brand-wood);
+}
+
+.kk-activity__thinking {
+  font-size: 0.85rem;
+  color: color-mix(in srgb, var(--foreground) 65%, white 35%);
+}
+
+.kk-activity__thinking summary {
+  cursor: pointer;
+  color: color-mix(in srgb, var(--brand-wood) 60%, var(--foreground) 40%);
+}
+
+.kk-activity__thinking p {
+  margin-top: 0.4rem;
+  white-space: pre-wrap;
+}
+
 .kk-thread__status {
   display: inline-flex;
   align-items: center;

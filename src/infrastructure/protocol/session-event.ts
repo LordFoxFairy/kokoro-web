@@ -10,6 +10,12 @@ const eventEnvelopeSchema = z
       "run.created",
       "message.delta",
       "message.completed",
+      "thinking.delta",
+      "tool.invoked",
+      "tool.returned",
+      "todo.updated",
+      "subagent.started",
+      "subagent.finished",
       "artifact.available",
       "permission.required",
       "run.completed",
@@ -74,6 +80,76 @@ const messageCompletedSchema = eventEnvelopeSchema.extend({
     .strict(),
 })
 
+// 活动事件族（思考 / 工具 / todo / 子智能体）：与 kokoro-session 出站协议同形。
+const thinkingDeltaSchema = eventEnvelopeSchema.extend({
+  event: z.literal("thinking.delta"),
+  payload: z
+    .object({
+      message_id: z.string().min(1),
+      delta: z.string(),
+    })
+    .strict(),
+})
+
+const toolInvokedSchema = eventEnvelopeSchema.extend({
+  event: z.literal("tool.invoked"),
+  payload: z
+    .object({
+      tool_id: z.string().min(1),
+      name: z.string().min(1),
+      args: z.record(z.unknown()),
+    })
+    .strict(),
+})
+
+const toolReturnedSchema = eventEnvelopeSchema.extend({
+  event: z.literal("tool.returned"),
+  payload: z
+    .object({
+      tool_id: z.string().min(1),
+      name: z.string().min(1),
+      result: z.string(),
+    })
+    .strict(),
+})
+
+const todoUpdatedSchema = eventEnvelopeSchema.extend({
+  event: z.literal("todo.updated"),
+  payload: z
+    .object({
+      todos: z.array(
+        z
+          .object({
+            content: z.string(),
+            status: z.enum(["pending", "in_progress", "completed"]),
+          })
+          .strict(),
+      ),
+    })
+    .strict(),
+})
+
+const subagentStartedSchema = eventEnvelopeSchema.extend({
+  event: z.literal("subagent.started"),
+  payload: z
+    .object({
+      subagent_id: z.string().min(1),
+      name: z.string().min(1),
+      description: z.string(),
+    })
+    .strict(),
+})
+
+const subagentFinishedSchema = eventEnvelopeSchema.extend({
+  event: z.literal("subagent.finished"),
+  payload: z
+    .object({
+      subagent_id: z.string().min(1),
+      name: z.string().min(1),
+    })
+    .strict(),
+})
+
 const artifactAvailableSchema = eventEnvelopeSchema.extend({
   event: z.literal("artifact.available"),
   payload: z
@@ -131,6 +207,12 @@ export const sessionEventSchema = z.union([
   runCreatedSchema,
   messageDeltaSchema,
   messageCompletedSchema,
+  thinkingDeltaSchema,
+  toolInvokedSchema,
+  toolReturnedSchema,
+  todoUpdatedSchema,
+  subagentStartedSchema,
+  subagentFinishedSchema,
   artifactAvailableSchema,
   permissionRequiredSchema,
   runCompletedSchema,
@@ -202,6 +284,68 @@ export function toSessionStreamEvent(
         message: event.payload.message,
         retryable: event.payload.retryable,
         requestId: event.payload.request_id,
+      }
+    case "thinking.delta":
+      return {
+        kind: "thinking-delta",
+        eventId: event.event_id,
+        sessionId: event.session_id,
+        conversationId: event.conversation_id,
+        runId: event.run_id,
+        messageId: event.payload.message_id,
+        delta: event.payload.delta,
+      }
+    case "tool.invoked":
+      return {
+        kind: "tool-invoked",
+        eventId: event.event_id,
+        sessionId: event.session_id,
+        conversationId: event.conversation_id,
+        runId: event.run_id,
+        toolId: event.payload.tool_id,
+        name: event.payload.name,
+        args: event.payload.args,
+      }
+    case "tool.returned":
+      return {
+        kind: "tool-returned",
+        eventId: event.event_id,
+        sessionId: event.session_id,
+        conversationId: event.conversation_id,
+        runId: event.run_id,
+        toolId: event.payload.tool_id,
+        name: event.payload.name,
+        result: event.payload.result,
+      }
+    case "todo.updated":
+      return {
+        kind: "todo-updated",
+        eventId: event.event_id,
+        sessionId: event.session_id,
+        conversationId: event.conversation_id,
+        runId: event.run_id,
+        todos: event.payload.todos,
+      }
+    case "subagent.started":
+      return {
+        kind: "subagent-started",
+        eventId: event.event_id,
+        sessionId: event.session_id,
+        conversationId: event.conversation_id,
+        runId: event.run_id,
+        subagentId: event.payload.subagent_id,
+        name: event.payload.name,
+        description: event.payload.description,
+      }
+    case "subagent.finished":
+      return {
+        kind: "subagent-finished",
+        eventId: event.event_id,
+        sessionId: event.session_id,
+        conversationId: event.conversation_id,
+        runId: event.run_id,
+        subagentId: event.payload.subagent_id,
+        name: event.payload.name,
       }
     case "artifact.available":
     case "permission.required":
