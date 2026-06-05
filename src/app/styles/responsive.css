@@ -1,0 +1,78 @@
+@media (max-width: 960px) {
+  /* 窄屏：rail 堆叠到顶部，主区填满剩余高度并内部滚动；折叠仅桌面生效。 */
+  .kk-shell,
+  .kk-shell[data-rail-collapsed="true"] {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .kk-rail {
+    border-right: 0;
+    border-bottom: 1px solid var(--border-soft);
+  }
+
+  .kk-shell[data-rail-collapsed="true"] .kk-rail__brand-text,
+  .kk-shell[data-rail-collapsed="true"] .kk-rail__action-label,
+  .kk-shell[data-rail-collapsed="true"] .kk-rail__user-text {
+    display: revert;
+  }
+
+  .kk-shell__hero {
+    padding-top: 2rem;
+  }
+}
+
+@media (max-width: 640px) {
+  .kk-rail {
+    padding: 0.85rem;
+  }
+
+  .kk-shell__headline {
+    font-size: clamp(1.5rem, 7vw, 2rem);
+  }
+
+  .kk-shell__subhead {
+    font-size: 0.95rem;
+  }
+
+  .kk-shell__composer-wrap {
+    padding: 0 0.85rem 0.85rem;
+  }
+
+  .kk-composer {
+    border-radius: 1.5rem;
+    padding: 0.7rem 0.8rem 0.6rem;
+  }
+
+  .kk-composer__input {
+    font-size: 0.95rem;
+  }
+
+  .kk-thread {
+    padding: 1rem 0.85rem 0.5rem;
+  }
+
+  .kk-msg__bubble {
+    max-width: 86%;
+  }
+
+  /* 窄屏没有富余宽度可拖：隐藏分隔条（侧栏在移动端用收起态即可）。 */
+  .kk-rail__resizer {
+    display: none;
+  }
+}
+
+/* 尊重「减少动态效果」：关掉装饰性动画（脉冲点、按压回弹），保留必要的加载转圈。 */
+@media (prefers-reduced-motion: reduce) {
+  .kk-process__live i {
+    animation: none;
+  }
+
+  .kk-composer__add:active,
+  .kk-composer__mic:active,
+  .kk-composer__send:not(:disabled):active,
+  .kk-composer__expand:active,
+  .kk-expand__collapse:active {
+    transform: none;
+  }
+}

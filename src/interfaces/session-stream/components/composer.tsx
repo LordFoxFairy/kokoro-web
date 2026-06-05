@@ -3,8 +3,13 @@ import {
   type FormEvent,
   type KeyboardEvent,
   type RefObject,
+  useEffect,
+  useRef,
   useState,
 } from "react"
+import { createPortal } from "react-dom"
+
+import type { AgentMode } from "@/application/conversation-store"
 
 import { MAX_INPUT_LENGTH, resizeComposer } from "../hooks/use-conversation"
 import {
@@ -12,7 +17,18 @@ import {
   type MenuOption,
   type MenuSection,
 } from "./composer-menu"
-import { ChevronIcon, MicIcon, PlusIcon, SendIcon, StopIcon } from "./icons"
+import {
+  ChevronIcon,
+  CollapseIcon,
+  ExpandIcon,
+  LockIcon,
+  MicIcon,
+  PlusIcon,
+  SendIcon,
+  SparkIcon,
+  StopIcon,
+  ZapIcon,
+} from "./icons"
 
 // 附加菜单：图标 + 分组，样式对齐原型 variant-a-mi-mu 的 attach 菜单。
 // 语音输入仍走右侧独立麦克风键，避免重复；上传链路接后端前为占位项。
@@ -55,11 +71,26 @@ const ATTACH_SECTIONS: MenuSection[] = [
   },
 ]
 
-// 模式：Fast / Thinking 下拉单选。当前只切换显示，接入 run 的 execution_style 后生效。
+// 模式：Fast（闪电·更快）/ Thinking（火花·更深思考）下拉单选。接入 run 的 execution_style 后生效。
 const MODE_OPTIONS: MenuOption[] = [
-  { key: "fast", label: "Fast", hint: "更快回应" },
-  { key: "thinking", label: "Thinking", hint: "更深的思考" },
+  {
+    key: "fast",
+    label: "Fast",
+    hint: "更快回应",
+    icon: <ZapIcon className="kk-composer__mode-glyph" />,
+  },
+  {
+    key: "thinking",
+    label: "Thinking",
+    hint: "更深的思考",
+    icon: <SparkIcon className="kk-composer__mode-glyph" />,
+  },
 ]
+
+const MODE_LABEL: Record<AgentMode, string> = {
+  fast: "Fast",
+  thinking: "Thinking",
+}
 
 type ComposerProps = {
   draft: string
@@ -71,6 +102,10 @@ type ComposerProps = {
   onStop: () => void
   transportLabel: string
   composerRef: RefObject<HTMLTextAreaElement | null>
+  // 回应模式：受控于会话。modeLocked 时（已开聊）只读展示、不可切换。
+  mode: AgentMode
+  onModeChange: (mode: AgentMode) => void
+  modeLocked: boolean
 }
 
 export function Composer({
@@ -83,23 +118,63 @@ export function Composer({
   onStop,
   transportLabel,
   composerRef,
+  mode,
+  onModeChange,
+  modeLocked,
 }: ComposerProps) {
-  const [mode, setMode] = useState("fast")
-  const modeLabel = mode === "thinking" ? "Thinking" : "Fast"
+  const modeLabel = MODE_LABEL[mode]
+  const ModeIcon = mode === "thinking" ? SparkIcon : ZapIcon
+
+  // 放大编辑：把同一份草稿摊进一个大编辑面板，方便长文撰写/修改（对齐 Gemini 的展开输入）。
+  const [expanded, setExpanded] = useState(false)
+  const expandedRef = useRef<HTMLTextAreaElement | null>(null)
+
+  // 打开时聚焦大编辑框并把光标移到末尾，直接续写。
+  useEffect(() => {
+    if (!expanded) {
+      return
+    }
+    const node = expandedRef.current
+    if (!node) {
+      return
+    }
+    node.focus()
+    const end = node.value.length
+    node.setSelectionRange(end, end)
+  }, [expanded])
+
+  const closeExpand = () => {
+    setExpanded(false)
+    composerRef.current?.focus()
+  }
+
+  // 放大编辑里的提交复用 composer 的表单提交，发送后收起面板。
+  const submitFromExpand = (event: FormEvent<HTMLFormElement>) => {
+    onSubmit(event)
+    setExpanded(false)
+  }
+
+  // 放大编辑是长文场景：Enter 换行；⌘/Ctrl+Enter 才发送；Esc 收起。
+  // 与内联输入框（Enter 直接发送）不同，因为大面板的本意就是从容地写多行。
+  const keyDownInExpand = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key === "Escape") {
+      event.preventDefault()
+      closeExpand()
+      return
+    }
+    if (
+      event.key === "Enter" &&
+      (event.metaKey || event.ctrlKey) &&
+      !event.nativeEvent.isComposing
+    ) {
+      event.preventDefault()
+      event.currentTarget.form?.requestSubmit()
+    }
+  }
 
   return (
     <div className="kk-shell__composer-wrap">
       <form className="kk-composer" aria-label="消息编辑区" onSubmit={onSubmit}>
-        <ComposerMenu
-          triggerClassName="kk-composer__add"
-          triggerLabel="附加内容"
-          trigger={<PlusIcon className="kk-composer__glyph" />}
-          sections={ATTACH_SECTIONS}
-          onSelect={() => {
-            // 占位：上传链路接入后在此处理所选来源。
-          }}
-        />
-
         <textarea
           ref={composerRef}
           className="kk-composer__input"
@@ -116,48 +191,159 @@ export function Composer({
           disabled={isStreaming}
         />
 
-        <ComposerMenu
-          triggerClassName="kk-composer__mode"
-          triggerLabel="切换模式"
-          trigger={
-            <>
-              <span>{modeLabel}</span>
-              <ChevronIcon className="kk-composer__chevron" />
-            </>
-          }
-          options={MODE_OPTIONS}
-          selectedKey={mode}
-          onSelect={setMode}
-          align="end"
-        />
-
-        <button className="kk-composer__mic" type="button" aria-label="语音输入">
-          <MicIcon className="kk-composer__glyph" />
-        </button>
-
-        {isStreaming ? (
+        {/* 放大编辑入口：贴在输入框右上角；流式中输入框停用，故一并隐藏。 */}
+        {!isStreaming ? (
           <button
-            className="kk-composer__send kk-composer__send--stop"
             type="button"
-            aria-label="停止生成"
-            onClick={onStop}
+            className="kk-composer__expand"
+            aria-label="放大编辑"
+            onClick={() => setExpanded(true)}
           >
-            <StopIcon className="kk-composer__glyph" />
+            <ExpandIcon className="kk-composer__expand-glyph" />
           </button>
-        ) : (
-          <button
-            className="kk-composer__send"
-            type="submit"
-            aria-label="发送消息"
-            disabled={!canSend}
-          >
-            <SendIcon className="kk-composer__glyph" />
-          </button>
-        )}
+        ) : null}
+
+        {/* 控件行：附加键在左，模式/语音/发送在右——文本独占上行向上生长。 */}
+        <div className="kk-composer__controls">
+          <div className="kk-composer__cluster">
+            <ComposerMenu
+              triggerClassName="kk-composer__add"
+              triggerLabel="附加内容"
+              trigger={<PlusIcon className="kk-composer__glyph" />}
+              sections={ATTACH_SECTIONS}
+              onSelect={() => {
+                // 占位：上传链路接入后在此处理所选来源。
+              }}
+            />
+          </div>
+
+          <div className="kk-composer__cluster">
+            {modeLocked ? (
+              <button
+                type="button"
+                className="kk-composer__mode kk-composer__mode--locked"
+                disabled
+                aria-label={`回应模式：${modeLabel}（本轮已锁定）`}
+                title="模式选定后本轮不可切换；新对话可重新选择"
+              >
+                <ModeIcon className="kk-composer__mode-glyph" />
+                <span>{modeLabel}</span>
+                <LockIcon className="kk-composer__lock" />
+              </button>
+            ) : (
+              <ComposerMenu
+                triggerClassName="kk-composer__mode"
+                triggerLabel="切换模式"
+                trigger={
+                  <>
+                    <ModeIcon className="kk-composer__mode-glyph" />
+                    <span>{modeLabel}</span>
+                    <ChevronIcon className="kk-composer__chevron" />
+                  </>
+                }
+                options={MODE_OPTIONS}
+                selectedKey={mode}
+                onSelect={(key) => onModeChange(key as AgentMode)}
+                align="end"
+              />
+            )}
+
+            <button
+              className="kk-composer__mic"
+              type="button"
+              aria-label="语音输入"
+            >
+              <MicIcon className="kk-composer__glyph" />
+            </button>
+
+            {isStreaming ? (
+              <button
+                className="kk-composer__send kk-composer__send--stop"
+                type="button"
+                aria-label="停止生成"
+                onClick={onStop}
+              >
+                <StopIcon className="kk-composer__glyph" />
+              </button>
+            ) : (
+              <button
+                className="kk-composer__send"
+                type="submit"
+                aria-label="发送消息"
+                disabled={!canSend}
+              >
+                <SendIcon className="kk-composer__glyph" />
+              </button>
+            )}
+          </div>
+        </div>
       </form>
 
       {/* 常驻保留高度：标签延后出现也不改变 composer 位置，避免聊天框跳动。 */}
       <p className="kk-shell__transport">{transportLabel}</p>
+
+      {/* 放大编辑面板：portal 到 body，position:fixed 覆盖全屏，不受 composer 盒模型/层叠影响。
+          点击遮罩空白处 / Esc / 收起键关闭；长文场景下 Enter 换行、⌘/Ctrl+Enter 发送。 */}
+      {expanded
+        ? createPortal(
+            <div
+              className="kk-expand__backdrop"
+              onClick={(event) => {
+                if (event.target === event.currentTarget) {
+                  closeExpand()
+                }
+              }}
+            >
+              <form
+                className="kk-expand"
+                role="dialog"
+                aria-modal="true"
+                aria-label="放大编辑"
+                onSubmit={submitFromExpand}
+              >
+                <div className="kk-expand__head">
+                  <span className="kk-expand__title">放大编辑</span>
+                  <button
+                    type="button"
+                    className="kk-expand__collapse"
+                    aria-label="收起放大编辑"
+                    onClick={closeExpand}
+                  >
+                    <CollapseIcon className="kk-composer__expand-glyph" />
+                  </button>
+                </div>
+
+                <textarea
+                  ref={expandedRef}
+                  className="kk-expand__input"
+                  aria-label="放大编辑输入"
+                  placeholder="把想说的告诉我。"
+                  maxLength={MAX_INPUT_LENGTH}
+                  value={draft}
+                  onChange={(event: ChangeEvent<HTMLTextAreaElement>) => {
+                    onDraftChange(event.target.value)
+                  }}
+                  onKeyDown={keyDownInExpand}
+                />
+
+                <div className="kk-expand__foot">
+                  <span className="kk-expand__hint">
+                    ⌘ / Ctrl + Enter 发送 · Esc 收起
+                  </span>
+                  <button
+                    className="kk-composer__send"
+                    type="submit"
+                    aria-label="发送消息"
+                    disabled={!canSend}
+                  >
+                    <SendIcon className="kk-composer__glyph" />
+                  </button>
+                </div>
+              </form>
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   )
 }

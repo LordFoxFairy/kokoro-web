@@ -1,0 +1,279 @@
+
+.kk-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  border-right: 1px solid var(--border-soft);
+  padding: 0.85rem 0.6rem;
+  background: color-mix(in srgb, var(--background) 93%, white 7%);
+}
+
+.kk-rail__head {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.35rem 0.2rem 0.75rem 0.4rem;
+}
+
+.kk-rail__brand {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.kk-rail__collapse {
+  display: flex;
+  height: 2rem;
+  width: 2rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 0.6rem;
+  background: transparent;
+  color: rgba(43, 37, 32, 0.55);
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
+}
+
+.kk-rail__collapse:hover {
+  background: color-mix(in srgb, var(--brand-wood-soft) 55%, white 45%);
+  color: var(--foreground);
+}
+
+.kk-rail__collapse:focus-visible {
+  outline: 2px solid var(--brand-wood);
+  outline-offset: 2px;
+}
+
+.kk-rail__icon {
+  width: 1.05rem;
+  height: 1.05rem;
+  flex-shrink: 0;
+}
+
+.kk-rail__brand-mark {
+  display: flex;
+  height: 2.1rem;
+  width: 2.1rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.6rem;
+  background: var(--brand-wood);
+  color: #fffdf9;
+  font-size: 0.95rem;
+}
+
+.kk-rail__brand-title {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.kk-rail__brand-subtitle {
+  margin-top: 0.05rem;
+  font-size: 0.65rem;
+  letter-spacing: 0.18em;
+  /* 0.65 alpha 在该浅底上达 ~4.7:1，满足 WCAG AA 正文对比度。 */
+  color: rgba(43, 37, 32, 0.65);
+}
+
+/* Gemini 式轻量导航行：无边框、透明底，仅 hover 显柔和 pill；键盘聚焦才显暖木描边。
+   均不改变盒模型，无回流。 */
+.kk-rail__action {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  padding: 0.55rem 0.7rem;
+  color: var(--foreground);
+  font-size: 0.9rem;
+  text-align: left;
+  transition: background-color 120ms ease;
+}
+
+/* 主操作：柔和填充 pill，区别于其它行又不抢戏。 */
+.kk-rail__new-chat {
+  justify-content: flex-start;
+  background: color-mix(in srgb, var(--brand-wood-soft) 60%, white 40%);
+  color: var(--brand-wood-hover);
+  font-weight: 600;
+}
+
+.kk-rail__search {
+  color: rgba(43, 37, 32, 0.6);
+}
+
+.kk-rail__action:hover {
+  background: color-mix(in srgb, var(--brand-wood-soft) 50%, white 50%);
+}
+
+.kk-rail__new-chat:hover {
+  background: color-mix(in srgb, var(--brand-wood-soft) 80%, white 20%);
+}
+
+.kk-rail__action:focus-visible,
+.kk-rail__user-card:focus-within {
+  outline: 2px solid var(--brand-wood);
+  outline-offset: 2px;
+}
+
+.kk-rail__search-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.kk-rail__search-shortcut {
+  font-size: 0.72rem;
+  color: rgba(43, 37, 32, 0.42);
+}
+
+/* 底部账户：纤细一行，无边框，hover 显柔和 pill。 */
+.kk-rail__user-card {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  border-radius: 999px;
+  padding: 0.45rem 0.6rem;
+  transition: background-color 120ms ease;
+}
+
+.kk-rail__user-card:hover {
+  background: color-mix(in srgb, var(--brand-wood-soft) 50%, white 50%);
+}
+
+/* 历史会话列表：填充 search 与 user-card 之间，超出滚动。 */
+.kk-rail__list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  margin: 0.5rem 0 0.4rem;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--brand-wood) 40%, transparent)
+    transparent;
+}
+
+.kk-rail__item {
+  display: flex;
+  align-items: center;
+  border-radius: 0.6rem;
+  transition: background-color 120ms ease;
+}
+
+.kk-rail__item:hover,
+.kk-rail__item[data-active="true"] {
+  background: var(--brand-wood-soft);
+}
+
+.kk-rail__item-select {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  padding: 0.4rem 0.55rem;
+  font-size: 0.85rem;
+  color: var(--foreground);
+  cursor: pointer;
+}
+
+.kk-rail__item-title {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* 删除键只在 hover/active 时浮现，仅改透明度——不改盒尺寸，不引发列表抖动。 */
+.kk-rail__item-delete {
+  flex-shrink: 0;
+  opacity: 0;
+  padding: 0 0.45rem;
+  font-size: 1rem;
+  line-height: 1;
+  color: color-mix(in srgb, var(--foreground) 45%, white 55%);
+  cursor: pointer;
+  transition: opacity 120ms ease, color 120ms ease;
+}
+
+.kk-rail__item:hover .kk-rail__item-delete,
+.kk-rail__item[data-active="true"] .kk-rail__item-delete {
+  opacity: 1;
+}
+
+.kk-rail__item-delete:hover {
+  color: var(--brand-wood-hover);
+}
+
+/* 折叠态隐藏列表：标签都没了，列表无意义。 */
+.kk-shell[data-rail-collapsed="true"] .kk-rail__list {
+  display: none;
+}
+
+.kk-rail__user-avatar {
+  height: 1.85rem;
+  width: 1.85rem;
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--brand-wood-soft) 55%, var(--brand-wood) 45%);
+}
+
+.kk-rail__user-name {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.kk-rail__user-meta {
+  margin-top: 0.02rem;
+  font-size: 0.72rem;
+  color: rgba(43, 37, 32, 0.55);
+}
+
+/* 收起态：隐藏文字标签，图标居中成纤细图标列。 */
+.kk-shell[data-rail-collapsed="true"] .kk-rail {
+  padding: 0.85rem 0.4rem;
+  align-items: center;
+}
+
+.kk-shell[data-rail-collapsed="true"] .kk-rail__head {
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.35rem 0 0.6rem;
+}
+
+.kk-shell[data-rail-collapsed="true"] .kk-rail__brand {
+  flex: none;
+  justify-content: center;
+}
+
+.kk-shell[data-rail-collapsed="true"] .kk-rail__brand-text,
+.kk-shell[data-rail-collapsed="true"] .kk-rail__action-label,
+.kk-shell[data-rail-collapsed="true"] .kk-rail__search-shortcut,
+.kk-shell[data-rail-collapsed="true"] .kk-rail__user-text {
+  display: none;
+}
+
+.kk-shell[data-rail-collapsed="true"] .kk-rail__action {
+  width: 2.4rem;
+  margin: 0 auto;
+  justify-content: center;
+  padding: 0.5rem;
+}
+
+.kk-shell[data-rail-collapsed="true"] .kk-rail__user-card {
+  justify-content: center;
+  padding: 0.4rem;
+}
+

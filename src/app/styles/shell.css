@@ -1,0 +1,53 @@
+
+.kk-shell {
+  position: relative;
+  display: grid;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  /* rail 列宽由拖拽分隔条驱动（JS 写 --kk-rail-width，已带最小/最大夹取）。 */
+  grid-template-columns: var(--kk-rail-width, 15.5rem) minmax(0, 1fr);
+  /* 单行锁死到视口高度（minmax 的 0 下限让网格项可收缩，子级才能内部滚动）。 */
+  grid-template-rows: minmax(0, 1fr);
+  background: var(--background);
+  /* 折叠为即时切换：不动画列宽。动画期间内容布局会瞬切而宽度还在渐变，
+     造成图标悬浮、主区持续重排的"跳动+混乱"——即时切换给两个干净的稳定态。 */
+}
+
+/* 收起态：rail 缩成纤细图标列（忽略拖拽宽度）。 */
+.kk-shell[data-rail-collapsed="true"] {
+  grid-template-columns: 3.5rem minmax(0, 1fr);
+}
+
+/* 拖拽分隔条：钉在 rail/main 边界，平时隐形，悬停/拖拽透出一条暖木线。 */
+.kk-rail__resizer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--kk-rail-width, 15.5rem);
+  z-index: 20;
+  width: 0.7rem;
+  transform: translateX(-50%);
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.kk-rail__resizer::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  transform: translateX(-50%);
+  background: transparent;
+  transition:
+    background-color 120ms ease,
+    width 120ms ease;
+}
+
+.kk-rail__resizer:hover::after,
+.kk-rail__resizer:active::after {
+  width: 2px;
+  background: color-mix(in srgb, var(--brand-wood) 55%, transparent);
+}

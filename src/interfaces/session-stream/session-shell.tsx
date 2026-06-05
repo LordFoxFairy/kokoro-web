@@ -1,20 +1,21 @@
 "use client"
 
-import { useCallback, useRef, useState } from "react"
+import { type CSSProperties, useCallback, useRef, useState } from "react"
 
 import {
   startSessionReply,
   type StartReply,
 } from "@/application/session-stream-preview"
 
-import { ActivityPanel } from "./components/activity-panel"
 import { Composer } from "./components/composer"
 import { ConversationThread } from "./components/conversation-thread"
 import { SessionRail } from "./components/session-rail"
 import { StarterChips } from "./components/starter-chips"
+import { TodoBar } from "./components/todo-bar"
 import { useAutoScroll } from "./hooks/use-auto-scroll"
 import { useConversation, type ReattachReply } from "./hooks/use-conversation"
 import { useHydrated } from "./hooks/use-hydrated"
+import { useRailResize } from "./hooks/use-rail-resize"
 
 type SessionShellProps = {
   // 注入点：默认走真实 kokoro-session（后端缺席则本地模拟），测试可注入同步桩。
@@ -31,6 +32,9 @@ export function SessionShell({
   const mounted = useHydrated()
 
   const [railCollapsed, setRailCollapsed] = useState(false)
+
+  // 侧栏可拖拽改宽（两侧自由，均有最小宽度）；收起态用固定窄列，不参与拖拽。
+  const { width: railWidth, shellRef, onResizeStart } = useRailResize()
 
   // 自动滚动依赖会话线，会话引擎的 beginReply 又需要 scrollToLatest：用 ref 打破环依赖。
   // useAutoScroll 在 effect 里把最新实现回填到该 ref，事件触发时读到的始终是当下的滚动逻辑。
@@ -59,6 +63,9 @@ export function SessionShell({
     activeId,
     selectConversation,
     deleteConversation,
+    mode,
+    setMode,
+    modeLocked,
   } = useConversation(startReply, scrollToLatestSeam, reattach)
 
   const { threadEndRef, isNearBottom, scrollToLatest, handleThreadScroll } =
@@ -69,10 +76,12 @@ export function SessionShell({
 
   return (
     <main
+      ref={shellRef}
       className="kk-shell"
       data-run-status={thread.runStatus}
       data-transport-label={transportLabel}
       data-rail-collapsed={railCollapsed ? "true" : "false"}
+      style={{ "--kk-rail-width": `${railWidth}px` } as CSSProperties}
     >
       <SessionRail
         collapsed={railCollapsed}
@@ -83,6 +92,17 @@ export function SessionShell({
         onSelectConversation={selectConversation}
         onDeleteConversation={deleteConversation}
       />
+
+      {/* 拖拽分隔条：调整 rail/main 宽度（两侧自由、各有最小宽度）；收起态不可拖。 */}
+      {!railCollapsed ? (
+        <div
+          className="kk-rail__resizer"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="调整侧栏宽度"
+          onPointerDown={onResizeStart}
+        />
+      ) : null}
 
       <section className="kk-shell__main">
         {!mounted ? (
@@ -95,6 +115,9 @@ export function SessionShell({
             onRetry={retry}
             onScroll={handleThreadScroll}
             threadEndRef={threadEndRef}
+            thinking={thread.thinking}
+            toolCalls={thread.toolCalls}
+            subagents={thread.subagents}
           />
         ) : (
           <div className="kk-shell__hero">
@@ -103,15 +126,6 @@ export function SessionShell({
             <StarterChips onPick={prefillDraft} />
           </div>
         )}
-
-        {mounted ? (
-          <ActivityPanel
-            thinking={thread.thinking}
-            todos={thread.todos}
-            toolCalls={thread.toolCalls}
-            subagents={thread.subagents}
-          />
-        ) : null}
 
         {showJumpToLatest ? (
           <button
@@ -124,6 +138,9 @@ export function SessionShell({
           </button>
         ) : null}
 
+        {/* 计划条钉在输入框正上方，可收缩；对话流里的思考/工具/子智能体在 ConversationThread 内联呈现。 */}
+        {mounted ? <TodoBar todos={thread.todos} /> : null}
+
         <Composer
           draft={draft}
           onDraftChange={setDraft}
@@ -134,6 +151,9 @@ export function SessionShell({
           onStop={stopReply}
           transportLabel={transportLabel}
           composerRef={composerRef}
+          mode={mode}
+          onModeChange={setMode}
+          modeLocked={modeLocked}
         />
       </section>
     </main>

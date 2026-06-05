@@ -1,0 +1,554 @@
+
+/* 智能体活动面板：浮动卡片，钉在对话区右上角，不随消息滚走；可折叠成进度小条。 */
+/* 计划条：钉在输入框上方的可收缩 CC 风格清单——常驻可查的当轮规划，
+   与对话流里的思考/工具/子智能体分开（后者随聊天内联呈现）。 */
+.kk-todobar {
+  width: min(var(--kk-content-width), 100%);
+  margin: 0 auto 0.5rem;
+  border: 1px solid var(--border-soft);
+  border-radius: 0.9rem;
+  background: var(--surface);
+  box-shadow: 0 4px 14px rgba(139, 111, 71, 0.08);
+  overflow: hidden;
+}
+
+.kk-todobar__toggle {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.45rem 0.8rem;
+  border: 0;
+  background: var(--surface-soft);
+  cursor: pointer;
+  font-size: 0.82rem;
+  color: color-mix(in srgb, var(--brand-wood) 65%, var(--foreground) 35%);
+}
+
+.kk-todobar__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.kk-todobar__title-icon {
+  width: 0.95rem;
+  height: 0.95rem;
+  flex-shrink: 0;
+  color: var(--brand-wood);
+}
+
+.kk-todobar__count {
+  flex-shrink: 0;
+  padding: 0.05rem 0.45rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--brand-wood-soft) 75%, transparent);
+  color: color-mix(in srgb, var(--brand-wood) 72%, var(--foreground) 28%);
+  font-size: 0.7rem;
+}
+
+.kk-todobar__chevron {
+  width: 0.8rem;
+  height: 0.8rem;
+  flex-shrink: 0;
+  opacity: 0.7;
+  transition: transform 150ms ease;
+}
+
+.kk-todobar[data-collapsed="false"] .kk-todobar__chevron {
+  transform: rotate(180deg);
+}
+
+.kk-todobar__list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.32rem;
+  padding: 0.55rem 0.85rem 0.65rem;
+  max-height: 30vh;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+/* 内联活动：思考/工具/子智能体随对话流呈现，对齐助手气泡左缘——像 ChatGPT/Gemini
+   那样作为助手这一轮的一部分，而非浮在角落的卡片。 */
+/* 助手这一轮的右列：过程 + 回答气泡竖直堆叠，共用左侧那个🤖头像。
+   右缘留 2.35rem 与 user 气泡对齐（另一侧的头像 1.75 + 间距 0.6 占等量）。 */
+.kk-turn__stack {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.55rem;
+  margin-right: 2.35rem;
+}
+
+/* 同一轮里气泡不再各自 flex 占整列：列宽交给 stack，气泡铺满 stack。 */
+.kk-msg--assistant .kk-turn__stack .kk-msg__bubble {
+  flex: none;
+  width: 100%;
+  margin-right: 0;
+}
+
+.kk-actgroup {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+/* 运行中转圈：CSS-only 暖木环。 */
+.kk-spinner {
+  display: inline-block;
+  width: 0.85rem;
+  height: 0.85rem;
+  border-radius: 999px;
+  border: 2px solid color-mix(in srgb, var(--brand-wood) 28%, transparent);
+  border-top-color: var(--brand-wood);
+  animation: kk-spin 0.7s linear infinite;
+}
+
+@keyframes kk-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.kk-actstate {
+  width: 0.95rem;
+  height: 0.95rem;
+}
+
+.kk-actstate--done {
+  color: var(--brand-wood);
+}
+
+/* 过程：思考/工具/子智能体收成的可折叠披露项——比回答气泡更轻，明显是「次要的过程」。
+   流式时展开方便实时看，落定后收成一行摘要（保持对话干净）。 */
+.kk-process {
+  border: 1px solid color-mix(in srgb, var(--border-soft) 85%, transparent);
+  border-radius: 0.7rem;
+  background: color-mix(in srgb, var(--surface-soft) 55%, var(--surface) 45%);
+  font-size: 0.84rem;
+}
+
+.kk-process__summary {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  cursor: pointer;
+  list-style: none;
+  padding: 0.4rem 0.6rem;
+  color: color-mix(in srgb, var(--brand-wood) 60%, var(--foreground) 40%);
+  font-weight: 500;
+}
+
+.kk-process__summary::-webkit-details-marker {
+  display: none;
+}
+
+.kk-process__spark {
+  width: 0.95rem;
+  height: 0.95rem;
+  flex-shrink: 0;
+  color: var(--brand-wood);
+}
+
+.kk-process__title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kk-process__chevron {
+  width: 0.75rem;
+  height: 0.75rem;
+  margin-left: auto;
+  flex-shrink: 0;
+  opacity: 0.65;
+  transition: transform 150ms ease;
+}
+
+.kk-process[open] .kk-process__chevron {
+  transform: rotate(180deg);
+}
+
+/* 「思考中」脉冲点：流式时跟在标题后。 */
+.kk-process__live {
+  display: inline-flex;
+  gap: 3px;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.kk-process__live i {
+  width: 4px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--brand-wood);
+  animation: kk-bounce 1s ease-in-out infinite;
+}
+
+.kk-process__live i:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.kk-process__live i:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes kk-bounce {
+  0%,
+  100% {
+    opacity: 0.3;
+    transform: translateY(0);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(-2px);
+  }
+}
+
+/* 展开后的过程主体：思考文本 + 工具/子智能体分组，分隔细线区隔，统一内边距。
+   思考过程可能很长：整块作为单一滚动区封顶，绝不把对话顶上去（内部滚动查看）。 */
+.kk-process__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0 0.6rem 0.55rem;
+  max-height: 24rem;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.kk-process__body > * + * {
+  padding-top: 0.45rem;
+  border-top: 1px solid color-mix(in srgb, var(--border-soft) 60%, transparent);
+}
+
+/* 思考文本：轻、静，像内心独白；随过程主体一起滚动。 */
+.kk-process__thinking {
+  margin: 0;
+  color: color-mix(in srgb, var(--foreground) 60%, white 40%);
+  font-size: 0.82rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* todo：CC 风格清单，状态用细线图标 + 颜色区分。 */
+.kk-todos {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.kk-todo {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+
+.kk-todo__mark {
+  display: inline-flex;
+  flex-shrink: 0;
+  margin-top: 0.08rem;
+}
+
+.kk-todo__glyph {
+  width: 0.95rem;
+  height: 0.95rem;
+}
+
+.kk-todo--completed {
+  color: color-mix(in srgb, var(--foreground) 42%, white 58%);
+}
+
+.kk-todo--completed .kk-todo__text {
+  text-decoration: line-through;
+}
+
+.kk-todo--completed .kk-todo__glyph {
+  color: color-mix(in srgb, var(--brand-wood) 48%, white 52%);
+}
+
+.kk-todo--in_progress {
+  color: var(--brand-wood);
+  font-weight: 500;
+}
+
+.kk-todo--in_progress .kk-todo__glyph {
+  color: var(--brand-wood);
+}
+
+.kk-todo--pending {
+  color: color-mix(in srgb, var(--foreground) 60%, white 40%);
+}
+
+.kk-todo--pending .kk-todo__glyph {
+  color: color-mix(in srgb, var(--foreground) 38%, white 62%);
+}
+
+/* 工具调用：可展开看参数/结果。 */
+.kk-tool {
+  font-size: 0.84rem;
+}
+
+.kk-tool__summary {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  cursor: pointer;
+  list-style: none;
+  padding: 0.1rem 0;
+}
+
+.kk-tool__summary::-webkit-details-marker {
+  display: none;
+}
+
+.kk-tool__icon {
+  width: 0.9rem;
+  height: 0.9rem;
+  flex-shrink: 0;
+  color: var(--brand-wood);
+}
+
+.kk-tool__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.8rem;
+  color: var(--foreground);
+}
+
+.kk-tool__state {
+  display: inline-flex;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.kk-tool__detail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin-top: 0.3rem;
+}
+
+.kk-tool__args,
+.kk-tool__result {
+  margin: 0;
+  padding: 0.4rem 0.5rem;
+  border-radius: 0.4rem;
+  background: color-mix(in srgb, var(--surface-soft) 72%, transparent);
+  color: color-mix(in srgb, var(--foreground) 76%, white 24%);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 10rem;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.kk-tool__result {
+  border-left: 2px solid color-mix(in srgb, var(--brand-wood) 28%, transparent);
+}
+
+/* 子智能体：机器人图标 + 名称/描述 + 状态。 */
+.kk-subagent {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.84rem;
+}
+
+.kk-subagent__icon {
+  width: 0.95rem;
+  height: 0.95rem;
+  flex-shrink: 0;
+  color: var(--brand-wood);
+}
+
+.kk-subagent__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.kk-subagent__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.82rem;
+  color: var(--foreground);
+}
+
+.kk-subagent__desc {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.72rem;
+  color: color-mix(in srgb, var(--foreground) 55%, white 45%);
+}
+
+.kk-subagent__state {
+  display: inline-flex;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.kk-thread__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  align-self: flex-start;
+  margin-left: 2.35rem;
+  /* 常驻保留高度：流式结束清空内容后仍占位，避免对话整体上下跳动。 */
+  min-height: 1.25rem;
+  color: rgba(43, 37, 32, 0.65);
+  font-size: 0.82rem;
+  letter-spacing: 0.04em;
+}
+
+/* CSS-only 流式脉冲：三点，仅在用户未要求减少动态时律动，
+   减少动态时降为静态实心点——不改变行高/尺寸，避免抖动。 */
+.kk-thread__pulse {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.22rem;
+}
+
+.kk-thread__pulse span {
+  display: block;
+  height: 0.32rem;
+  width: 0.32rem;
+  border-radius: 999px;
+  background: var(--brand-wood);
+  opacity: 0.45;
+}
+
+@keyframes kk-pulse {
+  0%,
+  80%,
+  100% {
+    opacity: 0.3;
+  }
+  40% {
+    opacity: 0.9;
+  }
+}
+
+/* 气泡入场：一次性的 250ms 淡入（仅首帧），让新消息柔和出现而非突现。
+   只改 opacity，不位移、不改尺寸，保持紧凑克制；减少动态时不应用。 */
+@keyframes kk-message-enter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .kk-thread__pulse span {
+    animation: kk-pulse 1.2s ease-in-out infinite;
+  }
+
+  .kk-thread__pulse span:nth-child(2) {
+    animation-delay: 0.18s;
+  }
+
+  .kk-thread__pulse span:nth-child(3) {
+    animation-delay: 0.36s;
+  }
+
+  .kk-msg__bubble {
+    animation: kk-message-enter 250ms ease-out;
+  }
+}
+
+/* 用户明确要求减少动态时，全局收敛任何过渡与动画到瞬时完成——
+   覆盖上面所有 transition/animation，杜绝抖动与律动。 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+.kk-thread__error {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  align-self: flex-start;
+  max-width: 76%;
+  border: 1px solid color-mix(in srgb, #b4584f 32%, var(--border-soft) 68%);
+  background: color-mix(in srgb, #b4584f 8%, var(--surface) 92%);
+  border-radius: 0.9rem;
+  padding: 0.5rem 0.75rem;
+  color: #7a3a33;
+  font-size: 0.82rem;
+}
+
+/* 重试入口：暖木描边胶囊，固定尺寸；hover/focus 只换底色与阴影，绝不改变盒子大小。 */
+.kk-thread__retry {
+  flex-shrink: 0;
+  border: 1px solid color-mix(in srgb, var(--brand-wood) 55%, var(--border-soft) 45%);
+  border-radius: 999px;
+  background: var(--surface);
+  padding: 0.2rem 0.7rem;
+  color: var(--brand-wood);
+  font-size: 0.8rem;
+  transition:
+    background-color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.kk-thread__retry:hover,
+.kk-thread__retry:focus-visible {
+  background: color-mix(in srgb, var(--brand-wood-soft) 70%, white 30%);
+  box-shadow: inset 0 0 0 1px var(--brand-wood);
+  outline: none;
+}
+
+/* 回到最新：悬浮在对话区底部、composer 之上。绝对定位脱离滚动流，
+   固定尺寸；hover/focus 仅改底色与阴影，避免布局抖动。 */
+.kk-shell__jump {
+  position: absolute;
+  left: 50%;
+  bottom: 6.5rem;
+  transform: translateX(-50%);
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border: 1px solid color-mix(in srgb, var(--brand-wood) 45%, var(--border-soft) 55%);
+  border-radius: 999px;
+  background: var(--surface);
+  padding: 0.35rem 0.85rem;
+  color: var(--brand-wood);
+  font-size: 0.82rem;
+  box-shadow: var(--shadow-card);
+  transition:
+    background-color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.kk-shell__jump:hover,
+.kk-shell__jump:focus-visible {
+  background: color-mix(in srgb, var(--brand-wood-soft) 70%, white 30%);
+  box-shadow:
+    var(--shadow-card),
+    inset 0 0 0 1px var(--brand-wood);
+  outline: none;
+}
