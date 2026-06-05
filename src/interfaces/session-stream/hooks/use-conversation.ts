@@ -10,12 +10,16 @@ import {
 } from "react"
 
 import {
+  type AgentMode,
   type ConversationStore,
+  activeMode,
   activeThreadOf,
   addConversation,
+  isActiveModeLocked,
   parseStoredConversationStore,
   removeConversation,
   selectConversation as selectConversationOp,
+  setActiveMode,
   setActivePending,
   sortedConversations,
   withActiveThread,
@@ -119,6 +123,10 @@ type Conversation = {
   activeId: string | null
   selectConversation: (id: string) => void
   deleteConversation: (id: string) => void
+  // 回应模式：Fast / Thinking。每会话独立；首条消息后锁定（modeLocked）不可再切换。
+  mode: AgentMode
+  setMode: (mode: AgentMode) => void
+  modeLocked: boolean
 }
 
 function nowMs(): number {
@@ -169,6 +177,8 @@ export function useConversation(
   const [draft, setDraft] = useState("")
   const [isStreaming, setIsStreaming] = useState(false)
   const [transportLabel, setTransportLabel] = useState("")
+  // 空首屏（尚无会话）时选好的模式：首条消息创建首个会话时承接它。会话存在后模式以会话为准。
+  const [pendingMode, setPendingMode] = useState<AgentMode>("fast")
 
   const replyHandleRef = useRef<LiveSessionHandle | null>(null)
   const composerRef = useRef<HTMLTextAreaElement | null>(null)
@@ -255,6 +265,9 @@ export function useConversation(
   const activeId = store?.activeId ?? null
   const hasMessages = thread.messages.length > 0
   const hasFailed = thread.runStatus === "failed" && !isStreaming
+  // 模式以活跃会话为准；尚无会话时用 pendingMode。开聊后锁定。
+  const mode: AgentMode = store ? activeMode(store) : pendingMode
+  const modeLocked = store ? isActiveModeLocked(store) : false
 
   // 发起一轮回复的共用核心：关掉旧句柄、把起点 store 推入流式态、强制贴底跟随，
   // 再交给编排器。onState 把流入的线程折回活跃会话。submit 与 retry 共享它。
@@ -322,7 +335,7 @@ export function useConversation(
       }
       const baseStore: ConversationStore = store
         ? base
-        : addConversation(null, base.activeId, now)
+        : addConversation(null, base.activeId, now, pendingMode)
       const seeded = appendUserMessage(activeThreadOf(baseStore), {
         id: createLocalId("usr"),
         content,
@@ -338,7 +351,7 @@ export function useConversation(
 
       beginReply(content, seeded, started)
     },
-    [beginReply, isStreaming, store],
+    [beginReply, isStreaming, store, pendingMode],
   )
 
   const retry = useCallback(() => {
@@ -431,6 +444,24 @@ export function useConversation(
     [activeId, persistedStore],
   )
 
+  const setMode = useCallback(
+    (next: AgentMode) => {
+      // 已开聊即锁定：忽略切换。无会话时落在 pendingMode，有会话时写入活跃会话。
+      if (modeLocked) {
+        return
+      }
+      if (store) {
+        setLiveStore((prev) => {
+          const current = prev ?? persistedStore
+          return current ? setActiveMode(current, next) : current
+        })
+      } else {
+        setPendingMode(next)
+      }
+    },
+    [modeLocked, store, persistedStore],
+  )
+
   const prefillDraft = useCallback((value: string) => {
     // 起始 chips 预填：填入草稿并聚焦，光标移到末尾便于直接续写。
     setDraft(value)
@@ -451,7 +482,9 @@ export function useConversation(
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     // Enter 发送，Shift+Enter 换行——贴近主流对话输入习惯。
-    if (event.key === "Enter" && !event.shiftKey) {
+    // 输入法合成期（中文拼音选词）的 Enter 只用于确认候选词，绝不当作发送，
+    // 否则会把半截未上屏的句子提前发出去。isComposing 在 keydown 上最可靠。
+    if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault()
       submit(draft)
     }
@@ -479,5 +512,8 @@ export function useConversation(
     activeId,
     selectConversation,
     deleteConversation,
+    mode,
+    setMode,
+    modeLocked,
   }
 }

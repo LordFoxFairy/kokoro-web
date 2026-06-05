@@ -9,11 +9,16 @@ import {
 // 多会话 store：左侧列表 + 当前活跃会话。所有操作为纯不可变函数，便于测试；
 // 时间戳/新 id 由调用方在事件处理里传入（不在 render 里取，避免 SSR 抖动）。
 
+// 回应模式：Fast（更快）/ Thinking（更深思考）。每个会话各自持有；首条消息后锁定，不可再切换。
+export type AgentMode = "fast" | "thinking"
+
 export type ConversationEntry = {
   id: string
   title: string
   updatedAt: number
   thread: SessionStreamState
+  // 本会话选定的回应模式；一旦开聊（有消息）即锁定。
+  mode: AgentMode
   // 在途 live run 的输入：刷新/断线后据此重连续传；run 落定即清除。
   pendingInput?: string
 }
@@ -36,12 +41,17 @@ export function conversationTitle(thread: SessionStreamState): string {
   return text.length > TITLE_MAX ? `${text.slice(0, TITLE_MAX)}…` : text
 }
 
-function emptyEntry(id: string, now: number): ConversationEntry {
+function emptyEntry(
+  id: string,
+  now: number,
+  mode: AgentMode = "fast",
+): ConversationEntry {
   return {
     id,
     title: NEW_CONVERSATION_TITLE,
     updatedAt: now,
     thread: createSessionStreamState(),
+    mode,
   }
 }
 
@@ -84,16 +94,41 @@ export function withActiveThread(
 }
 
 // 新建一个空会话并置为活跃（置于列表最前）。store 为 null 时即新建首个。
+// mode 为新会话的初始回应模式（首个会话承接空首屏上选好的模式）。
 export function addConversation(
   store: ConversationStore | null,
   id: string,
   now: number,
+  mode: AgentMode = "fast",
 ): ConversationStore {
-  const entry = emptyEntry(id, now)
+  const entry = emptyEntry(id, now, mode)
   if (!store) {
     return { activeId: id, conversations: [entry] }
   }
   return { activeId: id, conversations: [entry, ...store.conversations] }
+}
+
+// 设置活跃会话的回应模式（调用方负责在「已开聊即锁定」时不再调用）。
+export function setActiveMode(
+  store: ConversationStore,
+  mode: AgentMode,
+): ConversationStore {
+  return {
+    ...store,
+    conversations: store.conversations.map((entry) =>
+      entry.id === store.activeId ? { ...entry, mode } : entry,
+    ),
+  }
+}
+
+// 活跃会话的回应模式（无会话时回退 fast）。
+export function activeMode(store: ConversationStore): AgentMode {
+  return activeEntry(store)?.mode ?? "fast"
+}
+
+// 活跃会话是否已锁定模式（已开聊：有消息即锁定，不可再切换）。
+export function isActiveModeLocked(store: ConversationStore): boolean {
+  return activeThreadOf(store).messages.length > 0
 }
 
 // 标记/清除活跃会话的在途 run（pendingInput）。clear 传 undefined。
@@ -146,6 +181,8 @@ const storedEntrySchema = z
     title: z.string(),
     updatedAt: z.number(),
     thread: storedSessionStateSchema,
+    // 旧版落盘无 mode：默认补 fast，保持向后兼容，不因新增字段判脏。
+    mode: z.enum(["fast", "thinking"]).default("fast"),
     pendingInput: z.string().optional(),
   })
   .strict()

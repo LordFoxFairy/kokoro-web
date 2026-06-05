@@ -242,6 +242,51 @@ describe("SessionShell first screen", () => {
       screen.getByRole("heading", { name: "今天想做什么？" }),
     ).toBeInTheDocument()
   })
+
+  it("does not send on Enter while an IME composition is active", () => {
+    // 为什么重要：中文拼音选词时的 Enter 只是确认候选词，绝不能当作发送，
+    // 否则会把半截未上屏的句子提前发出去。守卫必须看 isComposing，且只拦合成期。
+    const start = vi.fn(instantReply((input) => input))
+    render(<SessionShell startReply={start} />)
+
+    const input = screen.getByLabelText("对话输入")
+    fireEvent.change(input, { target: { value: "你好" } })
+
+    // 合成期 Enter（选词确认）：不得发起任何回复，仍停留在空首屏。
+    fireEvent.keyDown(input, { key: "Enter", isComposing: true })
+    expect(start).not.toHaveBeenCalled()
+    expect(
+      screen.getByRole("heading", { name: "今天想做什么？" }),
+    ).toBeInTheDocument()
+
+    // 合成结束后的普通 Enter 正常发送——确认守卫只拦合成期、不误伤正常发送。
+    fireEvent.keyDown(input, { key: "Enter" })
+    expect(start).toHaveBeenCalledTimes(1)
+  })
+
+  it("opens an enlarged editor that mirrors the draft and collapses on Escape", () => {
+    // 为什么重要：放大编辑与内联输入框是同一份草稿的两个视图，必须双向同步、
+    // 收起后内容保留——否则用户在大面板里写的长文会丢失。Esc 是其约定的收起键。
+    render(<SessionShell startReply={instantReply((input) => input)} />)
+
+    const input = screen.getByLabelText("对话输入")
+    fireEvent.change(input, { target: { value: "草稿内容" } })
+
+    // 打开放大编辑：出现模态对话框，大编辑框镜像当前草稿。
+    fireEvent.click(screen.getByLabelText("放大编辑"))
+    expect(screen.getByRole("dialog", { name: "放大编辑" })).toBeInTheDocument()
+    const big = screen.getByLabelText("放大编辑输入")
+    expect(big).toHaveValue("草稿内容")
+
+    // 在大编辑框续写会同步回内联输入框（受控于同一份 state）。
+    fireEvent.change(big, { target: { value: "草稿内容——续写" } })
+    expect(screen.getByLabelText("对话输入")).toHaveValue("草稿内容——续写")
+
+    // Esc 收起：对话框消失，内容完整保留在内联输入框，绝不丢失。
+    fireEvent.keyDown(big, { key: "Escape" })
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    expect(screen.getByLabelText("对话输入")).toHaveValue("草稿内容——续写")
+  })
 })
 
 describe("SessionShell starter chips", () => {
@@ -1002,9 +1047,9 @@ describe("SessionShell markdown rendering", () => {
 })
 
 describe("SessionShell agent activity", () => {
-  it("renders the CC-style todo checklist alongside the answer", () => {
-    // 为什么重要：闭环的核心是把智能体活动「展示」出来——一轮里 todo 计划必须可见，
-    // 与最终答案并存，而不是只显示答案。
+  it("puts the plan above the input and the thinking inline in the chat", () => {
+    // 为什么重要：这是布局的核心意图（上一版放错了）——todo 计划钉在输入框上方、
+    // 不混进对话流；思考/工具等活动则像 ChatGPT/Gemini 那样内联在对话里（log 内、答案之上）。
     const withActivity: StartReply = ({
       initialState,
       onState,
@@ -1021,6 +1066,14 @@ describe("SessionShell agent activity", () => {
           { content: "查天气", status: "completed" },
           { content: "作答", status: "in_progress" },
         ],
+      })
+      next = applySessionEvent(next, {
+        kind: "thinking-delta",
+        eventId: `think-${id}`,
+        ...envelope,
+        runId: `r-${id}`,
+        messageId: `m-${id}`,
+        delta: "先查实时天气，再判断是否适合出门。",
       })
       next = applySessionEvent(next, {
         kind: "message-completed",
@@ -1045,12 +1098,42 @@ describe("SessionShell agent activity", () => {
 
     send("北京适合出门吗")
 
-    // 计划清单（含两个条目）渲染。
+    const log = screen.getByRole("log")
+
+    // 计划清单渲染，但在对话流之外（钉在输入框上方）——绝不混进 log。
     expect(screen.getByRole("list", { name: "计划" })).toBeInTheDocument()
     expect(screen.getByText("查天气")).toBeInTheDocument()
-    expect(screen.getByText("作答")).toBeInTheDocument()
-    // 最终答案与活动并存。
-    expect(screen.getByText("晴，适合出门。")).toBeInTheDocument()
+    expect(within(log).queryByRole("list", { name: "计划" })).toBeNull()
+
+    // 过程（含思考）内联在对话流内（在 log 里、归当前轮），与答案并存。
+    expect(within(log).getByText("思考过程")).toBeInTheDocument()
+    expect(within(log).getByText("晴，适合出门。")).toBeInTheDocument()
+  })
+})
+
+describe("SessionShell reply mode (Fast/Thinking lock)", () => {
+  it("locks the mode switcher once the conversation has started", () => {
+    // 为什么重要：用户硬性要求——开聊前可切 Fast/Thinking，发出首条消息后模式即锁定、不可再切。
+    render(<SessionShell startReply={instantReply((input) => `答：${input}`)} />)
+
+    // 空首屏：模式可切换（出现「切换模式」触发器）。
+    expect(screen.getByLabelText("切换模式")).toBeInTheDocument()
+
+    send("开始")
+
+    // 开聊后：切换器消失，代之以只读的锁定态（带「已锁定」无障碍名）。
+    expect(screen.queryByLabelText("切换模式")).toBeNull()
+    expect(screen.getByLabelText(/回应模式：.*已锁定/)).toBeInTheDocument()
+  })
+
+  it("starts a brand-new conversation unlocked again", () => {
+    // 为什么重要：锁定只对当前轮；点「新对话」开新会话后应可重新选择模式。
+    render(<SessionShell startReply={instantReply((input) => `答：${input}`)} />)
+    send("第一段")
+    expect(screen.queryByLabelText("切换模式")).toBeNull()
+
+    fireEvent.click(screen.getByText("新对话"))
+    expect(screen.getByLabelText("切换模式")).toBeInTheDocument()
   })
 })
 

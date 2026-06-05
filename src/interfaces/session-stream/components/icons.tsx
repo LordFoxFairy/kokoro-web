@@ -107,3 +107,140 @@ export function CheckIcon({ className }: IconProps) {
     </svg>
   )
 }
+
+// 放大编辑：向两角外扩的对角双箭头（对齐 Gemini 输入框右上角的展开图标）。
+export function ExpandIcon({ className }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M14 5h5v5" />
+      <path d="M10 19H5v-5" />
+      <path d="M19 5l-6.5 6.5" />
+      <path d="M5 19l6.5-6.5" />
+    </svg>
+  )
+}
+
+// 收起放大编辑：向中心内收的对角双箭头。
+export function CollapseIcon({ className }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M19 9h-5V4" />
+      <path d="M5 15h5v5" />
+      <path d="M14 10l5-5" />
+      <path d="M10 14l-5 5" />
+    </svg>
+  )
+}
+
+// 起始 chips 图标：与图标集统一的细线风格（currentColor），替代之前的彩色 emoji。
+// 学习课件：摊开的书。
+export function BookIcon({ className }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M12 6.4C10.4 5 7.9 4.6 4.5 5.1v12c3.4-.5 5.9-.1 7.5 1.3" />
+      <path d="M12 6.4C13.6 5 16.1 4.6 19.5 5.1v12c-3.4-.5-5.9-.1-7.5 1.3" />
+      <line x1="12" y1="6.4" x2="12" y2="18.4" />
+    </svg>
+  )
+}
+
+// 写一封信：信封。
+export function MailIcon({ className }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <rect x="3.5" y="6" width="17" height="12" rx="2" />
+      <path d="M4.2 7.2l7.8 5.6 7.8-5.6" />
+    </svg>
+  )
+}
+
+// 想法可视化：灯泡。
+export function BulbIcon({ className }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M12 3a5.5 5.5 0 0 0-3.3 9.9c.5.4.8 1 .8 1.6v.5h5v-.5c0-.6.3-1.2.8-1.6A5.5 5.5 0 0 0 12 3Z" />
+      <line x1="9.6" y1="18" x2="14.4" y2="18" />
+      <line x1="10.6" y1="20.5" x2="13.4" y2="20.5" />
+    </svg>
+  )
+}
+
+// 思考：四角星「灵感/推理」标记，代表智能体的内心独白。
+export function SparkIcon({ className }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" aria-hidden>
+      <path d="M12 3.5c.6 3.7 1.8 4.9 5.5 5.5-3.7.6-4.9 1.8-5.5 5.5-.6-3.7-1.8-4.9-5.5-5.5 3.7-.6 4.9-1.8 5.5-5.5Z" />
+      <path d="M18.5 14.5c.3 1.6.8 2.1 2.4 2.4-1.6.3-2.1.8-2.4 2.4-.3-1.6-.8-2.1-2.4-2.4 1.6-.3 2.1-.8 2.4-2.4Z" />
+    </svg>
+  )
+}
+
+// 工具调用：扳手（Lucide wrench）。
+export function WrenchIcon({ className }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76Z" />
+    </svg>
+  )
+}
+
+// todo 待办：空心圆。
+export function CircleIcon({ className }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden>
+      <circle cx="12" cy="12" r="7.5" stroke="currentColor" strokeWidth="1.6" />
+    </svg>
+  )
+}
+
+// todo 进行中：圆环 + 实心圆心。
+export function DotCircleIcon({ className }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden>
+      <circle cx="12" cy="12" r="7.5" stroke="currentColor" strokeWidth="1.6" />
+      <circle cx="12" cy="12" r="3.4" fill="currentColor" />
+    </svg>
+  )
+}
+
+// Fast 模式：闪电（更快回应）。
+export function ZapIcon({ className }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M13 2 4 13.5h6L11 22l9-11.5h-6L13 2Z" />
+    </svg>
+  )
+}
+
+// 模式锁定：选定后本轮对话不可再切换。
+export function LockIcon({ className }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <rect x="5" y="10.5" width="14" height="9.5" rx="2" />
+      <path d="M8 10.5V7.5a4 4 0 0 1 8 0v3" />
+    </svg>
+  )
+}
+
+// 计划条标题：勾选清单。
+export function ChecklistIcon({ className }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M3.5 6.3l1.5 1.5 2.7-2.8" />
+      <path d="M3.5 13.3l1.5 1.5 2.7-2.8" />
+      <line x1="11" y1="6.5" x2="20.5" y2="6.5" />
+      <line x1="11" y1="13.5" x2="20.5" y2="13.5" />
+      <line x1="4" y1="20" x2="20.5" y2="20" />
+    </svg>
+  )
+}
+
+// todo 已完成：圆 + 勾。
+export function CheckCircleIcon({ className }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <circle cx="12" cy="12" r="8" />
+      <path d="M8.4 12.3l2.4 2.4 4.8-5.2" />
+    </svg>
+  )
+}
