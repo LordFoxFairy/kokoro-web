@@ -48,7 +48,8 @@ const storedTodoSchema = z
 
 // 活动字段用 .default([]) / .default("")：旧版落盘（无这些字段）仍能解析并补默认值，
 // 保持刷新可恢复的向后兼容，不因新增字段把历史会话判脏。
-const storedSessionStateSchema = z
+// 导出供 conversation-store 组合校验每个会话的线程。
+export const storedSessionStateSchema = z
   .object({
     seenEventIds: z.array(z.string()),
     messages: z.array(

@@ -1,4 +1,11 @@
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import type {
@@ -14,7 +21,7 @@ afterEach(() => {
   window.localStorage.clear()
 })
 
-const STORAGE_KEY = "kokoro:session-thread"
+const STORAGE_KEY = "kokoro:conversations"
 
 const envelope = { sessionId: "ses_01", conversationId: "conv_01" }
 
@@ -167,6 +174,11 @@ function send(text: string) {
   fireEvent.keyDown(input, { key: "Enter" })
 }
 
+// 对话区内查找：rail 的历史会话标题会与首条用户消息同文，把消息断言限定在 log 内消歧。
+function inLog(text: string) {
+  return within(screen.getByRole("log")).getByText(text)
+}
+
 // 把滚动容器的几何强制成“已上滑”，再派发 scroll，让组件判定为非贴底。
 // jsdom 下这些尺寸恒为 0，必须显式注入才能驱动近底/远底分支。
 function scrollThreadUp() {
@@ -282,7 +294,7 @@ describe("SessionShell conversation", () => {
 
     send("帮我理理今天")
 
-    expect(screen.getByText("帮我理理今天")).toBeInTheDocument()
+    expect(inLog("帮我理理今天")).toBeInTheDocument()
     expect(screen.getByText("回声：帮我理理今天")).toBeInTheDocument()
     // 进入对话态后 hero 让位给对话线。
     expect(
@@ -297,7 +309,7 @@ describe("SessionShell conversation", () => {
 
     send("在吗")
 
-    expect(screen.getByText("在吗")).toBeInTheDocument()
+    expect(inLog("在吗")).toBeInTheDocument()
     // 文案从静态省略号改为「正在输入」+ CSS 脉冲；省略号语义交给动画三点承担。
     expect(screen.getByText("正在输入")).toBeInTheDocument()
     expect(screen.getByLabelText("对话输入")).toBeDisabled()
@@ -310,7 +322,7 @@ describe("SessionShell conversation", () => {
     send("第二句")
 
     // 两轮的用户与 assistant 消息都必须保留，时间线不能被新一轮清空。
-    expect(screen.getByText("第一句")).toBeInTheDocument()
+    expect(inLog("第一句")).toBeInTheDocument()
     expect(screen.getByText("答：第一句")).toBeInTheDocument()
     expect(screen.getByText("第二句")).toBeInTheDocument()
     expect(screen.getByText("答：第二句")).toBeInTheDocument()
@@ -321,7 +333,7 @@ describe("SessionShell conversation", () => {
 
     send("会失败的一轮")
 
-    expect(screen.getByText("会失败的一轮")).toBeInTheDocument()
+    expect(inLog("会失败的一轮")).toBeInTheDocument()
     expect(screen.getByRole("alert")).toHaveTextContent("这一轮没能完成")
     // 失败后输入框恢复可用，用户可以重试。
     expect(screen.getByLabelText("对话输入")).not.toBeDisabled()
@@ -418,33 +430,36 @@ describe("SessionShell stop control", () => {
 })
 
 describe("SessionShell new conversation reset", () => {
-  it("clears a completed exchange back to the empty hero on 新对话", () => {
-    // 为什么重要：新对话必须真正把会话线归零回首屏，而不是只清输入框，
-    // 否则旧的气泡会污染新一段对话的上下文与视觉。
+  it("opens a fresh empty conversation on 新对话, keeping history in the rail", () => {
+    // 为什么重要：新对话必须开一段干净的新会话（hero 回归、对话线清空），
+    // 同时把旧会话保留在左侧历史列表里，不丢上下文。
     render(<SessionShell startReply={instantReply((input) => `答：${input}`)} />)
 
     send("第一段对话")
-    expect(screen.getByText("第一段对话")).toBeInTheDocument()
+    expect(inLog("第一段对话")).toBeInTheDocument()
     expect(screen.getByText("答：第一段对话")).toBeInTheDocument()
 
     fireEvent.click(screen.getByText("新对话"))
 
-    // 气泡全部消失、hero 回归、输入框清空且可用。
-    expect(screen.queryByText("第一段对话")).not.toBeInTheDocument()
-    expect(screen.queryByText("答：第一段对话")).not.toBeInTheDocument()
+    // 新会话是空的：hero 回归、对话线（log）消失、输入清空且聚焦。
     expect(
       screen.getByRole("heading", { name: "今天想做什么？" }),
     ).toBeInTheDocument()
+    expect(screen.queryByRole("log")).toBeNull()
     const input = screen.getByLabelText("对话输入")
     expect(input).toHaveValue("")
     expect(input).not.toBeDisabled()
-    // 焦点回到输入框，用户无需再点一次就能直接开始下一段。
     expect(input).toHaveFocus()
-    // 重置也要落盘为空：刷新后不应又冒出刚清掉的旧对话。
+    // 旧会话仍在 rail 历史列表里（标题=首条消息），不丢失。
+    expect(screen.getByText("第一段对话")).toBeInTheDocument()
+    // 落盘的活跃会话是空的：刷新后停在空首屏。
     const persisted = JSON.parse(
       window.localStorage.getItem(STORAGE_KEY) as string,
     )
-    expect(persisted.messages).toEqual([])
+    const active = persisted.conversations.find(
+      (entry: { id: string }) => entry.id === persisted.activeId,
+    )
+    expect(active.thread.messages).toEqual([])
   })
 
   it("aborts an active stream via the handle close on 新对话", () => {
@@ -565,18 +580,29 @@ describe("SessionShell persistence", () => {
     window.localStorage.setItem(
       STORAGE_KEY,
       JSON.stringify({
-        seenEventIds: ["evt_done"],
-        messages: [
-          { id: "u1", role: "user", content: "持久化的问题" },
-          { id: "a1", role: "assistant", content: "持久化的回答" },
+        activeId: "c1",
+        conversations: [
+          {
+            id: "c1",
+            title: "持久化的问题",
+            updatedAt: 1,
+            // 活动字段省略：storedSessionStateSchema 的 .default() 会补齐。
+            thread: {
+              seenEventIds: ["evt_done"],
+              messages: [
+                { id: "u1", role: "user", content: "持久化的问题" },
+                { id: "a1", role: "assistant", content: "持久化的回答" },
+              ],
+              runStatus: "completed",
+            },
+          },
         ],
-        runStatus: "completed",
       }),
     )
 
     render(<SessionShell startReply={instantReply((input) => input)} />)
 
-    expect(screen.getByText("持久化的问题")).toBeInTheDocument()
+    expect(inLog("持久化的问题")).toBeInTheDocument()
     expect(screen.getByText("持久化的回答")).toBeInTheDocument()
     expect(
       screen.queryByRole("heading", { name: "今天想做什么？" }),
@@ -624,7 +650,10 @@ describe("SessionShell persistence", () => {
     const raw = window.localStorage.getItem(STORAGE_KEY)
     expect(raw).not.toBeNull()
     const persisted = JSON.parse(raw as string)
-    const contents = (persisted.messages as { content: string }[]).map(
+    const active = persisted.conversations.find(
+      (entry: { id: string }) => entry.id === persisted.activeId,
+    )
+    const contents = (active.thread.messages as { content: string }[]).map(
       (message) => message.content,
     )
     expect(contents).toContain("要被持久化")
@@ -651,8 +680,10 @@ describe("SessionShell retry on failure", () => {
 
     // 重试复用了同一句输入（而非空串/草稿）。
     expect(inputs).toEqual(["会先失败再成功", "会先失败再成功"])
-    // 用户气泡未被重复追加：仍只有一条。
-    expect(screen.getAllByText("会先失败再成功")).toHaveLength(1)
+    // 用户气泡未被重复追加：对话区里仍只有一条。
+    expect(
+      within(screen.getByRole("log")).getAllByText("会先失败再成功"),
+    ).toHaveLength(1)
     // 恢复成功：assistant 回复出现。
     expect(screen.getByText("恢复：会先失败再成功")).toBeInTheDocument()
     // 关键：错误提示已消失，无障碍用户据此得知问题已解决。
@@ -944,7 +975,7 @@ describe("SessionShell markdown rendering", () => {
     fireEvent.change(input, { target: { value: "**不要加粗**" } })
     fireEvent.keyDown(input, { key: "Enter" })
 
-    const userText = screen.getByText("**不要加粗**")
+    const userText = inLog("**不要加粗**")
     expect(userText.tagName).toBe("P")
     // 关键：未被解析成 <strong>。
     expect(userText.querySelector("strong")).toBeNull()
@@ -1019,5 +1050,47 @@ describe("SessionShell agent activity", () => {
     expect(screen.getByText("作答")).toBeInTheDocument()
     // 最终答案与活动并存。
     expect(screen.getByText("晴，适合出门。")).toBeInTheDocument()
+  })
+})
+
+describe("SessionShell sessions list", () => {
+  it("lists conversations in the rail and switches between them", () => {
+    // 为什么重要：多会话的核心——发起两段对话后，左侧能列出并自由切换，
+    // 切回某段时它的消息原样回来，互不串话。
+    render(<SessionShell startReply={instantReply((input) => `答：${input}`)} />)
+
+    send("第一段")
+    expect(inLog("第一段")).toBeInTheDocument()
+
+    fireEvent.click(screen.getByText("新对话"))
+    send("第二段")
+    expect(inLog("第二段")).toBeInTheDocument()
+
+    // rail 历史列表同时列出两段（标题=各自首条消息）。
+    const list = screen.getByRole("navigation", { name: "历史会话" })
+    expect(within(list).getByText("第一段")).toBeInTheDocument()
+    expect(within(list).getByText("第二段")).toBeInTheDocument()
+
+    // 切回第一段：它的消息回来，第二段不在当前对话区。
+    fireEvent.click(within(list).getByText("第一段"))
+    expect(inLog("第一段")).toBeInTheDocument()
+    expect(within(screen.getByRole("log")).queryByText("第二段")).toBeNull()
+  })
+
+  it("deletes a conversation from the rail", () => {
+    // 为什么重要：列表必须可删；删掉唯一一段会回到干净的空首屏。
+    render(<SessionShell startReply={instantReply((input) => `答：${input}`)} />)
+
+    send("待删除")
+    const list = screen.getByRole("navigation", { name: "历史会话" })
+    expect(within(list).getByText("待删除")).toBeInTheDocument()
+
+    fireEvent.click(screen.getByLabelText("删除会话 待删除"))
+
+    // 删掉唯一会话 → 起一个新的空会话：hero 回归，旧标题消失。
+    expect(
+      screen.getByRole("heading", { name: "今天想做什么？" }),
+    ).toBeInTheDocument()
+    expect(screen.queryByText("待删除")).toBeNull()
   })
 })
