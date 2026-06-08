@@ -302,8 +302,12 @@
   color: color-mix(in srgb, var(--foreground) 38%, white 62%);
 }
 
-/* 工具调用：可展开看参数/结果。 */
+/* 工具调用：可展开看参数/结果。左侧细竖条做状态强调（运行/完成），
+   color/opacity/边条颜色变化为主，绝不改盒子尺寸——hover/状态切换均无布局抖动。 */
 .kk-tool {
+  position: relative;
+  padding-left: 0.55rem;
+  border-left: 2px solid transparent;
   font-size: 0.84rem;
 }
 
@@ -316,8 +320,49 @@
   padding: 0.1rem 0;
 }
 
+/* 无入参/无结果时的静态行头：去掉指针手型与 marker，明确「不可展开」。 */
+.kk-tool__summary--static {
+  cursor: default;
+}
+
 .kk-tool__summary::-webkit-details-marker {
   display: none;
+}
+
+/* 运行中：名称用暖木强调，左侧竖条点亮；动效（脉动）只在未要求减少动态时启用。 */
+.kk-tool--running {
+  border-left-color: color-mix(in srgb, var(--brand-wood) 45%, transparent);
+}
+
+.kk-tool--running .kk-tool__name {
+  color: var(--brand-wood);
+}
+
+/* 完成：名称略暗、整体降一点不透明度，弱化为已落定的过程项。 */
+.kk-tool--done {
+  border-left-color: color-mix(in srgb, var(--brand-wood) 20%, transparent);
+  opacity: 0.85;
+}
+
+.kk-tool--done .kk-tool__name {
+  color: color-mix(in srgb, var(--foreground) 70%, white 30%);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  /* 运行中左侧竖条呼吸：仅亮度律动，不位移、不改尺寸。 */
+  .kk-tool--running {
+    animation: kk-accent-pulse 1.6s ease-in-out infinite;
+  }
+}
+
+@keyframes kk-accent-pulse {
+  0%,
+  100% {
+    border-left-color: color-mix(in srgb, var(--brand-wood) 28%, transparent);
+  }
+  50% {
+    border-left-color: color-mix(in srgb, var(--brand-wood) 65%, transparent);
+  }
 }
 
 .kk-tool__icon {
@@ -371,12 +416,27 @@
   border-left: 2px solid color-mix(in srgb, var(--brand-wood) 28%, transparent);
 }
 
-/* 子智能体：机器人图标 + 名称/描述 + 状态。 */
+/* 子智能体：机器人图标 + 名称 + 来源胶囊 + 状态；有结论时可展开成嵌套面板。 */
 .kk-subagent {
+  font-size: 0.84rem;
+}
+
+.kk-subagent__summary {
   display: flex;
   align-items: center;
   gap: 0.45rem;
-  font-size: 0.84rem;
+  cursor: pointer;
+  list-style: none;
+  padding: 0.1rem 0;
+}
+
+/* 无结论时的静态行头：去掉指针手型，明确「不可展开」。 */
+.kk-subagent__summary--static {
+  cursor: default;
+}
+
+.kk-subagent__summary::-webkit-details-marker {
+  display: none;
 }
 
 .kk-subagent__icon {
@@ -388,7 +448,8 @@
 
 .kk-subagent__text {
   display: flex;
-  flex-direction: column;
+  align-items: baseline;
+  gap: 0.4rem;
   min-width: 0;
 }
 
@@ -400,18 +461,94 @@
   color: var(--foreground);
 }
 
-.kk-subagent__desc {
-  overflow: hidden;
-  text-overflow: ellipsis;
+/* 来源胶囊：三种来源各自不同的描边/填充样式，按 data-source 区分（见下）。 */
+.kk-subagent__chip {
+  flex-shrink: 0;
+  padding: 0.02rem 0.4rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  line-height: 1.5;
   white-space: nowrap;
-  font-size: 0.72rem;
-  color: color-mix(in srgb, var(--foreground) 55%, white 45%);
+}
+
+/* 内置：实心暖木胶囊。 */
+.kk-subagent[data-source="built-in"] .kk-subagent__chip {
+  border: 1px solid transparent;
+  background: color-mix(in srgb, var(--brand-wood) 82%, white 18%);
+  color: var(--surface);
+}
+
+/* 配置自定义：暖木描边空心胶囊。 */
+.kk-subagent[data-source="config-custom"] .kk-subagent__chip {
+  border: 1px solid color-mix(in srgb, var(--brand-wood) 55%, var(--border-soft) 45%);
+  background: var(--surface);
+  color: color-mix(in srgb, var(--brand-wood) 75%, var(--foreground) 25%);
+}
+
+/* 运行时自定义：虚线描边胶囊，暗示「临时/动态注册」。 */
+.kk-subagent[data-source="runtime-custom"] .kk-subagent__chip {
+  border: 1px dashed color-mix(in srgb, var(--brand-wood) 50%, var(--border-soft) 50%);
+  background: color-mix(in srgb, var(--brand-wood-soft) 40%, transparent);
+  color: color-mix(in srgb, var(--brand-wood) 68%, var(--foreground) 32%);
 }
 
 .kk-subagent__state {
   display: inline-flex;
   flex-shrink: 0;
   margin-left: auto;
+}
+
+.kk-subagent__chevron {
+  display: none;
+}
+
+/* 展开后的嵌套面板：职责 + 结论。结论整段换行、左侧细线区隔，
+   复用工具结果那条暖木左竖条的视觉语言。 */
+.kk-subagent__detail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin-top: 0.3rem;
+}
+
+/* 职责描述：常驻可见的短元信息——换行展示，绝不 ellipsis 截断。 */
+.kk-subagent__desc {
+  margin: 0;
+  padding-left: 1.4rem;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  color: color-mix(in srgb, var(--foreground) 55%, white 45%);
+  white-space: normal;
+  word-break: break-word;
+}
+
+/* 子智能体结论面板：左侧暖木竖条 + 完整换行的 Markdown 正文，封顶内滚。 */
+.kk-subagent__result {
+  margin-left: 1.4rem;
+  padding: 0.35rem 0.55rem;
+  border-left: 2px solid color-mix(in srgb, var(--brand-wood) 28%, transparent);
+  border-radius: 0 0.4rem 0.4rem 0;
+  background: color-mix(in srgb, var(--surface-soft) 60%, transparent);
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: color-mix(in srgb, var(--foreground) 80%, white 20%);
+  max-height: 14rem;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+/* 结论内的 Markdown 整段换行：段落紧凑，绝不 nowrap/ellipsis。 */
+.kk-subagent__result .kk-md {
+  white-space: normal;
+  word-break: break-word;
+}
+
+.kk-subagent__result .kk-md > :first-child {
+  margin-top: 0;
+}
+
+.kk-subagent__result .kk-md > :last-child {
+  margin-bottom: 0;
 }
 
 .kk-thread__status {
