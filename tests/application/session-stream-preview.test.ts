@@ -507,6 +507,107 @@ describe("buildSimulatedReplyEvents", () => {
       "买杯咖啡",
     )
   })
+
+  it("fast mode emits only message deltas + completed, no thinking/tools/todos", () => {
+    const events = buildSimulatedReplyEvents(
+      "今天天气怎么样",
+      { runId: "run_f", messageId: "msg_f" },
+      "fast",
+    )
+
+    expect(events.some((e) => e.kind === "thinking-delta")).toBe(false)
+    expect(events.some((e) => e.kind === "tool-invoked")).toBe(false)
+    expect(events.some((e) => e.kind === "tool-returned")).toBe(false)
+    expect(events.some((e) => e.kind === "todo-updated")).toBe(false)
+
+    const kinds = new Set(events.map((e) => e.kind))
+    expect(kinds).toEqual(
+      new Set(["message-delta", "message-completed", "run-completed"]),
+    )
+    expect(events.at(-1)?.kind).toBe("run-completed")
+  })
+
+  it("thinking mode emits thinking + tool pair + todo BEFORE message-completed", () => {
+    const events = buildSimulatedReplyEvents(
+      "今天天气怎么样",
+      { runId: "run_t", messageId: "msg_t" },
+      "thinking",
+    )
+
+    const completedIndex = events.findIndex(
+      (e) => e.kind === "message-completed",
+    )
+    expect(completedIndex).toBeGreaterThan(0)
+
+    const before = events.slice(0, completedIndex)
+    expect(before.some((e) => e.kind === "thinking-delta")).toBe(true)
+    expect(before.some((e) => e.kind === "tool-invoked")).toBe(true)
+    expect(before.some((e) => e.kind === "tool-returned")).toBe(true)
+    expect(before.some((e) => e.kind === "todo-updated")).toBe(true)
+
+    // tool-invoked must precede its tool-returned and share the same toolId.
+    const invoked = events.find((e) => e.kind === "tool-invoked")
+    const returned = events.find((e) => e.kind === "tool-returned")
+    expect(invoked?.kind === "tool-invoked" && invoked.toolId).toBe(
+      returned?.kind === "tool-returned" && returned.toolId,
+    )
+    expect(events.indexOf(invoked!)).toBeLessThan(events.indexOf(returned!))
+
+    // todo carries exactly two steps.
+    const todo = events.find((e) => e.kind === "todo-updated")
+    expect(todo?.kind === "todo-updated" && todo.todos).toHaveLength(2)
+
+    // thinking deltas + message deltas all carry the same messageId as the reply.
+    const thinkingDeltas = events.filter((e) => e.kind === "thinking-delta")
+    expect(thinkingDeltas.length).toBeGreaterThan(0)
+    expect(
+      thinkingDeltas.every(
+        (e) => e.kind === "thinking-delta" && e.messageId === "msg_t",
+      ),
+    ).toBe(true)
+
+    expect(events.at(-1)?.kind).toBe("run-completed")
+  })
+
+  it("thinking mode is deterministic (no randomness / wall clock)", () => {
+    const ids = { runId: "run_d", messageId: "msg_d" }
+    const first = buildSimulatedReplyEvents("讲讲今天", ids, "thinking")
+    const second = buildSimulatedReplyEvents("讲讲今天", ids, "thinking")
+
+    expect(first).toEqual(second)
+  })
+
+  it("chunks latin text on whole words, not rigid 2-char slices", () => {
+    const events = buildSimulatedReplyEvents(
+      "please tell me about today weather",
+      { runId: "run_w", messageId: "msg_w" },
+      "fast",
+    )
+    const deltas = events
+      .filter((e) => e.kind === "message-delta")
+      .map((e) => (e.kind === "message-delta" ? e.delta : ""))
+
+    const reassembled = deltas.join("")
+    // Whole words survive intact in the echoed reply.
+    expect(reassembled).toContain("please")
+    expect(reassembled).toContain("weather")
+    // No latin delta may be a mid-word interior slice: every run of latin
+    // letters inside a delta must be a complete word, i.e. flanked in the
+    // reassembled text by a non-letter (or string edge) on both sides.
+    let cursor = 0
+    for (const delta of deltas) {
+      const trimmed = delta.trim()
+      if (/^[a-z]+$/i.test(trimmed)) {
+        const start = reassembled.indexOf(trimmed, cursor)
+        expect(start).toBeGreaterThanOrEqual(0)
+        const before = reassembled[start - 1] ?? ""
+        const after = reassembled[start + trimmed.length] ?? ""
+        expect(/[a-z]/i.test(before)).toBe(false)
+        expect(/[a-z]/i.test(after)).toBe(false)
+      }
+      cursor += delta.length
+    }
+  })
 })
 
 describe("simulateAssistantReply", () => {
@@ -546,6 +647,49 @@ describe("simulateAssistantReply", () => {
     expect(final?.messages[1]?.content).toContain("你好")
     expect(final?.runStatus).toBe("completed")
     expect(settledCount).toBe(1)
+  })
+
+  it("threads thinking executionStyle into the simulated stream", () => {
+    vi.useFakeTimers()
+
+    const snapshots: SessionStreamSnapshot[] = []
+    simulateAssistantReply({
+      input: "今天天气",
+      ids: { runId: "run_th", messageId: "msg_th" },
+      executionStyle: "thinking",
+      stepMs: 1,
+      onState: (snapshot) => snapshots.push(snapshot),
+    })
+
+    vi.runAllTimers()
+
+    const final = snapshots.at(-1)
+    // Thinking mode surfaces reasoning, a tool call, and a todo checklist.
+    expect(final?.activityByMessageId["msg_th"]?.thinking.length).toBeGreaterThan(0)
+    expect(final?.activityByMessageId["msg_th"]?.toolCalls.length).toBeGreaterThan(0)
+    expect(final?.todos).toHaveLength(2)
+    expect(final?.runStatus).toBe("completed")
+  })
+
+  it("fast executionStyle skips thinking/tools/todos entirely", () => {
+    vi.useFakeTimers()
+
+    const snapshots: SessionStreamSnapshot[] = []
+    simulateAssistantReply({
+      input: "今天天气",
+      ids: { runId: "run_fa", messageId: "msg_fa" },
+      executionStyle: "fast",
+      stepMs: 1,
+      onState: (snapshot) => snapshots.push(snapshot),
+    })
+
+    vi.runAllTimers()
+
+    const final = snapshots.at(-1)
+    expect(final?.activityByMessageId["msg_fa"]?.thinking ?? "").toBe("")
+    expect(final?.activityByMessageId["msg_fa"]?.toolCalls ?? []).toHaveLength(0)
+    expect(final?.todos).toHaveLength(0)
+    expect(final?.runStatus).toBe("completed")
   })
 
   it("stops streaming when closed early", () => {
