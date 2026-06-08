@@ -2,6 +2,7 @@
 
 import { type CSSProperties, useCallback, useRef, useState } from "react"
 
+import { computeActivityVersion } from "@/application/session-stream-reducer"
 import {
   startSessionReply,
   type StartReply,
@@ -68,8 +69,17 @@ export function SessionShell({
     modeLocked,
   } = useConversation(startReply, scrollToLatestSeam, reattach)
 
+  // 过程块静默生长（思考/工具/子智能体流入，messages 引用不变）也要驱动贴底跟随：
+  // 纯派生数，随活动总量单调增大，作为 auto-scroll 跟随 effect 的额外依赖。
+  const activityVersion = computeActivityVersion(thread)
+
   const { threadEndRef, isNearBottom, scrollToLatest, handleThreadScroll } =
-    useAutoScroll(thread.messages, isStreaming, scrollToLatestRef)
+    useAutoScroll(
+      thread.messages,
+      isStreaming,
+      scrollToLatestRef,
+      activityVersion,
+    )
 
   // 上滑阅读历史时若有新内容到来，浮出“回到最新”入口；贴底跟随时不出现。
   const showJumpToLatest = hasMessages && !isNearBottom

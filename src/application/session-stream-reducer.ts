@@ -124,6 +124,25 @@ export function parseStoredSessionState(
   return result.success ? result.data : null
 }
 
+// 活动总量的纯派生信号：跨所有 message bucket 累加思考文本长度、工具数、子智能体数
+// 及其输出长度。过程块在静默生长（messages 引用不变）时此值单调增大，供 auto-scroll
+// 的跟随 effect 依赖，让贴底视图也跟上过程块的扩张；它只反映内容多少，不掺引用/顺序噪声。
+export function computeActivityVersion(state: SessionStreamState): number {
+  let version = 0
+
+  for (const activity of Object.values(state.activityByMessageId)) {
+    version += activity.thinking.length
+    version += activity.toolCalls.length
+    version += activity.subagents.length
+
+    for (const subagent of activity.subagents) {
+      version += subagent.output?.length ?? 0
+    }
+  }
+
+  return version
+}
+
 export function createSessionStreamState(): SessionStreamState {
   return {
     seenEventIds: [],

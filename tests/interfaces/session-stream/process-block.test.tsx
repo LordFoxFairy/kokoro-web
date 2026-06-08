@@ -80,6 +80,68 @@ describe("ProcessBlock", () => {
     expect(screen.getByText("分析天气与出行适宜度")).toBeInTheDocument()
   })
 
+  it("uses Thinking copy for the live summary and pulse label by default", () => {
+    // 为什么重要：Thinking 是默认形态——流式标题是「思考中…」，脉冲无障碍名是「思考中」。
+    render(
+      <ProcessBlock thinking="x" toolCalls={[]} subagents={[]} live mode="thinking" />,
+    )
+    expect(screen.getByText("思考中…")).toBeInTheDocument()
+    expect(screen.getByLabelText("思考中")).toBeInTheDocument()
+  })
+
+  it("settles to a Thinking summary with the tool count", () => {
+    // 为什么重要：Thinking 落定后收成「思考过程 · N 个工具」。
+    render(
+      <ProcessBlock
+        thinking="x"
+        toolCalls={[tool]}
+        subagents={[]}
+        live={false}
+        mode="thinking"
+      />,
+    )
+    expect(screen.getByText("思考过程 · 1 个工具")).toBeInTheDocument()
+  })
+
+  it("uses Fast copy for the live summary and pulse label (not 思考)", () => {
+    // 为什么重要：Fast 是「直接作答」，把它的过程叫「思考中」自相矛盾——
+    // 流式标题必须是「处理中…」，脉冲无障碍名必须是「处理中」，且绝不出现「思考」。
+    render(
+      <ProcessBlock thinking="x" toolCalls={[]} subagents={[]} live mode="fast" />,
+    )
+    expect(screen.getByText("处理中…")).toBeInTheDocument()
+    expect(screen.getByLabelText("处理中")).toBeInTheDocument()
+    expect(screen.queryByText("思考中…")).not.toBeInTheDocument()
+    expect(screen.queryByLabelText("思考中")).not.toBeInTheDocument()
+  })
+
+  it("settles Fast to a 处理过程 summary, keeping the tool count", () => {
+    // 为什么重要：Fast 落定收成「处理过程 · N 个工具」（无工具时仅「处理过程」），
+    // 沿用同一套计数逻辑，只换名词。
+    const { rerender } = render(
+      <ProcessBlock
+        thinking="x"
+        toolCalls={[tool]}
+        subagents={[]}
+        live={false}
+        mode="fast"
+      />,
+    )
+    expect(screen.getByText("处理过程 · 1 个工具")).toBeInTheDocument()
+    expect(screen.queryByText(/思考过程/)).not.toBeInTheDocument()
+
+    rerender(
+      <ProcessBlock
+        thinking="x"
+        toolCalls={[]}
+        subagents={[]}
+        live={false}
+        mode="fast"
+      />,
+    )
+    expect(screen.getByText("处理过程")).toBeInTheDocument()
+  })
+
   it("reflects the conversation mode as a data-mode hook for density styling", () => {
     // 为什么重要：Fast/Thinking 要在过程块上读出差异（密度交给 CSS 按 data-mode 调），
     // 只暴露稳定的 mode 钩子，不靠组件内写死的额外文案。

@@ -1109,7 +1109,8 @@ describe("SessionShell agent activity", () => {
     expect(within(log).queryByRole("list", { name: "计划" })).toBeNull()
 
     // 过程（含思考）内联在对话流内（在 log 里、归当前轮），与答案并存。
-    expect(within(log).getByText("思考过程")).toBeInTheDocument()
+    // 默认 Fast 模式：落定摘要按模式作「处理过程」（无工具时不带计数），不再叫「思考过程」。
+    expect(within(log).getByText("处理过程")).toBeInTheDocument()
     expect(within(log).getByText("晴，适合出门。")).toBeInTheDocument()
   })
 
