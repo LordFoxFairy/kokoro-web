@@ -17,30 +17,41 @@ function formatArgs(args: Record<string, unknown>): string | null {
   }
 }
 
-// 单条工具调用：扳手 + 名称 + 运行态；可展开核对入参与返回结果。
+// 单条工具调用：扳手 + 名称 + 运行态。有入参/结果时是可展开的 <details>，
+// 无任何细节时退化为不可点击的 <div>，避免无意义的死切换。
 export function ToolCallRow({ tool }: { tool: SessionToolCall }) {
   const argsText = formatArgs(tool.args)
   const hasDetail = argsText !== null || Boolean(tool.result)
 
+  const head = (
+    <>
+      <WrenchIcon className="kk-tool__icon" />
+      <span className="kk-tool__name">{tool.name}</span>
+      <span className="kk-tool__state" aria-hidden>
+        <RunState done={tool.status === "done"} />
+      </span>
+    </>
+  )
+
+  if (!hasDetail) {
+    return (
+      <div className={`kk-tool kk-tool--${tool.status}`}>
+        <div className="kk-tool__summary kk-tool__summary--static">{head}</div>
+      </div>
+    )
+  }
+
   return (
     <details className={`kk-tool kk-tool--${tool.status}`}>
-      <summary className="kk-tool__summary">
-        <WrenchIcon className="kk-tool__icon" />
-        <span className="kk-tool__name">{tool.name}</span>
-        <span className="kk-tool__state" aria-hidden>
-          <RunState done={tool.status === "done"} />
-        </span>
-      </summary>
-      {hasDetail ? (
-        <div className="kk-tool__detail">
-          {argsText !== null ? (
-            <pre className="kk-tool__args">{argsText}</pre>
-          ) : null}
-          {tool.result ? (
-            <pre className="kk-tool__result">{tool.result}</pre>
-          ) : null}
-        </div>
-      ) : null}
+      <summary className="kk-tool__summary">{head}</summary>
+      <div className="kk-tool__detail">
+        {argsText !== null ? (
+          <pre className="kk-tool__args">{argsText}</pre>
+        ) : null}
+        {tool.result ? (
+          <pre className="kk-tool__result">{tool.result}</pre>
+        ) : null}
+      </div>
     </details>
   )
 }
