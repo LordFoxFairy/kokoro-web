@@ -55,6 +55,7 @@ function instantReply(makeText: (input: string) => string): StartReply {
   }
 }
 
+
 // 流式中桩：推一条增量但永不 settle，组件应停留在 streaming 态。
 const neverSettles: StartReply = ({
   initialState,
@@ -381,6 +382,8 @@ describe("SessionShell conversation", () => {
 
     expect(inLog("会失败的一轮")).toBeInTheDocument()
     expect(screen.getByRole("alert")).toHaveTextContent("这一轮没能完成")
+    expect(screen.getByText(/Fast · 这轮未完成/)).toBeInTheDocument()
+    expect(screen.getByText("这轮快速回应没能完成，请再试一次")).toBeInTheDocument()
     // 失败后输入框恢复可用，用户可以重试。
     expect(screen.getByLabelText("对话输入")).not.toBeDisabled()
   })
@@ -1109,9 +1112,142 @@ describe("SessionShell agent activity", () => {
     expect(within(log).getByText("思考过程")).toBeInTheDocument()
     expect(within(log).getByText("晴，适合出门。")).toBeInTheDocument()
   })
+
+  it("renders multiple assistant segments in one turn with their own local process blocks", () => {
+    // 为什么重要：真实 agent 可能在同一轮里输出多段 assistant 文本；每一段下面都要挂自己那一段的过程，
+    // 不能把后一段的子智能体/工具混到前一段，也不能只渲染最后一段。
+    const multiSegmentReply: StartReply = ({
+      initialState,
+      onState,
+      onSettled,
+    }: StartReplyInput) => {
+      stubCounter += 1
+      const id = stubCounter
+      const runId = `r-${id}`
+      const firstMessageId = `m-${id}-1`
+      const secondMessageId = `m-${id}-2`
+
+      let next = applySessionEvent(initialState, {
+        kind: "thinking-delta",
+        eventId: `think-1-${id}`,
+        ...envelope,
+        runId,
+        messageId: firstMessageId,
+        delta: "先查天气。",
+      })
+      next = applySessionEvent(next, {
+        kind: "tool-invoked",
+        eventId: `tool-invoked-${id}`,
+        ...envelope,
+        runId,
+        messageId: firstMessageId,
+        toolId: `tool-${id}`,
+        name: "get_weather",
+        args: { city: "北京" },
+      })
+      next = applySessionEvent(next, {
+        kind: "tool-returned",
+        eventId: `tool-returned-${id}`,
+        ...envelope,
+        runId,
+        messageId: firstMessageId,
+        toolId: `tool-${id}`,
+        name: "get_weather",
+        result: "北京：晴",
+      })
+      next = applySessionEvent(next, {
+        kind: "message-completed",
+        eventId: `completed-1-${id}`,
+        ...envelope,
+        runId,
+        messageId: firstMessageId,
+        role: "assistant",
+        content: "第一段回答：先给结论。",
+      })
+      next = applySessionEvent(next, {
+        kind: "thinking-delta",
+        eventId: `think-2-${id}`,
+        ...envelope,
+        runId,
+        messageId: secondMessageId,
+        delta: "再补充背景。",
+      })
+      next = applySessionEvent(next, {
+        kind: "subagent-started",
+        eventId: `subagent-started-${id}`,
+        ...envelope,
+        runId,
+        messageId: secondMessageId,
+        subagentId: `subagent-${id}`,
+        name: "researcher",
+        description: "查资料",
+        subagentType: "researcher",
+        source: "built-in",
+      })
+      next = applySessionEvent(next, {
+        kind: "subagent-finished",
+        eventId: `subagent-finished-${id}`,
+        ...envelope,
+        runId,
+        messageId: secondMessageId,
+        subagentId: `subagent-${id}`,
+        name: "researcher",
+        subagentType: "researcher",
+        source: "built-in",
+      })
+      next = applySessionEvent(next, {
+        kind: "message-completed",
+        eventId: `completed-2-${id}`,
+        ...envelope,
+        runId,
+        messageId: secondMessageId,
+        role: "assistant",
+        content: "第二段回答：再补充说明。",
+      })
+      next = applySessionEvent(next, {
+        kind: "run-completed",
+        eventId: `done-${id}`,
+        ...envelope,
+        runId,
+      })
+      onState(next)
+      onSettled?.("preview")
+      return { close: () => {} }
+    }
+
+    render(<SessionShell startReply={multiSegmentReply} />)
+
+    send("北京今天怎么样")
+
+    const log = screen.getByRole("log")
+    const assistantTurns = Array.from(log.querySelectorAll(".kk-msg--assistant"))
+
+    expect(assistantTurns).toHaveLength(2)
+
+    expect(
+      within(assistantTurns[0] as HTMLElement).getByText("第一段回答：先给结论。"),
+    ).toBeInTheDocument()
+    expect(
+      within(assistantTurns[0] as HTMLElement).getByText("get_weather"),
+    ).toBeInTheDocument()
+    expect(
+      within(assistantTurns[0] as HTMLElement).queryByText("researcher"),
+    ).toBeNull()
+
+    expect(
+      within(assistantTurns[1] as HTMLElement).getByText("第二段回答：再补充说明。"),
+    ).toBeInTheDocument()
+    expect(
+      within(assistantTurns[1] as HTMLElement).getByText("researcher"),
+    ).toBeInTheDocument()
+    expect(
+      within(assistantTurns[1] as HTMLElement).queryByText("get_weather"),
+    ).toBeNull()
+  })
 })
 
 describe("SessionShell reply mode (Fast/Thinking lock)", () => {
+
   it("locks the mode switcher once the conversation has started", () => {
     // 为什么重要：用户硬性要求——开聊前可切 Fast/Thinking，发出首条消息后模式即锁定、不可再切。
     render(<SessionShell startReply={instantReply((input) => `答：${input}`)} />)
@@ -1134,6 +1270,23 @@ describe("SessionShell reply mode (Fast/Thinking lock)", () => {
 
     fireEvent.click(screen.getByText("新对话"))
     expect(screen.getByLabelText("切换模式")).toBeInTheDocument()
+  })
+
+  it("passes the selected mode as executionStyle when starting the first run", () => {
+    const start = vi.fn(({ onSettled }: StartReplyInput) => {
+      onSettled?.("preview")
+      return { close: () => {} }
+    })
+
+    render(<SessionShell startReply={start} />)
+
+    fireEvent.click(screen.getByLabelText("切换模式"))
+    fireEvent.click(screen.getByRole("menuitemradio", { name: /Thinking/ }))
+    send("开始")
+
+    expect(
+      (start.mock.calls[0]?.[0] as { executionStyle?: string }).executionStyle,
+    ).toBe("thinking")
   })
 })
 

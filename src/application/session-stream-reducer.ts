@@ -23,14 +23,26 @@ export type SessionSubagent = {
   id: string
   name: string
   description: string
+  subagentType: string
+  source: "built-in" | "config-custom" | "runtime-custom"
+  output?: string
   status: "running" | "done"
+}
+
+export type SegmentActivity = {
+  messageId: string
+  thinking: string
+  toolCalls: SessionToolCall[]
+  subagents: SessionSubagent[]
 }
 
 export type SessionStreamState = {
   seenEventIds: string[]
   messages: SessionMessage[]
-  // 活动流：CC 风格 todo 清单（整表替换）、工具调用时间线、子智能体、思考缓冲。
+  // 活动流：todo 仍按当前运行整表替换；思考/工具/子智能体改为按 assistant message 归桶。
   todos: SessionTodo[]
+  activityByMessageId: Record<string, SegmentActivity>
+  // 兼容当前 renderer（Task 4 再切）：始终镜像“最近被活动事件触达”的那一个 message bucket。
   toolCalls: SessionToolCall[]
   subagents: SessionSubagent[]
   thinking: string
@@ -43,6 +55,37 @@ const storedTodoSchema = z
   .object({
     content: z.string(),
     status: z.enum(["pending", "in_progress", "completed"]),
+  })
+  .strict()
+
+const storedToolCallSchema = z
+  .object({
+    id: z.string(),
+    name: z.string(),
+    args: z.record(z.unknown()),
+    result: z.string().optional(),
+    status: z.enum(["running", "done"]),
+  })
+  .strict()
+
+const storedSubagentSchema = z
+  .object({
+    id: z.string(),
+    name: z.string(),
+    description: z.string(),
+    subagentType: z.string().default("subagent"),
+    source: z.enum(["built-in", "config-custom", "runtime-custom"]).default("built-in"),
+    output: z.string().optional(),
+    status: z.enum(["running", "done"]),
+  })
+  .strict()
+
+const storedSegmentActivitySchema = z
+  .object({
+    messageId: z.string(),
+    thinking: z.string().default(""),
+    toolCalls: z.array(storedToolCallSchema).default([]),
+    subagents: z.array(storedSubagentSchema).default([]),
   })
   .strict()
 
@@ -62,31 +105,9 @@ export const storedSessionStateSchema = z
         .strict(),
     ),
     todos: z.array(storedTodoSchema).default([]),
-    toolCalls: z
-      .array(
-        z
-          .object({
-            id: z.string(),
-            name: z.string(),
-            args: z.record(z.unknown()),
-            result: z.string().optional(),
-            status: z.enum(["running", "done"]),
-          })
-          .strict(),
-      )
-      .default([]),
-    subagents: z
-      .array(
-        z
-          .object({
-            id: z.string(),
-            name: z.string(),
-            description: z.string(),
-            status: z.enum(["running", "done"]),
-          })
-          .strict(),
-      )
-      .default([]),
+    activityByMessageId: z.record(storedSegmentActivitySchema).default({}),
+    toolCalls: z.array(storedToolCallSchema).default([]),
+    subagents: z.array(storedSubagentSchema).default([]),
     thinking: z.string().default(""),
     runStatus: z.enum(["idle", "completed", "failed"]),
   })
@@ -108,10 +129,43 @@ export function createSessionStreamState(): SessionStreamState {
     seenEventIds: [],
     messages: [],
     todos: [],
+    activityByMessageId: {},
     toolCalls: [],
     subagents: [],
     thinking: "",
     runStatus: "idle",
+  }
+}
+
+function createEmptyActivity(messageId: string): SegmentActivity {
+  return {
+    messageId,
+    thinking: "",
+    toolCalls: [],
+    subagents: [],
+  }
+}
+
+function ensureActivity(
+  state: SessionStreamState,
+  messageId: string,
+): SegmentActivity {
+  return state.activityByMessageId[messageId] ?? createEmptyActivity(messageId)
+}
+
+function replaceActivity(
+  state: SessionStreamState,
+  activity: SegmentActivity,
+): SessionStreamState {
+  return {
+    ...state,
+    activityByMessageId: {
+      ...state.activityByMessageId,
+      [activity.messageId]: activity,
+    },
+    toolCalls: activity.toolCalls,
+    subagents: activity.subagents,
+    thinking: activity.thinking,
   }
 }
 
@@ -124,10 +178,11 @@ export function applySessionEvent(
     return state
   }
 
-  const nextState: SessionStreamState = {
+  let nextState: SessionStreamState = {
     ...state,
     seenEventIds: [...state.seenEventIds, event.eventId],
     messages: [...state.messages],
+    activityByMessageId: { ...state.activityByMessageId },
     toolCalls: [...state.toolCalls],
     subagents: [...state.subagents],
   }
@@ -183,30 +238,43 @@ export function applySessionEvent(
   }
 
   if (event.kind === "thinking-delta") {
-    nextState.thinking = `${state.thinking}${event.delta}`
+    const activity = ensureActivity(nextState, event.messageId)
+    nextState = replaceActivity(nextState, {
+      ...activity,
+      thinking: `${activity.thinking}${event.delta}`,
+    })
   }
 
   if (event.kind === "tool-invoked") {
-    nextState.toolCalls.push({
-      id: event.toolId,
-      name: event.name,
-      args: event.args,
-      status: "running",
+    const activity = ensureActivity(nextState, event.messageId)
+    nextState = replaceActivity(nextState, {
+      ...activity,
+      toolCalls: [
+        ...activity.toolCalls,
+        {
+          id: event.toolId,
+          name: event.name,
+          args: event.args,
+          status: "running",
+        },
+      ],
     })
   }
 
   if (event.kind === "tool-returned") {
-    const index = nextState.toolCalls.findIndex((t) => t.id === event.toolId)
-    const existing = index >= 0 ? nextState.toolCalls[index] : undefined
+    const activity = ensureActivity(nextState, event.messageId)
+    const index = activity.toolCalls.findIndex((t) => t.id === event.toolId)
+    const existing = index >= 0 ? activity.toolCalls[index] : undefined
+    const toolCalls = [...activity.toolCalls]
     if (existing) {
-      nextState.toolCalls[index] = {
+      toolCalls[index] = {
         ...existing,
         result: event.result,
         status: "done",
       }
     } else {
       // 无配对的 invoked（如部分 replay）：仍记录已完成的结果，不丢事件。
-      nextState.toolCalls.push({
+      toolCalls.push({
         id: event.toolId,
         name: event.name,
         args: {},
@@ -214,6 +282,10 @@ export function applySessionEvent(
         status: "done",
       })
     }
+    nextState = replaceActivity(nextState, {
+      ...activity,
+      toolCalls,
+    })
   }
 
   if (event.kind === "todo-updated") {
@@ -222,21 +294,65 @@ export function applySessionEvent(
   }
 
   if (event.kind === "subagent-started") {
-    nextState.subagents.push({
-      id: event.subagentId,
-      name: event.name,
-      description: event.description,
-      status: "running",
+    const activity = ensureActivity(nextState, event.messageId)
+    nextState = replaceActivity(nextState, {
+      ...activity,
+      subagents: [
+        ...activity.subagents,
+        {
+          id: event.subagentId,
+          name: event.name,
+          description: event.description,
+          subagentType: event.subagentType,
+          source: event.source,
+          status: "running",
+        },
+      ],
     })
   }
 
   if (event.kind === "subagent-finished") {
-    const index = nextState.subagents.findIndex(
-      (s) => s.id === event.subagentId,
-    )
-    const existing = index >= 0 ? nextState.subagents[index] : undefined
+    const activity = ensureActivity(nextState, event.messageId)
+    const index = activity.subagents.findIndex((s) => s.id === event.subagentId)
+    const existing = index >= 0 ? activity.subagents[index] : undefined
     if (existing) {
-      nextState.subagents[index] = { ...existing, status: "done" }
+      const subagents = [...activity.subagents]
+      subagents[index] = { ...existing, status: "done" }
+      nextState = replaceActivity(nextState, {
+        ...activity,
+        subagents,
+      })
+    }
+  }
+
+  if (event.kind === "subagent-text-delta") {
+    const activity = ensureActivity(nextState, event.messageId)
+    const index = activity.subagents.findIndex((s) => s.id === event.subagentId)
+    const existing = index >= 0 ? activity.subagents[index] : undefined
+    if (existing) {
+      const subagents = [...activity.subagents]
+      subagents[index] = {
+        ...existing,
+        output: `${existing.output ?? ""}${event.text}`,
+      }
+      nextState = replaceActivity(nextState, {
+        ...activity,
+        subagents,
+      })
+    }
+  }
+
+  if (event.kind === "subagent-text-completed") {
+    const activity = ensureActivity(nextState, event.messageId)
+    const index = activity.subagents.findIndex((s) => s.id === event.subagentId)
+    const existing = index >= 0 ? activity.subagents[index] : undefined
+    if (existing) {
+      const subagents = [...activity.subagents]
+      subagents[index] = { ...existing, output: event.text }
+      nextState = replaceActivity(nextState, {
+        ...activity,
+        subagents,
+      })
     }
   }
 
@@ -257,7 +373,9 @@ export function appendUserMessage(
   state: SessionStreamState,
   message: { id: string; content: string },
 ): SessionStreamState {
-  // 新一轮从干净的活动开始：todo/工具/子智能体/思考只反映当前轮，不跨轮堆积。
+  // 新一轮从干净的活动开始：run-level 镜像状态（todo/工具/子智能体/思考）只反映当前轮，
+  // 但历史 assistant message 的 message-scoped activity buckets 需要保留，供 thread/replay/render 继续使用。
+  // 上一轮终态（completed/failed）也必须复位为 idle，避免新问题尚未开始时继续挂着旧终态。
   return {
     ...state,
     messages: [
@@ -268,5 +386,6 @@ export function appendUserMessage(
     toolCalls: [],
     subagents: [],
     thinking: "",
+    runStatus: "idle",
   }
 }

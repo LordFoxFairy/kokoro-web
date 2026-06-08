@@ -28,6 +28,8 @@ const subagent: SessionSubagent = {
   id: "s1",
   name: "weather-analyst",
   description: "分析天气与出行适宜度",
+  subagentType: "weather-analyst",
+  source: "built-in",
   status: "running",
 }
 

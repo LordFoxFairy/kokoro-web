@@ -16,6 +16,8 @@ const eventEnvelopeSchema = z
       "todo.updated",
       "subagent.started",
       "subagent.finished",
+      "subagent.text.delta",
+      "subagent.text.completed",
       "artifact.available",
       "permission.required",
       "run.completed",
@@ -95,6 +97,7 @@ const toolInvokedSchema = eventEnvelopeSchema.extend({
   event: z.literal("tool.invoked"),
   payload: z
     .object({
+      message_id: z.string().min(1),
       tool_id: z.string().min(1),
       name: z.string().min(1),
       args: z.record(z.unknown()),
@@ -106,6 +109,7 @@ const toolReturnedSchema = eventEnvelopeSchema.extend({
   event: z.literal("tool.returned"),
   payload: z
     .object({
+      message_id: z.string().min(1),
       tool_id: z.string().min(1),
       name: z.string().min(1),
       result: z.string(),
@@ -133,9 +137,12 @@ const subagentStartedSchema = eventEnvelopeSchema.extend({
   event: z.literal("subagent.started"),
   payload: z
     .object({
+      message_id: z.string().min(1),
       subagent_id: z.string().min(1),
       name: z.string().min(1),
       description: z.string(),
+      subagent_type: z.string().min(1),
+      source: z.enum(["built-in", "config-custom", "runtime-custom"]),
     })
     .strict(),
 })
@@ -144,8 +151,33 @@ const subagentFinishedSchema = eventEnvelopeSchema.extend({
   event: z.literal("subagent.finished"),
   payload: z
     .object({
+      message_id: z.string().min(1),
       subagent_id: z.string().min(1),
       name: z.string().min(1),
+      subagent_type: z.string().min(1),
+      source: z.enum(["built-in", "config-custom", "runtime-custom"]),
+    })
+    .strict(),
+})
+
+const subagentTextDeltaSchema = eventEnvelopeSchema.extend({
+  event: z.literal("subagent.text.delta"),
+  payload: z
+    .object({
+      message_id: z.string().min(1),
+      subagent_id: z.string().min(1),
+      text: z.string(),
+    })
+    .strict(),
+})
+
+const subagentTextCompletedSchema = eventEnvelopeSchema.extend({
+  event: z.literal("subagent.text.completed"),
+  payload: z
+    .object({
+      message_id: z.string().min(1),
+      subagent_id: z.string().min(1),
+      text: z.string(),
     })
     .strict(),
 })
@@ -213,6 +245,8 @@ export const sessionEventSchema = z.union([
   todoUpdatedSchema,
   subagentStartedSchema,
   subagentFinishedSchema,
+  subagentTextDeltaSchema,
+  subagentTextCompletedSchema,
   artifactAvailableSchema,
   permissionRequiredSchema,
   runCompletedSchema,
@@ -302,6 +336,7 @@ export function toSessionStreamEvent(
         sessionId: event.session_id,
         conversationId: event.conversation_id,
         runId: event.run_id,
+        messageId: event.payload.message_id,
         toolId: event.payload.tool_id,
         name: event.payload.name,
         args: event.payload.args,
@@ -313,6 +348,7 @@ export function toSessionStreamEvent(
         sessionId: event.session_id,
         conversationId: event.conversation_id,
         runId: event.run_id,
+        messageId: event.payload.message_id,
         toolId: event.payload.tool_id,
         name: event.payload.name,
         result: event.payload.result,
@@ -333,9 +369,12 @@ export function toSessionStreamEvent(
         sessionId: event.session_id,
         conversationId: event.conversation_id,
         runId: event.run_id,
+        messageId: event.payload.message_id,
         subagentId: event.payload.subagent_id,
         name: event.payload.name,
         description: event.payload.description,
+        subagentType: event.payload.subagent_type,
+        source: event.payload.source,
       }
     case "subagent.finished":
       return {
@@ -344,8 +383,33 @@ export function toSessionStreamEvent(
         sessionId: event.session_id,
         conversationId: event.conversation_id,
         runId: event.run_id,
+        messageId: event.payload.message_id,
         subagentId: event.payload.subagent_id,
         name: event.payload.name,
+        subagentType: event.payload.subagent_type,
+        source: event.payload.source,
+      }
+    case "subagent.text.delta":
+      return {
+        kind: "subagent-text-delta",
+        eventId: event.event_id,
+        sessionId: event.session_id,
+        conversationId: event.conversation_id,
+        runId: event.run_id,
+        messageId: event.payload.message_id,
+        subagentId: event.payload.subagent_id,
+        text: event.payload.text,
+      }
+    case "subagent.text.completed":
+      return {
+        kind: "subagent-text-completed",
+        eventId: event.event_id,
+        sessionId: event.session_id,
+        conversationId: event.conversation_id,
+        runId: event.run_id,
+        messageId: event.payload.message_id,
+        subagentId: event.payload.subagent_id,
+        text: event.payload.text,
       }
     case "artifact.available":
     case "permission.required":

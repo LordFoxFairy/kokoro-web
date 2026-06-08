@@ -27,7 +27,6 @@ import {
 import {
   createLocalId,
   reattachLiveSession,
-  resolveSessionBaseUrl,
   type LiveSessionHandle,
   type ReplyMode,
   type StartReply,
@@ -102,6 +101,15 @@ export type ConversationSummary = {
   title: string
 }
 
+type TransportState = "idle" | "connecting" | ReplyMode
+
+type PresentationTransportState = TransportState | "failed"
+
+export type ModePresentation = {
+  transportLabel: string
+  modeHint: string
+}
+
 type Conversation = {
   thread: SessionStreamState
   draft: string
@@ -109,6 +117,7 @@ type Conversation = {
   prefillDraft: (value: string) => void
   isStreaming: boolean
   transportLabel: string
+  presentation: ModePresentation
   composerRef: RefObject<HTMLTextAreaElement | null>
   retry: () => void
   stopReply: () => void
@@ -127,6 +136,83 @@ type Conversation = {
   mode: AgentMode
   setMode: (mode: AgentMode) => void
   modeLocked: boolean
+}
+
+const MODE_HINTS: Record<
+  AgentMode,
+  {
+    idle: string
+    connecting: string
+    preview: string
+    live: string
+    settled: string
+    failed: string
+  }
+> = {
+  fast: {
+    idle: "可直接给你一个结论",
+    connecting: "正在快速整理这轮问题",
+    preview: "本地预览也会直接给你一个结论",
+    live: "正在快速整理这轮问题",
+    settled: "已直接给出这轮结论",
+    failed: "这轮快速回应没能完成，请再试一次",
+  },
+  thinking: {
+    idle: "会先整理步骤，再给你答案",
+    connecting: "正在分步整理这轮思路",
+    preview: "本地预览也会先整理步骤，再给你答案",
+    live: "正在分步整理这轮思路",
+    settled: "已按步骤完成这轮思考",
+    failed: "这轮分步思考没能完成，请再试一次",
+  },
+}
+
+export function modePresentation(
+  mode: AgentMode,
+  transportState: PresentationTransportState,
+  isStreaming: boolean,
+  hasMessages: boolean,
+): ModePresentation {
+  const modeLabel = mode === "thinking" ? "Thinking" : "Fast"
+  const hints = MODE_HINTS[mode]
+
+  if (transportState === "failed") {
+    return {
+      transportLabel: `${modeLabel} · 这轮未完成`,
+      modeHint: hints.failed,
+    }
+  }
+
+  if (transportState === "idle") {
+    return hasMessages
+      ? {
+          transportLabel: `${modeLabel} · 已准备继续`,
+          modeHint: hints.settled,
+        }
+      : {
+          transportLabel: `${modeLabel} · 等你发出首条消息`,
+          modeHint: hints.idle,
+        }
+  }
+
+  if (transportState === "connecting") {
+    return {
+      transportLabel: `${modeLabel} · 正在开始这轮回复`,
+      modeHint: hints.connecting,
+    }
+  }
+
+  if (transportState === "preview") {
+    return {
+      transportLabel: `${modeLabel} · 本地预览`,
+      modeHint: isStreaming ? hints.connecting : hints.preview,
+    }
+  }
+
+  return {
+    transportLabel: `${modeLabel} · 实时会话已连接`,
+    modeHint: isStreaming ? hints.live : hints.settled,
+  }
 }
 
 function nowMs(): number {
@@ -176,7 +262,7 @@ export function useConversation(
 
   const [draft, setDraft] = useState("")
   const [isStreaming, setIsStreaming] = useState(false)
-  const [transportLabel, setTransportLabel] = useState("")
+  const [transportState, setTransportState] = useState<TransportState>("idle")
   // 空首屏（尚无会话）时选好的模式：首条消息创建首个会话时承接它。会话存在后模式以会话为准。
   const [pendingMode, setPendingMode] = useState<AgentMode>("fast")
 
@@ -218,16 +304,17 @@ export function useConversation(
     }
     reattachedRef.current = pendingConvId
 
-    // 重连即进入流式态并显示实时标签——订阅型 effect 启动时的合法状态更新（规则在此误报）。
+    // 重连即进入流式态并恢复到 live transport state——presentation 由 modePresentation 统一生成。
     /* eslint-disable react-hooks/set-state-in-effect */
     setIsStreaming(true)
-    setTransportLabel(`实时 · ${resolveSessionBaseUrl()}`)
+    setTransportState("live")
     /* eslint-enable react-hooks/set-state-in-effect */
     lastInputRef.current = entry.pendingInput ?? ""
 
     const settle = () => {
       setIsStreaming(false)
       requestInFlightRef.current = false
+      setTransportState("live")
       setLiveStore((prev) => (prev ? setActivePending(prev, undefined) : prev))
     }
 
@@ -268,6 +355,12 @@ export function useConversation(
   // 模式以活跃会话为准；尚无会话时用 pendingMode。开聊后锁定。
   const mode: AgentMode = store ? activeMode(store) : pendingMode
   const modeLocked = store ? isActiveModeLocked(store) : false
+  const presentation = modePresentation(
+    mode,
+    hasFailed ? "failed" : transportState,
+    isStreaming,
+    hasMessages,
+  )
 
   // 发起一轮回复的共用核心：关掉旧句柄、把起点 store 推入流式态、强制贴底跟随，
   // 再交给编排器。onState 把流入的线程折回活跃会话。submit 与 retry 共享它。
@@ -286,13 +379,16 @@ export function useConversation(
         // 每个会话用自己的 backend session id（= 会话 id），replay 流互不混淆，
         // 也让中断恢复能精确重订阅本会话的在途 run。
         sessionId: storeAtStart.activeId,
+        executionStyle: mode,
         onState: (next: SessionStreamState) => {
+          setTransportState((prev) => (prev === "live" ? prev : "preview"))
           setLiveStore((prev) =>
             withActiveThread(prev ?? storeAtStart, next, nowMs()),
           )
         },
         onLive: () => {
           // 确认 live：标记在途 run，刷新/断线后可重连续传。
+          setTransportState("live")
           setLiveStore((prev) =>
             prev ? setActivePending(prev, content) : prev,
           )
@@ -300,16 +396,14 @@ export function useConversation(
         onSettled: (mode: ReplyMode) => {
           requestInFlightRef.current = false
           setIsStreaming(false)
-          setTransportLabel(
-            mode === "live" ? `实时 · ${resolveSessionBaseUrl()}` : "本地预览",
-          )
+          setTransportState(mode)
           // run 落定：清除在途标记，刷新后不再尝试重连。
           setLiveStore((prev) => (prev ? setActivePending(prev, undefined) : prev))
           composerRef.current?.focus()
         },
       })
     },
-    [scrollToLatest, startReply],
+    [mode, scrollToLatest, startReply],
   )
 
   const submit = useCallback(
@@ -383,6 +477,7 @@ export function useConversation(
     replyHandleRef.current = null
     requestInFlightRef.current = false
     setIsStreaming(false)
+    setTransportState("idle")
     // 手动中止也清除在途标记：刷新后不再自动重连这一轮。
     setLiveStore((prev) => (prev ? setActivePending(prev, undefined) : prev))
   }, [])
@@ -398,7 +493,7 @@ export function useConversation(
     setLiveStore((prev) => addConversation(prev ?? persistedStore, id, now))
     setDraft("")
     setIsStreaming(false)
-    setTransportLabel("")
+    setTransportState("idle")
     composerRef.current?.focus()
   }, [persistedStore])
 
@@ -416,7 +511,7 @@ export function useConversation(
       })
       setDraft("")
       setIsStreaming(false)
-      setTransportLabel("")
+      setTransportState("idle")
       composerRef.current?.focus()
     },
     [persistedStore],
@@ -430,7 +525,7 @@ export function useConversation(
         replyHandleRef.current = null
         requestInFlightRef.current = false
         setIsStreaming(false)
-        setTransportLabel("")
+        setTransportState("idle")
       }
       const fallbackId = createLocalId("conv")
       const now = nowMs()
@@ -498,7 +593,8 @@ export function useConversation(
     setDraft,
     prefillDraft,
     isStreaming,
-    transportLabel,
+    transportLabel: presentation.transportLabel,
+    presentation,
     composerRef,
     retry,
     stopReply,

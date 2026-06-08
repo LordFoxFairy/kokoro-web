@@ -567,32 +567,107 @@ describe("applySessionEvent activity families", () => {
     ])
   })
 
-  it("tool.invoked then tool.returned builds one tool call with its result", () => {
+  it("tool.invoked then tool.returned stays attached to that assistant message", () => {
     const invoked = requireDomainEvent({
       event: "tool.invoked",
       event_id: "evt_i",
       ...base,
       cursor: "run_01:0001",
-      payload: { tool_id: "t1", name: "get_weather", args: { city: "北京" } },
+      payload: {
+        message_id: "m1",
+        tool_id: "t1",
+        name: "get_weather",
+        args: { city: "北京" },
+      },
     })
     const returned = requireDomainEvent({
       event: "tool.returned",
       event_id: "evt_r",
       ...base,
       cursor: "run_01:0002",
-      payload: { tool_id: "t1", name: "get_weather", result: "北京: 晴" },
+      payload: {
+        message_id: "m1",
+        tool_id: "t1",
+        name: "get_weather",
+        result: "北京: 晴",
+      },
     })
     let state = applySessionEvent(createSessionStreamState(), invoked)
+    expect(state.activityByMessageId["m1"]?.toolCalls).toEqual([
+      { id: "t1", name: "get_weather", args: { city: "北京" }, status: "running" },
+    ])
     expect(state.toolCalls).toEqual([
       { id: "t1", name: "get_weather", args: { city: "北京" }, status: "running" },
     ])
     state = applySessionEvent(state, returned)
-    expect(state.toolCalls).toHaveLength(1)
-    expect(state.toolCalls[0]).toMatchObject({
+    expect(state.activityByMessageId["m1"]?.toolCalls).toHaveLength(1)
+    expect(state.activityByMessageId["m1"]?.toolCalls[0]).toMatchObject({
       id: "t1",
       result: "北京: 晴",
       status: "done",
     })
+  })
+
+  it("keeps tool and subagent activity attached to the correct assistant message", () => {
+    let state = createSessionStreamState()
+    state = applySessionEvent(state, {
+      kind: "message-completed",
+      eventId: "evt_m1",
+      sessionId: "ses_01",
+      conversationId: "conv_01",
+      runId: "run_01",
+      messageId: "m1",
+      role: "assistant",
+      content: "第一段",
+    })
+    state = applySessionEvent(
+      state,
+      requireDomainEvent({
+        event: "tool.invoked",
+        event_id: "evt_tool_m1",
+        ...base,
+        cursor: "run_01:0003",
+        payload: {
+          message_id: "m1",
+          tool_id: "tool_1",
+          name: "get_weather",
+          args: { city: "北京" },
+        },
+      }),
+    )
+    state = applySessionEvent(state, {
+      kind: "message-completed",
+      eventId: "evt_m2",
+      sessionId: "ses_01",
+      conversationId: "conv_01",
+      runId: "run_01",
+      messageId: "m2",
+      role: "assistant",
+      content: "第二段",
+    })
+    state = applySessionEvent(
+      state,
+      requireDomainEvent({
+        event: "subagent.started",
+        event_id: "evt_sub_m2",
+        ...base,
+        cursor: "run_01:0004",
+        payload: {
+          message_id: "m2",
+          subagent_id: "sa_1",
+          name: "researcher",
+          description: "查资料",
+          subagent_type: "researcher",
+          source: "built-in",
+        },
+      }),
+    )
+
+    expect(state.messages.map((message) => message.id)).toEqual(["m1", "m2"])
+    expect(state.activityByMessageId["m1"]?.toolCalls).toHaveLength(1)
+    expect(state.activityByMessageId["m1"]?.subagents).toEqual([])
+    expect(state.activityByMessageId["m2"]?.toolCalls).toEqual([])
+    expect(state.activityByMessageId["m2"]?.subagents).toHaveLength(1)
   })
 
   it("subagent lifecycle marks started then done", () => {
@@ -601,22 +676,78 @@ describe("applySessionEvent activity families", () => {
       event_id: "evt_s1",
       ...base,
       cursor: "run_01:0001",
-      payload: { subagent_id: "sa1", name: "researcher", description: "查资料" },
+      payload: {
+        message_id: "m1",
+        subagent_id: "sa1",
+        name: "researcher",
+        description: "查资料",
+        subagent_type: "researcher",
+        source: "built-in",
+      },
     })
     const finished = requireDomainEvent({
       event: "subagent.finished",
       event_id: "evt_s2",
       ...base,
       cursor: "run_01:0002",
-      payload: { subagent_id: "sa1", name: "researcher" },
+      payload: {
+        message_id: "m1",
+        subagent_id: "sa1",
+        name: "researcher",
+        subagent_type: "researcher",
+        source: "built-in",
+      },
     })
     let state = applySessionEvent(createSessionStreamState(), started)
+    expect(state.activityByMessageId["m1"]?.subagents[0]).toMatchObject({
+      id: "sa1",
+      status: "running",
+    })
     expect(state.subagents[0]).toMatchObject({ id: "sa1", status: "running" })
     state = applySessionEvent(state, finished)
+    expect(state.activityByMessageId["m1"]?.subagents[0]?.status).toBe("done")
     expect(state.subagents[0]?.status).toBe("done")
   })
 
-  it("thinking.delta accumulates reasoning text", () => {
+  it("subagent text attaches to the correct subagent row", () => {
+    let state = applySessionEvent(
+      createSessionStreamState(),
+      requireDomainEvent({
+        event: "subagent.started",
+        event_id: "evt_s1",
+        ...base,
+        cursor: "run_01:0001",
+        payload: {
+          message_id: "m1",
+          subagent_id: "sa1",
+          name: "researcher",
+          description: "查资料",
+          subagent_type: "researcher",
+          source: "built-in",
+        },
+      }),
+    )
+    state = applySessionEvent(
+      state,
+      {
+        kind: "subagent-text-completed",
+        eventId: "evt_sub_text",
+        sessionId: "ses_01",
+        conversationId: "conv_01",
+        runId: "run_01",
+        messageId: "m1",
+        subagentId: "sa1",
+        text: "子智能体结论",
+      },
+    )
+
+    expect(state.activityByMessageId["m1"]?.subagents[0]).toMatchObject({
+      id: "sa1",
+      output: "子智能体结论",
+    })
+  })
+
+  it("thinking.delta accumulates reasoning text per assistant message", () => {
     const a = requireDomainEvent({
       event: "thinking.delta",
       event_id: "evt_k1",
@@ -633,22 +764,54 @@ describe("applySessionEvent activity families", () => {
     })
     let state = applySessionEvent(createSessionStreamState(), a)
     state = applySessionEvent(state, b)
+    expect(state.activityByMessageId["m1"]?.thinking).toBe("先想再想")
     expect(state.thinking).toBe("先想再想")
   })
 
-  it("a new user turn resets the activity but keeps messages", () => {
+  it("a new user turn resets the mirrored current activity but keeps prior message buckets", () => {
+    let state = applySessionEvent(createSessionStreamState(), {
+      kind: "message-completed",
+      eventId: "evt_prev_msg",
+      sessionId: "ses_01",
+      conversationId: "conv_01",
+      runId: "run_01",
+      messageId: "m_prev",
+      role: "assistant",
+      content: "上一段",
+    })
+    state = applySessionEvent(
+      state,
+      requireDomainEvent({
+        event: "tool.invoked",
+        event_id: "evt_tool_prev",
+        ...base,
+        cursor: "run_01:0001",
+        payload: {
+          message_id: "m_prev",
+          tool_id: "t_prev",
+          name: "get_weather",
+          args: { city: "北京" },
+        },
+      }),
+    )
     const todoEvent = requireDomainEvent({
       event: "todo.updated",
       event_id: "evt_t",
       ...base,
-      cursor: "run_01:0001",
+      cursor: "run_01:0002",
       payload: { todos: [{ content: "x", status: "completed" }] },
     })
-    let state = applySessionEvent(createSessionStreamState(), todoEvent)
+    state = applySessionEvent(state, todoEvent)
     expect(state.todos).toHaveLength(1)
+    expect(state.activityByMessageId["m_prev"]?.toolCalls).toHaveLength(1)
+
     state = appendUserMessage(state, { id: "u2", content: "下一轮" })
+
     expect(state.todos).toEqual([])
     expect(state.toolCalls).toEqual([])
+    expect(state.subagents).toEqual([])
+    expect(state.thinking).toBe("")
+    expect(state.activityByMessageId["m_prev"]?.toolCalls).toHaveLength(1)
     expect(state.messages.some((message) => message.content === "下一轮")).toBe(
       true,
     )

@@ -23,6 +23,7 @@ export type SessionStreamEvent =
       sessionId: string
       conversationId: string
       runId: string
+      messageId: string
       toolId: string
       name: string
       args: Record<string, unknown>
@@ -33,6 +34,7 @@ export type SessionStreamEvent =
       sessionId: string
       conversationId: string
       runId: string
+      messageId: string
       toolId: string
       name: string
       result: string
@@ -51,9 +53,12 @@ export type SessionStreamEvent =
       sessionId: string
       conversationId: string
       runId: string
+      messageId: string
       subagentId: string
       name: string
       description: string
+      subagentType: string
+      source: "built-in" | "config-custom" | "runtime-custom"
     }
   | {
       kind: "subagent-finished"
@@ -61,8 +66,31 @@ export type SessionStreamEvent =
       sessionId: string
       conversationId: string
       runId: string
+      messageId: string
       subagentId: string
       name: string
+      subagentType: string
+      source: "built-in" | "config-custom" | "runtime-custom"
+    }
+  | {
+      kind: "subagent-text-delta"
+      eventId: string
+      sessionId: string
+      conversationId: string
+      runId: string
+      messageId: string
+      subagentId: string
+      text: string
+    }
+  | {
+      kind: "subagent-text-completed"
+      eventId: string
+      sessionId: string
+      conversationId: string
+      runId: string
+      messageId: string
+      subagentId: string
+      text: string
     }
   | {
       kind: "session-created"

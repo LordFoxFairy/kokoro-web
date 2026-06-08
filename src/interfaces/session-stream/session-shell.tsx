@@ -49,7 +49,7 @@ export function SessionShell({
     setDraft,
     prefillDraft,
     isStreaming,
-    transportLabel,
+    presentation,
     composerRef,
     retry,
     stopReply,
@@ -79,7 +79,7 @@ export function SessionShell({
       ref={shellRef}
       className="kk-shell"
       data-run-status={thread.runStatus}
-      data-transport-label={transportLabel}
+      data-transport-label={presentation.transportLabel}
       data-rail-collapsed={railCollapsed ? "true" : "false"}
       style={{ "--kk-rail-width": `${railWidth}px` } as CSSProperties}
     >
@@ -115,9 +115,7 @@ export function SessionShell({
             onRetry={retry}
             onScroll={handleThreadScroll}
             threadEndRef={threadEndRef}
-            thinking={thread.thinking}
-            toolCalls={thread.toolCalls}
-            subagents={thread.subagents}
+            activityByMessageId={thread.activityByMessageId}
           />
         ) : (
           <div className="kk-shell__hero">
@@ -149,7 +147,8 @@ export function SessionShell({
           isStreaming={isStreaming}
           canSend={canSend}
           onStop={stopReply}
-          transportLabel={transportLabel}
+          transportLabel={presentation.transportLabel}
+          modeHint={presentation.modeHint}
           composerRef={composerRef}
           mode={mode}
           onModeChange={setMode}
