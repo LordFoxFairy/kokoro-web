@@ -40,6 +40,10 @@ export function AssistantTurn({
         {message ? (
           <div className="kk-msg__bubble">
             <MarkdownMessage content={message.content} />
+            {/* 正在出字的就近线索：紧跟正文的内联闪烁光标，对读屏隐藏；落定即消失。 */}
+            {isStreamingAssistant && message.content ? (
+              <span className="kk-caret" aria-hidden />
+            ) : null}
           </div>
         ) : null}
         <ProcessBlock

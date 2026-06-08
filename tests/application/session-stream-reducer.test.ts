@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest"
 import {
   appendUserMessage,
   applySessionEvent,
+  computeActivityVersion,
   createSessionStreamState,
   parseStoredSessionState,
   type SessionStreamState,
@@ -766,6 +767,106 @@ describe("applySessionEvent activity families", () => {
     state = applySessionEvent(state, b)
     expect(state.activityByMessageId["m1"]?.thinking).toBe("先想再想")
     expect(state.thinking).toBe("先想再想")
+  })
+
+  it("computeActivityVersion grows as thinking/tool/subagent activity streams in", () => {
+    // 为什么重要：auto-scroll 的跟随 effect 不会因 messages 引用不变而触发，
+    // 过程块在静默生长时视图会跟丢（尤其 Thinking 先流式推理）。computeActivityVersion
+    // 必须是一个随活动总量单调增长的纯派生数，供 effect 依赖驱动贴底跟随。
+    const v0 = computeActivityVersion(createSessionStreamState())
+    expect(v0).toBe(0)
+
+    let state = applySessionEvent(createSessionStreamState(), {
+      kind: "thinking-delta",
+      eventId: "av-think-1",
+      sessionId: "ses_01",
+      conversationId: "conv_01",
+      runId: "run_01",
+      messageId: "m1",
+      delta: "先想想",
+    })
+    const vThinking = computeActivityVersion(state)
+    expect(vThinking).toBeGreaterThan(v0)
+
+    state = applySessionEvent(state, {
+      kind: "thinking-delta",
+      eventId: "av-think-2",
+      sessionId: "ses_01",
+      conversationId: "conv_01",
+      runId: "run_01",
+      messageId: "m1",
+      delta: "再想想",
+    })
+    // 思考文本继续生长（messages 引用不变），版本号必须随之增大。
+    expect(computeActivityVersion(state)).toBeGreaterThan(vThinking)
+
+    const vBeforeTool = computeActivityVersion(state)
+    state = applySessionEvent(state, {
+      kind: "tool-invoked",
+      eventId: "av-tool",
+      sessionId: "ses_01",
+      conversationId: "conv_01",
+      runId: "run_01",
+      messageId: "m1",
+      toolId: "t1",
+      name: "get_weather",
+      args: { city: "北京" },
+    })
+    expect(computeActivityVersion(state)).toBeGreaterThan(vBeforeTool)
+
+    const vBeforeSub = computeActivityVersion(state)
+    state = applySessionEvent(state, {
+      kind: "subagent-started",
+      eventId: "av-sub",
+      sessionId: "ses_01",
+      conversationId: "conv_01",
+      runId: "run_01",
+      messageId: "m1",
+      subagentId: "sa1",
+      name: "researcher",
+      description: "查资料",
+      subagentType: "researcher",
+      source: "built-in",
+    })
+    expect(computeActivityVersion(state)).toBeGreaterThan(vBeforeSub)
+
+    const vBeforeOutput = computeActivityVersion(state)
+    state = applySessionEvent(state, {
+      kind: "subagent-text-delta",
+      eventId: "av-sub-text",
+      sessionId: "ses_01",
+      conversationId: "conv_01",
+      runId: "run_01",
+      messageId: "m1",
+      subagentId: "sa1",
+      text: "子智能体在写结论",
+    })
+    // 子智能体输出文本生长也要计入，过程块的子面板在长高。
+    expect(computeActivityVersion(state)).toBeGreaterThan(vBeforeOutput)
+  })
+
+  it("computeActivityVersion is a pure derivation that does not depend on identity", () => {
+    // 为什么重要：相同活动总量必须得到相同版本号——它只反映「内容长了多少」，
+    // 不掺入对象引用/顺序噪声，否则会在无新内容时误触发跟随滚动。
+    const a = applySessionEvent(createSessionStreamState(), {
+      kind: "thinking-delta",
+      eventId: "pa-1",
+      sessionId: "ses_01",
+      conversationId: "conv_01",
+      runId: "run_01",
+      messageId: "m1",
+      delta: "abc",
+    })
+    const b = applySessionEvent(createSessionStreamState(), {
+      kind: "thinking-delta",
+      eventId: "pb-1",
+      sessionId: "ses_01",
+      conversationId: "conv_01",
+      runId: "run_01",
+      messageId: "m1",
+      delta: "xyz",
+    })
+    expect(computeActivityVersion(a)).toBe(computeActivityVersion(b))
   })
 
   it("a new user turn resets the mirrored current activity but keeps prior message buckets", () => {

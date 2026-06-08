@@ -43,11 +43,14 @@ export function ProcessBlock({
     setOpen(event.currentTarget.open)
   }
 
+  // Fast 是「直接作答」，把它的过程叫「思考」自相矛盾：按 mode 换名词，计数逻辑不变。
+  const isFast = mode === "fast"
+  const verb = isFast ? "处理" : "思考"
   const summary = live
-    ? "思考中…"
+    ? `${verb}中…`
     : toolCalls.length > 0
-      ? `思考过程 · ${toolCalls.length} 个工具`
-      : "思考过程"
+      ? `${verb}过程 · ${toolCalls.length} 个工具`
+      : `${verb}过程`
 
   return (
     <details
@@ -60,7 +63,7 @@ export function ProcessBlock({
         <SparkIcon className="kk-process__spark" />
         <span className="kk-process__title">{summary}</span>
         {live ? (
-          <span className="kk-process__live" aria-label="思考中">
+          <span className="kk-process__live" aria-label={`${verb}中`}>
             <i />
             <i />
             <i />

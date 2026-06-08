@@ -22,6 +22,9 @@ export function useAutoScroll(
   messages: SessionMessage[],
   isStreaming: boolean,
   scrollToLatestRef: RefObject<() => void>,
+  // 过程块的活动总量信号：思考/工具/子智能体静默生长时 messages 引用不变，
+  // 单独以此驱动跟随，让贴底视图也跟上过程块扩张（尤其 Thinking 先流式推理）。
+  activityVersion = 0,
 ): AutoScroll {
   const threadEndRef = useRef<HTMLDivElement | null>(null)
   // 用户是否贴近底部：贴底时跟随新内容滚动，上滑后不再被新内容拽回。
@@ -54,12 +57,12 @@ export function useAutoScroll(
   }, [scrollToLatest, scrollToLatestRef])
 
   // 仅在用户贴底时跟随新内容滚动；上滑阅读历史时不抢夺视图。
-  // 贴底态从 ref 读取最新值，故只依赖会触发新内容的 messages/streaming。
+  // 贴底态从 ref 读取最新值，故只依赖会触发新内容的 messages/streaming/活动版本。
   useEffect(() => {
     if (isNearBottomRef.current) {
       scrollToLatest()
     }
-  }, [messages, isStreaming, scrollToLatest])
+  }, [messages, isStreaming, activityVersion, scrollToLatest])
 
   const handleThreadScroll = useCallback(
     (event: UIEvent<HTMLDivElement>) => {

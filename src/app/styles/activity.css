@@ -592,6 +592,34 @@
   }
 }
 
+/* 流式光标：紧跟正在生长的助手正文，就近暗示「正在出字」。
+   内联块、固定尺寸、vertical-align 贴基线——只闪烁不位移，绝不挤动文本布局。
+   静态态（含减少动态）保持一个不动的实心竖条；闪烁仅在未要求减少动态时启用。 */
+.kk-caret {
+  display: inline-block;
+  width: 0.5ch;
+  height: 1em;
+  margin-left: 0.1ch;
+  vertical-align: text-bottom;
+  border-radius: 1px;
+  background: var(--brand-wood);
+  opacity: 0.7;
+}
+
+@keyframes kk-caret-blink {
+  0%,
+  45% {
+    opacity: 0.7;
+  }
+  50%,
+  95% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 0.7;
+  }
+}
+
 /* 气泡入场：一次性的 250ms 淡入（仅首帧），让新消息柔和出现而非突现。
    只改 opacity，不位移、不改尺寸，保持紧凑克制；减少动态时不应用。 */
 @keyframes kk-message-enter {
@@ -618,6 +646,10 @@
 
   .kk-msg__bubble {
     animation: kk-message-enter 250ms ease-out;
+  }
+
+  .kk-caret {
+    animation: kk-caret-blink 1.1s steps(1, end) infinite;
   }
 }
 
