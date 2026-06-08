@@ -165,6 +165,26 @@ describe("consumeLiveSession", () => {
     handle.close()
   })
 
+  it("includes the provided executionStyle in the live run request", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(null, { status: 202 }))
+    vi.stubGlobal("fetch", fetchMock)
+    vi.stubGlobal("EventSource", MockEventSource as unknown as typeof EventSource)
+
+    const handle = await consumeLiveSession({
+      input: "hello",
+      baseUrl: "http://127.0.0.1:3001",
+      executionStyle: "thinking",
+      onState: () => {},
+    } as unknown as Parameters<typeof consumeLiveSession>[0])
+
+    const [requestUrl] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(requestUrl).toContain("execution_style=thinking")
+
+    handle.close()
+  })
+
   it("ignores malformed envelopes without crashing the stream", async () => {
     vi.stubGlobal(
       "fetch",
@@ -404,6 +424,58 @@ describe("consumeLiveSession", () => {
     expect(() => source?.onerror?.(new Event("error"))).not.toThrow()
     expect(recoverableCalls).toBe(1)
     expect(source?.closed).toBe(false)
+  })
+
+  it("folds subagent internal text into the subagent output field", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(null, { status: 202 })),
+    )
+    vi.stubGlobal("EventSource", MockEventSource as unknown as typeof EventSource)
+
+    const snapshots: SessionStreamSnapshot[] = []
+    await consumeLiveSession({
+      input: "hello",
+      baseUrl: "http://127.0.0.1:3001",
+      onState: (snapshot) => snapshots.push(snapshot),
+    })
+
+    const source = MockEventSource.instances[0]
+    expect(source?.listenerCount("subagent.text.delta")).toBe(1)
+    expect(source?.listenerCount("subagent.text.completed")).toBe(1)
+    source?.emit(
+      "subagent.started",
+      envelope("subagent.started", "evt_sub_1", {
+        message_id: "msg_01",
+        subagent_id: "sa_1",
+        name: "researcher",
+        description: "查资料",
+        subagent_type: "researcher",
+        source: "built-in",
+      }),
+    )
+    source?.emit(
+      "subagent.text.delta",
+      envelope("subagent.text.delta", "evt_sub_2", {
+        message_id: "msg_01",
+        subagent_id: "sa_1",
+        text: "子智能体",
+      }),
+    )
+    source?.emit(
+      "subagent.text.completed",
+      envelope("subagent.text.completed", "evt_sub_3", {
+        message_id: "msg_01",
+        subagent_id: "sa_1",
+        text: "子智能体结论",
+      }),
+    )
+
+    const final = snapshots.at(-1)
+    expect(final?.activityByMessageId["msg_01"]?.subagents[0]).toMatchObject({
+      id: "sa_1",
+      output: "子智能体结论",
+    })
   })
 })
 

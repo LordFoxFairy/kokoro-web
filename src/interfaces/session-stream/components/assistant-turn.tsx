@@ -1,7 +1,6 @@
 import type {
+  SegmentActivity,
   SessionMessage,
-  SessionSubagent,
-  SessionToolCall,
 } from "@/application/session-stream-reducer"
 
 import { RobotIcon } from "./icons"
@@ -9,24 +8,20 @@ import { MarkdownMessage } from "./markdown-message"
 import { ProcessBlock } from "./process-block"
 
 type AssistantTurnProps = {
-  // 这一轮的最终回答（流式且尚未产出首块文本时可能缺席）。
+  // 这一段 assistant 文本；流式过程先到、正文未到时可能暂缺。
   message?: SessionMessage
+  // 这一个 messageId 自己的过程（思考/工具/子智能体），就近挂在该段气泡下。
+  activity?: SegmentActivity
   isStreamingAssistant: boolean
-  // 这一轮的过程（思考/工具/子智能体）+ 是否仍在流式。
-  thinking: string
-  toolCalls: SessionToolCall[]
-  subagents: SessionSubagent[]
   isStreaming: boolean
 }
 
-// 助手这一轮：一个🤖头像 → 可折叠「过程」→ 回答气泡，统统归在同一头像下，
-// 让活动明确属于当前这轮回答（对齐 ChatGPT/Claude 的网页对话布局）。
+// 助手一段：一个🤖头像 + 一段回答 + 这一段自己的过程。
+// 多段回答时，每段各自成块，工具/子智能体不跨段串挂。
 export function AssistantTurn({
   message,
+  activity,
   isStreamingAssistant,
-  thinking,
-  toolCalls,
-  subagents,
   isStreaming,
 }: AssistantTurnProps) {
   return (
@@ -38,18 +33,16 @@ export function AssistantTurn({
         <RobotIcon />
       </div>
       <div className="kk-turn__stack">
-        {/* 回答在上（最醒目），过程折叠在下（how-I-got-here，Perplexity 式答案优先）。 */}
         {message ? (
           <div className="kk-msg__bubble">
             <MarkdownMessage content={message.content} />
           </div>
         ) : null}
-        {/* key 随流式状态翻转：落定时重挂载，把「过程」从展开重置为收起的一行摘要。 */}
         <ProcessBlock
           key={isStreaming ? "live" : "settled"}
-          thinking={thinking}
-          toolCalls={toolCalls}
-          subagents={subagents}
+          thinking={activity?.thinking ?? ""}
+          toolCalls={activity?.toolCalls ?? []}
+          subagents={activity?.subagents ?? []}
           live={isStreaming}
         />
       </div>

@@ -23,6 +23,8 @@ const transportEventNames = [
   "todo.updated",
   "subagent.started",
   "subagent.finished",
+  "subagent.text.delta",
+  "subagent.text.completed",
   "artifact.available",
   "permission.required",
   "run.completed",
@@ -73,6 +75,7 @@ export type ConsumeLiveSessionInput = {
   baseUrl?: string
   sessionId?: string
   conversationId?: string
+  executionStyle?: "fast" | "thinking"
   // 持久会话线：让本轮 run 的 assistant 事件折在已有 thread 之上，而不是每轮清零。
   initialState?: SessionStreamState
   onState: (snapshot: SessionStreamSnapshot) => void
@@ -86,7 +89,7 @@ function buildRunUrl(input: ConsumeLiveSessionInput, baseUrl: string) {
   const requestUrl = new URL(`/sessions/${sessionId}/runs`, baseUrl)
   requestUrl.searchParams.set("conversation_id", conversationId)
   requestUrl.searchParams.set("input", input.input)
-  requestUrl.searchParams.set("execution_style", "default")
+  requestUrl.searchParams.set("execution_style", input.executionStyle ?? "fast")
   return { requestUrl, sessionId }
 }
 
@@ -339,6 +342,7 @@ export type StartReplyInput = {
   onLive?: () => void
   baseUrl?: string
   sessionId?: string
+  executionStyle?: "fast" | "thinking"
 }
 
 export type StartReply = (args: StartReplyInput) => LiveSessionHandle
@@ -368,6 +372,7 @@ export const startSessionReply: StartReply = (args) => {
         input: args.input,
         baseUrl: args.baseUrl,
         sessionId: args.sessionId,
+        executionStyle: args.executionStyle,
         initialState: args.initialState,
         onState: args.onState,
         onSettled: () => args.onSettled?.("live"),

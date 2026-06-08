@@ -101,6 +101,7 @@ type ComposerProps = {
   canSend: boolean
   onStop: () => void
   transportLabel: string
+  modeHint?: string
   composerRef: RefObject<HTMLTextAreaElement | null>
   // 回应模式：受控于会话。modeLocked 时（已开聊）只读展示、不可切换。
   mode: AgentMode
@@ -117,6 +118,7 @@ export function Composer({
   canSend,
   onStop,
   transportLabel,
+  modeHint,
   composerRef,
   mode,
   onModeChange,
@@ -280,7 +282,11 @@ export function Composer({
       </form>
 
       {/* 常驻保留高度：标签延后出现也不改变 composer 位置，避免聊天框跳动。 */}
-      <p className="kk-shell__transport">{transportLabel}</p>
+      <p className="kk-shell__transport">
+        <span>{transportLabel}</span>
+        <span aria-hidden> · </span>
+        <span>{modeHint}</span>
+      </p>
 
       {/* 放大编辑面板：portal 到 body，position:fixed 覆盖全屏，不受 composer 盒模型/层叠影响。
           点击遮罩空白处 / Esc / 收起键关闭；长文场景下 Enter 换行、⌘/Ctrl+Enter 发送。 */}
