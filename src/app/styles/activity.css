@@ -222,6 +222,16 @@
   scrollbar-width: thin;
 }
 
+/* Fast/Thinking 过程密度差异：Thinking 略松（更像逐步深思），Fast 略紧（更直接）。
+   只调内部 gap，不动过程块盒模型，绝不引起布局抖动。 */
+.kk-process[data-mode="thinking"] .kk-process__body {
+  gap: 0.6rem;
+}
+
+.kk-process[data-mode="fast"] .kk-process__body {
+  gap: 0.32rem;
+}
+
 .kk-process__body > * + * {
   padding-top: 0.45rem;
   border-top: 1px solid color-mix(in srgb, var(--border-soft) 60%, transparent);

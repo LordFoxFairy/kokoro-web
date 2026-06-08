@@ -1,3 +1,4 @@
+import type { AgentMode } from "@/application/conversation-store"
 import type {
   SegmentActivity,
   SessionMessage,
@@ -14,6 +15,8 @@ type AssistantTurnProps = {
   activity?: SegmentActivity
   isStreamingAssistant: boolean
   isStreaming: boolean
+  // 本会话模式：透传给过程块作密度差异钩子。
+  mode?: AgentMode
 }
 
 // 助手一段：一个🤖头像 + 一段回答 + 这一段自己的过程。
@@ -23,6 +26,7 @@ export function AssistantTurn({
   activity,
   isStreamingAssistant,
   isStreaming,
+  mode,
 }: AssistantTurnProps) {
   return (
     <article
@@ -44,6 +48,7 @@ export function AssistantTurn({
           toolCalls={activity?.toolCalls ?? []}
           subagents={activity?.subagents ?? []}
           live={isStreaming}
+          mode={mode}
         />
       </div>
     </article>

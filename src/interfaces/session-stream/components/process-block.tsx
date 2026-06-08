@@ -1,5 +1,6 @@
 import { type ReactEventHandler, useState } from "react"
 
+import type { AgentMode } from "@/application/conversation-store"
 import type {
   SessionSubagent,
   SessionToolCall,
@@ -15,6 +16,8 @@ type ProcessBlockProps = {
   subagents: SessionSubagent[]
   // 这一轮是否仍在流式：决定默认展开（实时看）与「思考中」脉冲。
   live: boolean
+  // 本会话模式：仅作 data-mode 钩子，密度差异交给 CSS（Thinking 略松、Fast 略紧）。
+  mode?: AgentMode
 }
 
 // 助手这一轮的「过程」：思考 + 工具 + 子智能体，收成一个可折叠披露项。
@@ -25,6 +28,7 @@ export function ProcessBlock({
   toolCalls,
   subagents,
   live,
+  mode,
 }: ProcessBlockProps) {
   // 受控开合：初始随 live；用户可手动展开/收起，onToggle 回写。父级用 key 在流式状态翻转时重置。
   const [open, setOpen] = useState(live)
@@ -46,7 +50,12 @@ export function ProcessBlock({
       : "思考过程"
 
   return (
-    <details className="kk-process" open={open} onToggle={handleToggle}>
+    <details
+      className="kk-process"
+      data-mode={mode}
+      open={open}
+      onToggle={handleToggle}
+    >
       <summary className="kk-process__summary">
         <SparkIcon className="kk-process__spark" />
         <span className="kk-process__title">{summary}</span>

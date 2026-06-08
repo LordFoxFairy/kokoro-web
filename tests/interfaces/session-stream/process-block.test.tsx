@@ -79,4 +79,24 @@ describe("ProcessBlock", () => {
     expect(screen.getByText("晴, 24°C")).toBeInTheDocument()
     expect(screen.getByText("分析天气与出行适宜度")).toBeInTheDocument()
   })
+
+  it("reflects the conversation mode as a data-mode hook for density styling", () => {
+    // 为什么重要：Fast/Thinking 要在过程块上读出差异（密度交给 CSS 按 data-mode 调），
+    // 只暴露稳定的 mode 钩子，不靠组件内写死的额外文案。
+    const { container, rerender } = render(
+      <ProcessBlock thinking="x" toolCalls={[tool]} subagents={[]} live={false} mode="fast" />,
+    )
+    expect(container.querySelector(".kk-process")).toHaveAttribute(
+      "data-mode",
+      "fast",
+    )
+
+    rerender(
+      <ProcessBlock thinking="x" toolCalls={[tool]} subagents={[]} live={false} mode="thinking" />,
+    )
+    expect(container.querySelector(".kk-process")).toHaveAttribute(
+      "data-mode",
+      "thinking",
+    )
+  })
 })

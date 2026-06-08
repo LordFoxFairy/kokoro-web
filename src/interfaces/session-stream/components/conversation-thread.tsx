@@ -1,5 +1,6 @@
 import type { RefObject, UIEvent } from "react"
 
+import type { AgentMode } from "@/application/conversation-store"
 import type {
   SegmentActivity,
   SessionMessage,
@@ -16,6 +17,8 @@ type ConversationThreadProps = {
   onScroll: (event: UIEvent<HTMLDivElement>) => void
   threadEndRef: RefObject<HTMLDivElement | null>
   activityByMessageId: Record<string, SegmentActivity>
+  // 本会话模式：透传给每段助手的过程块，驱动 Fast/Thinking 的密度差异。
+  mode: AgentMode
 }
 
 export function ConversationThread({
@@ -26,6 +29,7 @@ export function ConversationThread({
   onScroll,
   threadEndRef,
   activityByMessageId,
+  mode,
 }: ConversationThreadProps) {
   // 每条 assistant message 都要就近挂自己的过程块；若过程先到、正文未到，
   // 还要给当前正在生成的那一段预留一个“无正文的 assistant turn”。
@@ -58,6 +62,7 @@ export function ConversationThread({
               activity={activityByMessageId[message.id]}
               isStreamingAssistant={message.id === liveMessageId}
               isStreaming={message.id === liveMessageId}
+              mode={mode}
             />
           ) : (
             <MessageBubble
@@ -74,6 +79,7 @@ export function ConversationThread({
             activity={activity}
             isStreamingAssistant={isStreaming}
             isStreaming={isStreaming}
+            mode={mode}
           />
         ))}
 
