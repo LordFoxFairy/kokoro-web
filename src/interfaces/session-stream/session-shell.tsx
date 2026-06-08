@@ -116,6 +116,7 @@ export function SessionShell({
             onScroll={handleThreadScroll}
             threadEndRef={threadEndRef}
             activityByMessageId={thread.activityByMessageId}
+            mode={mode}
           />
         ) : (
           <div className="kk-shell__hero">
