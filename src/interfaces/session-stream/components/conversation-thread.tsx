@@ -12,6 +12,8 @@ import { MessageBubble } from "./message-bubble"
 type ConversationThreadProps = {
   thread: SessionStreamState
   isStreaming: boolean
+  // 重连续传态：在途轮的 live 锚点改为「重连中…」，区别于普通「正在思考…」。
+  isReconnecting: boolean
   hasFailed: boolean
   onRetry: () => void
   onScroll: (event: UIEvent<HTMLDivElement>) => void
@@ -23,6 +25,7 @@ type ConversationThreadProps = {
 export function ConversationThread({
   thread,
   isStreaming,
+  isReconnecting,
   hasFailed,
   onRetry,
   onScroll,
@@ -42,6 +45,12 @@ export function ConversationThread({
       }
     }
   }
+
+  // 提交后、首个 step/token 未到：在途轮还没产生任何可渲染项（最后一项仍是用户气泡）。
+  // 合成一个无内容的 live 脚手架轮，让 AssistantTurn 渲染「头像 live + 单条正在…成形线」，
+  // 绝不在提交与首 token 之间留空帧。一旦首个 step/text 到达，buildThreadItems 即接管，脚手架退场。
+  const showScaffoldTurn =
+    isStreaming && items[items.length - 1]?.kind !== "assistant-turn"
 
   return (
     <div
@@ -65,10 +74,21 @@ export function ConversationThread({
               steps={item.steps}
               messagesById={item.messagesById}
               isLive={item.runId === liveRunId}
+              reconnecting={item.runId === liveRunId && isReconnecting}
               mode={mode}
             />
           ),
         )}
+
+        {showScaffoldTurn ? (
+          <AssistantTurn
+            steps={[]}
+            messagesById={{}}
+            isLive
+            reconnecting={isReconnecting}
+            mode={mode}
+          />
+        ) : null}
 
         {hasFailed ? (
           <div className="kk-thread__error" role="alert">

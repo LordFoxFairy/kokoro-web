@@ -50,6 +50,7 @@ export function SessionShell({
     setDraft,
     prefillDraft,
     isStreaming,
+    isReconnecting,
     presentation,
     composerRef,
     retry,
@@ -121,6 +122,7 @@ export function SessionShell({
           <ConversationThread
             thread={thread}
             isStreaming={isStreaming}
+            isReconnecting={isReconnecting}
             hasFailed={hasFailed}
             onRetry={retry}
             onScroll={handleThreadScroll}
