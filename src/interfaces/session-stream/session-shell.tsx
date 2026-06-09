@@ -119,13 +119,12 @@ export function SessionShell({
           <div className="kk-shell__stage" aria-hidden />
         ) : hasMessages ? (
           <ConversationThread
-            messages={thread.messages}
+            thread={thread}
             isStreaming={isStreaming}
             hasFailed={hasFailed}
             onRetry={retry}
             onScroll={handleThreadScroll}
             threadEndRef={threadEndRef}
-            activityByMessageId={thread.activityByMessageId}
             mode={mode}
           />
         ) : (

@@ -17,18 +17,22 @@ function formatArgs(args: Record<string, unknown>): string | null {
   }
 }
 
-// 单条工具调用：扳手 + 名称 + 运行态。有入参/结果时是可展开的 <details>，
+// 单条工具调用：扳手 + 名称 + 运行态。有入参/结果/错误时是可展开的 <details>，
 // 无任何细节时退化为不可点击的 <div>，避免无意义的死切换。
+// 错误态（status==="error"）携带 errorText，落定后仍保持展开（本轮通常继续）。
 export function ToolCallRow({ tool }: { tool: SessionToolCall }) {
   const argsText = formatArgs(tool.args)
-  const hasDetail = argsText !== null || Boolean(tool.result)
+  const running = tool.status === "running"
+  const failed = tool.status === "error"
+  // 有入参/结果/错误才展开；无任何细节的工具（含无入参的运行中）保持紧凑静态行，spinner 已表态。
+  const hasDetail = argsText !== null || Boolean(tool.result) || failed
 
   const head = (
     <>
       <WrenchIcon className="kk-tool__icon" />
       <span className="kk-tool__name">{tool.name}</span>
       <span className="kk-tool__state" aria-hidden>
-        <RunState done={tool.status === "done"} />
+        <RunState done={tool.status === "done"} failed={failed} />
       </span>
     </>
   )
@@ -42,14 +46,27 @@ export function ToolCallRow({ tool }: { tool: SessionToolCall }) {
   }
 
   return (
-    <details className={`kk-tool kk-tool--${tool.status}`}>
+    <details className={`kk-tool kk-tool--${tool.status}`} open={running || failed}>
       <summary className="kk-tool__summary">{head}</summary>
       <div className="kk-tool__detail">
         {argsText !== null ? (
           <pre className="kk-tool__args">{argsText}</pre>
         ) : null}
-        {tool.result ? (
+        {failed ? (
+          <p className="kk-tool__error" role="status">
+            {tool.errorText ?? "工具调用失败"}
+          </p>
+        ) : tool.result ? (
           <pre className="kk-tool__result">{tool.result}</pre>
+        ) : running ? (
+          <p className="kk-pending">
+            运行中
+            <span className="kk-thread__pulse" aria-hidden>
+              <span />
+              <span />
+              <span />
+            </span>
+          </p>
         ) : null}
       </div>
     </details>

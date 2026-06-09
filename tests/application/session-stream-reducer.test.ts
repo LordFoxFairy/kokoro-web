@@ -3,9 +3,12 @@ import { describe, expect, it } from "vitest"
 import {
   appendUserMessage,
   applySessionEvent,
+  buildThreadItems,
   computeActivityVersion,
   createSessionStreamState,
+  deriveRunPhase,
   parseStoredSessionState,
+  type SessionStep,
   type SessionStreamState,
 } from "@/application/session-stream-reducer"
 import {
@@ -25,6 +28,32 @@ function requireDomainEvent(
   return mappedEvent
 }
 
+// 取某 run 的有序步骤（默认 run_01），断言时序模型最常用的视角。
+function stepsOf(state: SessionStreamState, runId = "run_01"): SessionStep[] {
+  return state.stepsByRun[runId] ?? []
+}
+
+function toolSteps(state: SessionStreamState, runId = "run_01") {
+  return stepsOf(state, runId)
+    .filter((step) => step.kind === "tool")
+    .map((step) => (step.kind === "tool" ? step.tool : null))
+    .filter((tool): tool is NonNullable<typeof tool> => tool !== null)
+}
+
+function subagentSteps(state: SessionStreamState, runId = "run_01") {
+  return stepsOf(state, runId)
+    .filter((step) => step.kind === "subagent")
+    .map((step) => (step.kind === "subagent" ? step.subagent : null))
+    .filter((sub): sub is NonNullable<typeof sub> => sub !== null)
+}
+
+function thinkingTextOf(state: SessionStreamState, runId = "run_01"): string {
+  return stepsOf(state, runId)
+    .filter((step) => step.kind === "thinking")
+    .map((step) => (step.kind === "thinking" ? step.text : ""))
+    .join("")
+}
+
 describe("applySessionEvent", () => {
   it("deduplicates repeated event ids", () => {
     const event = requireDomainEvent({
@@ -33,7 +62,7 @@ describe("applySessionEvent", () => {
       session_id: "ses_01",
       conversation_id: "conv_01",
       run_id: "run_01",
-      cursor: "1748428800-000012",
+      cursor: "run_01:0012",
       timestamp: "2026-05-28T12:00:00.000Z",
       payload: { message_id: "msg_01", delta: "Hi", role: "assistant" },
     })
@@ -46,6 +75,170 @@ describe("applySessionEvent", () => {
     expect(twice.seenEventIds).toEqual(["evt_01"])
   })
 
+  it("threads a strictly increasing seq from the ordered cursor", () => {
+    // 为什么重要：传输信封的游标承载真实发射序号；丢弃它就无法还原 thinking→tool→text 的时序。
+    // 一段有序流（tool → message → tool → message）映射后 seq 必须严格递增。
+    const cursors = ["run_x:0001", "run_x:0002", "run_x:0003", "run_x:0004"]
+    const events = [
+      {
+        event: "tool.invoked",
+        event_id: "e1",
+        payload: { message_id: "m1", tool_id: "t1", name: "a", args: {} },
+      },
+      {
+        event: "message.delta",
+        event_id: "e2",
+        payload: { message_id: "m1", delta: "x", role: "assistant" as const },
+      },
+      {
+        event: "tool.invoked",
+        event_id: "e3",
+        payload: { message_id: "m1", tool_id: "t2", name: "b", args: {} },
+      },
+      {
+        event: "message.delta",
+        event_id: "e4",
+        payload: { message_id: "m2", delta: "y", role: "assistant" as const },
+      },
+    ].map((spec, index) =>
+      requireDomainEvent({
+        ...spec,
+        session_id: "ses_01",
+        conversation_id: "conv_01",
+        run_id: "run_x",
+        cursor: cursors[index] as string,
+        timestamp: "2026-05-28T12:00:00.000Z",
+      }),
+    )
+
+    const seqs = events.map((event) => event.seq)
+    expect(seqs).toEqual([1, 2, 3, 4])
+    for (let i = 1; i < seqs.length; i += 1) {
+      expect(seqs[i]).toBeGreaterThan(seqs[i - 1] as number)
+    }
+  })
+
+  it("coerces a missing/legacy cursor integer to a stable fallback", () => {
+    // 为什么重要：无数字的遗留/畸形游标不能让整条流判脏；退化为 0 即可，不抛错。
+    const event = requireDomainEvent({
+      event: "message.delta",
+      event_id: "evt_no_int",
+      session_id: "ses_01",
+      conversation_id: "conv_01",
+      run_id: "run_01",
+      cursor: "cursor-no-digits",
+      timestamp: "2026-05-28T12:00:00.000Z",
+      payload: { message_id: "msg_01", delta: "Hi", role: "assistant" },
+    })
+    expect(event.seq).toBe(0)
+  })
+
+  it("replays tool→text→tool→text as four ordered steps in order", () => {
+    // 为什么重要：真实时序是 tool→text→tool→text；reducer 必须按 seq APPEND 成四个有序步骤，
+    // 而非按 kind 归桶。文本步骤与工具步骤交错排列，顺序严格还原。
+    const events = [
+      requireDomainEvent({
+        event: "tool.invoked",
+        event_id: "e1",
+        session_id: "ses_01",
+        conversation_id: "conv_01",
+        run_id: "run_01",
+        cursor: "run_01:0001",
+        timestamp: "2026-05-28T12:00:00.000Z",
+        payload: { message_id: "m1", tool_id: "t1", name: "a", args: {} },
+      }),
+      requireDomainEvent({
+        event: "message.delta",
+        event_id: "e2",
+        session_id: "ses_01",
+        conversation_id: "conv_01",
+        run_id: "run_01",
+        cursor: "run_01:0002",
+        timestamp: "2026-05-28T12:00:01.000Z",
+        payload: { message_id: "m1", delta: "first", role: "assistant" },
+      }),
+      requireDomainEvent({
+        event: "tool.invoked",
+        event_id: "e3",
+        session_id: "ses_01",
+        conversation_id: "conv_01",
+        run_id: "run_01",
+        cursor: "run_01:0003",
+        timestamp: "2026-05-28T12:00:02.000Z",
+        payload: { message_id: "m2", tool_id: "t2", name: "b", args: {} },
+      }),
+      requireDomainEvent({
+        event: "message.delta",
+        event_id: "e4",
+        session_id: "ses_01",
+        conversation_id: "conv_01",
+        run_id: "run_01",
+        cursor: "run_01:0004",
+        timestamp: "2026-05-28T12:00:03.000Z",
+        payload: { message_id: "m2", delta: "second", role: "assistant" },
+      }),
+    ]
+    const state = events.reduce(applySessionEvent, createSessionStreamState())
+
+    const steps = stepsOf(state)
+    expect(steps.map((step) => step.kind)).toEqual([
+      "tool",
+      "text",
+      "tool",
+      "text",
+    ])
+    expect(steps.map((step) => step.seq)).toEqual([1, 2, 3, 4])
+  })
+
+  it("updates the SAME tool step from running to done on its return (no reorder)", () => {
+    // 为什么重要：tool.returned 必须就地把同一 tool step 由 running 翻 done，保持原位置，
+    // 绝不新增一个步骤或重排（重排会谎报因果、引发回流）。
+    const invoked = requireDomainEvent({
+      event: "tool.invoked",
+      event_id: "e1",
+      session_id: "ses_01",
+      conversation_id: "conv_01",
+      run_id: "run_01",
+      cursor: "run_01:0001",
+      timestamp: "2026-05-28T12:00:00.000Z",
+      payload: { message_id: "m1", tool_id: "t1", name: "get_weather", args: { city: "北京" } },
+    })
+    const text = requireDomainEvent({
+      event: "message.delta",
+      event_id: "e2",
+      session_id: "ses_01",
+      conversation_id: "conv_01",
+      run_id: "run_01",
+      cursor: "run_01:0002",
+      timestamp: "2026-05-28T12:00:01.000Z",
+      payload: { message_id: "m1", delta: "结果", role: "assistant" },
+    })
+    const returned = requireDomainEvent({
+      event: "tool.returned",
+      event_id: "e3",
+      session_id: "ses_01",
+      conversation_id: "conv_01",
+      run_id: "run_01",
+      cursor: "run_01:0003",
+      timestamp: "2026-05-28T12:00:02.000Z",
+      payload: { message_id: "m1", tool_id: "t1", name: "get_weather", result: "北京: 晴" },
+    })
+
+    let state = [invoked, text].reduce(applySessionEvent, createSessionStreamState())
+    expect(stepsOf(state).map((s) => s.kind)).toEqual(["tool", "text"])
+    expect(toolSteps(state)[0]).toMatchObject({ id: "t1", status: "running" })
+
+    state = applySessionEvent(state, returned)
+    // 位置不变（仍是 [tool, text]），同一步骤就地翻 done，不新增第三个步骤。
+    expect(stepsOf(state).map((s) => s.kind)).toEqual(["tool", "text"])
+    expect(toolSteps(state)).toHaveLength(1)
+    expect(toolSteps(state)[0]).toMatchObject({
+      id: "t1",
+      result: "北京: 晴",
+      status: "done",
+    })
+  })
+
   it("lets message.completed replace accumulated delta content", () => {
     const state = [
       requireDomainEvent({
@@ -54,7 +247,7 @@ describe("applySessionEvent", () => {
         session_id: "ses_01",
         conversation_id: "conv_01",
         run_id: "run_01",
-        cursor: "1748428800-000012",
+        cursor: "run_01:0012",
         timestamp: "2026-05-28T12:00:00.000Z",
         payload: { message_id: "msg_01", delta: "He", role: "assistant" },
       }),
@@ -64,7 +257,7 @@ describe("applySessionEvent", () => {
         session_id: "ses_01",
         conversation_id: "conv_01",
         run_id: "run_01",
-        cursor: "1748428800-000013",
+        cursor: "run_01:0013",
         timestamp: "2026-05-28T12:00:01.000Z",
         payload: { message_id: "msg_01", delta: "llo", role: "assistant" },
       }),
@@ -74,7 +267,7 @@ describe("applySessionEvent", () => {
         session_id: "ses_01",
         conversation_id: "conv_01",
         run_id: "run_01",
-        cursor: "1748428800-000014",
+        cursor: "run_01:0014",
         timestamp: "2026-05-28T12:00:02.000Z",
         payload: { message_id: "msg_01", role: "assistant", content: "Hello" },
       }),
@@ -90,7 +283,7 @@ describe("applySessionEvent", () => {
       session_id: "ses_01",
       conversation_id: "conv_01",
       run_id: "run_01",
-      cursor: "1748428800-000012",
+      cursor: "run_01:0012",
       timestamp: "2026-05-28T12:00:00.000Z",
       payload: { message_id: "msg_01", delta: "He", role: "assistant" },
     })
@@ -100,7 +293,7 @@ describe("applySessionEvent", () => {
       session_id: "ses_01",
       conversation_id: "conv_01",
       run_id: "run_01",
-      cursor: "1748428800-000013",
+      cursor: "run_01:0013",
       timestamp: "2026-05-28T12:00:01.000Z",
       payload: { message_id: "msg_01", delta: "llo", role: "assistant" },
     })
@@ -114,15 +307,13 @@ describe("applySessionEvent", () => {
   })
 
   it("dedups a replayed session-created without re-mutating state", () => {
-    // session-created 携带的元数据不进入 thread；重复重放只能记一次 eventId，
-    // 不得二次改动 messages / runStatus。删除显式 handler 会让本断言失败。
     const sessionCreated = requireDomainEvent({
       event: "session.created",
       event_id: "evt_session",
       session_id: "ses_01",
       conversation_id: "conv_01",
       run_id: "run_01",
-      cursor: "1748428800-000001",
+      cursor: "run_01:0001",
       timestamp: "2026-05-28T12:00:00.000Z",
       payload: {
         session_id: "ses_01",
@@ -141,15 +332,13 @@ describe("applySessionEvent", () => {
   })
 
   it("dedups a message-delta sharing an eventId with session-created", () => {
-    // 边界：不同 kind 复用同一 eventId 时，去重以 eventId 为唯一键，
-    // 第二个事件被整体丢弃，绝不偷偷追加一条消息。
     const sessionCreated = requireDomainEvent({
       event: "session.created",
       event_id: "evt_shared",
       session_id: "ses_01",
       conversation_id: "conv_01",
       run_id: "run_01",
-      cursor: "1748428800-000001",
+      cursor: "run_01:0001",
       timestamp: "2026-05-28T12:00:00.000Z",
       payload: {
         session_id: "ses_01",
@@ -164,7 +353,7 @@ describe("applySessionEvent", () => {
       session_id: "ses_01",
       conversation_id: "conv_01",
       run_id: "run_01",
-      cursor: "1748428800-000002",
+      cursor: "run_01:0002",
       timestamp: "2026-05-28T12:00:01.000Z",
       payload: { message_id: "msg_01", delta: "Hi", role: "assistant" },
     })
@@ -179,15 +368,13 @@ describe("applySessionEvent", () => {
   })
 
   it("keeps the role fixed at first delta for a messageId (role integrity)", () => {
-    // 同一 messageId 后续增量误报了不同 role，正文必须仍并入首个 role 的气泡，
-    // 绝不能拆出第二条用户气泡或污染原气泡的 role。
     const firstDelta = requireDomainEvent({
       event: "message.delta",
       event_id: "evt_01",
       session_id: "ses_01",
       conversation_id: "conv_01",
       run_id: "run_01",
-      cursor: "1748428800-000012",
+      cursor: "run_01:0012",
       timestamp: "2026-05-28T12:00:00.000Z",
       payload: { message_id: "msg_01", delta: "He", role: "assistant" },
     })
@@ -197,7 +384,7 @@ describe("applySessionEvent", () => {
       session_id: "ses_01",
       conversation_id: "conv_01",
       run_id: "run_01",
-      cursor: "1748428800-000013",
+      cursor: "run_01:0013",
       timestamp: "2026-05-28T12:00:01.000Z",
       payload: { message_id: "msg_01", delta: "llo", role: "user" },
     })
@@ -213,8 +400,6 @@ describe("applySessionEvent", () => {
   })
 
   it("folds empty, oversized, and completed deltas without error (boundary matrix)", () => {
-    // 边界矩阵：空增量不应破坏并归，超大单条增量必须完整落入，
-    // message-completed 必须精确覆盖累计增量（防 replay 残句）。
     const huge = "x".repeat(50_000)
 
     const state = [
@@ -224,7 +409,7 @@ describe("applySessionEvent", () => {
         session_id: "ses_01",
         conversation_id: "conv_01",
         run_id: "run_01",
-        cursor: "1748428800-000012",
+        cursor: "run_01:0012",
         timestamp: "2026-05-28T12:00:00.000Z",
         payload: { message_id: "msg_01", delta: "", role: "assistant" },
       }),
@@ -234,7 +419,7 @@ describe("applySessionEvent", () => {
         session_id: "ses_01",
         conversation_id: "conv_01",
         run_id: "run_01",
-        cursor: "1748428800-000013",
+        cursor: "run_01:0013",
         timestamp: "2026-05-28T12:00:01.000Z",
         payload: { message_id: "msg_01", delta: huge, role: "assistant" },
       }),
@@ -250,7 +435,7 @@ describe("applySessionEvent", () => {
         session_id: "ses_01",
         conversation_id: "conv_01",
         run_id: "run_01",
-        cursor: "1748428800-000014",
+        cursor: "run_01:0014",
         timestamp: "2026-05-28T12:00:02.000Z",
         payload: { message_id: "msg_01", role: "assistant", content: "Hello" },
       }),
@@ -268,7 +453,7 @@ describe("applySessionEvent", () => {
         session_id: "ses_01",
         conversation_id: "conv_01",
         run_id: "run_01",
-        cursor: "1748428800-000020",
+        cursor: "run_01:0020",
         timestamp: "2026-05-28T12:00:10.000Z",
         payload: {
           run_id: "run_01",
@@ -283,7 +468,7 @@ describe("applySessionEvent", () => {
         session_id: "ses_01",
         conversation_id: "conv_01",
         run_id: "run_01",
-        cursor: "1748428800-000020",
+        cursor: "run_01:0020",
         timestamp: "2026-05-28T12:00:10.000Z",
         payload: {
           run_id: "run_01",
@@ -301,14 +486,13 @@ describe("applySessionEvent", () => {
 
 describe("appendUserMessage", () => {
   it("appends a local user message without touching the dedup table", () => {
-    // 用户消息是本地的、不会被服务端 replay，所以不应进入 seenEventIds。
     const next = appendUserMessage(createSessionStreamState(), {
       id: "local_1",
       content: "你好",
     })
 
     expect(next.messages).toEqual([
-      { id: "local_1", role: "user", content: "你好" },
+      { id: "local_1", role: "user", content: "你好", runId: "local_1" },
     ])
     expect(next.seenEventIds).toEqual([])
   })
@@ -324,10 +508,10 @@ describe("appendUserMessage", () => {
   })
 
   it("keeps prior turns ordered ahead of the new user message", () => {
-    // 多轮对话：用户气泡必须排在历史消息之后，保证时间线顺序稳定。
     const assistantTurn = applySessionEvent(createSessionStreamState(), {
       kind: "message-completed",
       eventId: "evt_a1",
+      seq: 1,
       sessionId: "ses_01",
       conversationId: "conv_01",
       runId: "run_01",
@@ -348,7 +532,6 @@ describe("appendUserMessage", () => {
   })
 
   it("survives a subsequent assistant run folded on top", () => {
-    // 追加用户消息后再折叠新一轮 assistant 流，用户气泡不能丢失。
     const withUser = appendUserMessage(createSessionStreamState(), {
       id: "local_1",
       content: "讲讲今天",
@@ -358,6 +541,7 @@ describe("appendUserMessage", () => {
       {
         kind: "message-delta" as const,
         eventId: "evt_r1",
+        seq: 1,
         sessionId: "ses_01",
         conversationId: "conv_01",
         runId: "run_02",
@@ -368,6 +552,7 @@ describe("appendUserMessage", () => {
       {
         kind: "message-completed" as const,
         eventId: "evt_r2",
+        seq: 2,
         sessionId: "ses_01",
         conversationId: "conv_01",
         runId: "run_02",
@@ -378,6 +563,7 @@ describe("appendUserMessage", () => {
       {
         kind: "run-completed" as const,
         eventId: "evt_r3",
+        seq: 3,
         sessionId: "ses_01",
         conversationId: "conv_01",
         runId: "run_02",
@@ -391,15 +577,62 @@ describe("appendUserMessage", () => {
     expect(afterReply.messages[1]?.content).toBe("好的，我们开始。")
     expect(afterReply.runStatus).toBe("completed")
   })
+
+  it("resets todos + runStatus on a new user turn but keeps prior run steps", () => {
+    let state = applySessionEvent(createSessionStreamState(), {
+      kind: "message-completed",
+      eventId: "evt_prev_msg",
+      seq: 1,
+      sessionId: "ses_01",
+      conversationId: "conv_01",
+      runId: "run_01",
+      messageId: "m_prev",
+      role: "assistant",
+      content: "上一段",
+    })
+    state = applySessionEvent(state, {
+      kind: "tool-invoked",
+      eventId: "evt_tool_prev",
+      seq: 2,
+      sessionId: "ses_01",
+      conversationId: "conv_01",
+      runId: "run_01",
+      messageId: "m_prev",
+      toolId: "t_prev",
+      name: "get_weather",
+      args: { city: "北京" },
+    })
+    state = applySessionEvent(state, {
+      kind: "todo-updated",
+      eventId: "evt_t",
+      seq: 3,
+      sessionId: "ses_01",
+      conversationId: "conv_01",
+      runId: "run_01",
+      todos: [{ content: "x", status: "completed" }],
+    })
+    expect(state.todos).toHaveLength(1)
+    expect(toolSteps(state)).toHaveLength(1)
+
+    state = appendUserMessage(state, { id: "u2", content: "下一轮" })
+
+    // 新一轮：todo 整表清空、终态复位 idle；历史 run 的有序步骤完整保留。
+    expect(state.todos).toEqual([])
+    expect(state.runStatus).toBe("idle")
+    expect(toolSteps(state)).toHaveLength(1)
+    expect(state.messages.some((message) => message.content === "下一轮")).toBe(
+      true,
+    )
+  })
 })
 
 describe("parseStoredSessionState", () => {
-  // 一条有正文的真实快照：刷新恢复必须 1:1 还原会话线，不能丢消息或改 runStatus。
   function populatedState(): SessionStreamState {
     return [
       {
         kind: "message-completed" as const,
         eventId: "evt_p1",
+        seq: 1,
         sessionId: "ses_01",
         conversationId: "conv_01",
         runId: "run_01",
@@ -410,6 +643,7 @@ describe("parseStoredSessionState", () => {
       {
         kind: "run-completed" as const,
         eventId: "evt_p2",
+        seq: 2,
         sessionId: "ses_01",
         conversationId: "conv_01",
         runId: "run_01",
@@ -421,14 +655,73 @@ describe("parseStoredSessionState", () => {
   }
 
   it("round-trips a populated state through serialize -> parse unchanged", () => {
-    // 为什么重要：持久化的契约是「写进去什么，刷新后读出来就是什么」，
-    // 任何序列化/解析的有损都会让用户的历史对话在刷新后悄悄变形。
     const original = populatedState()
     const restored = parseStoredSessionState(
       JSON.parse(JSON.stringify(original)),
     )
 
     expect(restored).toEqual(original)
+  })
+
+  it("round-trips ordered steps (thinking/tool/subagent/text) unchanged", () => {
+    // 为什么重要：有序步骤是新模型的核心持久化契约——写进去什么，刷新后读出来必须一字不差。
+    let state = appendUserMessage(createSessionStreamState(), {
+      id: "u1",
+      content: "问",
+    })
+    state = applySessionEvent(state, {
+      kind: "thinking-delta",
+      eventId: "k1",
+      seq: 1,
+      sessionId: "ses_01",
+      conversationId: "conv_01",
+      runId: "run_01",
+      messageId: "m1",
+      delta: "先想",
+    })
+    state = applySessionEvent(state, {
+      kind: "tool-invoked",
+      eventId: "ti",
+      seq: 2,
+      sessionId: "ses_01",
+      conversationId: "conv_01",
+      runId: "run_01",
+      messageId: "m1",
+      toolId: "t1",
+      name: "get_weather",
+      args: { city: "北京" },
+    })
+    state = applySessionEvent(state, {
+      kind: "tool-returned",
+      eventId: "tr",
+      seq: 3,
+      sessionId: "ses_01",
+      conversationId: "conv_01",
+      runId: "run_01",
+      messageId: "m1",
+      toolId: "t1",
+      name: "get_weather",
+      result: "晴",
+    })
+    state = applySessionEvent(state, {
+      kind: "message-completed",
+      eventId: "c1",
+      seq: 4,
+      sessionId: "ses_01",
+      conversationId: "conv_01",
+      runId: "run_01",
+      messageId: "m1",
+      role: "assistant",
+      content: "晴，适合出门。",
+    })
+
+    const restored = parseStoredSessionState(JSON.parse(JSON.stringify(state)))
+    expect(restored).toEqual(state)
+    expect(restored?.stepsByRun["run_01"]?.map((s) => s.kind)).toEqual([
+      "thinking",
+      "tool",
+      "text",
+    ])
   })
 
   it.each([
@@ -453,7 +746,7 @@ describe("parseStoredSessionState", () => {
       "message with invalid role",
       {
         seenEventIds: [],
-        messages: [{ id: "m1", role: "system", content: "x" }],
+        messages: [{ id: "m1", role: "system", content: "x", runId: "r1" }],
         runStatus: "idle",
       },
     ],
@@ -474,16 +767,23 @@ describe("parseStoredSessionState", () => {
       {
         seenEventIds: [],
         messages: [
-          { id: "m1", role: "assistant", content: "x", leaked: true },
+          { id: "m1", role: "assistant", content: "x", runId: "r1", leaked: true },
         ],
         runStatus: "idle",
+      },
+    ],
+    [
+      "step with unknown kind",
+      {
+        seenEventIds: [],
+        messages: [],
+        runStatus: "idle",
+        stepsByRun: { run_01: [{ kind: "mystery", seq: 1, messageId: "m1" }] },
       },
     ],
   ])(
     "returns null for malformed persisted shape: %s",
     (_label, candidate) => {
-      // 为什么重要：localStorage 是不可信输入（手改/旧版本/被注入），
-      // 任何形状漂移都必须降级为 null（回空首屏），绝不能把脏数据塞进 reducer。
       expect(parseStoredSessionState(candidate)).toBeNull()
     },
   )
@@ -497,20 +797,18 @@ describe("parseStoredSessionState", () => {
   ])(
     "returns null for non-object persisted root: %s",
     (_label, candidate) => {
-      // JSON.parse 也可能产出非对象根（如裸数组/字符串/数字），同样必须安全降级。
       expect(parseStoredSessionState(candidate)).toBeNull()
     },
   )
 
   it("accepts a minimal empty state (the fresh-session baseline)", () => {
-    // 空态本身是合法的持久化基线：刚开新对话落盘的就是它，恢复不应把它判脏。
     expect(parseStoredSessionState(createSessionStreamState())).toEqual(
       createSessionStreamState(),
     )
   })
 
-  it("restores a legacy persisted state without activity fields", () => {
-    // 向后兼容：旧版落盘没有 todos/toolCalls/subagents/thinking，必须补默认值而非判脏。
+  it("restores a legacy persisted state without activity/runId fields", () => {
+    // 向后兼容：旧版落盘没有 todos/stepsByRun，且 message 无 runId，必须补默认值而非判脏。
     const legacy = {
       seenEventIds: ["e1"],
       messages: [{ id: "a1", role: "assistant", content: "hi" }],
@@ -519,9 +817,8 @@ describe("parseStoredSessionState", () => {
     const restored = parseStoredSessionState(legacy)
     expect(restored).not.toBeNull()
     expect(restored?.todos).toEqual([])
-    expect(restored?.toolCalls).toEqual([])
-    expect(restored?.subagents).toEqual([])
-    expect(restored?.thinking).toBe("")
+    expect(restored?.stepsByRun).toEqual({})
+    expect(restored?.messages[0]?.runId).toBe("")
   })
 })
 
@@ -561,14 +858,13 @@ describe("applySessionEvent activity families", () => {
     let state = applySessionEvent(createSessionStreamState(), first)
     expect(state.todos).toHaveLength(2)
     state = applySessionEvent(state, second)
-    // 整表替换：只保留最新一版，不堆积。
     expect(state.todos).toEqual([
       { content: "查天气", status: "completed" },
       { content: "作答", status: "in_progress" },
     ])
   })
 
-  it("tool.invoked then tool.returned stays attached to that assistant message", () => {
+  it("tool.invoked then tool.returned becomes one ordered tool step on the run", () => {
     const invoked = requireDomainEvent({
       event: "tool.invoked",
       event_id: "evt_i",
@@ -594,26 +890,24 @@ describe("applySessionEvent activity families", () => {
       },
     })
     let state = applySessionEvent(createSessionStreamState(), invoked)
-    expect(state.activityByMessageId["m1"]?.toolCalls).toEqual([
-      { id: "t1", name: "get_weather", args: { city: "北京" }, status: "running" },
-    ])
-    expect(state.toolCalls).toEqual([
+    expect(toolSteps(state)).toEqual([
       { id: "t1", name: "get_weather", args: { city: "北京" }, status: "running" },
     ])
     state = applySessionEvent(state, returned)
-    expect(state.activityByMessageId["m1"]?.toolCalls).toHaveLength(1)
-    expect(state.activityByMessageId["m1"]?.toolCalls[0]).toMatchObject({
+    expect(toolSteps(state)).toHaveLength(1)
+    expect(toolSteps(state)[0]).toMatchObject({
       id: "t1",
       result: "北京: 晴",
       status: "done",
     })
   })
 
-  it("keeps tool and subagent activity attached to the correct assistant message", () => {
+  it("interleaves tool then subagent in seq order on the same run", () => {
     let state = createSessionStreamState()
     state = applySessionEvent(state, {
       kind: "message-completed",
       eventId: "evt_m1",
+      seq: 1,
       sessionId: "ses_01",
       conversationId: "conv_01",
       runId: "run_01",
@@ -636,16 +930,6 @@ describe("applySessionEvent activity families", () => {
         },
       }),
     )
-    state = applySessionEvent(state, {
-      kind: "message-completed",
-      eventId: "evt_m2",
-      sessionId: "ses_01",
-      conversationId: "conv_01",
-      runId: "run_01",
-      messageId: "m2",
-      role: "assistant",
-      content: "第二段",
-    })
     state = applySessionEvent(
       state,
       requireDomainEvent({
@@ -654,7 +938,7 @@ describe("applySessionEvent activity families", () => {
         ...base,
         cursor: "run_01:0004",
         payload: {
-          message_id: "m2",
+          message_id: "m1",
           subagent_id: "sa_1",
           name: "researcher",
           description: "查资料",
@@ -664,14 +948,13 @@ describe("applySessionEvent activity families", () => {
       }),
     )
 
-    expect(state.messages.map((message) => message.id)).toEqual(["m1", "m2"])
-    expect(state.activityByMessageId["m1"]?.toolCalls).toHaveLength(1)
-    expect(state.activityByMessageId["m1"]?.subagents).toEqual([])
-    expect(state.activityByMessageId["m2"]?.toolCalls).toEqual([])
-    expect(state.activityByMessageId["m2"]?.subagents).toHaveLength(1)
+    // 同一 run 的有序步骤：text(seq1) → tool(seq3) → subagent(seq4)。
+    expect(stepsOf(state).map((s) => s.kind)).toEqual(["text", "tool", "subagent"])
+    expect(toolSteps(state)).toHaveLength(1)
+    expect(subagentSteps(state)).toHaveLength(1)
   })
 
-  it("subagent lifecycle marks started then done", () => {
+  it("subagent lifecycle marks started then done in place", () => {
     const started = requireDomainEvent({
       event: "subagent.started",
       event_id: "evt_s1",
@@ -700,17 +983,12 @@ describe("applySessionEvent activity families", () => {
       },
     })
     let state = applySessionEvent(createSessionStreamState(), started)
-    expect(state.activityByMessageId["m1"]?.subagents[0]).toMatchObject({
-      id: "sa1",
-      status: "running",
-    })
-    expect(state.subagents[0]).toMatchObject({ id: "sa1", status: "running" })
+    expect(subagentSteps(state)[0]).toMatchObject({ id: "sa1", status: "running" })
     state = applySessionEvent(state, finished)
-    expect(state.activityByMessageId["m1"]?.subagents[0]?.status).toBe("done")
-    expect(state.subagents[0]?.status).toBe("done")
+    expect(subagentSteps(state)[0]?.status).toBe("done")
   })
 
-  it("subagent text attaches to the correct subagent row", () => {
+  it("subagent text attaches to the correct subagent step", () => {
     let state = applySessionEvent(
       createSessionStreamState(),
       requireDomainEvent({
@@ -728,27 +1006,25 @@ describe("applySessionEvent activity families", () => {
         },
       }),
     )
-    state = applySessionEvent(
-      state,
-      {
-        kind: "subagent-text-completed",
-        eventId: "evt_sub_text",
-        sessionId: "ses_01",
-        conversationId: "conv_01",
-        runId: "run_01",
-        messageId: "m1",
-        subagentId: "sa1",
-        text: "子智能体结论",
-      },
-    )
+    state = applySessionEvent(state, {
+      kind: "subagent-text-completed",
+      eventId: "evt_sub_text",
+      seq: 2,
+      sessionId: "ses_01",
+      conversationId: "conv_01",
+      runId: "run_01",
+      messageId: "m1",
+      subagentId: "sa1",
+      text: "子智能体结论",
+    })
 
-    expect(state.activityByMessageId["m1"]?.subagents[0]).toMatchObject({
+    expect(subagentSteps(state)[0]).toMatchObject({
       id: "sa1",
       output: "子智能体结论",
     })
   })
 
-  it("thinking.delta accumulates reasoning text per assistant message", () => {
+  it("thinking.delta accumulates reasoning text in one ordered step", () => {
     const a = requireDomainEvent({
       event: "thinking.delta",
       event_id: "evt_k1",
@@ -765,20 +1041,19 @@ describe("applySessionEvent activity families", () => {
     })
     let state = applySessionEvent(createSessionStreamState(), a)
     state = applySessionEvent(state, b)
-    expect(state.activityByMessageId["m1"]?.thinking).toBe("先想再想")
-    expect(state.thinking).toBe("先想再想")
+    expect(thinkingTextOf(state)).toBe("先想再想")
+    // 同一段 thinking 续写不新增步骤。
+    expect(stepsOf(state).filter((s) => s.kind === "thinking")).toHaveLength(1)
   })
 
   it("computeActivityVersion grows as thinking/tool/subagent activity streams in", () => {
-    // 为什么重要：auto-scroll 的跟随 effect 不会因 messages 引用不变而触发，
-    // 过程块在静默生长时视图会跟丢（尤其 Thinking 先流式推理）。computeActivityVersion
-    // 必须是一个随活动总量单调增长的纯派生数，供 effect 依赖驱动贴底跟随。
     const v0 = computeActivityVersion(createSessionStreamState())
     expect(v0).toBe(0)
 
     let state = applySessionEvent(createSessionStreamState(), {
       kind: "thinking-delta",
       eventId: "av-think-1",
+      seq: 1,
       sessionId: "ses_01",
       conversationId: "conv_01",
       runId: "run_01",
@@ -791,19 +1066,20 @@ describe("applySessionEvent activity families", () => {
     state = applySessionEvent(state, {
       kind: "thinking-delta",
       eventId: "av-think-2",
+      seq: 2,
       sessionId: "ses_01",
       conversationId: "conv_01",
       runId: "run_01",
       messageId: "m1",
       delta: "再想想",
     })
-    // 思考文本继续生长（messages 引用不变），版本号必须随之增大。
     expect(computeActivityVersion(state)).toBeGreaterThan(vThinking)
 
     const vBeforeTool = computeActivityVersion(state)
     state = applySessionEvent(state, {
       kind: "tool-invoked",
       eventId: "av-tool",
+      seq: 3,
       sessionId: "ses_01",
       conversationId: "conv_01",
       runId: "run_01",
@@ -818,6 +1094,7 @@ describe("applySessionEvent activity families", () => {
     state = applySessionEvent(state, {
       kind: "subagent-started",
       eventId: "av-sub",
+      seq: 4,
       sessionId: "ses_01",
       conversationId: "conv_01",
       runId: "run_01",
@@ -834,6 +1111,7 @@ describe("applySessionEvent activity families", () => {
     state = applySessionEvent(state, {
       kind: "subagent-text-delta",
       eventId: "av-sub-text",
+      seq: 5,
       sessionId: "ses_01",
       conversationId: "conv_01",
       runId: "run_01",
@@ -841,16 +1119,14 @@ describe("applySessionEvent activity families", () => {
       subagentId: "sa1",
       text: "子智能体在写结论",
     })
-    // 子智能体输出文本生长也要计入，过程块的子面板在长高。
     expect(computeActivityVersion(state)).toBeGreaterThan(vBeforeOutput)
   })
 
   it("computeActivityVersion is a pure derivation that does not depend on identity", () => {
-    // 为什么重要：相同活动总量必须得到相同版本号——它只反映「内容长了多少」，
-    // 不掺入对象引用/顺序噪声，否则会在无新内容时误触发跟随滚动。
     const a = applySessionEvent(createSessionStreamState(), {
       kind: "thinking-delta",
       eventId: "pa-1",
+      seq: 1,
       sessionId: "ses_01",
       conversationId: "conv_01",
       runId: "run_01",
@@ -860,6 +1136,7 @@ describe("applySessionEvent activity families", () => {
     const b = applySessionEvent(createSessionStreamState(), {
       kind: "thinking-delta",
       eventId: "pb-1",
+      seq: 1,
       sessionId: "ses_01",
       conversationId: "conv_01",
       runId: "run_01",
@@ -868,53 +1145,172 @@ describe("applySessionEvent activity families", () => {
     })
     expect(computeActivityVersion(a)).toBe(computeActivityVersion(b))
   })
+})
 
-  it("a new user turn resets the mirrored current activity but keeps prior message buckets", () => {
-    let state = applySessionEvent(createSessionStreamState(), {
+describe("buildThreadItems grouping", () => {
+  it("groups consecutive assistant messages of one run under a single turn", () => {
+    // 为什么重要：多段 assistant 文本属于同一 run，必须归并到一轮（一个头像、一条脊），
+    // 而不是每段各起一个 turn。用户消息在 turn 之上单独成项。
+    let state = appendUserMessage(createSessionStreamState(), {
+      id: "u1",
+      content: "问",
+    })
+    state = applySessionEvent(state, {
       kind: "message-completed",
-      eventId: "evt_prev_msg",
+      eventId: "c1",
+      seq: 1,
       sessionId: "ses_01",
       conversationId: "conv_01",
       runId: "run_01",
-      messageId: "m_prev",
+      messageId: "m1",
       role: "assistant",
-      content: "上一段",
+      content: "第一段",
     })
-    state = applySessionEvent(
-      state,
-      requireDomainEvent({
-        event: "tool.invoked",
-        event_id: "evt_tool_prev",
-        ...base,
-        cursor: "run_01:0001",
-        payload: {
-          message_id: "m_prev",
-          tool_id: "t_prev",
-          name: "get_weather",
-          args: { city: "北京" },
-        },
+    state = applySessionEvent(state, {
+      kind: "message-completed",
+      eventId: "c2",
+      seq: 2,
+      sessionId: "ses_01",
+      conversationId: "conv_01",
+      runId: "run_01",
+      messageId: "m2",
+      role: "assistant",
+      content: "第二段",
+    })
+
+    const items = buildThreadItems(state)
+    expect(items.map((i) => i.kind)).toEqual(["user", "assistant-turn"])
+    const turn = items[1]
+    expect(turn?.kind === "assistant-turn" && turn.runId).toBe("run_01")
+    expect(
+      turn?.kind === "assistant-turn" && Object.keys(turn.messagesById),
+    ).toEqual(["m1", "m2"])
+  })
+
+  it("splits two separate runs into two turns", () => {
+    let state = appendUserMessage(createSessionStreamState(), {
+      id: "u1",
+      content: "一",
+    })
+    state = applySessionEvent(state, {
+      kind: "message-completed",
+      eventId: "c1",
+      seq: 1,
+      sessionId: "ses_01",
+      conversationId: "conv_01",
+      runId: "run_01",
+      messageId: "m1",
+      role: "assistant",
+      content: "答一",
+    })
+    state = appendUserMessage(state, { id: "u2", content: "二" })
+    state = applySessionEvent(state, {
+      kind: "message-completed",
+      eventId: "c2",
+      seq: 1,
+      sessionId: "ses_01",
+      conversationId: "conv_01",
+      runId: "run_02",
+      messageId: "m2",
+      role: "assistant",
+      content: "答二",
+    })
+
+    const items = buildThreadItems(state)
+    expect(items.map((i) => i.kind)).toEqual([
+      "user",
+      "assistant-turn",
+      "user",
+      "assistant-turn",
+    ])
+  })
+
+  it("renders a process-only run with no text yet as a forming turn", () => {
+    // 为什么重要：过程先到、正文未到（首 token 未到）的 run 仍要渲染这一轮，不塌成空白。
+    const state = applySessionEvent(createSessionStreamState(), {
+      kind: "thinking-delta",
+      eventId: "k1",
+      seq: 1,
+      sessionId: "ses_01",
+      conversationId: "conv_01",
+      runId: "run_01",
+      messageId: "m1",
+      delta: "先想",
+    })
+
+    const items = buildThreadItems(state)
+    expect(items).toHaveLength(1)
+    const turn = items[0]
+    expect(turn?.kind === "assistant-turn" && turn.steps[0]?.kind).toBe(
+      "thinking",
+    )
+  })
+})
+
+describe("deriveRunPhase", () => {
+  it("idle when not streaming and no terminal status", () => {
+    expect(
+      deriveRunPhase(createSessionStreamState(), { isStreaming: false }),
+    ).toBe("idle")
+  })
+
+  it("submitted while streaming before the first step arrives", () => {
+    const state = appendUserMessage(createSessionStreamState(), {
+      id: "u1",
+      content: "问",
+    })
+    expect(deriveRunPhase(state, { isStreaming: true })).toBe("submitted")
+  })
+
+  it("streaming once a step has landed for the active run", () => {
+    let state = appendUserMessage(createSessionStreamState(), {
+      id: "u1",
+      content: "问",
+    })
+    state = applySessionEvent(state, {
+      kind: "message-delta",
+      eventId: "d1",
+      seq: 1,
+      sessionId: "ses_01",
+      conversationId: "conv_01",
+      runId: "run_01",
+      messageId: "m1",
+      role: "assistant",
+      delta: "答",
+    })
+    expect(deriveRunPhase(state, { isStreaming: true })).toBe("streaming")
+  })
+
+  it("complete after run-completed, failed after run-failed", () => {
+    const completed = applySessionEvent(createSessionStreamState(), {
+      kind: "run-completed",
+      eventId: "rc",
+      seq: 1,
+      sessionId: "ses_01",
+      conversationId: "conv_01",
+      runId: "run_01",
+    })
+    expect(deriveRunPhase(completed, { isStreaming: false })).toBe("complete")
+
+    const failed = applySessionEvent(createSessionStreamState(), {
+      kind: "run-failed",
+      eventId: "rf",
+      seq: 1,
+      sessionId: "ses_01",
+      conversationId: "conv_01",
+      runId: "run_01",
+      errorKind: "agent_error",
+      message: "boom",
+    })
+    expect(deriveRunPhase(failed, { isStreaming: false })).toBe("failed")
+  })
+
+  it("reconnecting overrides other signals when reattaching", () => {
+    expect(
+      deriveRunPhase(createSessionStreamState(), {
+        isStreaming: true,
+        isReconnecting: true,
       }),
-    )
-    const todoEvent = requireDomainEvent({
-      event: "todo.updated",
-      event_id: "evt_t",
-      ...base,
-      cursor: "run_01:0002",
-      payload: { todos: [{ content: "x", status: "completed" }] },
-    })
-    state = applySessionEvent(state, todoEvent)
-    expect(state.todos).toHaveLength(1)
-    expect(state.activityByMessageId["m_prev"]?.toolCalls).toHaveLength(1)
-
-    state = appendUserMessage(state, { id: "u2", content: "下一轮" })
-
-    expect(state.todos).toEqual([])
-    expect(state.toolCalls).toEqual([])
-    expect(state.subagents).toEqual([])
-    expect(state.thinking).toBe("")
-    expect(state.activityByMessageId["m_prev"]?.toolCalls).toHaveLength(1)
-    expect(state.messages.some((message) => message.content === "下一轮")).toBe(
-      true,
-    )
+    ).toBe("reconnecting")
   })
 })

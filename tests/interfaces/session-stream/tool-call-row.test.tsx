@@ -64,4 +64,19 @@ describe("ToolCallRow", () => {
     expect(container.querySelector(".kk-tool")).toBeInTheDocument()
     expect(screen.getByText("get_weather")).toBeInTheDocument()
   })
+
+  it("surfaces an error state with its errorText, staying expanded", () => {
+    // 为什么重要：工具失败是段级状态（本轮通常继续）——必须显式露出失败原因并保持展开，
+    // 绝不塌成沉默的空行。即便无入参也作为可展开的 <details> 呈现错误面板。
+    const { container } = render(
+      <ToolCallRow
+        tool={makeTool({ status: "error", errorText: "timeout after 30s" })}
+      />,
+    )
+    const details = container.querySelector("details.kk-tool")
+    expect(details).toBeInTheDocument()
+    expect(container.querySelector(".kk-tool")).toHaveClass("kk-tool--error")
+    expect((details as HTMLDetailsElement).open).toBe(true)
+    expect(screen.getByText("timeout after 30s")).toBeInTheDocument()
+  })
 })

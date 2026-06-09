@@ -38,7 +38,9 @@ export function SubagentRow({ subagent }: { subagent: SessionSubagent }) {
     <p className="kk-subagent__desc">{subagent.description}</p>
   ) : null
 
-  if (!subagent.output) {
+  // 落定且无结论 → 简单静态行（无死切换）。运行中即便结论未到，也展开给「运行中…」loading，
+  // 而不是塌成空行——让「在干活、结论还没回来」可见。
+  if (!subagent.output && !running) {
     return (
       <div
         className={`kk-subagent kk-subagent--${subagent.status}`}
@@ -64,7 +66,18 @@ export function SubagentRow({ subagent }: { subagent: SessionSubagent }) {
       <div className="kk-subagent__detail">
         {description}
         <div className="kk-subagent__result">
-          <MarkdownMessage content={subagent.output} />
+          {subagent.output ? (
+            <MarkdownMessage content={subagent.output} />
+          ) : (
+            <p className="kk-pending">
+              运行中
+              <span className="kk-thread__pulse" aria-hidden>
+                <span />
+                <span />
+                <span />
+              </span>
+            </p>
+          )}
         </div>
       </div>
     </details>
