@@ -116,6 +116,8 @@ type Conversation = {
   setDraft: (value: string) => void
   prefillDraft: (value: string) => void
   isStreaming: boolean
+  // 重连续传态：仅在重订阅在途 run 的窗口为真，驱动「重连中…」锚点（区别于普通思考）。
+  isReconnecting: boolean
   transportLabel: string
   presentation: ModePresentation
   composerRef: RefObject<HTMLTextAreaElement | null>
@@ -262,6 +264,8 @@ export function useConversation(
 
   const [draft, setDraft] = useState("")
   const [isStreaming, setIsStreaming] = useState(false)
+  // 重连续传态：仅在「重订阅在途 run」的窗口为真（区别于普通流式/思考），驱动「重连中…」锚点。
+  const [isReconnecting, setIsReconnecting] = useState(false)
   const [transportState, setTransportState] = useState<TransportState>("idle")
   // 空首屏（尚无会话）时选好的模式：首条消息创建首个会话时承接它。会话存在后模式以会话为准。
   const [pendingMode, setPendingMode] = useState<AgentMode>("fast")
@@ -305,14 +309,17 @@ export function useConversation(
     reattachedRef.current = pendingConvId
 
     // 重连即进入流式态并恢复到 live transport state——presentation 由 modePresentation 统一生成。
+    // 同时置 isReconnecting：在续传窗口内让 thread 渲染「重连中…」而非「正在思考…」。
     /* eslint-disable react-hooks/set-state-in-effect */
     setIsStreaming(true)
+    setIsReconnecting(true)
     setTransportState("live")
     /* eslint-enable react-hooks/set-state-in-effect */
     lastInputRef.current = entry.pendingInput ?? ""
 
     const settle = () => {
       setIsStreaming(false)
+      setIsReconnecting(false)
       requestInFlightRef.current = false
       setTransportState("live")
       setLiveStore((prev) => (prev ? setActivePending(prev, undefined) : prev))
@@ -322,6 +329,8 @@ export function useConversation(
       sessionId: pendingConvId,
       initialState: entry.thread,
       onState: (next) => {
+        // 续传第一批事件一到即退出「重连中」——此后是正常流式（思考/出字），不再是等待重连。
+        setIsReconnecting(false)
         setLiveStore((prev) => withActiveThread(prev ?? base, next, nowMs()))
       },
       onSettled: settle,
@@ -371,6 +380,8 @@ export function useConversation(
       replyHandleRef.current?.close()
       setLiveStore(storeAtStart)
       setIsStreaming(true)
+      // 主动发起的新一轮不是重连：清掉可能残留的重连态。
+      setIsReconnecting(false)
       scrollToLatest()
 
       replyHandleRef.current = startReply({
@@ -477,6 +488,7 @@ export function useConversation(
     replyHandleRef.current = null
     requestInFlightRef.current = false
     setIsStreaming(false)
+    setIsReconnecting(false)
     setTransportState("idle")
     // 手动中止也清除在途标记：刷新后不再自动重连这一轮。
     setLiveStore((prev) => (prev ? setActivePending(prev, undefined) : prev))
@@ -493,6 +505,7 @@ export function useConversation(
     setLiveStore((prev) => addConversation(prev ?? persistedStore, id, now))
     setDraft("")
     setIsStreaming(false)
+    setIsReconnecting(false)
     setTransportState("idle")
     composerRef.current?.focus()
   }, [persistedStore])
@@ -511,6 +524,7 @@ export function useConversation(
       })
       setDraft("")
       setIsStreaming(false)
+      setIsReconnecting(false)
       setTransportState("idle")
       composerRef.current?.focus()
     },
@@ -525,6 +539,7 @@ export function useConversation(
         replyHandleRef.current = null
         requestInFlightRef.current = false
         setIsStreaming(false)
+        setIsReconnecting(false)
         setTransportState("idle")
       }
       const fallbackId = createLocalId("conv")
@@ -593,6 +608,7 @@ export function useConversation(
     setDraft,
     prefillDraft,
     isStreaming,
+    isReconnecting,
     transportLabel: presentation.transportLabel,
     presentation,
     composerRef,

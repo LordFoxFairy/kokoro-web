@@ -152,6 +152,30 @@ describe("AssistantTurn structure (one avatar per turn)", () => {
     expect(within(segment).getByText("正在生长的回答")).toBeInTheDocument()
   })
 
+  it("renders a non-blank forming scaffold when live with zero segments", () => {
+    // 为什么重要：提交后、首个 step/token 未到时，在途轮不能塌成空白——
+    // 即使没有任何 segment，也要给一个 live 头像 + 单条「正在…」成形线，绝不空帧。
+    const { container } = render(
+      <AssistantTurn steps={[]} messagesById={{}} isLive />,
+    )
+
+    // 仍是一轮：一个点亮的头像。
+    expect(container.querySelectorAll(".kk-turn__avatar--bot")).toHaveLength(1)
+    expect(container.querySelector(".kk-msg__avatar--live")).not.toBeNull()
+    // 单条成形占位，文案为「正在…」。
+    const forming = container.querySelector(".kk-msg__bubble--forming")
+    expect(forming).not.toBeNull()
+    expect(forming?.textContent).toMatch(/正在/)
+  })
+
+  it("renders nothing extra when settled with zero segments (no scaffold)", () => {
+    // 落定/非流式且无内容：不得冒出成形占位（避免空轮残留一个孤零零的「正在…」）。
+    const { container } = render(
+      <AssistantTurn steps={[]} messagesById={{}} isLive={false} />,
+    )
+    expect(container.querySelector(".kk-msg__bubble--forming")).toBeNull()
+  })
+
   it("shows a forming placeholder (not an empty bubble) for the tail segment whose text has not arrived", () => {
     // 工具→文本→工具→[文本未到]：尾段过程已到、正文未到——气泡位给一个「正在…」成形占位，
     // 工具挂在下面，绝不是一个空气泡；正文一到就地替换。

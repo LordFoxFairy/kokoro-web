@@ -695,6 +695,18 @@
   color: color-mix(in srgb, var(--foreground) 52%, white 48%);
 }
 
+/* 重连续传锚点：与普通成形占位明确区分——暖木描边胶囊 + 实色标签，
+   暗示「正在重新接上这一轮」而非「正在新想」。沿用成形气泡盒模型，尺寸不跳。 */
+.kk-msg__bubble--forming[data-anchor="reconnecting"] {
+  border-color: color-mix(in srgb, var(--brand-wood) 45%, var(--border-soft) 55%);
+  background: color-mix(in srgb, var(--brand-wood-soft) 40%, var(--surface) 60%);
+}
+
+.kk-msg__bubble--forming[data-anchor="reconnecting"] .kk-forming__label {
+  color: color-mix(in srgb, var(--brand-wood) 72%, var(--foreground) 28%);
+  font-weight: 500;
+}
+
 /* 运行中占位：工具结果未到 / 子智能体结论未到时，结果位显示「运行中…」+ 脉冲点，
    而不是空盒子——让「在跑、还没回来」可见，统一 loading 语言。 */
 .kk-pending {

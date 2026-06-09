@@ -398,6 +398,91 @@ describe("SessionShell conversation", () => {
   })
 })
 
+// 提交后、首个 step/token 未到时永不留空帧：在途轮始终有一个 live 脚手架。
+const noFirstToken: StartReply = ({ onState, initialState }: StartReplyInput) => {
+  // 既不推任何 step，也不推任何 assistant 文本——只把流式态保持住（永不 settle）。
+  // 调一次 onState 维持 preview/live transport，但 thread 内容与提交时一致（仅用户气泡）。
+  onState(initialState)
+  return { close: () => {} }
+}
+
+describe("SessionShell submitted-no-token scaffold", () => {
+  it("never shows a blank frame between submit and first token", () => {
+    // 为什么重要：撤掉全局「正在输入」状态条后，提交到首 token 之间不能是空白——
+    // 在途轮必须立刻给一个 live 脚手架（一个点亮头像 + 单条「正在…」成形线）。
+    const { container } = render(<SessionShell startReply={noFirstToken} />)
+
+    send("还没有任何 token")
+
+    // 用户气泡在场。
+    expect(inLog("还没有任何 token")).toBeInTheDocument()
+    // 恰好一个在途助手轮，头像点亮。
+    const turns = container.querySelectorAll(".kk-turn--assistant")
+    expect(turns).toHaveLength(1)
+    expect(container.querySelectorAll(".kk-msg__avatar--live")).toHaveLength(1)
+    // 成形占位（「正在…」）在场——不是空帧。
+    const forming = container.querySelector(".kk-msg__bubble--forming")
+    expect(forming).not.toBeNull()
+    expect(forming?.textContent).toMatch(/正在/)
+  })
+
+  it("does not synthesize a live turn when not streaming", () => {
+    // 落定/静息态：绝不冒出一个空的成形脚手架。
+    const { container } = render(
+      <SessionShell startReply={instantReply((input) => `答：${input}`)} />,
+    )
+
+    send("正常一轮")
+
+    expect(screen.getByText("答：正常一轮")).toBeInTheDocument()
+    // 已落定：无成形占位、无 live 头像。
+    expect(container.querySelector(".kk-msg__bubble--forming")).toBeNull()
+    expect(container.querySelector(".kk-msg__avatar--live")).toBeNull()
+  })
+})
+
+describe("SessionShell single live anchor", () => {
+  it("keeps at most one caret and one forming pulse across a multi-turn thread", () => {
+    // 为什么重要：全线程只允许一个「live」脉冲锚点——只在在途轮的尾段。
+    // 历史已落定的轮与更早的段绝不带 caret/成形脉冲。
+    const { container } = render(
+      <SessionShell startReply={instantReply((input) => `答：${input}`)} />,
+    )
+
+    // 先完成一轮（落定），积累一段历史。
+    send("第一轮")
+    expect(screen.getByText("答：第一轮")).toBeInTheDocument()
+    // 落定态：零 caret、零成形脉冲。
+    expect(container.querySelectorAll(".kk-caret")).toHaveLength(0)
+    expect(container.querySelectorAll(".kk-msg__bubble--forming")).toHaveLength(0)
+  })
+
+  it("renders at most one caret and one forming pulse while streaming a second turn", () => {
+    // 在途轮（第二轮）只有尾段带 caret；首轮历史与早段不带任何 live 锚点。
+    const { start } = spyableNeverSettles("正在生长")
+    const { container, rerender } = render(
+      <SessionShell startReply={instantReply((input) => `答：${input}`)} />,
+    )
+
+    send("第一轮")
+    expect(screen.getByText("答：第一轮")).toBeInTheDocument()
+
+    // 切到永不 settle 的桩再发第二轮，使其停留在流式态。
+    rerender(<SessionShell startReply={start} />)
+    send("第二轮")
+
+    // 全线程最多一个 caret、最多一个成形脉冲。
+    expect(container.querySelectorAll(".kk-caret").length).toBeLessThanOrEqual(1)
+    expect(
+      container.querySelectorAll(".kk-msg__bubble--forming").length,
+    ).toBeLessThanOrEqual(1)
+    // 至多一个 live 头像（在途轮）。
+    expect(
+      container.querySelectorAll(".kk-msg__avatar--live").length,
+    ).toBeLessThanOrEqual(1)
+  })
+})
+
 describe("SessionShell stop control", () => {
   it("hides the stop control until a reply is streaming", () => {
     render(<SessionShell startReply={instantReply((input) => input)} />)
@@ -1442,6 +1527,45 @@ describe("SessionShell interrupt recovery", () => {
     // 续传把半截回答补完，并退出流式态。
     expect(inLog("续传后补完的完整回答")).toBeInTheDocument()
     expect(screen.getByLabelText("对话输入")).not.toBeDisabled()
+  })
+
+  it("surfaces a distinct 重连中 anchor while reattaching (before any event)", () => {
+    // 为什么重要：重连续传与「正在思考」不能长一个样——重连必须有自己可辨识的锚点（文案/样式），
+    // 让用户知道是在「重新接上这一轮」，而非「正在新想」。这里 reattach 永不回事件，停在重连态。
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        activeId: "c1",
+        conversations: [
+          {
+            id: "c1",
+            title: "重连中的一问",
+            updatedAt: 1,
+            pendingInput: "重连中的一问",
+            thread: {
+              seenEventIds: [],
+              messages: [{ id: "u1", role: "user", content: "重连中的一问" }],
+              runStatus: "idle",
+            },
+          },
+        ],
+      }),
+    )
+
+    // 永不回任何事件、也不 settle：组件停留在「重连中」态。
+    const reattach: ReattachReply = () => ({ close: () => {} })
+
+    const { container } = render(
+      <SessionShell startReply={instantReply((input) => input)} reattach={reattach} />,
+    )
+
+    // 重连锚点在对话流内、文案为「重连中…」，与「正在思考…」明确区分（rail 标题同名词在 log 外）。
+    const log = screen.getByRole("log")
+    expect(within(log).getByText("重连中…")).toBeInTheDocument()
+    expect(within(log).queryByText("正在思考")).toBeNull()
+    expect(within(log).queryByText("正在整理回答")).toBeNull()
+    // 用 data 钩子让 CSS 给重连锚点独立样式（区别于普通成形脉冲）。
+    expect(container.querySelector('[data-anchor="reconnecting"]')).not.toBeNull()
   })
 
   it("does not re-attach a conversation with no in-flight run", () => {

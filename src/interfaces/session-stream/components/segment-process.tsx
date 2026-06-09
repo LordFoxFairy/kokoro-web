@@ -38,7 +38,11 @@ export function SegmentProcess({
   live,
   mode,
 }: SegmentProcessProps) {
-  const [open, setOpen] = useState(live)
+  // 默认展开态跟随 live 信号：尾段流式时摊开实时看，落定即收成一行摘要。
+  // 一旦用户手动切换（manualOpen 落定），就以用户意图为准、不再随 live 变化对抗用户。
+  // 不靠 remount/翻 key——保留 details 自身的滚动与状态，仅在未被接管时让默认值随 live 流动。
+  const [manualOpen, setManualOpen] = useState<boolean | null>(null)
+  const open = manualOpen ?? live
 
   const hasActivity =
     thinking.length > 0 || tools.length > 0 || subagents.length > 0
@@ -47,7 +51,11 @@ export function SegmentProcess({
   }
 
   const handleToggle: ReactEventHandler<HTMLDetailsElement> = (event) => {
-    setOpen(event.currentTarget.open)
+    // 仅当用户真正改变了展开态（结果 ≠ 本帧受控下发的 open）才记为手动接管；
+    // React 因 live 翻转同步 open 而触发的 toggle 与 open 一致，忽略，避免冻结住跟随。
+    if (event.currentTarget.open !== open) {
+      setManualOpen(event.currentTarget.open)
+    }
   }
 
   const verb = mode === "fast" ? "处理" : "思考"
