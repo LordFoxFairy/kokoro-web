@@ -1,59 +1,130 @@
 import type { AgentMode } from "@/application/conversation-store"
 import type {
-  SegmentActivity,
   SessionMessage,
+  SessionStep,
+  SessionSubagent,
+  SessionToolCall,
 } from "@/application/session-stream-reducer"
 
 import { RobotIcon } from "./icons"
 import { MarkdownMessage } from "./markdown-message"
-import { ProcessBlock } from "./process-block"
+import { SegmentProcess } from "./segment-process"
 
 type AssistantTurnProps = {
-  // 这一段 assistant 文本；流式过程先到、正文未到时可能暂缺。
-  message?: SessionMessage
-  // 这一个 messageId 自己的过程（思考/工具/子智能体），就近挂在该段气泡下。
-  activity?: SegmentActivity
-  isStreamingAssistant: boolean
-  isStreaming: boolean
-  // 本会话模式：透传给过程块作密度差异钩子。
+  // 这一轮（一个 runId）按 seq 排好的有序步骤：思考/工具/子智能体/文本交错。
+  steps: SessionStep[]
+  // 文本步骤按 messageId 取这一段正文；过程先到、正文未到时该段可能暂缺。
+  messagesById: Record<string, SessionMessage>
+  // 这一轮是否仍在流式：驱动「正在出字」光标、过程默认展开、动态头像。
+  isLive: boolean
+  // 本会话模式：透传给过程块作密度 / 文案差异钩子。
   mode?: AgentMode
 }
 
-// 助手一段：一个🤖头像 + 一段回答 + 这一段自己的过程。
-// 多段回答时，每段各自成块，工具/子智能体不跨段串挂。
+type Segment = {
+  messageId: string
+  thinking: string
+  tools: SessionToolCall[]
+  subagents: SessionSubagent[]
+}
+
+// 按 messageId 把有序步骤分段，保持「首次出现」顺序（即真实发生时序）；
+// 每段聚合它自己的思考/工具/子智能体。工具属于它后面那段文本（由 message_ref 归属保证），
+// 因此每段的过程正好是「催生这段答案」的那批过程。
+function groupSegments(steps: SessionStep[]): Segment[] {
+  const order: string[] = []
+  const byId = new Map<string, Segment>()
+  const segmentFor = (id: string): Segment => {
+    const existing = byId.get(id)
+    if (existing) {
+      return existing
+    }
+    const created: Segment = {
+      messageId: id,
+      thinking: "",
+      tools: [],
+      subagents: [],
+    }
+    byId.set(id, created)
+    order.push(id)
+    return created
+  }
+  for (const step of steps) {
+    const segment = segmentFor(step.messageId)
+    if (step.kind === "thinking") {
+      segment.thinking += step.text
+    } else if (step.kind === "tool") {
+      segment.tools.push(step.tool)
+    } else if (step.kind === "subagent") {
+      segment.subagents.push(step.subagent)
+    }
+    // text 步骤只标记该段存在；正文从 messagesById 取。
+  }
+  return order.map((id) => byId.get(id) as Segment)
+}
+
+// 助手一轮 = 一个🤖头像 + 一条竖脊。脊上按段堆叠，每段：
+//   答案气泡在【上】（最醒目）＋ 它自己的过程挂在气泡【下面】（思考/该段工具/子智能体，
+//   收成更轻的可折叠次级块）。多段就是「气泡+过程」依次堆叠，共用一个头像。
+// 只有整轮的尾段在流式时带光标 / 动态头像（唯一 live 锚点）。
 export function AssistantTurn({
-  message,
-  activity,
-  isStreamingAssistant,
-  isStreaming,
+  steps,
+  messagesById,
+  isLive,
   mode,
 }: AssistantTurnProps) {
+  const segments = groupSegments(steps)
+  const tailId =
+    segments.length > 0 ? segments[segments.length - 1]?.messageId : undefined
+
   return (
     <article
-      className="kk-msg kk-msg--assistant"
-      aria-atomic={isStreamingAssistant ? true : undefined}
+      className="kk-turn kk-turn--assistant kk-msg kk-msg--assistant"
+      aria-atomic={isLive ? true : undefined}
     >
-      <div className="kk-msg__avatar kk-msg__avatar--bot" aria-hidden>
+      <div
+        className={`kk-turn__avatar kk-turn__avatar--bot kk-msg__avatar kk-msg__avatar--bot${isLive ? " kk-msg__avatar--live" : ""}`}
+        aria-hidden
+      >
         <RobotIcon />
       </div>
-      <div className="kk-turn__stack">
-        {message ? (
-          <div className="kk-msg__bubble">
-            <MarkdownMessage content={message.content} />
-            {/* 正在出字的就近线索：紧跟正文的内联闪烁光标，对读屏隐藏；落定即消失。 */}
-            {isStreamingAssistant && message.content ? (
-              <span className="kk-caret" aria-hidden />
-            ) : null}
-          </div>
-        ) : null}
-        <ProcessBlock
-          key={isStreaming ? "live" : "settled"}
-          thinking={activity?.thinking ?? ""}
-          toolCalls={activity?.toolCalls ?? []}
-          subagents={activity?.subagents ?? []}
-          live={isStreaming}
-          mode={mode}
-        />
+      <div className="kk-turn__spine">
+        {segments.map((segment) => {
+          const message = messagesById[segment.messageId]
+          const liveSegment = isLive && segment.messageId === tailId
+          const showCaret =
+            liveSegment && Boolean(message) && (message?.content.length ?? 0) > 0
+          // 尾段正文未到（过程先到）：气泡位给一个「正在…」成形占位，过程仍挂在下面。
+          const forming = liveSegment && !message
+          const formingLabel = mode === "fast" ? "正在整理回答" : "正在思考"
+          return (
+            <div className="kk-turn__segment" key={segment.messageId}>
+              {message ? (
+                <div className="kk-msg__bubble kk-turn__answer">
+                  <MarkdownMessage content={message.content} />
+                  {/* 正在出字的就近线索：紧跟正文的内联闪烁光标，对读屏隐藏；落定即消失。 */}
+                  {showCaret ? <span className="kk-caret" aria-hidden /> : null}
+                </div>
+              ) : forming ? (
+                <div className="kk-msg__bubble kk-turn__answer kk-msg__bubble--forming">
+                  <span className="kk-forming__label">{formingLabel}</span>
+                  <span className="kk-thread__pulse" aria-hidden>
+                    <span />
+                    <span />
+                    <span />
+                  </span>
+                </div>
+              ) : null}
+              <SegmentProcess
+                thinking={segment.thinking}
+                tools={segment.tools}
+                subagents={segment.subagents}
+                live={liveSegment}
+                mode={mode}
+              />
+            </div>
+          )
+        })}
       </div>
     </article>
   )

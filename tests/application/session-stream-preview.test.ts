@@ -9,7 +9,34 @@ import {
 import {
   appendUserMessage,
   createSessionStreamState,
+  type SessionStreamState,
 } from "@/application/session-stream-reducer"
+
+// 从某 run 的有序步骤里抽出工具 / 子智能体 / 思考文本，供断言新模型。
+function runSteps(state: SessionStreamState | undefined, runId: string) {
+  return state?.stepsByRun[runId] ?? []
+}
+
+function subagentsOf(state: SessionStreamState | undefined, runId: string) {
+  return runSteps(state, runId)
+    .filter((step) => step.kind === "subagent")
+    .map((step) => (step.kind === "subagent" ? step.subagent : null))
+    .filter((s): s is NonNullable<typeof s> => s !== null)
+}
+
+function toolsOf(state: SessionStreamState | undefined, runId: string) {
+  return runSteps(state, runId)
+    .filter((step) => step.kind === "tool")
+    .map((step) => (step.kind === "tool" ? step.tool : null))
+    .filter((t): t is NonNullable<typeof t> => t !== null)
+}
+
+function thinkingOf(state: SessionStreamState | undefined, runId: string) {
+  return runSteps(state, runId)
+    .filter((step) => step.kind === "thinking")
+    .map((step) => (step.kind === "thinking" ? step.text : ""))
+    .join("")
+}
 
 type Listener = (event: MessageEvent) => void
 
@@ -472,7 +499,7 @@ describe("consumeLiveSession", () => {
     )
 
     const final = snapshots.at(-1)
-    expect(final?.activityByMessageId["msg_01"]?.subagents[0]).toMatchObject({
+    expect(subagentsOf(final, "run_01")[0]).toMatchObject({
       id: "sa_1",
       output: "子智能体结论",
     })
@@ -665,8 +692,8 @@ describe("simulateAssistantReply", () => {
 
     const final = snapshots.at(-1)
     // Thinking mode surfaces reasoning, a tool call, and a todo checklist.
-    expect(final?.activityByMessageId["msg_th"]?.thinking.length).toBeGreaterThan(0)
-    expect(final?.activityByMessageId["msg_th"]?.toolCalls.length).toBeGreaterThan(0)
+    expect(thinkingOf(final, "run_th").length).toBeGreaterThan(0)
+    expect(toolsOf(final, "run_th").length).toBeGreaterThan(0)
     expect(final?.todos).toHaveLength(2)
     expect(final?.runStatus).toBe("completed")
   })
@@ -686,8 +713,8 @@ describe("simulateAssistantReply", () => {
     vi.runAllTimers()
 
     const final = snapshots.at(-1)
-    expect(final?.activityByMessageId["msg_fa"]?.thinking ?? "").toBe("")
-    expect(final?.activityByMessageId["msg_fa"]?.toolCalls ?? []).toHaveLength(0)
+    expect(thinkingOf(final, "run_fa")).toBe("")
+    expect(toolsOf(final, "run_fa")).toHaveLength(0)
     expect(final?.todos).toHaveLength(0)
     expect(final?.runStatus).toBe("completed")
   })

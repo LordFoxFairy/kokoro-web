@@ -27,6 +27,8 @@ describe("parseSessionEvent", () => {
     expect(event).toEqual({
       kind: "message-delta",
       eventId: "evt_01",
+      // seq 取游标里最后一段连续数字（"…-000012" → 12），携带传输层的发射序号。
+      seq: 12,
       sessionId: "ses_01",
       conversationId: "conv_01",
       runId: "run_01",

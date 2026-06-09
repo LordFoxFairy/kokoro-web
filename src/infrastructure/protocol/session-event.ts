@@ -259,14 +259,31 @@ export function parseSessionEvent(input: unknown): SessionTransportEvent {
   return sessionEventSchema.parse(input)
 }
 
+// 信封游标承载传输层的单调发射序号（如 "run_x:0007" / "1748428800-000012"）。
+// 取游标里出现的最后一段连续数字作为 seq：这覆盖 "前缀:NNNN"、"NNNN-NNNN"（取末段）
+// 等形态。无任何数字的遗留/畸形游标退化为 0——这类事件不参与有序 Step 的相对定序，
+// 但绝不让缺序把整条流判脏。reducer 仍以「同 seq 按到达先后稳定排序」兜底。
+export function parseCursorSeq(cursor: string): number {
+  const matches = cursor.match(/\d+/g)
+  if (!matches || matches.length === 0) {
+    return 0
+  }
+  const last = matches[matches.length - 1] ?? "0"
+  const value = Number.parseInt(last, 10)
+  return Number.isFinite(value) ? value : 0
+}
+
 export function toSessionStreamEvent(
   event: SessionTransportEvent,
 ): SessionStreamEvent | null {
+  const seq = parseCursorSeq(event.cursor)
+
   switch (event.event) {
     case "session.created":
       return {
         kind: "session-created",
         eventId: event.event_id,
+        seq,
         sessionId: event.session_id,
         conversationId: event.conversation_id,
         runId: event.run_id,
@@ -279,6 +296,7 @@ export function toSessionStreamEvent(
       return {
         kind: "message-delta",
         eventId: event.event_id,
+        seq,
         sessionId: event.session_id,
         conversationId: event.conversation_id,
         runId: event.run_id,
@@ -290,6 +308,7 @@ export function toSessionStreamEvent(
       return {
         kind: "message-completed",
         eventId: event.event_id,
+        seq,
         sessionId: event.session_id,
         conversationId: event.conversation_id,
         runId: event.run_id,
@@ -301,6 +320,7 @@ export function toSessionStreamEvent(
       return {
         kind: "run-completed",
         eventId: event.event_id,
+        seq,
         sessionId: event.session_id,
         conversationId: event.conversation_id,
         runId: event.run_id,
@@ -311,6 +331,7 @@ export function toSessionStreamEvent(
       return {
         kind: "run-failed",
         eventId: event.event_id,
+        seq,
         sessionId: event.session_id,
         conversationId: event.conversation_id,
         runId: event.run_id,
@@ -323,6 +344,7 @@ export function toSessionStreamEvent(
       return {
         kind: "thinking-delta",
         eventId: event.event_id,
+        seq,
         sessionId: event.session_id,
         conversationId: event.conversation_id,
         runId: event.run_id,
@@ -333,6 +355,7 @@ export function toSessionStreamEvent(
       return {
         kind: "tool-invoked",
         eventId: event.event_id,
+        seq,
         sessionId: event.session_id,
         conversationId: event.conversation_id,
         runId: event.run_id,
@@ -345,6 +368,7 @@ export function toSessionStreamEvent(
       return {
         kind: "tool-returned",
         eventId: event.event_id,
+        seq,
         sessionId: event.session_id,
         conversationId: event.conversation_id,
         runId: event.run_id,
@@ -357,6 +381,7 @@ export function toSessionStreamEvent(
       return {
         kind: "todo-updated",
         eventId: event.event_id,
+        seq,
         sessionId: event.session_id,
         conversationId: event.conversation_id,
         runId: event.run_id,
@@ -366,6 +391,7 @@ export function toSessionStreamEvent(
       return {
         kind: "subagent-started",
         eventId: event.event_id,
+        seq,
         sessionId: event.session_id,
         conversationId: event.conversation_id,
         runId: event.run_id,
@@ -380,6 +406,7 @@ export function toSessionStreamEvent(
       return {
         kind: "subagent-finished",
         eventId: event.event_id,
+        seq,
         sessionId: event.session_id,
         conversationId: event.conversation_id,
         runId: event.run_id,
@@ -393,6 +420,7 @@ export function toSessionStreamEvent(
       return {
         kind: "subagent-text-delta",
         eventId: event.event_id,
+        seq,
         sessionId: event.session_id,
         conversationId: event.conversation_id,
         runId: event.run_id,
@@ -404,6 +432,7 @@ export function toSessionStreamEvent(
       return {
         kind: "subagent-text-completed",
         eventId: event.event_id,
+        seq,
         sessionId: event.session_id,
         conversationId: event.conversation_id,
         runId: event.run_id,

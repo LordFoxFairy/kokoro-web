@@ -7,10 +7,13 @@ export type SessionTodo = {
   status: SessionTodoStatus
 }
 
+// seq：来自传输信封游标的单调整数（见 toSessionStreamEvent）。它是真实发射顺序的唯一来源，
+// reducer 据此把过程/文本按时序排成有序 Step 列表，而非按 kind 归桶。每个领域事件都带 seq。
 export type SessionStreamEvent =
   | {
       kind: "thinking-delta"
       eventId: string
+      seq: number
       sessionId: string
       conversationId: string
       runId: string
@@ -20,6 +23,7 @@ export type SessionStreamEvent =
   | {
       kind: "tool-invoked"
       eventId: string
+      seq: number
       sessionId: string
       conversationId: string
       runId: string
@@ -31,6 +35,7 @@ export type SessionStreamEvent =
   | {
       kind: "tool-returned"
       eventId: string
+      seq: number
       sessionId: string
       conversationId: string
       runId: string
@@ -42,6 +47,7 @@ export type SessionStreamEvent =
   | {
       kind: "todo-updated"
       eventId: string
+      seq: number
       sessionId: string
       conversationId: string
       runId: string
@@ -50,6 +56,7 @@ export type SessionStreamEvent =
   | {
       kind: "subagent-started"
       eventId: string
+      seq: number
       sessionId: string
       conversationId: string
       runId: string
@@ -63,6 +70,7 @@ export type SessionStreamEvent =
   | {
       kind: "subagent-finished"
       eventId: string
+      seq: number
       sessionId: string
       conversationId: string
       runId: string
@@ -75,6 +83,7 @@ export type SessionStreamEvent =
   | {
       kind: "subagent-text-delta"
       eventId: string
+      seq: number
       sessionId: string
       conversationId: string
       runId: string
@@ -85,6 +94,7 @@ export type SessionStreamEvent =
   | {
       kind: "subagent-text-completed"
       eventId: string
+      seq: number
       sessionId: string
       conversationId: string
       runId: string
@@ -95,6 +105,7 @@ export type SessionStreamEvent =
   | {
       kind: "session-created"
       eventId: string
+      seq: number
       sessionId: string
       conversationId: string
       runId: string
@@ -104,6 +115,7 @@ export type SessionStreamEvent =
   | {
       kind: "message-delta"
       eventId: string
+      seq: number
       sessionId: string
       conversationId: string
       runId: string
@@ -114,6 +126,7 @@ export type SessionStreamEvent =
   | {
       kind: "message-completed"
       eventId: string
+      seq: number
       sessionId: string
       conversationId: string
       runId: string
@@ -124,6 +137,7 @@ export type SessionStreamEvent =
   | {
       kind: "run-completed"
       eventId: string
+      seq: number
       sessionId: string
       conversationId: string
       runId: string
@@ -133,6 +147,7 @@ export type SessionStreamEvent =
   | {
       kind: "run-failed"
       eventId: string
+      seq: number
       sessionId: string
       conversationId: string
       runId: string

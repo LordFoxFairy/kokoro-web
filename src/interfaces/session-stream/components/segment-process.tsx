@@ -10,31 +10,38 @@ import { ChevronIcon, SparkIcon } from "./icons"
 import { SubagentRow } from "./subagent-row"
 import { ToolCallRow } from "./tool-call-row"
 
-type ProcessBlockProps = {
+type SegmentProcessProps = {
+  // 这一段的过程：思考独白 + 该段用到的工具 + 子智能体。
   thinking: string
-  toolCalls: SessionToolCall[]
+  tools: SessionToolCall[]
   subagents: SessionSubagent[]
-  // 这一轮是否仍在流式：决定默认展开（实时看）与「思考中」脉冲。
+  // 这一段是否仍在生长（整轮的尾段）：决定默认展开（实时看）与「思考中」脉冲。
   live: boolean
-  // 本会话模式：仅作 data-mode 钩子，密度差异交给 CSS（Thinking 略松、Fast 略紧）。
+  // 本会话模式：Fast 把「思考」改称「处理」，避免「直接作答」与「思考」自相矛盾。
   mode?: AgentMode
 }
 
-// 助手这一轮的「过程」：思考 + 工具 + 子智能体，收成一个可折叠披露项。
-// 流式时默认展开方便实时看，落定后由父级换 key 重挂载、收成一行摘要（保持对话干净）。
-// 全空时不渲染。
-export function ProcessBlock({
+// 落定摘要：「思考过程 · N 工具 · M 子智能体」，省略为零的维度。
+function settledSummary(verb: string, tools: number, subs: number): string {
+  const parts = [`${verb}过程`]
+  if (tools > 0) parts.push(`${tools} 个工具`)
+  if (subs > 0) parts.push(`${subs} 个子智能体`)
+  return parts.join(" · ")
+}
+
+// 一段的「过程块」：挂在该段答案气泡【下面】的可折叠次级披露——比气泡更轻（muted）。
+// 流式中（尾段）默认展开方便实时看，落定后收成一行摘要，保持对话干净。全空时不渲染。
+export function SegmentProcess({
   thinking,
-  toolCalls,
+  tools,
   subagents,
   live,
   mode,
-}: ProcessBlockProps) {
-  // 受控开合：初始随 live；用户可手动展开/收起，onToggle 回写。父级用 key 在流式状态翻转时重置。
+}: SegmentProcessProps) {
   const [open, setOpen] = useState(live)
 
   const hasActivity =
-    thinking.length > 0 || toolCalls.length > 0 || subagents.length > 0
+    thinking.length > 0 || tools.length > 0 || subagents.length > 0
   if (!hasActivity) {
     return null
   }
@@ -43,14 +50,10 @@ export function ProcessBlock({
     setOpen(event.currentTarget.open)
   }
 
-  // Fast 是「直接作答」，把它的过程叫「思考」自相矛盾：按 mode 换名词，计数逻辑不变。
-  const isFast = mode === "fast"
-  const verb = isFast ? "处理" : "思考"
+  const verb = mode === "fast" ? "处理" : "思考"
   const summary = live
     ? `${verb}中…`
-    : toolCalls.length > 0
-      ? `${verb}过程 · ${toolCalls.length} 个工具`
-      : `${verb}过程`
+    : settledSummary(verb, tools.length, subagents.length)
 
   return (
     <details
@@ -75,9 +78,9 @@ export function ProcessBlock({
       <div className="kk-process__body">
         {thinking ? <p className="kk-process__thinking">{thinking}</p> : null}
 
-        {toolCalls.length > 0 ? (
+        {tools.length > 0 ? (
           <div className="kk-actgroup" aria-label="工具调用">
-            {toolCalls.map((tool) => (
+            {tools.map((tool) => (
               <ToolCallRow key={tool.id} tool={tool} />
             ))}
           </div>

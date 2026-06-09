@@ -37,6 +37,7 @@ function instantReply(makeText: (input: string) => string): StartReply {
     const completed = applySessionEvent(initialState, {
       kind: "message-completed",
       eventId: `stub-c-${id}`,
+      seq: 1,
       ...envelope,
       runId: `stub-run-${id}`,
       messageId: `stub-msg-${id}`,
@@ -46,6 +47,7 @@ function instantReply(makeText: (input: string) => string): StartReply {
     const done = applySessionEvent(completed, {
       kind: "run-completed",
       eventId: `stub-done-${id}`,
+      seq: 1,
       ...envelope,
       runId: `stub-run-${id}`,
     })
@@ -65,6 +67,7 @@ const neverSettles: StartReply = ({
   const partial = applySessionEvent(initialState, {
     kind: "message-delta",
     eventId: `stub-d-${stubCounter}`,
+    seq: 1,
     ...envelope,
     runId: `stub-run-${stubCounter}`,
     messageId: `stub-msg-${stubCounter}`,
@@ -87,6 +90,7 @@ function spyableNeverSettles(partialText: string): {
     const partial = applySessionEvent(initialState, {
       kind: "message-delta",
       eventId: `stub-d-${stubCounter}`,
+      seq: 1,
       ...envelope,
       runId: `stub-run-${stubCounter}`,
       messageId: `stub-msg-${stubCounter}`,
@@ -108,6 +112,7 @@ const failingReply: StartReply = ({
   const failed = applySessionEvent(initialState, {
     kind: "run-failed",
     eventId: `stub-f-${stubCounter}`,
+    seq: 1,
     ...envelope,
     runId: `stub-run-${stubCounter}`,
     errorKind: "agent_error",
@@ -140,6 +145,7 @@ function failThenSucceed(): {
       ? applySessionEvent(initialState, {
           kind: "run-failed",
           eventId: `fts-f-${id}`,
+          seq: 1,
           ...envelope,
           runId: `fts-run-${id}`,
           errorKind: "agent_error",
@@ -149,6 +155,7 @@ function failThenSucceed(): {
           applySessionEvent(initialState, {
             kind: "message-completed",
             eventId: `fts-c-${id}`,
+            seq: 1,
             ...envelope,
             runId: `fts-run-${id}`,
             messageId: `fts-msg-${id}`,
@@ -158,6 +165,7 @@ function failThenSucceed(): {
           {
             kind: "run-completed",
             eventId: `fts-done-${id}`,
+            seq: 1,
             ...envelope,
             runId: `fts-run-${id}`,
           },
@@ -357,9 +365,10 @@ describe("SessionShell conversation", () => {
     send("在吗")
 
     expect(inLog("在吗")).toBeInTheDocument()
-    // 文案从静态省略号改为「正在输入」+ CSS 脉冲；省略号语义交给动画三点承担。
-    expect(screen.getByText("正在输入")).toBeInTheDocument()
+    // 流式中：输入禁用 + 单一控件切到停止。常驻状态条（「正在输入」）已撤除，
+    // 流式存在感由「在途轮的动态头像 + 答案光标 + 停止控件」承担（live anchor 由后续阶段细化）。
     expect(screen.getByLabelText("对话输入")).toBeDisabled()
+    expect(screen.getByLabelText("停止生成")).toBeInTheDocument()
   })
 
   it("accumulates earlier turns across a second exchange", () => {
@@ -439,6 +448,7 @@ describe("SessionShell stop control", () => {
       const partial = applySessionEvent(initialState, {
         kind: "message-delta",
         eventId: `stub-nh-${stubCounter}`,
+        seq: 1,
         ...envelope,
         runId: `stub-run-${stubCounter}`,
         messageId: `stub-msg-${stubCounter}`,
@@ -458,23 +468,28 @@ describe("SessionShell stop control", () => {
     expect(screen.getByLabelText("对话输入")).not.toBeDisabled()
   })
 
-  it("shows the streaming indicator only while streaming", () => {
-    render(<SessionShell startReply={instantReply((input) => `答：${input}`)} />)
+  it("shows the streaming affordance only while streaming", () => {
+    const { container } = render(
+      <SessionShell startReply={instantReply((input) => `答：${input}`)} />,
+    )
 
-    // instantReply 同步 settle：渲染后绝不应残留流式指示。
+    // instantReply 同步 settle：渲染后绝不应残留流式存在感（动态头像/停止控件均不在）。
     send("已结束")
-    expect(screen.queryByText("正在输入")).not.toBeInTheDocument()
+    expect(screen.queryByLabelText("停止生成")).not.toBeInTheDocument()
+    expect(container.querySelector(".kk-msg__avatar--live")).toBeNull()
   })
 
-  it("clears the streaming indicator after a stop", () => {
-    const { start } = spyableNeverSettles("半句")
-    render(<SessionShell startReply={start} />)
+  it("clears the streaming affordance after a stop", () => {
+    const { container } = render(<SessionShell startReply={spyableNeverSettles("半句").start} />)
 
     send("说点什么")
-    expect(screen.getByText("正在输入")).toBeInTheDocument()
+    // 流式中：在途轮头像点亮（live anchor 的雏形）+ 停止控件在场。
+    expect(container.querySelector(".kk-msg__avatar--live")).not.toBeNull()
+    expect(screen.getByLabelText("停止生成")).toBeInTheDocument()
 
     fireEvent.click(screen.getByLabelText("停止生成"))
-    expect(screen.queryByText("正在输入")).not.toBeInTheDocument()
+    expect(container.querySelector(".kk-msg__avatar--live")).toBeNull()
+    expect(screen.queryByLabelText("停止生成")).not.toBeInTheDocument()
   })
 })
 
@@ -539,6 +554,7 @@ describe("SessionShell composer ergonomics", () => {
       const partial = applySessionEvent(initialState, {
         kind: "message-delta",
         eventId: `count-${start.mock.calls.length}`,
+        seq: 1,
         ...envelope,
         runId: `count-run-${start.mock.calls.length}`,
         messageId: `count-msg-${start.mock.calls.length}`,
@@ -761,6 +777,7 @@ describe("SessionShell retry on failure", () => {
         const failed = applySessionEvent(initialState, {
           kind: "run-failed",
           eventId: "retry-guard-f",
+          seq: 1,
           ...envelope,
           runId: "retry-guard-run-1",
           errorKind: "agent_error",
@@ -774,6 +791,7 @@ describe("SessionShell retry on failure", () => {
       const partial = applySessionEvent(initialState, {
         kind: "message-delta",
         eventId: "retry-guard-d",
+        seq: 1,
         ...envelope,
         runId: "retry-guard-run-2",
         messageId: "retry-guard-msg",
@@ -825,6 +843,7 @@ describe("SessionShell jump-to-latest scroll", () => {
         state = applySessionEvent(state, {
           kind: "message-delta",
           eventId: `defer-${delta}`,
+          seq: 1,
           ...envelope,
           runId: "defer-run",
           messageId: "defer-msg",
@@ -865,6 +884,7 @@ describe("SessionShell jump-to-latest scroll", () => {
         state = applySessionEvent(state, {
           kind: "message-delta",
           eventId: `near-${delta}`,
+          seq: 1,
           ...envelope,
           runId: "near-run",
           messageId: "near-msg",
@@ -898,6 +918,7 @@ describe("SessionShell jump-to-latest scroll", () => {
         state = applySessionEvent(state, {
           kind: "message-delta",
           eventId: `jump-${delta}`,
+          seq: 1,
           ...envelope,
           runId: "jump-run",
           messageId: "jump-msg",
@@ -1063,6 +1084,7 @@ describe("SessionShell agent activity", () => {
       let next = applySessionEvent(initialState, {
         kind: "todo-updated",
         eventId: `todo-${id}`,
+        seq: 1,
         ...envelope,
         runId: `r-${id}`,
         todos: [
@@ -1073,6 +1095,7 @@ describe("SessionShell agent activity", () => {
       next = applySessionEvent(next, {
         kind: "thinking-delta",
         eventId: `think-${id}`,
+        seq: 1,
         ...envelope,
         runId: `r-${id}`,
         messageId: `m-${id}`,
@@ -1081,6 +1104,7 @@ describe("SessionShell agent activity", () => {
       next = applySessionEvent(next, {
         kind: "message-completed",
         eventId: `c-${id}`,
+        seq: 1,
         ...envelope,
         runId: `r-${id}`,
         messageId: `m-${id}`,
@@ -1090,6 +1114,7 @@ describe("SessionShell agent activity", () => {
       next = applySessionEvent(next, {
         kind: "run-completed",
         eventId: `done-${id}`,
+        seq: 1,
         ...envelope,
         runId: `r-${id}`,
       })
@@ -1114,9 +1139,11 @@ describe("SessionShell agent activity", () => {
     expect(within(log).getByText("晴，适合出门。")).toBeInTheDocument()
   })
 
-  it("renders multiple assistant segments in one turn with their own local process blocks", () => {
-    // 为什么重要：真实 agent 可能在同一轮里输出多段 assistant 文本；每一段下面都要挂自己那一段的过程，
-    // 不能把后一段的子智能体/工具混到前一段，也不能只渲染最后一段。
+  it("groups a multi-segment run under ONE turn with steps in true emission order", () => {
+    // 为什么重要：同一 run 的多段 assistant 文本属于一轮——必须收在一个 .kk-turn--assistant 下
+    // （一个头像、一条脊），过程（思考/工具/子智能体）按 seq 渲染在它引出的文本之上，
+    // 真实时序 thinking→tool→text→thinking→subagent→text 完整还原，绝不重排或只渲染最后一段。
+    let seq = 0
     const multiSegmentReply: StartReply = ({
       initialState,
       onState,
@@ -1131,6 +1158,7 @@ describe("SessionShell agent activity", () => {
       let next = applySessionEvent(initialState, {
         kind: "thinking-delta",
         eventId: `think-1-${id}`,
+        seq: (seq += 1),
         ...envelope,
         runId,
         messageId: firstMessageId,
@@ -1139,6 +1167,7 @@ describe("SessionShell agent activity", () => {
       next = applySessionEvent(next, {
         kind: "tool-invoked",
         eventId: `tool-invoked-${id}`,
+        seq: (seq += 1),
         ...envelope,
         runId,
         messageId: firstMessageId,
@@ -1149,6 +1178,7 @@ describe("SessionShell agent activity", () => {
       next = applySessionEvent(next, {
         kind: "tool-returned",
         eventId: `tool-returned-${id}`,
+        seq: (seq += 1),
         ...envelope,
         runId,
         messageId: firstMessageId,
@@ -1159,6 +1189,7 @@ describe("SessionShell agent activity", () => {
       next = applySessionEvent(next, {
         kind: "message-completed",
         eventId: `completed-1-${id}`,
+        seq: (seq += 1),
         ...envelope,
         runId,
         messageId: firstMessageId,
@@ -1168,6 +1199,7 @@ describe("SessionShell agent activity", () => {
       next = applySessionEvent(next, {
         kind: "thinking-delta",
         eventId: `think-2-${id}`,
+        seq: (seq += 1),
         ...envelope,
         runId,
         messageId: secondMessageId,
@@ -1176,6 +1208,7 @@ describe("SessionShell agent activity", () => {
       next = applySessionEvent(next, {
         kind: "subagent-started",
         eventId: `subagent-started-${id}`,
+        seq: (seq += 1),
         ...envelope,
         runId,
         messageId: secondMessageId,
@@ -1188,6 +1221,7 @@ describe("SessionShell agent activity", () => {
       next = applySessionEvent(next, {
         kind: "subagent-finished",
         eventId: `subagent-finished-${id}`,
+        seq: (seq += 1),
         ...envelope,
         runId,
         messageId: secondMessageId,
@@ -1199,6 +1233,7 @@ describe("SessionShell agent activity", () => {
       next = applySessionEvent(next, {
         kind: "message-completed",
         eventId: `completed-2-${id}`,
+        seq: (seq += 1),
         ...envelope,
         runId,
         messageId: secondMessageId,
@@ -1208,6 +1243,7 @@ describe("SessionShell agent activity", () => {
       next = applySessionEvent(next, {
         kind: "run-completed",
         eventId: `done-${id}`,
+        seq: (seq += 1),
         ...envelope,
         runId,
       })
@@ -1221,29 +1257,40 @@ describe("SessionShell agent activity", () => {
     send("北京今天怎么样")
 
     const log = screen.getByRole("log")
-    const assistantTurns = Array.from(log.querySelectorAll(".kk-msg--assistant"))
+    // 核心不变量：整轮收在一个 turn 下，只有一个头像。
+    const turns = Array.from(log.querySelectorAll(".kk-turn--assistant"))
+    expect(turns).toHaveLength(1)
+    const turn = turns[0] as HTMLElement
+    expect(turn.querySelectorAll(".kk-turn__avatar--bot")).toHaveLength(1)
 
-    expect(assistantTurns).toHaveLength(2)
+    // 一轮内的两段文本与各自过程都在同一条脊上呈现。
+    expect(within(turn).getByText("第一段回答：先给结论。")).toBeInTheDocument()
+    expect(within(turn).getByText("get_weather")).toBeInTheDocument()
+    expect(within(turn).getByText("第二段回答：再补充说明。")).toBeInTheDocument()
+    expect(within(turn).getByText("researcher")).toBeInTheDocument()
 
-    expect(
-      within(assistantTurns[0] as HTMLElement).getByText("第一段回答：先给结论。"),
-    ).toBeInTheDocument()
-    expect(
-      within(assistantTurns[0] as HTMLElement).getByText("get_weather"),
-    ).toBeInTheDocument()
-    expect(
-      within(assistantTurns[0] as HTMLElement).queryByText("researcher"),
-    ).toBeNull()
+    // 多段布局：每段 = 文本气泡在【上】＋ 它的过程（该段工具/子智能体）挂在【下面】。
+    const segments = Array.from(turn.querySelectorAll(".kk-turn__segment"))
+    expect(segments).toHaveLength(2)
+    const seg1 = segments[0] as HTMLElement
+    const seg2 = segments[1] as HTMLElement
 
+    // 第一段：文本「先给结论」＋ 它下面挂 get_weather；该段不含 researcher。
+    expect(within(seg1).getByText("第一段回答：先给结论。")).toBeInTheDocument()
+    expect(within(seg1).getByText("get_weather")).toBeInTheDocument()
+    expect(within(seg1).queryByText("researcher")).toBeNull()
+    // 第二段：文本「再补充说明」＋ 它下面挂 researcher；该段不含 get_weather。
+    expect(within(seg2).getByText("第二段回答：再补充说明。")).toBeInTheDocument()
+    expect(within(seg2).getByText("researcher")).toBeInTheDocument()
+    expect(within(seg2).queryByText("get_weather")).toBeNull()
+
+    // 段内：答案气泡在过程之上。
+    const bubble = seg1.querySelector(".kk-turn__answer") as HTMLElement
+    const process = seg1.querySelector(".kk-process") as HTMLElement
     expect(
-      within(assistantTurns[1] as HTMLElement).getByText("第二段回答：再补充说明。"),
-    ).toBeInTheDocument()
-    expect(
-      within(assistantTurns[1] as HTMLElement).getByText("researcher"),
-    ).toBeInTheDocument()
-    expect(
-      within(assistantTurns[1] as HTMLElement).queryByText("get_weather"),
-    ).toBeNull()
+      bubble.compareDocumentPosition(process) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
   })
 })
 
@@ -1372,13 +1419,14 @@ describe("SessionShell interrupt recovery", () => {
         applySessionEvent(initialState, {
           kind: "message-completed",
           eventId: "re-c",
+          seq: 1,
           ...envelope,
           runId: "r-re",
           messageId: "a1",
           role: "assistant",
           content: "续传后补完的完整回答",
         }),
-        { kind: "run-completed", eventId: "re-d", ...envelope, runId: "r-re" },
+        { kind: "run-completed", eventId: "re-d", seq: 1, ...envelope, runId: "r-re" },
       )
       onState(done)
       onSettled()
