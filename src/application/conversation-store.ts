@@ -62,7 +62,7 @@ export function createConversationStore(
   return { activeId: id, conversations: [emptyEntry(id, now)] }
 }
 
-export function activeEntry(
+function activeEntry(
   store: ConversationStore,
 ): ConversationEntry | undefined {
   return store.conversations.find((entry) => entry.id === store.activeId)
