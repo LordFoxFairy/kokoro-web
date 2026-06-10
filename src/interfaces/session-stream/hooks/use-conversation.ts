@@ -23,12 +23,14 @@ import {
   withActiveThread,
 } from "@/application/conversation-store"
 import {
-  createLocalId,
   reattachLiveSession,
   type LiveSessionHandle,
+} from "@/application/session-stream-transport"
+import { createLocalId } from "@/application/session-stream-simulator"
+import {
   type ReplyMode,
   type StartReply,
-} from "@/application/session-stream-preview"
+} from "@/application/session-reply"
 import {
   appendUserMessage,
   createSessionStreamState,

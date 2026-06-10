@@ -6,7 +6,7 @@ import { computeActivityVersion } from "@/application/session-stream-reducer"
 import {
   startSessionReply,
   type StartReply,
-} from "@/application/session-stream-preview"
+} from "@/application/session-reply"
 
 import { Composer } from "./components/composer"
 import { ConversationThread } from "./components/conversation-thread"
