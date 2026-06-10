@@ -22,6 +22,8 @@ function clampRail(raw: number, containerWidth: number): number {
 // 返回当前 rail 宽度（px）、挂到 shell 的 ref（用于量取容器几何）、以及分隔条的拖拽起始处理器。
 export function useRailResize() {
   const [width, setWidth] = useState(RAIL_DEFAULT)
+  // 拖拽中标记：让 shell 在拖拽期间关掉列宽过渡，宽度实时跟手；仅收起/展开切换才用过渡。
+  const [isResizing, setIsResizing] = useState(false)
   const shellRef = useRef<HTMLElement | null>(null)
 
   const onResizeStart = useCallback((event: ReactPointerEvent<HTMLElement>) => {
@@ -32,6 +34,7 @@ export function useRailResize() {
     event.preventDefault()
     // 起始即量取容器矩形：拖拽期间容器不移动，用它把 clientX 换算成 rail 宽度。
     const rect = shell.getBoundingClientRect()
+    setIsResizing(true)
 
     const move = (moveEvent: PointerEvent) => {
       setWidth(clampRail(moveEvent.clientX - rect.left, rect.width))
@@ -41,6 +44,7 @@ export function useRailResize() {
       window.removeEventListener("pointerup", end)
       document.body.style.cursor = ""
       document.body.style.userSelect = ""
+      setIsResizing(false)
     }
 
     window.addEventListener("pointermove", move)
@@ -50,5 +54,5 @@ export function useRailResize() {
     document.body.style.userSelect = "none"
   }, [])
 
-  return { width, shellRef, onResizeStart }
+  return { width, isResizing, shellRef, onResizeStart }
 }
