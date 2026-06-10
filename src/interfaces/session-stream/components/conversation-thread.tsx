@@ -63,11 +63,7 @@ export function ConversationThread({
       <div className="kk-thread__inner">
         {items.map((item) =>
           item.kind === "user" ? (
-            <MessageBubble
-              key={item.message.id}
-              message={item.message}
-              isStreamingAssistant={false}
-            />
+            <MessageBubble key={item.message.id} message={item.message} />
           ) : (
             <AssistantTurn
               key={item.runId}
