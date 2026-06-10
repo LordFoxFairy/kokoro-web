@@ -2,9 +2,9 @@ import { z } from "zod"
 
 import {
   createSessionStreamState,
-  storedSessionStateSchema,
   type SessionStreamState,
 } from "./session-stream-reducer"
+import { storedSessionStateSchema } from "./session-stream-state.schema"
 
 // 多会话 store：左侧列表 + 当前活跃会话。所有操作为纯不可变函数，便于测试；
 // 时间戳/新 id 由调用方在事件处理里传入（不在 render 里取，避免 SSR 抖动）。
