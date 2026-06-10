@@ -7,10 +7,10 @@ import {
   computeActivityVersion,
   createSessionStreamState,
   deriveRunPhase,
-  parseStoredSessionState,
   type SessionStep,
   type SessionStreamState,
 } from "@/application/session-stream-reducer"
+import { parseStoredSessionState } from "@/application/session-stream-state.schema"
 import {
   parseSessionEvent,
   toSessionStreamEvent,

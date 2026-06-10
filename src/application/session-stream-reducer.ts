@@ -3,12 +3,6 @@ import type {
   SessionTodo,
 } from "@/domain/shared/session-stream-event"
 
-// 持久化校验（落盘 SessionStreamState 的严格解析）抽到 schema 协作者；re-export 保持调用方稳定。
-export {
-  parseStoredSessionState,
-  storedSessionStateSchema,
-} from "./session-stream-state.schema"
-
 export type SessionMessage = {
   id: string
   role: "assistant" | "user"
