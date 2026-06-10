@@ -11,7 +11,6 @@ import {
 import { Composer } from "./components/composer"
 import { ConversationThread } from "./components/conversation-thread"
 import { SessionRail } from "./components/session-rail"
-import { StarterChips } from "./components/starter-chips"
 import { TodoBar } from "./components/todo-bar"
 import { useAutoScroll } from "./hooks/use-auto-scroll"
 import { useConversation, type ReattachReply } from "./hooks/use-conversation"
@@ -35,7 +34,8 @@ export function SessionShell({
   const [railCollapsed, setRailCollapsed] = useState(false)
 
   // 侧栏可拖拽改宽（两侧自由，均有最小宽度）；收起态用固定窄列，不参与拖拽。
-  const { width: railWidth, shellRef, onResizeStart } = useRailResize()
+  const { width: railWidth, isResizing, shellRef, onResizeStart } =
+    useRailResize()
 
   // 自动滚动依赖会话线，会话引擎的 beginReply 又需要 scrollToLatest：用 ref 打破环依赖。
   // useAutoScroll 在 effect 里把最新实现回填到该 ref，事件触发时读到的始终是当下的滚动逻辑。
@@ -48,7 +48,6 @@ export function SessionShell({
     thread,
     draft,
     setDraft,
-    prefillDraft,
     isStreaming,
     isReconnecting,
     presentation,
@@ -92,6 +91,7 @@ export function SessionShell({
       data-run-status={thread.runStatus}
       data-transport-label={presentation.transportLabel}
       data-rail-collapsed={railCollapsed ? "true" : "false"}
+      data-resizing={isResizing ? "true" : undefined}
       style={{ "--kk-rail-width": `${railWidth}px` } as CSSProperties}
     >
       <SessionRail
@@ -133,7 +133,6 @@ export function SessionShell({
           <div className="kk-shell__hero">
             <h1 className="kk-shell__headline">今天想做什么？</h1>
             <p className="kk-shell__subhead">不急，先把想法说给我</p>
-            <StarterChips onPick={prefillDraft} />
           </div>
         )}
 

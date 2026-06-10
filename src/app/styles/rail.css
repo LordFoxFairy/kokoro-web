@@ -6,6 +6,23 @@
   border-right: 1px solid var(--border-soft);
   padding: 0.85rem 0.6rem;
   background: color-mix(in srgb, var(--background) 93%, white 7%);
+  /* 列宽过渡期间裁掉横向溢出，让文字随 rail 收窄被干净裁切而非溢出/换行。 */
+  overflow: hidden;
+}
+
+/* 收起/展开时文字标签淡出淡入，与列宽过渡同步，避免瞬切。
+   收窄时 max-width→0 + opacity→0，文字被裁且不占据居中空间。 */
+.kk-rail__brand-text,
+.kk-rail__action-label,
+.kk-rail__search-shortcut,
+.kk-rail__user-text {
+  white-space: nowrap;
+  overflow: hidden;
+  transition:
+    opacity 160ms ease,
+    max-width 280ms cubic-bezier(0.22, 1, 0.36, 1);
+  opacity: 1;
+  max-width: 12rem;
 }
 
 .kk-rail__head {
@@ -262,7 +279,8 @@
 .kk-shell[data-rail-collapsed="true"] .kk-rail__action-label,
 .kk-shell[data-rail-collapsed="true"] .kk-rail__search-shortcut,
 .kk-shell[data-rail-collapsed="true"] .kk-rail__user-text {
-  display: none;
+  max-width: 0;
+  opacity: 0;
 }
 
 .kk-shell[data-rail-collapsed="true"] .kk-rail__action {

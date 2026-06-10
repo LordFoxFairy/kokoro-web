@@ -10,8 +10,13 @@
   /* 单行锁死到视口高度（minmax 的 0 下限让网格项可收缩，子级才能内部滚动）。 */
   grid-template-rows: minmax(0, 1fr);
   background: var(--background);
-  /* 折叠为即时切换：不动画列宽。动画期间内容布局会瞬切而宽度还在渐变，
-     造成图标悬浮、主区持续重排的"跳动+混乱"——即时切换给两个干净的稳定态。 */
+  /* 收起/展开丝滑过渡列宽；rail 内容靠 overflow 裁剪 + 文字淡出避免瞬切跳动。 */
+  transition: grid-template-columns 320ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* 拖拽改宽时关掉过渡：宽度实时跟手，不被 320ms 缓动拖滞。 */
+.kk-shell[data-resizing="true"] {
+  transition: none;
 }
 
 /* 收起态：rail 缩成纤细图标列（忽略拖拽宽度）。 */

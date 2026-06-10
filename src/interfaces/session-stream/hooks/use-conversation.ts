@@ -66,7 +66,6 @@ type Conversation = {
   thread: SessionStreamState
   draft: string
   setDraft: (value: string) => void
-  prefillDraft: (value: string) => void
   isStreaming: boolean
   // 重连续传态：仅在重订阅在途 run 的窗口为真，驱动「重连中…」锚点（区别于普通思考）。
   isReconnecting: boolean
@@ -520,24 +519,6 @@ export function useConversation(
     [modeLocked, store, persistedStore],
   )
 
-  const prefillDraft = useCallback((value: string) => {
-    // 起始 chips 预填：填入草稿并聚焦，光标移到末尾便于直接续写。
-    setDraft(value)
-    const focusEnd = () => {
-      const composer = composerRef.current
-      if (!composer) {
-        return
-      }
-      composer.focus()
-      composer.setSelectionRange(value.length, value.length)
-    }
-    if (typeof requestAnimationFrame === "function") {
-      requestAnimationFrame(focusEnd)
-    } else {
-      focusEnd()
-    }
-  }, [])
-
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     // Enter 发送，Shift+Enter 换行——贴近主流对话输入习惯。
     // 输入法合成期（中文拼音选词）的 Enter 只用于确认候选词，绝不当作发送，
@@ -554,7 +535,6 @@ export function useConversation(
     thread,
     draft,
     setDraft,
-    prefillDraft,
     isStreaming,
     isReconnecting,
     transportLabel: presentation.transportLabel,
