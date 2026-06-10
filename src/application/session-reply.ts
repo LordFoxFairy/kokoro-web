@@ -1,32 +1,13 @@
 // 编排器：real 优先，失败降级到本地预览模拟。
-// 真实流实现见 session-stream-stream.ts，模拟实现见 session-stream-simulate.ts。
+// 真实流实现见 session-stream-transport.ts，模拟实现见 session-stream-simulator.ts。
 
-import { consumeLiveSession } from "./session-stream-stream"
-import { simulateAssistantReply } from "./session-stream-simulate"
+import { consumeLiveSession } from "./session-stream-transport"
+import { simulateAssistantReply } from "./session-stream-simulator"
 import type { SessionStreamState } from "./session-stream-reducer"
-import type { LiveSessionHandle, SessionStreamSnapshot } from "./session-stream-stream"
-
-// Re-export：保持所有已有 consumer 的 import 路径不变。
-export type {
-  SessionStreamSnapshot,
+import type {
   LiveSessionHandle,
-  ConsumeLiveSessionInput,
-  ReattachLiveSessionInput,
-} from "./session-stream-stream"
-export {
-  resolveSessionBaseUrl,
-  consumeLiveSession,
-  reattachLiveSession,
-  openSessionStream,
-} from "./session-stream-stream"
-export {
-  createLocalId,
-  chunkText,
-  chunkPauseMs,
-  buildSimulatedReplyEvents,
-  simulateAssistantReply,
-} from "./session-stream-simulate"
-export type { SimulateAssistantReplyInput } from "./session-stream-simulate"
+  SessionStreamSnapshot,
+} from "./session-stream-transport"
 
 export type ReplyMode = "live" | "preview"
 

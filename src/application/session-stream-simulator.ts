@@ -6,7 +6,7 @@ import {
   type SessionStreamState,
 } from "./session-stream-reducer"
 
-import type { LiveSessionHandle, SessionStreamSnapshot } from "./session-stream-stream"
+import type { LiveSessionHandle, SessionStreamSnapshot } from "./session-stream-transport"
 
 const demoSessionId = "ses_01"
 const demoConversationId = "conv_01"
