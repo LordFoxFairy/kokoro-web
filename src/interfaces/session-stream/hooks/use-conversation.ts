@@ -6,7 +6,6 @@ import {
   useEffect,
   useRef,
   useState,
-  useSyncExternalStore,
 } from "react"
 
 import {
@@ -16,7 +15,6 @@ import {
   activeThreadOf,
   addConversation,
   isActiveModeLocked,
-  parseStoredConversationStore,
   removeConversation,
   selectConversation as selectConversationOp,
   setActiveMode,
@@ -37,63 +35,17 @@ import {
   type SessionStreamState,
 } from "@/application/session-stream-reducer"
 
-// 多会话持久化键：落地整个会话 store（列表 + 活跃项），刷新后据此恢复。
-const STORAGE_KEY = "kokoro:conversations"
+import { STORAGE_KEY, usePersistentStore } from "./use-persistent-store"
 
 // 输入上限：在发起任何网络/模拟之前就拦截超长草稿，避免把畸形大载荷推下游。
 // 同步作为 textarea 的 maxLength，与 submit 守卫双重把关。
 export const MAX_INPUT_LENGTH = 4000
-
-// 持久化种子作为外部 store 读取：useSyncExternalStore 在 SSR 用 server 快照（null），
-// 水合首帧与服务端一致（空首屏），随后切到客户端快照恢复——既无 hydration mismatch，
-// 也无需在 effect 里 setState。快照必须按原始字符串缓存出稳定引用，否则 React 会判定
-// 快照恒变而抛无限循环告警。
-let cachedRaw: string | null = null
-let cachedSeed: ConversationStore | null = null
-
-function readPersistedStore(): ConversationStore | null {
-  if (typeof window === "undefined") {
-    return null
-  }
-
-  const raw = window.localStorage.getItem(STORAGE_KEY)
-
-  if (raw === cachedRaw) {
-    return cachedSeed
-  }
-
-  cachedRaw = raw
-
-  if (raw === null) {
-    cachedSeed = null
-    return null
-  }
-
-  try {
-    cachedSeed = parseStoredConversationStore(JSON.parse(raw))
-  } catch {
-    // 损坏的 JSON 直接放过：种子降级为 null，停留在空首屏，绝不因脏数据崩溃。
-    cachedSeed = null
-  }
-
-  return cachedSeed
-}
 
 // 自适应高度：先归零再贴合 scrollHeight，CSS 的 max-height: 7rem 负责硬顶 + 滚动。
 // jsdom 下 scrollHeight 恒为 0，仍照常赋值（不抛错），rows={1} 作为无 JS 的兜底。
 export function resizeComposer(node: HTMLTextAreaElement) {
   node.style.height = "auto"
   node.style.height = `${node.scrollHeight}px`
-}
-
-function subscribePersistedStore(onChange: () => void): () => void {
-  if (typeof window === "undefined") {
-    return () => {}
-  }
-
-  // 仅订阅跨标签页的 storage 事件；同标签页内的写入由 React 状态自身驱动。
-  window.addEventListener("storage", onChange)
-  return () => window.removeEventListener("storage", onChange)
 }
 
 export type ConversationSummary = {
@@ -247,11 +199,7 @@ export function useConversation(
   reattach: ReattachReply = defaultReattach,
 ): Conversation {
   // 持久化种子：水合后才出现，作为会话 store 的初始值。
-  const persistedStore = useSyncExternalStore(
-    subscribePersistedStore,
-    readPersistedStore,
-    () => null,
-  )
+  const persistedStore = usePersistentStore()
   // 本会话内的所有变更都落在 liveStore；一旦出现就盖过种子。
   const [liveStore, setLiveStore] = useState<ConversationStore | null>(null)
   const store = liveStore ?? persistedStore
