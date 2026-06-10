@@ -22,11 +22,12 @@
   flex-direction: column;
   width: min(var(--kk-content-width), 100%);
   gap: 0.45rem;
-  border: 1.5px solid color-mix(in srgb, var(--brand-wood) 60%, var(--border-soft) 40%);
+  border: 1px solid color-mix(in srgb, var(--brand-wood) 20%, var(--border-soft) 80%);
   border-radius: 1.75rem;
   background: var(--surface);
   padding: 0.8rem 0.95rem 0.65rem;
-  box-shadow: 0 6px 18px rgba(139, 111, 71, 0.1);
+  /* 轻盈中性投影（去暖木色偏），让输入框在浅色+彩虹底上更显漂浮、更清新。 */
+  box-shadow: 0 12px 32px rgba(43, 37, 32, 0.07);
   transition:
     border-color 120ms ease,
     box-shadow 120ms ease;
@@ -48,10 +49,10 @@
 
 /* 整框聚焦：仅加深描边 + 柔和外环，盒模型不变——平滑，无框中框矩形。 */
 .kk-composer:focus-within {
-  border-color: color-mix(in srgb, var(--brand-wood) 82%, var(--border-soft) 18%);
+  border-color: color-mix(in srgb, var(--brand-wood) 48%, var(--border-soft) 52%);
   box-shadow:
-    0 6px 18px rgba(139, 111, 71, 0.12),
-    0 0 0 3px color-mix(in srgb, var(--brand-wood-soft) 65%, transparent);
+    0 12px 32px rgba(43, 37, 32, 0.09),
+    0 0 0 3px color-mix(in srgb, var(--brand-wood-soft) 55%, transparent);
 }
 
 .kk-composer__add,
