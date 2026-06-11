@@ -3,12 +3,12 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import {
   consumeLiveSession,
   type SessionStreamSnapshot,
-} from "@/application/session-stream-transport"
+} from "@/application/session-stream/transport"
 import {
   appendUserMessage,
   createSessionStreamState,
   type SessionStreamState,
-} from "@/application/session-stream-reducer"
+} from "@/application/session-stream/reducer"
 
 // 从某 run 的有序步骤里抽出工具 / 子智能体 / 思考文本，供断言新模型。
 function runSteps(state: SessionStreamState | undefined, runId: string) {

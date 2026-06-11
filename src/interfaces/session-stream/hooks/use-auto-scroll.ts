@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import type { RefObject, UIEvent } from "react"
 
-import type { SessionMessage } from "@/application/session-stream-reducer"
+import type { SessionMessage } from "@/application/session-stream/reducer"
 
 // 贴底阈值：距底不足这个像素就视为“跟随”，新增内容才继续自动滚动。
 // 留一点余量，避免 1px 误差或子像素让跟随态在贴底时反复抖动。

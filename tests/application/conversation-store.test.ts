@@ -17,7 +17,7 @@ import {
 import {
   appendUserMessage,
   createSessionStreamState,
-} from "@/application/session-stream-reducer"
+} from "@/application/session-stream/reducer"
 
 function threadWith(content: string) {
   return appendUserMessage(createSessionStreamState(), { id: "u1", content })

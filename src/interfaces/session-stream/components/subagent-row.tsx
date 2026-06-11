@@ -1,4 +1,4 @@
-import type { SessionSubagent } from "@/application/session-stream-reducer"
+import type { SessionSubagent } from "@/application/session-stream/reducer"
 
 import { RobotIcon } from "./icons"
 import { MarkdownMessage } from "./markdown-message"

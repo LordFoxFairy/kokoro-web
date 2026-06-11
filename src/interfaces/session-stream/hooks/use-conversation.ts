@@ -25,17 +25,17 @@ import {
 import {
   reattachLiveSession,
   type LiveSessionHandle,
-} from "@/application/session-stream-transport"
-import { createLocalId } from "@/application/session-stream-simulator"
+} from "@/application/session-stream/transport"
+import { createLocalId } from "@/application/session-stream/simulator"
 import {
   type ReplyMode,
   type StartReply,
-} from "@/application/session-reply"
+} from "@/application/session-stream/reply"
 import {
   appendUserMessage,
   createSessionStreamState,
   type SessionStreamState,
-} from "@/application/session-stream-reducer"
+} from "@/application/session-stream/reducer"
 
 import { STORAGE_KEY, usePersistentStore } from "./use-persistent-store"
 

@@ -4,9 +4,9 @@ import {
   applySessionEvent,
   createSessionStreamState,
   type SessionStreamState,
-} from "./session-stream-reducer"
+} from "./reducer"
 
-import type { LiveSessionHandle, SessionStreamSnapshot } from "./session-stream-transport"
+import type { LiveSessionHandle, SessionStreamSnapshot } from "./transport"
 
 const demoSessionId = "ses_01"
 const demoConversationId = "conv_01"

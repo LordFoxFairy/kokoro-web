@@ -2,11 +2,11 @@
 
 import { type CSSProperties, useCallback, useRef, useState } from "react"
 
-import { computeActivityVersion } from "@/application/session-stream-reducer"
+import { computeActivityVersion } from "@/application/session-stream/reducer"
 import {
   startSessionReply,
   type StartReply,
-} from "@/application/session-reply"
+} from "@/application/session-stream/reply"
 
 import { Composer } from "./components/composer"
 import { ConversationThread } from "./components/conversation-thread"

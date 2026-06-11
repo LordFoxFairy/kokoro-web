@@ -3,13 +3,13 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import {
   buildSimulatedReplyEvents,
   simulateAssistantReply,
-} from "@/application/session-stream-simulator"
-import { type SessionStreamSnapshot } from "@/application/session-stream-transport"
+} from "@/application/session-stream/simulator"
+import { type SessionStreamSnapshot } from "@/application/session-stream/transport"
 import {
   appendUserMessage,
   createSessionStreamState,
   type SessionStreamState,
-} from "@/application/session-stream-reducer"
+} from "@/application/session-stream/reducer"
 
 // 从某 run 的有序步骤里抽出工具 / 思考文本，供断言新模型。
 function runSteps(state: SessionStreamState | undefined, runId: string) {

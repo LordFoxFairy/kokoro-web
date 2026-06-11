@@ -1,13 +1,13 @@
 // 编排器：real 优先，失败降级到本地预览模拟。
 // 真实流实现见 session-stream-transport.ts，模拟实现见 session-stream-simulator.ts。
 
-import { consumeLiveSession } from "./session-stream-transport"
-import { simulateAssistantReply } from "./session-stream-simulator"
-import type { SessionStreamState } from "./session-stream-reducer"
+import { consumeLiveSession } from "./transport"
+import { simulateAssistantReply } from "./simulator"
+import type { SessionStreamState } from "./reducer"
 import type {
   LiveSessionHandle,
   SessionStreamSnapshot,
-} from "./session-stream-transport"
+} from "./transport"
 
 export type ReplyMode = "live" | "preview"
 
