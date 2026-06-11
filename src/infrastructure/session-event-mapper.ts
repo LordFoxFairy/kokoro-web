@@ -30,7 +30,8 @@ function base(event: SessionTransportEvent, seq: number) {
 export function toSessionStreamEvent(
   event: SessionTransportEvent,
 ): SessionStreamEvent | null {
-  const seq = parseCursorSeq(event.cursor)
+  // 优先用 session 透传的一等 seq；旧/升级期无 seq 的事件 fallback 到 cursor 反解。
+  const seq = event.seq ?? parseCursorSeq(event.cursor)
 
   switch (event.event) {
     case "session.created":

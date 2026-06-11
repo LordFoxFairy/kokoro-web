@@ -20,6 +20,8 @@ const eventEnvelopeSchema = z
       "run.failed",
     ]),
     event_id: z.string().min(1),
+    // 一等发射序号（session 透传 agent seq）。optional 兼容升级期旧事件，缺失则 mapper 反解 cursor。
+    seq: z.number().int().nonnegative().optional(),
     session_id: z.string().min(1),
     conversation_id: z.string().min(1),
     run_id: z.string().min(1),
