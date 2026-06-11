@@ -40,12 +40,10 @@ import {
 
 import { STORAGE_KEY, usePersistentStore } from "./use-persistent-store"
 
-// 输入上限：在发起任何网络/模拟之前就拦截超长草稿，避免把畸形大载荷推下游。
-// 同步作为 textarea 的 maxLength，与 submit 守卫双重把关。
+// 输入上限：发起网络/模拟前拦截超长草稿；同步作为 textarea maxLength 双重把关。
 export const MAX_INPUT_LENGTH = 4000
 
-// 自适应高度：先归零再贴合 scrollHeight，CSS 的 max-height: 7rem 负责硬顶 + 滚动。
-// jsdom 下 scrollHeight 恒为 0，仍照常赋值（不抛错），rows={1} 作为无 JS 的兜底。
+// 自适应高度：归零再贴合 scrollHeight（CSS max-height 硬顶）；jsdom 下 scrollHeight 恒 0 仍不抛错。
 export function resizeComposer(node: HTMLTextAreaElement) {
   node.style.height = "auto"
   node.style.height = `${node.scrollHeight}px`
@@ -247,8 +245,7 @@ export function useConversation(
     )
   }, [liveStore])
 
-  // 中断恢复：活跃会话有在途 run（pendingInput）时重订阅其 SSE，把剩余事件续上。
-  // 只依赖 pendingConvId（不随每个增量重跑）；每个 pending 会话只触发一次。
+  // 中断恢复：活跃会话有在途 run 时重订阅其 SSE 续传；每个 pending 会话只触发一次。
   useEffect(() => {
     if (!pendingConvId || reattachedRef.current === pendingConvId) {
       return
@@ -261,8 +258,7 @@ export function useConversation(
     }
     reattachedRef.current = pendingConvId
 
-    // 重连即进入流式态并恢复到 live transport state——presentation 由 modePresentation 统一生成。
-    // 同时置 isReconnecting：在续传窗口内让 thread 渲染「重连中…」而非「正在思考…」。
+    // 重连进入流式态 + isReconnecting：续传窗口内 thread 渲染「重连中…」而非「正在思考…」。
     /* eslint-disable react-hooks/set-state-in-effect */
     setIsStreaming(true)
     setIsReconnecting(true)
@@ -324,8 +320,7 @@ export function useConversation(
     hasMessages,
   )
 
-  // 发起一轮回复的共用核心：关掉旧句柄、把起点 store 推入流式态、强制贴底跟随，
-  // 再交给编排器。onState 把流入的线程折回活跃会话。submit 与 retry 共享它。
+  // 发起一轮回复的共用核心（submit 与 retry 共享）：关旧句柄、推入流式态、贴底、交给编排器。
   const beginReply = useCallback(
     (content: string, seededThread: SessionStreamState, storeAtStart: ConversationStore) => {
       lastInputRef.current = content
@@ -340,8 +335,7 @@ export function useConversation(
       replyHandleRef.current = startReply({
         input: content,
         initialState: seededThread,
-        // 每个会话用自己的 backend session id（= 会话 id），replay 流互不混淆，
-        // 也让中断恢复能精确重订阅本会话的在途 run。
+        // 每个会话用自己的 backend session id（= 会话 id）：replay 流互不混淆，中断恢复可精确重订阅。
         sessionId: storeAtStart.activeId,
         executionStyle: mode,
         onState: (next: SessionStreamState) => {
@@ -526,9 +520,7 @@ export function useConversation(
   )
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    // Enter 发送，Shift+Enter 换行——贴近主流对话输入习惯。
-    // 输入法合成期（中文拼音选词）的 Enter 只用于确认候选词，绝不当作发送，
-    // 否则会把半截未上屏的句子提前发出去。isComposing 在 keydown 上最可靠。
+    // Enter 发送 / Shift+Enter 换行；IME 合成期（拼音选词）的 Enter 只确认候选词，不发送。
     if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault()
       submit(draft)

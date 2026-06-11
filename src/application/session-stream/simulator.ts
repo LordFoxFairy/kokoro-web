@@ -13,8 +13,7 @@ const demoConversationId = "conv_01"
 
 let localIdCounter = 0
 
-// 本地稳定 id：优先用 crypto.randomUUID，回退到自增计数器；
-// 不依赖 Date.now / Math.random，避免 SSR 注水抖动与不确定性。
+// 本地稳定 id：randomUUID 优先，回退自增计数器；不用 Date.now/Math.random 以免 SSR 注水抖动。
 export function createLocalId(prefix: string): string {
   const cryptoRef =
     typeof globalThis !== "undefined" ? globalThis.crypto : undefined
@@ -36,8 +35,7 @@ function buildSimulatedReplyText(input: string): string {
 
 const CJK_PATTERN = /[㐀-鿿぀-ヿ가-힯]/
 
-// token 化：latin 词整块吐出（按空白切，连带尾随空白），CJK 1-3 字一吐，
-// 让预览流贴近真实分词节奏而非 2 字硬切。纯字符串操作，无随机/无时钟。
+// token 化：latin 词整块吐出、CJK 1-3 字一吐，让预览流贴近真实分词节奏。纯字符串操作，无随机/无时钟。
 export function chunkText(text: string): string[] {
   const chunks: string[] = []
   let index = 0
@@ -56,8 +54,7 @@ export function chunkText(text: string): string[] {
       continue
     }
 
-    // 非 CJK（含 latin 词、标点、空白、换行）：取到下一个 CJK 边界或空白结尾，
-    // 让整词带尾随空白一次性出现。
+    // 非 CJK：取到下一个 CJK 边界或空白结尾，让整词带尾随空白一次性出现。
     let end = index
     while (
       end < text.length &&
@@ -82,8 +79,7 @@ export function chunkText(text: string): string[] {
 
 const SENTENCE_ENDERS = /[。！？；…、，,.!?;]\s*$/
 
-// 节奏微停顿：纯由 chunk 文本派生——句末标点或空行后稍作停顿，制造可读的呼吸感。
-// 返回该 chunk 之后应额外等待的毫秒数（无随机、无时钟读取）。
+// 节奏微停顿：纯由 chunk 文本派生（句末标点/空行后稍停），返回额外等待毫秒，无随机/无时钟。
 export function chunkPauseMs(chunk: string): number {
   if (chunk.includes("\n\n") || /\n\s*\n/.test(chunk)) {
     return 220
@@ -107,9 +103,7 @@ const previewTool = {
 const previewThinking =
   "先看用户到底问了什么。这是本地预览，没有接后端，所以我用一段模拟推理演示思考流。接着调一个示例工具，再列两步计划，最后把答案逐字吐出来。"
 
-// 纯函数：把一段模拟回复展开成与真实流完全同形的有序 domain 事件，
-// 以 run-completed 收尾。可被确定性断言，无需计时器。
-// thinking 模式额外前置 thinking-delta + tool 调用对 + todo 清单；fast 模式直奔答案。
+// 纯函数：把模拟回复展开成与真实流同形的有序 domain 事件（thinking 模式额外前置思考/工具/todo），以 run-completed 收尾。
 export function buildSimulatedReplyEvents(
   input: string,
   ids: { runId: string; messageId: string },
@@ -221,8 +215,7 @@ function eventChunkText(event: SessionStreamEvent): string {
   return ""
 }
 
-// 后端缺席时的优雅降级：把模拟事件按节奏折进同一个 reducer，
-// 让 streaming UX 与真实流一致；返回 close() 取消未完成的节拍。
+// 后端缺席时的降级：模拟事件按节奏折进同一 reducer，让 streaming UX 与真实流一致；close() 取消未完成节拍。
 export function simulateAssistantReply(
   args: SimulateAssistantReplyInput,
 ): LiveSessionHandle {
