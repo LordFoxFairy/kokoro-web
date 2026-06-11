@@ -65,6 +65,21 @@ describe("parseSessionEvent", () => {
     expect(toSessionStreamEvent(transportEvent)?.seq).toBe(12)
   })
 
+  it("accepts a non-'completed' terminal status without dropping the run end (forward-compat)", () => {
+    const ev = parseSessionEvent({
+      event: "run.completed",
+      event_id: "evt_term",
+      seq: 9,
+      session_id: "ses_01",
+      conversation_id: "conv_01",
+      run_id: "run_01",
+      cursor: "1748428800-000099",
+      timestamp: "2026-05-28T12:00:00.000Z",
+      payload: { run_id: "run_01", status: "cancelled" },
+    })
+    expect(toSessionStreamEvent(ev)?.kind).toBe("run-completed")
+  })
+
   it("accepts run.created envelopes and maps them to no domain event", () => {
     const transportEvent = parseSessionEvent({
       event: "run.created",
