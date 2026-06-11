@@ -2,18 +2,6 @@ import type { SessionStreamEvent } from "@/domain/session-stream-event"
 
 import type { SessionTransportEvent } from "./session-event-schema"
 
-// 取游标末段连续数字作 seq（覆盖 "前缀:NNNN" 与 "NNNN-NNNN"）；
-// 无数字的畸形游标退化为 0，绝不让缺序把整条流判脏。
-function parseCursorSeq(cursor: string): number {
-  const matches = cursor.match(/\d+/g)
-  if (!matches || matches.length === 0) {
-    return 0
-  }
-  const last = matches[matches.length - 1] ?? "0"
-  const value = Number.parseInt(last, 10)
-  return Number.isFinite(value) ? value : 0
-}
-
 // 每个被投影事件共享的信封字段；各 case 只在其上补 kind 与 payload 专属字段。
 function base(event: SessionTransportEvent, seq: number) {
   return {
@@ -28,8 +16,8 @@ function base(event: SessionTransportEvent, seq: number) {
 export function toSessionStreamEvent(
   event: SessionTransportEvent,
 ): SessionStreamEvent | null {
-  // 优先用 session 透传的一等 seq；旧/升级期无 seq 的事件 fallback 到 cursor 反解。
-  const seq = event.seq ?? parseCursorSeq(event.cursor)
+  // seq 是唯一排序源（session 透传 agent seq）。
+  const seq = event.seq
 
   switch (event.event) {
     case "session.created":

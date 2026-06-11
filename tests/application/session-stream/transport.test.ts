@@ -65,6 +65,7 @@ class MockEventSource {
   }
 }
 
+let envelopeSeq = 0
 const envelope = (
   event: string,
   eventId: string,
@@ -72,16 +73,17 @@ const envelope = (
 ) => ({
   event,
   event_id: eventId,
+  seq: (envelopeSeq += 1),
   session_id: "ses_01",
   conversation_id: "conv_01",
   run_id: "run_01",
-  cursor: `cursor-${eventId}`,
   timestamp: "2026-05-28T12:00:00.000Z",
   payload,
 })
 
 afterEach(() => {
   MockEventSource.instances = []
+  envelopeSeq = 0
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
   vi.useRealTimers()
