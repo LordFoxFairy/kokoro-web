@@ -13,10 +13,8 @@ import {
   parseStoredSessionState,
   serializeSessionState,
 } from "@/application/session-stream/state-schema"
-import {
-  parseSessionEvent,
-  toSessionStreamEvent,
-} from "@/infrastructure/protocol/session-event"
+import { toSessionStreamEvent } from "@/infrastructure/session-event-mapper"
+import { parseSessionEvent } from "@/infrastructure/session-event-schema"
 
 function requireDomainEvent(
   input: Parameters<typeof parseSessionEvent>[0],
