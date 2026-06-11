@@ -5,7 +5,7 @@ import type {
   SessionMessage,
   SessionStep,
 } from "@/application/session-stream/reducer"
-import { AssistantTurn } from "@/interfaces/session-stream/components/assistant-turn"
+import { AssistantTurn } from "@/interfaces/session-stream/components/thread/assistant-turn"
 
 afterEach(cleanup)
 

@@ -1,6 +1,6 @@
 import { type ReactNode, useEffect, useId, useRef, useState } from "react"
 
-import { CheckIcon } from "./icons"
+import { CheckIcon } from "../icons"
 
 export type MenuOption = {
   key: string

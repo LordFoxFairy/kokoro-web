@@ -6,7 +6,7 @@ import type {
   SessionToolCall,
 } from "@/application/session-stream/reducer"
 
-import { RobotIcon } from "./icons"
+import { RobotIcon } from "../icons"
 import { MarkdownMessage } from "./markdown-message"
 import { SegmentProcess } from "./segment-process"
 

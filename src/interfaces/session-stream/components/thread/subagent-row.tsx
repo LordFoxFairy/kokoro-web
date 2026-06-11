@@ -1,6 +1,6 @@
 import type { SessionSubagent } from "@/application/session-stream/reducer"
 
-import { RobotIcon } from "./icons"
+import { RobotIcon } from "../icons"
 import { MarkdownMessage } from "./markdown-message"
 import { RunState } from "./run-state"
 

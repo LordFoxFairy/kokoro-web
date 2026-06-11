@@ -1,6 +1,6 @@
 import type { SessionMessage } from "@/application/session-stream/reducer"
 
-import { RobotIcon, UserIcon } from "./icons"
+import { RobotIcon, UserIcon } from "../icons"
 import { MarkdownMessage } from "./markdown-message"
 
 type MessageBubbleProps = {

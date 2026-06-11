@@ -6,7 +6,7 @@ import type {
   SessionToolCall,
 } from "@/application/session-stream/reducer"
 
-import { ChevronIcon, SparkIcon } from "./icons"
+import { ChevronIcon, SparkIcon } from "../icons"
 import { SubagentRow } from "./subagent-row"
 import { ToolCallRow } from "./tool-call-row"
 
