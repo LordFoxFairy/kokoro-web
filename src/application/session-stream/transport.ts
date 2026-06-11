@@ -75,12 +75,12 @@ export function resolveSessionBaseUrl() {
 
 // 严格解析 SSE 载荷；任何畸形/未知事件被拒绝且不允许中断整条流。
 function decodeStreamMessage(event: Event): SessionStreamEvent | null {
-  if (!(event instanceof MessageEvent)) {
+  if (!(event instanceof MessageEvent) || typeof event.data !== "string") {
     return null
   }
 
   try {
-    const raw: unknown = JSON.parse(event.data as string)
+    const raw: unknown = JSON.parse(event.data)
     return toSessionStreamEvent(parseSessionEvent(raw))
   } catch {
     return null

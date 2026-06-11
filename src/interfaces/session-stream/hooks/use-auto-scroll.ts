@@ -3,8 +3,7 @@ import type { RefObject, UIEvent } from "react"
 
 import type { SessionMessage } from "@/application/session-stream/reducer"
 
-// 贴底阈值：距底不足这个像素就视为“跟随”，新增内容才继续自动滚动。
-// 留一点余量，避免 1px 误差或子像素让跟随态在贴底时反复抖动。
+// 贴底阈值：距底不足此像素即视为“跟随”；留余量避免子像素让贴底态反复抖动。
 const NEAR_BOTTOM_THRESHOLD = 64
 
 function isThreadNearBottom(node: HTMLDivElement): boolean {
@@ -22,13 +21,11 @@ export function useAutoScroll(
   messages: SessionMessage[],
   isStreaming: boolean,
   scrollToLatestRef: RefObject<() => void>,
-  // 过程块的活动总量信号：思考/工具/子智能体静默生长时 messages 引用不变，
-  // 单独以此驱动跟随，让贴底视图也跟上过程块扩张（尤其 Thinking 先流式推理）。
+  // 过程块（思考/工具/子智能体）静默生长时 messages 引用不变，单独以此信号驱动跟随。
   activityVersion = 0,
 ): AutoScroll {
   const threadEndRef = useRef<HTMLDivElement | null>(null)
-  // 用户是否贴近底部：贴底时跟随新内容滚动，上滑后不再被新内容拽回。
-  // 同步镜像到 ref，供自动滚动 effect 读取最新值而不必把它列入依赖。
+  // 是否贴底（贴底才跟随新内容）；镜像到 ref 供 effect 读最新值而不必列入依赖。
   const [isNearBottom, setIsNearBottom] = useState(true)
   const isNearBottomRef = useRef(true)
 
@@ -56,8 +53,7 @@ export function useAutoScroll(
     scrollToLatestRef.current = scrollToLatest
   }, [scrollToLatest, scrollToLatestRef])
 
-  // 仅在用户贴底时跟随新内容滚动；上滑阅读历史时不抢夺视图。
-  // 贴底态从 ref 读取最新值，故只依赖会触发新内容的 messages/streaming/活动版本。
+  // 仅贴底时跟随；贴底态从 ref 读取，故只依赖触发新内容的 messages/streaming/活动版本。
   useEffect(() => {
     if (isNearBottomRef.current) {
       scrollToLatest()

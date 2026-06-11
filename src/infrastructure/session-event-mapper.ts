@@ -2,10 +2,8 @@ import type { SessionStreamEvent } from "@/domain/session-stream-event"
 
 import type { SessionTransportEvent } from "./session-event-schema"
 
-// 信封游标承载传输层的单调发射序号（如 "run_x:0007" / "1748428800-000012"）。
-// 取游标里出现的最后一段连续数字作为 seq：这覆盖 "前缀:NNNN"、"NNNN-NNNN"（取末段）
-// 等形态。无任何数字的遗留/畸形游标退化为 0——这类事件不参与有序 Step 的相对定序，
-// 但绝不让缺序把整条流判脏。reducer 仍以「同 seq 按到达先后稳定排序」兜底。
+// 取游标末段连续数字作 seq（覆盖 "前缀:NNNN" 与 "NNNN-NNNN"）；
+// 无数字的畸形游标退化为 0，绝不让缺序把整条流判脏。
 function parseCursorSeq(cursor: string): number {
   const matches = cursor.match(/\d+/g)
   if (!matches || matches.length === 0) {
