@@ -17,6 +17,7 @@ import {
   isActiveModeLocked,
   removeConversation,
   selectConversation as selectConversationOp,
+  serializeConversationStore,
   setActiveMode,
   setActivePending,
   sortedConversations,
@@ -240,7 +241,10 @@ export function useConversation(
       return
     }
 
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(liveStore))
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify(serializeConversationStore(liveStore)),
+    )
   }, [liveStore])
 
   // 中断恢复：活跃会话有在途 run（pendingInput）时重订阅其 SSE，把剩余事件续上。

@@ -74,7 +74,8 @@ const storedStepSchema = z.union([
 // 导出供 conversation-store 组合校验每个会话的线程。
 export const storedSessionStateSchema = z
   .object({
-    seenEventIds: z.array(z.string()),
+    // 落盘是 string[]，解析时转回内存的去重 Set（save 侧反向序列化，见 serializeSessionState）。
+    seenEventIds: z.array(z.string()).transform((ids) => new Set(ids)),
     messages: z.array(
       z
         .object({
@@ -101,4 +102,11 @@ export function parseStoredSessionState(
   const result = storedSessionStateSchema.safeParse(raw)
 
   return result.success ? result.data : null
+}
+
+// 落盘前把内存的 Set 还原成 JSON 可序列化的 string[]（Set 经 JSON.stringify 会丢成 {}）。
+export function serializeSessionState(
+  state: SessionStreamState,
+): unknown {
+  return { ...state, seenEventIds: [...state.seenEventIds] }
 }
