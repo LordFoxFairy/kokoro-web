@@ -5,8 +5,7 @@ import {
   useState,
 } from "react"
 
-// 侧栏可拖拽改宽：两侧自由，但都有最小宽度——rail 不小于 RAIL_MIN，
-// main 不小于 MAIN_MIN（即 rail 不超过 容器宽 - MAIN_MIN）。RAIL_MAX 再加一道硬顶。
+// 侧栏拖拽改宽的钳制边界：保证 rail 与 main 各有最小宽度，RAIL_MAX 再加一道硬顶。
 const RAIL_MIN = 200
 const RAIL_MAX = 420
 const MAIN_MIN = 360

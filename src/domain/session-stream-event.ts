@@ -7,8 +7,7 @@ export type SessionTodo = {
   status: SessionTodoStatus
 }
 
-// seq：来自传输信封游标的单调整数（见 toSessionStreamEvent）。它是真实发射顺序的唯一来源，
-// reducer 据此把过程/文本按时序排成有序 Step 列表，而非按 kind 归桶。每个领域事件都带 seq。
+// seq：来自传输信封游标的单调整数（见 toSessionStreamEvent），是真实发射顺序的唯一来源。
 export type SessionStreamEvent =
   | {
       kind: "thinking-delta"

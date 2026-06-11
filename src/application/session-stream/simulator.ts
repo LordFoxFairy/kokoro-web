@@ -96,7 +96,7 @@ export function chunkPauseMs(chunk: string): number {
 const previewTool = {
   toolId: "tool_preview_weather",
   name: "get_weather",
-  args: { city: "本地" } as Record<string, unknown>,
+  args: { city: "本地" },
   result: "晴，22°C，微风。",
 }
 

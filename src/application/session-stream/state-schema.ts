@@ -69,9 +69,7 @@ const storedStepSchema = z.union([
     .strict(),
 ])
 
-// 活动字段用 .default([]) / .default({})：旧版落盘（无这些字段）仍能解析并补默认值，
-// 保持刷新可恢复的向后兼容，不因新增字段把历史会话判脏。
-// 导出供 conversation-store 组合校验每个会话的线程。
+// 活动字段用 .default()：缺这些字段的旧版落盘仍可解析，保持向后兼容不判脏。导出供 conversation-store 组合复用。
 export const storedSessionStateSchema = z
   .object({
     // 落盘是 string[]，解析时转回内存的去重 Set（save 侧反向序列化，见 serializeSessionState）。
