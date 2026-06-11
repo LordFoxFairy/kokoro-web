@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react"
 import { afterEach, describe, expect, it } from "vitest"
 
-import type { SessionTodo } from "@/domain/shared/session-stream-event"
+import type { SessionTodo } from "@/domain/session-stream-event"
 import { TodoBar } from "@/interfaces/session-stream/components/todo-bar"
 
 afterEach(cleanup)

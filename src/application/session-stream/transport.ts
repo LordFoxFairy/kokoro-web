@@ -1,4 +1,4 @@
-import type { SessionStreamEvent } from "@/domain/shared/session-stream-event"
+import type { SessionStreamEvent } from "@/domain/session-stream-event"
 import { toSessionStreamEvent } from "@/infrastructure/session-event-mapper"
 import { parseSessionEvent } from "@/infrastructure/session-event-schema"
 
