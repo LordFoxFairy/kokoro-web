@@ -1,7 +1,7 @@
 import type {
   SessionStreamEvent,
   SessionTodo,
-} from "@/domain/shared/session-stream-event"
+} from "@/domain/session-stream-event"
 
 export type SessionMessage = {
   id: string

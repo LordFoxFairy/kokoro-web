@@ -1,6 +1,6 @@
 import { useState } from "react"
 
-import type { SessionTodo } from "@/domain/shared/session-stream-event"
+import type { SessionTodo } from "@/domain/session-stream-event"
 
 import {
   CheckCircleIcon,
