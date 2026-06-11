@@ -45,7 +45,8 @@ export type SessionStep =
   | { kind: "text"; seq: number; messageId: string }
 
 export type SessionStreamState = {
-  seenEventIds: string[]
+  // 内存用 Set 做 O(1) 去重；落盘序列化为 string[]（见 state-schema）。
+  seenEventIds: Set<string>
   messages: SessionMessage[]
   // todo 仍按当前运行整表替换（保留全局 TodoBar，见计划 fork #3）。
   todos: SessionTodo[]
@@ -162,7 +163,7 @@ export function buildThreadItems(state: SessionStreamState): ThreadItem[] {
 
 export function createSessionStreamState(): SessionStreamState {
   return {
-    seenEventIds: [],
+    seenEventIds: new Set(),
     messages: [],
     todos: [],
     stepsByRun: {},
@@ -227,13 +228,13 @@ export function applySessionEvent(
   event: SessionStreamEvent,
 ): SessionStreamState {
   // 先按 eventId 去重，保证 replay / resume 的幂等收敛。
-  if (state.seenEventIds.includes(event.eventId)) {
+  if (state.seenEventIds.has(event.eventId)) {
     return state
   }
 
   let nextState: SessionStreamState = {
     ...state,
-    seenEventIds: [...state.seenEventIds, event.eventId],
+    seenEventIds: new Set(state.seenEventIds).add(event.eventId),
     messages: [...state.messages],
     stepsByRun: { ...state.stepsByRun },
   }

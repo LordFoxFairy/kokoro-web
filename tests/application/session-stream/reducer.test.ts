@@ -9,7 +9,10 @@ import {
   type SessionStep,
   type SessionStreamState,
 } from "@/application/session-stream/reducer"
-import { parseStoredSessionState } from "@/application/session-stream/state-schema"
+import {
+  parseStoredSessionState,
+  serializeSessionState,
+} from "@/application/session-stream/state-schema"
 import {
   parseSessionEvent,
   toSessionStreamEvent,
@@ -71,7 +74,7 @@ describe("applySessionEvent", () => {
 
     expect(twice.messages).toHaveLength(1)
     expect(twice.messages[0]?.content).toBe("Hi")
-    expect(twice.seenEventIds).toEqual(["evt_01"])
+    expect(twice.seenEventIds).toEqual(new Set(["evt_01"]))
   })
 
   it("threads a strictly increasing seq from the ordered cursor", () => {
@@ -325,7 +328,7 @@ describe("applySessionEvent", () => {
     const once = applySessionEvent(createSessionStreamState(), sessionCreated)
     const twice = applySessionEvent(once, sessionCreated)
 
-    expect(twice.seenEventIds).toEqual(["evt_session"])
+    expect(twice.seenEventIds).toEqual(new Set(["evt_session"]))
     expect(twice.messages).toEqual([])
     expect(twice.runStatus).toBe("idle")
   })
@@ -362,7 +365,7 @@ describe("applySessionEvent", () => {
       createSessionStreamState(),
     )
 
-    expect(state.seenEventIds).toEqual(["evt_shared"])
+    expect(state.seenEventIds).toEqual(new Set(["evt_shared"]))
     expect(state.messages).toEqual([])
   })
 
@@ -479,7 +482,7 @@ describe("applySessionEvent", () => {
     ].reduce(applySessionEvent, createSessionStreamState())
 
     expect(state.runStatus).toBe("failed")
-    expect(state.seenEventIds).toEqual(["evt_10"])
+    expect(state.seenEventIds).toEqual(new Set(["evt_10"]))
   })
 })
 
@@ -493,7 +496,7 @@ describe("appendUserMessage", () => {
     expect(next.messages).toEqual([
       { id: "local_1", role: "user", content: "你好", runId: "local_1" },
     ])
-    expect(next.seenEventIds).toEqual([])
+    expect(next.seenEventIds).toEqual(new Set())
   })
 
   it("does not mutate the previous state", () => {
@@ -656,7 +659,7 @@ describe("parseStoredSessionState", () => {
   it("round-trips a populated state through serialize -> parse unchanged", () => {
     const original = populatedState()
     const restored = parseStoredSessionState(
-      JSON.parse(JSON.stringify(original)),
+      JSON.parse(JSON.stringify(serializeSessionState(original))),
     )
 
     expect(restored).toEqual(original)
@@ -714,7 +717,9 @@ describe("parseStoredSessionState", () => {
       content: "晴，适合出门。",
     })
 
-    const restored = parseStoredSessionState(JSON.parse(JSON.stringify(state)))
+    const restored = parseStoredSessionState(
+      JSON.parse(JSON.stringify(serializeSessionState(state))),
+    )
     expect(restored).toEqual(state)
     expect(restored?.stepsByRun["run_01"]?.map((s) => s.kind)).toEqual([
       "thinking",
@@ -801,9 +806,9 @@ describe("parseStoredSessionState", () => {
   )
 
   it("accepts a minimal empty state (the fresh-session baseline)", () => {
-    expect(parseStoredSessionState(createSessionStreamState())).toEqual(
-      createSessionStreamState(),
-    )
+    expect(
+      parseStoredSessionState(serializeSessionState(createSessionStreamState())),
+    ).toEqual(createSessionStreamState())
   })
 
   it("restores a legacy persisted state without activity/runId fields", () => {

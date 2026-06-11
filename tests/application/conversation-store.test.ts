@@ -10,6 +10,7 @@ import {
   parseStoredConversationStore,
   removeConversation,
   selectConversation,
+  serializeConversationStore,
   setActiveMode,
   sortedConversations,
   withActiveThread,
@@ -18,6 +19,7 @@ import {
   appendUserMessage,
   createSessionStreamState,
 } from "@/application/session-stream/reducer"
+import { serializeSessionState } from "@/application/session-stream/state-schema"
 
 function threadWith(content: string) {
   return appendUserMessage(createSessionStreamState(), { id: "u1", content })
@@ -71,7 +73,7 @@ describe("conversation-store", () => {
             id: "c1",
             title: "旧会话",
             updatedAt: 1,
-            thread: createSessionStreamState(),
+            thread: serializeSessionState(createSessionStreamState()),
           },
         ],
       }
@@ -142,7 +144,7 @@ describe("conversation-store", () => {
       2,
     )
     const roundtrip = parseStoredConversationStore(
-      JSON.parse(JSON.stringify(store)),
+      JSON.parse(JSON.stringify(serializeConversationStore(store))),
     )
     expect(roundtrip?.activeId).toBe("c1")
     expect(roundtrip?.conversations[0]?.thread.messages[0]?.content).toBe("hi")
