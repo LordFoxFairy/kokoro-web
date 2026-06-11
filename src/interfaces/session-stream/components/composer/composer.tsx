@@ -11,7 +11,7 @@ import { createPortal } from "react-dom"
 
 import type { AgentMode } from "@/application/conversation-store"
 
-import { MAX_INPUT_LENGTH, resizeComposer } from "../../hooks/use-conversation"
+import { MAX_INPUT_LENGTH, resizeComposer } from "./composer-input"
 import {
   ComposerMenu,
   type MenuOption,
