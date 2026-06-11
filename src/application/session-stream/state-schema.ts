@@ -34,8 +34,8 @@ const storedSubagentSchema = z
   })
   .strict()
 
-// Step 的落盘形态：判别联合，逐 kind 严格校验。tool/subagent 内嵌各自的实体 schema。
-const storedStepSchema = z.union([
+// Step 的落盘形态：按 kind 判别联合（直接路由不试遍所有 arm），逐 arm 严格校验。
+const storedStepSchema = z.discriminatedUnion("kind", [
   z
     .object({
       kind: z.literal("thinking"),
