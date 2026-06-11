@@ -1,5 +1,4 @@
-// 编排器：real 优先，失败降级到本地预览模拟。
-// 真实流实现见 session-stream-transport.ts，模拟实现见 session-stream-simulator.ts。
+// 编排器：real 优先（transport.ts），失败降级到本地预览模拟（simulator.ts）。
 
 import { consumeLiveSession } from "./transport"
 import { simulateAssistantReply } from "./simulator"

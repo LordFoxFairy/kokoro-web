@@ -31,8 +31,7 @@ export type SessionSubagent = {
   status: "running" | "done"
 }
 
-// 有序 Step：把一轮的过程（思考/工具/子智能体）与文本按真实发射时序排成一列，
-// 而非按 kind 归桶。每个 Step 带 seq（来自传输游标），同一 run 内据此稳定定序。
+// 有序 Step：过程与文本按发射时序（seq，来自传输游标）排成一列，而非按 kind 归桶。
 export type SessionStep =
   | { kind: "thinking"; seq: number; messageId: string; text: string }
   | { kind: "tool"; seq: number; messageId: string; tool: SessionToolCall }
@@ -55,9 +54,7 @@ export type SessionStreamState = {
   runStatus: "idle" | "completed" | "failed"
 }
 
-// 活动总量的纯派生信号：跨所有 run 累加思考文本长度、工具数、子智能体数及其输出长度。
-// 过程块在静默生长（messages 引用不变）时此值单调增大，供 auto-scroll 的跟随 effect 依赖，
-// 让贴底视图也跟上过程块的扩张；它只反映内容多少，不掺引用/顺序噪声。
+// 活动总量的纯派生信号（思考长度+工具/子智能体数+输出长度）：供 auto-scroll 跟随过程块的静默生长。
 export function computeActivityVersion(state: SessionStreamState): number {
   let version = 0
 
@@ -78,8 +75,7 @@ export function computeActivityVersion(state: SessionStreamState): number {
   return version
 }
 
-// 线程渲染项：要么一条用户气泡，要么一轮 assistant（一个 runId 的有序步骤 + 该轮文本段的索引）。
-// 把「连续同 runId 的 assistant 消息」归并到一个 turn；用户消息单独成项，作为 turn 之上的提问。
+// 线程渲染项：连续同 runId 的 assistant 消息归并为一个 turn；用户消息单独成项。
 export type ThreadItem =
   | { kind: "user"; message: SessionMessage }
   | {
@@ -89,8 +85,7 @@ export type ThreadItem =
       messagesById: Record<string, SessionMessage>
     }
 
-// 持久化/legacy 恢复时只回放了 messages、未回放有序步骤：为缺少 text 步骤的 assistant 段
-// 补一个合成 text 步骤（seq 接在已有步骤之后，按段出现顺序），保证刷新后答案仍被渲染。
+// legacy 恢复只回放了 messages：为缺 text 步骤的 assistant 段补合成 text 步骤，保证刷新后答案仍被渲染。
 function withRestoredTextSteps(
   steps: SessionStep[],
   messagesById: Record<string, SessionMessage>,
@@ -171,8 +166,7 @@ export function createSessionStreamState(): SessionStreamState {
   }
 }
 
-// 在某 run 的有序步骤列表里按 seq 插入/合并一个新步骤。insertOrdered 保证列表始终按
-// (seq, 到达先后) 稳定有序：同 seq 追加在已有同 seq 之后，保持 append 语义。
+// 按 (seq, 到达先后) 稳定插入：同 seq 追加在已有同 seq 之后，保持 append 语义。
 function insertOrdered(
   steps: SessionStep[],
   step: SessionStep,
@@ -187,8 +181,7 @@ function insertOrdered(
   return next
 }
 
-// 在某 run 的步骤列表里就地更新一个已存在的步骤（按谓词定位），不改变其位置。
-// 用于 tool.returned 把同一 tool step 由 running 翻 done、subagent 续写 output 等。
+// 就地更新已存在的步骤（按谓词定位）而不改其位置：tool 翻 done、subagent 续写 output 等。
 function updateRunStep(
   state: SessionStreamState,
   runId: string,
@@ -449,10 +442,7 @@ export function applySessionEvent(
   return nextState
 }
 
-// 协议只流式 assistant 消息；用户自己的输入是本地产生的，永不会被服务端 replay，
-// 因此不进入 seenEventIds 去重表，只作为一条用户气泡追加进持久会话线。
-// 上一轮终态（completed/failed）复位为 idle，避免新问题尚未开始时继续挂着旧终态；
-// todo 整表清空（保留全局 TodoBar 的当轮语义）。历史 run 的有序步骤全部保留，供 thread/replay/render。
+// 用户输入本地产生、不进 seenEventIds；复位 runStatus 为 idle 并清空 todo，历史步骤保留。
 export function appendUserMessage(
   state: SessionStreamState,
   message: { id: string; content: string },
