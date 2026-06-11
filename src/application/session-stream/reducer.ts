@@ -44,17 +44,6 @@ export type SessionStep =
     }
   | { kind: "text"; seq: number; messageId: string }
 
-// 一轮（run）的派生阶段：thread 据此为每个状态渲染各自非空的存在感。
-// idle 等价「无在途」；reconnecting 由 hook 注入（重连续传），其余从 runStatus + 流式信号派生。
-export type RunPhase =
-  | "idle"
-  | "submitted"
-  | "streaming"
-  | "settling"
-  | "complete"
-  | "failed"
-  | "reconnecting"
-
 export type SessionStreamState = {
   seenEventIds: string[]
   messages: SessionMessage[]
@@ -86,41 +75,6 @@ export function computeActivityVersion(state: SessionStreamState): number {
   }
 
   return version
-}
-
-// 派生一轮的阶段。reconnecting 由 hook 注入（无法从快照派生），故作为可选信号传入。
-export function deriveRunPhase(
-  state: SessionStreamState,
-  signals: { isStreaming: boolean; isReconnecting?: boolean },
-): RunPhase {
-  if (signals.isReconnecting) {
-    return "reconnecting"
-  }
-  if (state.runStatus === "failed") {
-    return "failed"
-  }
-  if (signals.isStreaming) {
-    // 已出文本即 streaming；流式中但当前 run 尚无任何 step（首 token 未到）为 submitted。
-    const activeRunId = lastAssistantRunId(state)
-    const hasStep = activeRunId
-      ? (state.stepsByRun[activeRunId]?.length ?? 0) > 0
-      : false
-    return hasStep ? "streaming" : "submitted"
-  }
-  if (state.runStatus === "completed") {
-    return "complete"
-  }
-  return "idle"
-}
-
-function lastAssistantRunId(state: SessionStreamState): string | undefined {
-  for (let i = state.messages.length - 1; i >= 0; i -= 1) {
-    const message = state.messages[i]
-    if (message?.role === "assistant") {
-      return message.runId
-    }
-  }
-  return undefined
 }
 
 // 线程渲染项：要么一条用户气泡，要么一轮 assistant（一个 runId 的有序步骤 + 该轮文本段的索引）。
