@@ -2,7 +2,7 @@ import { cleanup, render, screen } from "@testing-library/react"
 import { afterEach, describe, expect, it } from "vitest"
 
 import type { SessionSubagent } from "@/application/session-stream/reducer"
-import { SubagentRow } from "@/interfaces/session-stream/components/subagent-row"
+import { SubagentRow } from "@/interfaces/session-stream/components/thread/subagent-row"
 
 afterEach(cleanup)
 

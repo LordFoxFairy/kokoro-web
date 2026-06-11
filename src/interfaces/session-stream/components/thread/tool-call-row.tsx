@@ -1,6 +1,6 @@
 import type { SessionToolCall } from "@/application/session-stream/reducer"
 
-import { WrenchIcon } from "./icons"
+import { WrenchIcon } from "../icons"
 import { RunState } from "./run-state"
 
 // 工具参数压成紧凑 JSON 预览；空参数返回 null（不渲染参数块）。

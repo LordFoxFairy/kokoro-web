@@ -11,7 +11,7 @@ import { createPortal } from "react-dom"
 
 import type { AgentMode } from "@/application/conversation-store"
 
-import { MAX_INPUT_LENGTH, resizeComposer } from "../hooks/use-conversation"
+import { MAX_INPUT_LENGTH, resizeComposer } from "../../hooks/use-conversation"
 import {
   ComposerMenu,
   type MenuOption,
@@ -28,7 +28,7 @@ import {
   SparkIcon,
   StopIcon,
   ZapIcon,
-} from "./icons"
+} from "../icons"
 
 // 附加菜单：图标 + 分组，样式对齐原型 variant-a-mi-mu 的 attach 菜单。
 // 语音输入仍走右侧独立麦克风键，避免重复；上传链路接后端前为占位项。

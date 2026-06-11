@@ -8,8 +8,8 @@ import {
   type StartReply,
 } from "@/application/session-stream/reply"
 
-import { Composer } from "./components/composer"
-import { ConversationThread } from "./components/conversation-thread"
+import { Composer } from "./components/composer/composer"
+import { ConversationThread } from "./components/thread/conversation-thread"
 import { SessionRail } from "./components/session-rail"
 import { TodoBar } from "./components/todo-bar"
 import { useAutoScroll } from "./hooks/use-auto-scroll"
