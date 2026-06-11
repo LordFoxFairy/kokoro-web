@@ -4,7 +4,7 @@ import type {
   SessionStep,
   SessionSubagent,
   SessionToolCall,
-} from "@/application/session-stream-reducer"
+} from "@/application/session-stream/reducer"
 
 import { RobotIcon } from "./icons"
 import { MarkdownMessage } from "./markdown-message"

@@ -11,9 +11,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type {
   StartReply,
   StartReplyInput,
-} from "@/application/session-reply"
+} from "@/application/session-stream/reply"
 import type { ReattachReply } from "@/interfaces/session-stream/hooks/use-conversation"
-import { applySessionEvent } from "@/application/session-stream-reducer"
+import { applySessionEvent } from "@/application/session-stream/reducer"
 import { SessionShell } from "@/interfaces/session-stream/session-shell"
 
 afterEach(() => {

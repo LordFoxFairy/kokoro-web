@@ -8,7 +8,7 @@ import {
   applySessionEvent,
   createSessionStreamState,
   type SessionStreamState,
-} from "./session-stream-reducer"
+} from "./reducer"
 
 // 传输层监听的事件名全集。artifact.available / permission.required 当前由
 // toSessionStreamEvent 显式丢弃，但仍需注册监听器，让丢弃是有意为之而非漏听。

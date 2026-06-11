@@ -4,7 +4,7 @@ import type { AgentMode } from "@/application/conversation-store"
 import {
   buildThreadItems,
   type SessionStreamState,
-} from "@/application/session-stream-reducer"
+} from "@/application/session-stream/reducer"
 
 import { AssistantTurn } from "./assistant-turn"
 import { MessageBubble } from "./message-bubble"

@@ -4,7 +4,7 @@ import type { AgentMode } from "@/application/conversation-store"
 import type {
   SessionSubagent,
   SessionToolCall,
-} from "@/application/session-stream-reducer"
+} from "@/application/session-stream/reducer"
 
 import { ChevronIcon, SparkIcon } from "./icons"
 import { SubagentRow } from "./subagent-row"

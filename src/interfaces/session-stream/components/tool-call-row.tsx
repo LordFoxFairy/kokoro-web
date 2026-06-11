@@ -1,4 +1,4 @@
-import type { SessionToolCall } from "@/application/session-stream-reducer"
+import type { SessionToolCall } from "@/application/session-stream/reducer"
 
 import { WrenchIcon } from "./icons"
 import { RunState } from "./run-state"

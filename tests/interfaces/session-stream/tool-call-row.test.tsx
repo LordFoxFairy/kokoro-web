@@ -1,7 +1,7 @@
 import { cleanup, render, screen } from "@testing-library/react"
 import { afterEach, describe, expect, it } from "vitest"
 
-import type { SessionToolCall } from "@/application/session-stream-reducer"
+import type { SessionToolCall } from "@/application/session-stream/reducer"
 import { ToolCallRow } from "@/interfaces/session-stream/components/tool-call-row"
 
 afterEach(cleanup)

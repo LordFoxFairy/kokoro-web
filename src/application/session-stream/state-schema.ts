@@ -1,6 +1,6 @@
 import { z } from "zod"
 
-import type { SessionStreamState } from "./session-stream-reducer"
+import type { SessionStreamState } from "./reducer"
 
 // 持久化校验属于应用层：它守的是本地落盘的 SessionStreamState，而非线上传输载荷。
 // schema 必须与 SessionStreamState 形状逐字对齐——任何字段漂移都应在 typecheck 暴露。

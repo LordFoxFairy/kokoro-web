@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render } from "@testing-library/react"
 import { afterEach, describe, expect, it } from "vitest"
 
-import type { SessionToolCall } from "@/application/session-stream-reducer"
+import type { SessionToolCall } from "@/application/session-stream/reducer"
 import { SegmentProcess } from "@/interfaces/session-stream/components/segment-process"
 
 afterEach(cleanup)

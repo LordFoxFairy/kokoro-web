@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from "vitest"
 import type {
   SessionMessage,
   SessionStep,
-} from "@/application/session-stream-reducer"
+} from "@/application/session-stream/reducer"
 import { AssistantTurn } from "@/interfaces/session-stream/components/assistant-turn"
 
 afterEach(cleanup)
