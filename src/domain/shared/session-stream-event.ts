@@ -142,7 +142,6 @@ export type SessionStreamEvent =
       conversationId: string
       runId: string
       finalMessageId?: string
-      artifactIds?: string[]
     }
   | {
       kind: "run-failed"

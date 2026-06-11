@@ -18,8 +18,6 @@ const eventEnvelopeSchema = z
       "subagent.finished",
       "subagent.text.delta",
       "subagent.text.completed",
-      "artifact.available",
-      "permission.required",
       "run.completed",
       "run.failed",
     ]),
@@ -182,33 +180,6 @@ const subagentTextCompletedSchema = eventEnvelopeSchema.extend({
     .strict(),
 })
 
-const artifactAvailableSchema = eventEnvelopeSchema.extend({
-  event: z.literal("artifact.available"),
-  payload: z
-    .object({
-      artifact_id: z.string().min(1),
-      artifact_kind: z.string().min(1),
-      title: z.string().min(1),
-      preview: z.string().optional(),
-      open_target: z.string().optional(),
-      share_target: z.string().optional(),
-    })
-    .strict(),
-})
-
-const permissionRequiredSchema = eventEnvelopeSchema.extend({
-  event: z.literal("permission.required"),
-  payload: z
-    .object({
-      request_id: z.string().min(1),
-      decision_kind: z.string().min(1),
-      message: z.string().min(1),
-      scope: z.string().optional(),
-      suggested_default: z.string().optional(),
-    })
-    .strict(),
-})
-
 const runCompletedSchema = eventEnvelopeSchema.extend({
   event: z.literal("run.completed"),
   payload: z
@@ -216,7 +187,6 @@ const runCompletedSchema = eventEnvelopeSchema.extend({
       run_id: z.string().min(1),
       status: z.literal("completed"),
       final_message_id: z.string().optional(),
-      artifact_ids: z.array(z.string().min(1)).optional(),
     })
     .strict(),
 })
@@ -247,8 +217,6 @@ const sessionEventSchema = z.union([
   subagentFinishedSchema,
   subagentTextDeltaSchema,
   subagentTextCompletedSchema,
-  artifactAvailableSchema,
-  permissionRequiredSchema,
   runCompletedSchema,
   runFailedSchema,
 ])
@@ -291,6 +259,7 @@ export function toSessionStreamEvent(
         ownerId: event.payload.owner_id,
       }
     case "run.created":
+      // session 真发此事件，web 当前不消费：解析以拒绝畸形，但不投影成领域事件。
       return null
     case "message.delta":
       return {
@@ -325,7 +294,6 @@ export function toSessionStreamEvent(
         conversationId: event.conversation_id,
         runId: event.run_id,
         finalMessageId: event.payload.final_message_id,
-        artifactIds: event.payload.artifact_ids,
       }
     case "run.failed":
       return {
@@ -440,8 +408,5 @@ export function toSessionStreamEvent(
         subagentId: event.payload.subagent_id,
         text: event.payload.text,
       }
-    case "artifact.available":
-    case "permission.required":
-      return null
   }
 }

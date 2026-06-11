@@ -357,9 +357,8 @@ describe("consumeLiveSession", () => {
     expect(settled).toEqual([true])
   })
 
-  it("registers the discarded transport listeners and folds a large completed body", async () => {
-    // artifact.available / permission.required 必须有监听器（有意丢弃而非漏听），
-    // 且它们的注册不能影响 assistant 轮次的折叠；超大正文须完整落入。
+  it("registers the discarded transport listener and folds a large completed body", async () => {
+    // run.created 须有监听器（有意丢弃而非漏听），且其注册不影响 assistant 轮次折叠；超大正文须完整落入。
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue(new Response(null, { status: 202 })),
@@ -374,17 +373,14 @@ describe("consumeLiveSession", () => {
     })
 
     const source = MockEventSource.instances[0]
-    expect(source?.listenerCount("artifact.available")).toBe(1)
-    expect(source?.listenerCount("permission.required")).toBe(1)
+    expect(source?.listenerCount("run.created")).toBe(1)
 
     // 被丢弃的事件不得改动 state，也不得抛错。
     expect(() =>
       source?.emit(
-        "artifact.available",
-        envelope("artifact.available", "evt_art", {
-          artifact_id: "art_01",
-          artifact_kind: "doc",
-          title: "Spec",
+        "run.created",
+        envelope("run.created", "evt_run", {
+          run_id: "run_01",
         }),
       ),
     ).not.toThrow()

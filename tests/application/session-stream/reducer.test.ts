@@ -6,7 +6,6 @@ import {
   buildThreadItems,
   computeActivityVersion,
   createSessionStreamState,
-  deriveRunPhase,
   type SessionStep,
   type SessionStreamState,
 } from "@/application/session-stream/reducer"
@@ -1247,70 +1246,3 @@ describe("buildThreadItems grouping", () => {
   })
 })
 
-describe("deriveRunPhase", () => {
-  it("idle when not streaming and no terminal status", () => {
-    expect(
-      deriveRunPhase(createSessionStreamState(), { isStreaming: false }),
-    ).toBe("idle")
-  })
-
-  it("submitted while streaming before the first step arrives", () => {
-    const state = appendUserMessage(createSessionStreamState(), {
-      id: "u1",
-      content: "问",
-    })
-    expect(deriveRunPhase(state, { isStreaming: true })).toBe("submitted")
-  })
-
-  it("streaming once a step has landed for the active run", () => {
-    let state = appendUserMessage(createSessionStreamState(), {
-      id: "u1",
-      content: "问",
-    })
-    state = applySessionEvent(state, {
-      kind: "message-delta",
-      eventId: "d1",
-      seq: 1,
-      sessionId: "ses_01",
-      conversationId: "conv_01",
-      runId: "run_01",
-      messageId: "m1",
-      role: "assistant",
-      delta: "答",
-    })
-    expect(deriveRunPhase(state, { isStreaming: true })).toBe("streaming")
-  })
-
-  it("complete after run-completed, failed after run-failed", () => {
-    const completed = applySessionEvent(createSessionStreamState(), {
-      kind: "run-completed",
-      eventId: "rc",
-      seq: 1,
-      sessionId: "ses_01",
-      conversationId: "conv_01",
-      runId: "run_01",
-    })
-    expect(deriveRunPhase(completed, { isStreaming: false })).toBe("complete")
-
-    const failed = applySessionEvent(createSessionStreamState(), {
-      kind: "run-failed",
-      eventId: "rf",
-      seq: 1,
-      sessionId: "ses_01",
-      conversationId: "conv_01",
-      runId: "run_01",
-      errorKind: "agent_error",
-      message: "boom",
-    })
-    expect(deriveRunPhase(failed, { isStreaming: false })).toBe("failed")
-  })
-
-  it("reconnecting overrides other signals when reattaching", () => {
-    expect(
-      deriveRunPhase(createSessionStreamState(), {
-        isStreaming: true,
-        isReconnecting: true,
-      }),
-    ).toBe("reconnecting")
-  })
-})
