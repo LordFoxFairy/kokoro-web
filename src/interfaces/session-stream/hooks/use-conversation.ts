@@ -43,7 +43,6 @@ import { MAX_INPUT_LENGTH } from "../components/composer/composer-input"
 import {
   modePresentation,
   type ModePresentation,
-  type PresentationTransportState,
   type TransportState,
 } from "./mode-presentation"
 
