@@ -1418,6 +1418,56 @@ describe("SessionShell sessions list", () => {
     ).toBeInTheDocument()
     expect(screen.queryByText("待删除")).toBeNull()
   })
+
+  it("switching away mid-stream closes the handle, never leaks the old stream, and re-attaches on switch-back", () => {
+    // 为什么重要：防串流——旧 run 的事件折进错误会话等于跨会话数据串写。
+    const close = vi.fn()
+    const reattachCalls: string[] = []
+    let calls = 0
+    // 第一轮即时收束；第二轮确立 live、推半截增量、永不 settle。
+    const mixed: StartReply = (args: StartReplyInput) => {
+      calls += 1
+      if (calls === 1) {
+        return instantReply((input) => `答：${input}`)(args)
+      }
+      args.onLive?.()
+      const partial = applySessionEvent(args.initialState, {
+        kind: "message-delta",
+        eventId: "mix-d",
+        seq: 1,
+        ...envelope,
+        runId: "mix-run",
+        segmentId: "mix-msg",
+        role: "assistant",
+        delta: "第二段的旧流",
+      })
+      args.onState(partial)
+      return { close }
+    }
+    const reattach: ReattachReply = ({ sessionId }) => {
+      reattachCalls.push(sessionId)
+      return { close: () => {} }
+    }
+
+    render(<SessionShell startReply={mixed} reattach={reattach} />)
+    send("第一段")
+    fireEvent.click(screen.getByText("新对话"))
+    send("第二段")
+    expect(inLog("第二段的旧流")).toBeInTheDocument()
+
+    // 流式中切回第一段：旧句柄被关恰一次，旧流内容不得出现在第一段里。
+    const list = screen.getByRole("navigation", { name: "历史会话" })
+    fireEvent.click(within(list).getByText("第一段"))
+    expect(close).toHaveBeenCalledTimes(1)
+    expect(within(screen.getByRole("log")).queryByText("第二段的旧流")).toBeNull()
+    expect(inLog("答：第一段")).toBeInTheDocument()
+    expect(reattachCalls).toEqual([])
+
+    // 切回带在途 run（pendingInput 未清）的第二段：恢复续传恰一次。
+    fireEvent.click(within(list).getByText("第二段"))
+    expect(reattachCalls).toHaveLength(1)
+    expect(inLog("第二段的旧流")).toBeInTheDocument()
+  })
 })
 
 describe("SessionShell interrupt recovery", () => {
@@ -1554,6 +1604,110 @@ describe("SessionShell interrupt recovery", () => {
       <SessionShell startReply={instantReply((input) => input)} reattach={reattach} />,
     )
 
+    expect(reattachCalls).toEqual([])
+  })
+
+  it("gives up re-attaching after the 90s deadline instead of streaming forever", () => {
+    // 为什么重要：后端已停/网络长断时无终态可等，兜底必须退出流式态还给用户输入权。
+    vi.useFakeTimers()
+    try {
+      window.localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({
+          activeId: "c1",
+          conversations: [
+            {
+              id: "c1",
+              title: "等不到终态的一问",
+              updatedAt: 1,
+              pendingInput: "等不到终态的一问",
+              thread: {
+                seenEventIds: [],
+                messages: [{ id: "u1", role: "user", content: "等不到终态的一问" }],
+                runStatus: "idle",
+              },
+            },
+          ],
+        }),
+      )
+
+      // 永不回事件也不 settle：只能靠 90s 兜底收场。
+      const close = vi.fn()
+      const reattach: ReattachReply = () => ({ close })
+      render(
+        <SessionShell startReply={instantReply((input) => input)} reattach={reattach} />,
+      )
+      expect(screen.getByLabelText("停止生成")).toBeInTheDocument()
+
+      act(() => {
+        vi.advanceTimersByTime(90_000)
+      })
+
+      expect(close).toHaveBeenCalledTimes(1)
+      expect(screen.queryByLabelText("停止生成")).toBeNull()
+      expect(screen.getByLabelText("对话输入")).not.toBeDisabled()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("does not re-attach after a manual stop cleared the in-flight mark", () => {
+    // 为什么重要：用户主动停止 = 放弃这一轮；刷新后幽灵重连会违背这个决定。
+    const liveNeverSettles: StartReply = ({
+      initialState,
+      onState,
+      onLive,
+    }: StartReplyInput) => {
+      stubCounter += 1
+      onLive?.()
+      const partial = applySessionEvent(initialState, {
+        kind: "message-delta",
+        eventId: `stop-d-${stubCounter}`,
+        seq: 1,
+        ...envelope,
+        runId: `stop-run-${stubCounter}`,
+        segmentId: `stop-msg-${stubCounter}`,
+        role: "assistant",
+        delta: "半截回答",
+      })
+      onState(partial)
+      return { close: () => {} }
+    }
+    const first = render(<SessionShell startReply={liveNeverSettles} />)
+    send("会被停止的一问")
+    fireEvent.click(screen.getByLabelText("停止生成"))
+    first.unmount()
+
+    const reattachCalls: string[] = []
+    const reattach: ReattachReply = ({ sessionId }) => {
+      reattachCalls.push(sessionId)
+      return { close: () => {} }
+    }
+    render(
+      <SessionShell startReply={instantReply((input) => input)} reattach={reattach} />,
+    )
+    expect(reattachCalls).toEqual([])
+    // 半截内容保留（停止不擦除），只是不再自动续传。
+    expect(inLog("半截回答")).toBeInTheDocument()
+  })
+
+  it("a settled preview round leaves no in-flight mark — no ghost re-attach after reload", () => {
+    // 为什么重要：本地预览从不调 onLive；若它误标在途，刷新后会对本地模拟发起幽灵 SSE。
+    const first = render(
+      <SessionShell startReply={instantReply((input) => `答：${input}`)} />,
+    )
+    send("本地预览一轮")
+    expect(inLog("答：本地预览一轮")).toBeInTheDocument()
+    first.unmount()
+
+    const reattachCalls: string[] = []
+    const reattach: ReattachReply = ({ sessionId }) => {
+      reattachCalls.push(sessionId)
+      return { close: () => {} }
+    }
+    render(
+      <SessionShell startReply={instantReply((input) => input)} reattach={reattach} />,
+    )
     expect(reattachCalls).toEqual([])
   })
 })
