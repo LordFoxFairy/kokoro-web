@@ -223,6 +223,6 @@ const sessionEventSchema = z.union([
 
 export type SessionTransportEvent = z.infer<typeof sessionEventSchema>
 
-export function parseSessionEvent(input: unknown): SessionTransportEvent {
+export function parseTransportEvent(input: unknown): SessionTransportEvent {
   return sessionEventSchema.parse(input)
 }

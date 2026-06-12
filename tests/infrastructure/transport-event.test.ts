@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest"
 
-import { toSessionStreamEvent } from "@/infrastructure/session-event-mapper"
-import { parseSessionEvent } from "@/infrastructure/session-event-schema"
+import { toSessionStreamEvent } from "@/infrastructure/transport-event-mapper"
+import { parseTransportEvent } from "@/infrastructure/transport-event-schema"
 
-describe("parseSessionEvent", () => {
+describe("parseTransportEvent", () => {
   it("accepts a valid message delta envelope and maps it into a domain event", () => {
-    const transportEvent = parseSessionEvent({
+    const transportEvent = parseTransportEvent({
       event: "message.delta",
       event_id: "evt_01",
       seq: 12,
@@ -36,7 +36,7 @@ describe("parseSessionEvent", () => {
   })
 
   it("reads the first-class seq", () => {
-    const transportEvent = parseSessionEvent({
+    const transportEvent = parseTransportEvent({
       event: "message.delta",
       event_id: "evt_seq",
       seq: 42,
@@ -50,7 +50,7 @@ describe("parseSessionEvent", () => {
   })
 
   it("accepts a non-'completed' terminal status without dropping the run end (forward-compat)", () => {
-    const ev = parseSessionEvent({
+    const ev = parseTransportEvent({
       event: "run.completed",
       event_id: "evt_term",
       seq: 9,
@@ -64,7 +64,7 @@ describe("parseSessionEvent", () => {
   })
 
   it("accepts run.created envelopes and maps them to no domain event", () => {
-    const transportEvent = parseSessionEvent({
+    const transportEvent = parseTransportEvent({
       event: "run.created",
       event_id: "evt_00",
       seq: 11,
@@ -82,7 +82,7 @@ describe("parseSessionEvent", () => {
 
   it("keeps session.created title required", () => {
     expect(() =>
-      parseSessionEvent({
+      parseTransportEvent({
         event: "session.created",
         event_id: "evt_title",
         seq: 10,
@@ -101,7 +101,7 @@ describe("parseSessionEvent", () => {
 
   it("rejects extra top-level fields", () => {
     expect(() =>
-      parseSessionEvent({
+      parseTransportEvent({
         event: "run.completed",
         event_id: "evt_02",
         seq: 13,

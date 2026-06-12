@@ -1,6 +1,6 @@
 import type { SessionStreamEvent } from "@/domain/session-stream-event"
 
-import type { SessionTransportEvent } from "./session-event-schema"
+import type { SessionTransportEvent } from "./transport-event-schema"
 
 // 每个被投影事件共享的信封字段；各 case 只在其上补 kind 与 payload 专属字段。
 function base(event: SessionTransportEvent, seq: number) {
