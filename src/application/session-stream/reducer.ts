@@ -33,15 +33,15 @@ export type SessionSubagent = {
 
 // 有序 Step：过程与文本按发射时序（seq，来自传输游标）排成一列，而非按 kind 归桶。
 export type SessionStep =
-  | { kind: "thinking"; seq: number; messageId: string; text: string }
-  | { kind: "tool"; seq: number; messageId: string; tool: SessionToolCall }
+  | { kind: "thinking"; seq: number; segmentId: string; text: string }
+  | { kind: "tool"; seq: number; segmentId: string; tool: SessionToolCall }
   | {
       kind: "subagent"
       seq: number
-      messageId: string
+      segmentId: string
       subagent: SessionSubagent
     }
-  | { kind: "text"; seq: number; messageId: string }
+  | { kind: "text"; seq: number; segmentId: string }
 
 export type SessionStreamState = {
   // 内存用 Set 做 O(1) 去重；落盘序列化为 string[]（见 state-schema）。
@@ -91,16 +91,16 @@ function withRestoredTextSteps(
   messagesById: Record<string, SessionMessage>,
 ): SessionStep[] {
   const covered = new Set(
-    steps.filter((step) => step.kind === "text").map((step) => step.messageId),
+    steps.filter((step) => step.kind === "text").map((step) => step.segmentId),
   )
   const missing = Object.keys(messagesById).filter((id) => !covered.has(id))
   if (missing.length === 0) {
     return steps
   }
   let nextSeq = steps.reduce((max, step) => Math.max(max, step.seq), 0)
-  const synthetic: SessionStep[] = missing.map((messageId) => {
+  const synthetic: SessionStep[] = missing.map((segmentId) => {
     nextSeq += 1
-    return { kind: "text", seq: nextSeq, messageId }
+    return { kind: "text", seq: nextSeq, segmentId }
   })
   return [...steps, ...synthetic]
 }
@@ -239,20 +239,20 @@ export function applySessionEvent(
 
   if (event.kind === "message-delta" || event.kind === "message-completed") {
     const index = nextState.messages.findIndex(
-      (message) => message.id === event.messageId,
+      (message) => message.id === event.segmentId,
     )
 
     if (event.kind === "message-delta") {
       if (index >= 0) {
         const existing = nextState.messages[index]
-        // role/runId 在 messageId 首个增量时确定一次：后续增量只追加正文。
+        // role/runId 在 segmentId 首个增量时确定一次：后续增量只追加正文。
         nextState.messages[index] = {
           ...(existing as SessionMessage),
           content: `${existing?.content ?? ""}${event.delta}`,
         }
       } else {
         nextState.messages.push({
-          id: event.messageId,
+          id: event.segmentId,
           role: event.role,
           content: event.delta,
           runId: event.runId,
@@ -261,21 +261,21 @@ export function applySessionEvent(
         nextState = appendRunStep(nextState, event.runId, {
           kind: "text",
           seq: event.seq,
-          messageId: event.messageId,
+          segmentId: event.segmentId,
         })
       }
     } else {
       // completed 必须覆盖累计增量，避免 replay 后残留半句内容。
       if (index >= 0) {
         nextState.messages[index] = {
-          id: event.messageId,
+          id: event.segmentId,
           role: event.role,
           content: event.content,
           runId: event.runId,
         }
       } else {
         nextState.messages.push({
-          id: event.messageId,
+          id: event.segmentId,
           role: event.role,
           content: event.content,
           runId: event.runId,
@@ -283,7 +283,7 @@ export function applySessionEvent(
         nextState = appendRunStep(nextState, event.runId, {
           kind: "text",
           seq: event.seq,
-          messageId: event.messageId,
+          segmentId: event.segmentId,
         })
       }
     }
@@ -291,9 +291,9 @@ export function applySessionEvent(
 
   if (event.kind === "thinking-delta") {
     const steps = nextState.stepsByRun[event.runId] ?? []
-    // 同一段 thinking 续写：找该 messageId 的既有 thinking step 追加，否则新建一个有序步骤。
+    // 同一段 thinking 续写：找该 segmentId 的既有 thinking step 追加，否则新建一个有序步骤。
     const existingIndex = steps.findIndex(
-      (step) => step.kind === "thinking" && step.messageId === event.messageId,
+      (step) => step.kind === "thinking" && step.segmentId === event.segmentId,
     )
     if (existingIndex >= 0) {
       const existing = steps[existingIndex]
@@ -312,7 +312,7 @@ export function applySessionEvent(
       nextState = appendRunStep(nextState, event.runId, {
         kind: "thinking",
         seq: event.seq,
-        messageId: event.messageId,
+        segmentId: event.segmentId,
         text: event.delta,
       })
     }
@@ -322,7 +322,7 @@ export function applySessionEvent(
     nextState = appendRunStep(nextState, event.runId, {
       kind: "tool",
       seq: event.seq,
-      messageId: event.messageId,
+      segmentId: event.segmentId,
       tool: {
         id: event.toolId,
         name: event.name,
@@ -356,7 +356,7 @@ export function applySessionEvent(
       nextState = appendRunStep(nextState, event.runId, {
         kind: "tool",
         seq: event.seq,
-        messageId: event.messageId,
+        segmentId: event.segmentId,
         tool: {
           id: event.toolId,
           name: event.name,
@@ -377,7 +377,7 @@ export function applySessionEvent(
     nextState = appendRunStep(nextState, event.runId, {
       kind: "subagent",
       seq: event.seq,
-      messageId: event.messageId,
+      segmentId: event.segmentId,
       subagent: {
         id: event.subagentId,
         name: event.name,

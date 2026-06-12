@@ -40,7 +40,7 @@ const storedStepSchema = z.discriminatedUnion("kind", [
     .object({
       kind: z.literal("thinking"),
       seq: z.number(),
-      messageId: z.string(),
+      segmentId: z.string(),
       text: z.string(),
     })
     .strict(),
@@ -48,7 +48,7 @@ const storedStepSchema = z.discriminatedUnion("kind", [
     .object({
       kind: z.literal("tool"),
       seq: z.number(),
-      messageId: z.string(),
+      segmentId: z.string(),
       tool: storedToolCallSchema,
     })
     .strict(),
@@ -56,7 +56,7 @@ const storedStepSchema = z.discriminatedUnion("kind", [
     .object({
       kind: z.literal("subagent"),
       seq: z.number(),
-      messageId: z.string(),
+      segmentId: z.string(),
       subagent: storedSubagentSchema,
     })
     .strict(),
@@ -64,7 +64,7 @@ const storedStepSchema = z.discriminatedUnion("kind", [
     .object({
       kind: z.literal("text"),
       seq: z.number(),
-      messageId: z.string(),
+      segmentId: z.string(),
     })
     .strict(),
 ])

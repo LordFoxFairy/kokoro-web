@@ -13,7 +13,7 @@ import { SegmentProcess } from "./segment-process"
 type AssistantTurnProps = {
   // 这一轮（一个 runId）按 seq 排好的有序步骤：思考/工具/子智能体/文本交错。
   steps: SessionStep[]
-  // 文本步骤按 messageId 取这一段正文；过程先到、正文未到时该段可能暂缺。
+  // 文本步骤按 segmentId 取这一段正文；过程先到、正文未到时该段可能暂缺。
   messagesById: Record<string, SessionMessage>
   // 这一轮是否仍在流式：驱动「正在出字」光标、过程默认展开、动态头像。
   isLive: boolean
@@ -24,14 +24,14 @@ type AssistantTurnProps = {
 }
 
 type Segment = {
-  messageId: string
+  segmentId: string
   thinking: string
   tools: SessionToolCall[]
   subagents: SessionSubagent[]
 }
 
-// 按 messageId 把有序步骤分段，保持「首次出现」顺序（即真实发生时序）；
-// 每段聚合它自己的思考/工具/子智能体。工具属于它后面那段文本（由 message_ref 归属保证），
+// 按 segmentId 把有序步骤分段，保持「首次出现」顺序（即真实发生时序）；
+// 每段聚合它自己的思考/工具/子智能体。工具属于它后面那段文本（由 segment_id 归属保证），
 // 因此每段的过程正好是「催生这段答案」的那批过程。
 function groupSegments(steps: SessionStep[]): Segment[] {
   const order: string[] = []
@@ -42,7 +42,7 @@ function groupSegments(steps: SessionStep[]): Segment[] {
       return existing
     }
     const created: Segment = {
-      messageId: id,
+      segmentId: id,
       thinking: "",
       tools: [],
       subagents: [],
@@ -52,7 +52,7 @@ function groupSegments(steps: SessionStep[]): Segment[] {
     return created
   }
   for (const step of steps) {
-    const segment = segmentFor(step.messageId)
+    const segment = segmentFor(step.segmentId)
     if (step.kind === "thinking") {
       segment.thinking += step.text
     } else if (step.kind === "tool") {
@@ -104,7 +104,7 @@ export function AssistantTurn({
 }: AssistantTurnProps) {
   const segments = groupSegments(steps)
   const tailId =
-    segments.length > 0 ? segments[segments.length - 1]?.messageId : undefined
+    segments.length > 0 ? segments[segments.length - 1]?.segmentId : undefined
   const formingLabel = mode === "fast" ? "正在整理回答" : "正在思考"
   // 提交后首个 step/token 未到：这一轮还没有任何 segment，但仍在途——给一个成形脚手架
   // （头像已 live + 单条「正在…」），绝不让在途轮塌成空帧。落定/非流式则不渲染脚手架。
@@ -128,14 +128,14 @@ export function AssistantTurn({
           </div>
         ) : null}
         {segments.map((segment) => {
-          const message = messagesById[segment.messageId]
-          const liveSegment = isLive && segment.messageId === tailId
+          const message = messagesById[segment.segmentId]
+          const liveSegment = isLive && segment.segmentId === tailId
           const showCaret =
             liveSegment && Boolean(message) && (message?.content.length ?? 0) > 0
           // 尾段正文未到（过程先到）：气泡位给一个「正在…」成形占位，过程仍挂在下面。
           const forming = liveSegment && !message
           return (
-            <div className="kk-turn__segment" key={segment.messageId}>
+            <div className="kk-turn__segment" key={segment.segmentId}>
               {message ? (
                 <div className="kk-msg__bubble kk-turn__answer">
                   <MarkdownMessage content={message.content} />

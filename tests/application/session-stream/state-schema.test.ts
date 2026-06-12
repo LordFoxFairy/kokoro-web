@@ -16,17 +16,17 @@ describe("parseStoredSessionState — storedStep discriminated union", () => {
   it("parses every step kind (thinking / tool / subagent / text)", () => {
     const r = parseStoredSessionState(
       stored([
-        { kind: "thinking", seq: 1, messageId: "m1", text: "想" },
+        { kind: "thinking", seq: 1, segmentId: "m1", text: "想" },
         {
           kind: "tool",
           seq: 2,
-          messageId: "m1",
+          segmentId: "m1",
           tool: { id: "t1", name: "x", args: {}, status: "running" },
         },
         {
           kind: "subagent",
           seq: 3,
-          messageId: "m1",
+          segmentId: "m1",
           subagent: {
             id: "s1",
             name: "n",
@@ -36,7 +36,7 @@ describe("parseStoredSessionState — storedStep discriminated union", () => {
             status: "running",
           },
         },
-        { kind: "text", seq: 4, messageId: "m1" },
+        { kind: "text", seq: 4, segmentId: "m1" },
       ]),
     )
     expect(r?.stepsByRun.run_1?.map((s) => s.kind)).toEqual([
@@ -49,20 +49,20 @@ describe("parseStoredSessionState — storedStep discriminated union", () => {
 
   it("rejects an unknown step kind", () => {
     expect(
-      parseStoredSessionState(stored([{ kind: "bogus", seq: 1, messageId: "m1" }])),
+      parseStoredSessionState(stored([{ kind: "bogus", seq: 1, segmentId: "m1" }])),
     ).toBeNull()
   })
 
   it("rejects a step missing its kind discriminant", () => {
     expect(
-      parseStoredSessionState(stored([{ seq: 1, messageId: "m1", text: "x" }])),
+      parseStoredSessionState(stored([{ seq: 1, segmentId: "m1", text: "x" }])),
     ).toBeNull()
   })
 
   it("rejects an extra field in a step (strict per arm)", () => {
     expect(
       parseStoredSessionState(
-        stored([{ kind: "text", seq: 1, messageId: "m1", rogue: 1 }]),
+        stored([{ kind: "text", seq: 1, segmentId: "m1", rogue: 1 }]),
       ),
     ).toBeNull()
   })

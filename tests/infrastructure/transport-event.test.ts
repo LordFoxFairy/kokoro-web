@@ -14,7 +14,7 @@ describe("parseTransportEvent", () => {
       run_id: "run_01",
       timestamp: "2026-05-28T12:00:00.000Z",
       payload: {
-        message_id: "msg_01",
+        segment_id: "msg_01",
         delta: "Hello",
         role: "assistant",
       },
@@ -29,7 +29,7 @@ describe("parseTransportEvent", () => {
       sessionId: "ses_01",
       conversationId: "conv_01",
       runId: "run_01",
-      messageId: "msg_01",
+      segmentId: "msg_01",
       role: "assistant",
       delta: "Hello",
     })
@@ -44,7 +44,7 @@ describe("parseTransportEvent", () => {
       conversation_id: "conv_01",
       run_id: "run_01",
       timestamp: "2026-05-28T12:00:00.000Z",
-      payload: { message_id: "msg_01", delta: "Hi", role: "assistant" },
+      payload: { segment_id: "msg_01", delta: "Hi", role: "assistant" },
     })
     expect(toSessionStreamEvent(transportEvent)?.seq).toBe(42)
   })

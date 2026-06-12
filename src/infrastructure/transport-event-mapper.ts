@@ -34,7 +34,7 @@ export function toSessionStreamEvent(
       return {
         kind: "message-delta",
         ...base(event, seq),
-        messageId: event.payload.message_id,
+        segmentId: event.payload.segment_id,
         role: event.payload.role,
         delta: event.payload.delta,
       }
@@ -42,7 +42,7 @@ export function toSessionStreamEvent(
       return {
         kind: "message-completed",
         ...base(event, seq),
-        messageId: event.payload.message_id,
+        segmentId: event.payload.segment_id,
         role: event.payload.role,
         content: event.payload.content,
       }
@@ -65,14 +65,14 @@ export function toSessionStreamEvent(
       return {
         kind: "thinking-delta",
         ...base(event, seq),
-        messageId: event.payload.message_id,
+        segmentId: event.payload.segment_id,
         delta: event.payload.delta,
       }
     case "tool.invoked":
       return {
         kind: "tool-invoked",
         ...base(event, seq),
-        messageId: event.payload.message_id,
+        segmentId: event.payload.segment_id,
         toolId: event.payload.tool_id,
         name: event.payload.name,
         args: event.payload.args,
@@ -81,7 +81,7 @@ export function toSessionStreamEvent(
       return {
         kind: "tool-returned",
         ...base(event, seq),
-        messageId: event.payload.message_id,
+        segmentId: event.payload.segment_id,
         toolId: event.payload.tool_id,
         name: event.payload.name,
         result: event.payload.result,
@@ -96,7 +96,7 @@ export function toSessionStreamEvent(
       return {
         kind: "subagent-started",
         ...base(event, seq),
-        messageId: event.payload.message_id,
+        segmentId: event.payload.segment_id,
         subagentId: event.payload.subagent_id,
         name: event.payload.name,
         description: event.payload.description,
@@ -107,7 +107,7 @@ export function toSessionStreamEvent(
       return {
         kind: "subagent-finished",
         ...base(event, seq),
-        messageId: event.payload.message_id,
+        segmentId: event.payload.segment_id,
         subagentId: event.payload.subagent_id,
         name: event.payload.name,
         subagentType: event.payload.subagent_type,
@@ -117,7 +117,7 @@ export function toSessionStreamEvent(
       return {
         kind: "subagent-text-delta",
         ...base(event, seq),
-        messageId: event.payload.message_id,
+        segmentId: event.payload.segment_id,
         subagentId: event.payload.subagent_id,
         text: event.payload.text,
       }
@@ -125,7 +125,7 @@ export function toSessionStreamEvent(
       return {
         kind: "subagent-text-completed",
         ...base(event, seq),
-        messageId: event.payload.message_id,
+        segmentId: event.payload.segment_id,
         subagentId: event.payload.subagent_id,
         text: event.payload.text,
       }

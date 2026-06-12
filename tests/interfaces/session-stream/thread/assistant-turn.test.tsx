@@ -16,8 +16,8 @@ const answer: SessionMessage = {
   runId: "run_01",
 }
 
-function textStep(messageId: string, seq: number): SessionStep {
-  return { kind: "text", seq, messageId }
+function textStep(segmentId: string, seq: number): SessionStep {
+  return { kind: "text", seq, segmentId }
 }
 
 describe("AssistantTurn streaming caret", () => {
@@ -55,7 +55,7 @@ describe("AssistantTurn streaming caret", () => {
     // 过程先到、正文未到：这一段没有文本气泡，光标无处可挂。
     const { container } = render(
       <AssistantTurn
-        steps={[{ kind: "thinking", seq: 1, messageId: "m1", text: "想" }]}
+        steps={[{ kind: "thinking", seq: 1, segmentId: "m1", text: "想" }]}
         messagesById={{}}
         isLive
       />,
@@ -123,11 +123,11 @@ describe("AssistantTurn structure (one avatar per turn)", () => {
   it("renders the answer bubble ABOVE its process, with the segment's tools hanging below it", () => {
     // 机器人一段信息 = 文本气泡在上、它的过程（思考/该段工具）挂在下面（次级、可折叠）。
     const steps: SessionStep[] = [
-      { kind: "thinking", seq: 1, messageId: "m1", text: "先想" },
+      { kind: "thinking", seq: 1, segmentId: "m1", text: "先想" },
       {
         kind: "tool",
         seq: 2,
-        messageId: "m1",
+        segmentId: "m1",
         tool: { id: "t1", name: "get_weather", args: {}, status: "done", result: "晴" },
       },
       textStep("m1", 3),
@@ -184,7 +184,7 @@ describe("AssistantTurn structure (one avatar per turn)", () => {
       {
         kind: "tool",
         seq: 2,
-        messageId: "m2",
+        segmentId: "m2",
         tool: { id: "t2", name: "air_quality", args: { city: "北京" }, status: "running" },
       },
     ]

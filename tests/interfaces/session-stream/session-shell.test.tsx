@@ -40,7 +40,7 @@ function instantReply(makeText: (input: string) => string): StartReply {
       seq: 1,
       ...envelope,
       runId: `stub-run-${id}`,
-      messageId: `stub-msg-${id}`,
+      segmentId: `stub-msg-${id}`,
       role: "assistant",
       content: makeText(input),
     })
@@ -70,7 +70,7 @@ const neverSettles: StartReply = ({
     seq: 1,
     ...envelope,
     runId: `stub-run-${stubCounter}`,
-    messageId: `stub-msg-${stubCounter}`,
+    segmentId: `stub-msg-${stubCounter}`,
     role: "assistant",
     delta: "正在",
   })
@@ -93,7 +93,7 @@ function spyableNeverSettles(partialText: string): {
       seq: 1,
       ...envelope,
       runId: `stub-run-${stubCounter}`,
-      messageId: `stub-msg-${stubCounter}`,
+      segmentId: `stub-msg-${stubCounter}`,
       role: "assistant",
       delta: partialText,
     })
@@ -158,7 +158,7 @@ function failThenSucceed(): {
             seq: 1,
             ...envelope,
             runId: `fts-run-${id}`,
-            messageId: `fts-msg-${id}`,
+            segmentId: `fts-msg-${id}`,
             role: "assistant",
             content: `恢复：${input}`,
           }),
@@ -491,7 +491,7 @@ describe("SessionShell stop control", () => {
         seq: 1,
         ...envelope,
         runId: `stub-run-${stubCounter}`,
-        messageId: `stub-msg-${stubCounter}`,
+        segmentId: `stub-msg-${stubCounter}`,
         role: "assistant",
         delta: "片段",
       })
@@ -597,7 +597,7 @@ describe("SessionShell composer ergonomics", () => {
         seq: 1,
         ...envelope,
         runId: `count-run-${start.mock.calls.length}`,
-        messageId: `count-msg-${start.mock.calls.length}`,
+        segmentId: `count-msg-${start.mock.calls.length}`,
         role: "assistant",
         delta: "片段",
       })
@@ -834,7 +834,7 @@ describe("SessionShell retry on failure", () => {
         seq: 1,
         ...envelope,
         runId: "retry-guard-run-2",
-        messageId: "retry-guard-msg",
+        segmentId: "retry-guard-msg",
         role: "assistant",
         delta: "重试中",
       })
@@ -886,7 +886,7 @@ describe("SessionShell jump-to-latest scroll", () => {
           seq: 1,
           ...envelope,
           runId: "defer-run",
-          messageId: "defer-msg",
+          segmentId: "defer-msg",
           role: "assistant",
           delta,
         })
@@ -927,7 +927,7 @@ describe("SessionShell jump-to-latest scroll", () => {
           seq: 1,
           ...envelope,
           runId: "near-run",
-          messageId: "near-msg",
+          segmentId: "near-msg",
           role: "assistant",
           delta,
         })
@@ -961,7 +961,7 @@ describe("SessionShell jump-to-latest scroll", () => {
           seq: 1,
           ...envelope,
           runId: "jump-run",
-          messageId: "jump-msg",
+          segmentId: "jump-msg",
           role: "assistant",
           delta,
         })
@@ -1138,7 +1138,7 @@ describe("SessionShell agent activity", () => {
         seq: 1,
         ...envelope,
         runId: `r-${id}`,
-        messageId: `m-${id}`,
+        segmentId: `m-${id}`,
         delta: "先查实时天气，再判断是否适合出门。",
       })
       next = applySessionEvent(next, {
@@ -1147,7 +1147,7 @@ describe("SessionShell agent activity", () => {
         seq: 1,
         ...envelope,
         runId: `r-${id}`,
-        messageId: `m-${id}`,
+        segmentId: `m-${id}`,
         role: "assistant",
         content: "晴，适合出门。",
       })
@@ -1201,7 +1201,7 @@ describe("SessionShell agent activity", () => {
         seq: (seq += 1),
         ...envelope,
         runId,
-        messageId: firstMessageId,
+        segmentId: firstMessageId,
         delta: "先查天气。",
       })
       next = applySessionEvent(next, {
@@ -1210,7 +1210,7 @@ describe("SessionShell agent activity", () => {
         seq: (seq += 1),
         ...envelope,
         runId,
-        messageId: firstMessageId,
+        segmentId: firstMessageId,
         toolId: `tool-${id}`,
         name: "get_weather",
         args: { city: "北京" },
@@ -1221,7 +1221,7 @@ describe("SessionShell agent activity", () => {
         seq: (seq += 1),
         ...envelope,
         runId,
-        messageId: firstMessageId,
+        segmentId: firstMessageId,
         toolId: `tool-${id}`,
         name: "get_weather",
         result: "北京：晴",
@@ -1232,7 +1232,7 @@ describe("SessionShell agent activity", () => {
         seq: (seq += 1),
         ...envelope,
         runId,
-        messageId: firstMessageId,
+        segmentId: firstMessageId,
         role: "assistant",
         content: "第一段回答：先给结论。",
       })
@@ -1242,7 +1242,7 @@ describe("SessionShell agent activity", () => {
         seq: (seq += 1),
         ...envelope,
         runId,
-        messageId: secondMessageId,
+        segmentId: secondMessageId,
         delta: "再补充背景。",
       })
       next = applySessionEvent(next, {
@@ -1251,7 +1251,7 @@ describe("SessionShell agent activity", () => {
         seq: (seq += 1),
         ...envelope,
         runId,
-        messageId: secondMessageId,
+        segmentId: secondMessageId,
         subagentId: `subagent-${id}`,
         name: "researcher",
         description: "查资料",
@@ -1264,7 +1264,7 @@ describe("SessionShell agent activity", () => {
         seq: (seq += 1),
         ...envelope,
         runId,
-        messageId: secondMessageId,
+        segmentId: secondMessageId,
         subagentId: `subagent-${id}`,
         name: "researcher",
         subagentType: "researcher",
@@ -1276,7 +1276,7 @@ describe("SessionShell agent activity", () => {
         seq: (seq += 1),
         ...envelope,
         runId,
-        messageId: secondMessageId,
+        segmentId: secondMessageId,
         role: "assistant",
         content: "第二段回答：再补充说明。",
       })
@@ -1462,7 +1462,7 @@ describe("SessionShell interrupt recovery", () => {
           seq: 1,
           ...envelope,
           runId: "r-re",
-          messageId: "a1",
+          segmentId: "a1",
           role: "assistant",
           content: "续传后补完的完整回答",
         }),
