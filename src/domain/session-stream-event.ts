@@ -16,7 +16,7 @@ export type SessionStreamEvent =
       sessionId: string
       conversationId: string
       runId: string
-      messageId: string
+      segmentId: string
       delta: string
     }
   | {
@@ -26,7 +26,7 @@ export type SessionStreamEvent =
       sessionId: string
       conversationId: string
       runId: string
-      messageId: string
+      segmentId: string
       toolId: string
       name: string
       args: Record<string, unknown>
@@ -38,7 +38,7 @@ export type SessionStreamEvent =
       sessionId: string
       conversationId: string
       runId: string
-      messageId: string
+      segmentId: string
       toolId: string
       name: string
       result: string
@@ -59,7 +59,7 @@ export type SessionStreamEvent =
       sessionId: string
       conversationId: string
       runId: string
-      messageId: string
+      segmentId: string
       subagentId: string
       name: string
       description: string
@@ -73,7 +73,7 @@ export type SessionStreamEvent =
       sessionId: string
       conversationId: string
       runId: string
-      messageId: string
+      segmentId: string
       subagentId: string
       name: string
       subagentType: string
@@ -86,7 +86,7 @@ export type SessionStreamEvent =
       sessionId: string
       conversationId: string
       runId: string
-      messageId: string
+      segmentId: string
       subagentId: string
       text: string
     }
@@ -97,7 +97,7 @@ export type SessionStreamEvent =
       sessionId: string
       conversationId: string
       runId: string
-      messageId: string
+      segmentId: string
       subagentId: string
       text: string
     }
@@ -118,7 +118,7 @@ export type SessionStreamEvent =
       sessionId: string
       conversationId: string
       runId: string
-      messageId: string
+      segmentId: string
       role: SessionMessageRole
       delta: string
     }
@@ -129,7 +129,7 @@ export type SessionStreamEvent =
       sessionId: string
       conversationId: string
       runId: string
-      messageId: string
+      segmentId: string
       role: SessionMessageRole
       content: string
     }

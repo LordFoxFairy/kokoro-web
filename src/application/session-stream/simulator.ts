@@ -106,7 +106,7 @@ const previewThinking =
 // 纯函数：把模拟回复展开成与真实流同形的有序 domain 事件（thinking 模式额外前置思考/工具/todo），以 run-completed 收尾。
 export function buildSimulatedReplyEvents(
   input: string,
-  ids: { runId: string; messageId: string },
+  ids: { runId: string; segmentId: string },
   executionStyle: "fast" | "thinking" = "fast",
 ): SessionStreamEvent[] {
   const reply = buildSimulatedReplyText(input)
@@ -125,30 +125,30 @@ export function buildSimulatedReplyEvents(
     chunkText(previewThinking).forEach((delta, index) => {
       events.push({
         kind: "thinking-delta",
-        eventId: `${ids.messageId}-t${index}`,
+        eventId: `${ids.segmentId}-t${index}`,
         seq: nextSeq(),
         ...envelope,
-        messageId: ids.messageId,
+        segmentId: ids.segmentId,
         delta,
       })
     })
 
     events.push({
       kind: "tool-invoked",
-      eventId: `${ids.messageId}-ti`,
+      eventId: `${ids.segmentId}-ti`,
       seq: nextSeq(),
       ...envelope,
-      messageId: ids.messageId,
+      segmentId: ids.segmentId,
       toolId: previewTool.toolId,
       name: previewTool.name,
       args: previewTool.args,
     })
     events.push({
       kind: "tool-returned",
-      eventId: `${ids.messageId}-tr`,
+      eventId: `${ids.segmentId}-tr`,
       seq: nextSeq(),
       ...envelope,
-      messageId: ids.messageId,
+      segmentId: ids.segmentId,
       toolId: previewTool.toolId,
       name: previewTool.name,
       result: previewTool.result,
@@ -156,7 +156,7 @@ export function buildSimulatedReplyEvents(
 
     events.push({
       kind: "todo-updated",
-      eventId: `${ids.messageId}-todo`,
+      eventId: `${ids.segmentId}-todo`,
       seq: nextSeq(),
       ...envelope,
       todos: [
@@ -169,10 +169,10 @@ export function buildSimulatedReplyEvents(
   chunkText(reply).forEach((delta, index) => {
     events.push({
       kind: "message-delta",
-      eventId: `${ids.messageId}-d${index}`,
+      eventId: `${ids.segmentId}-d${index}`,
       seq: nextSeq(),
       ...envelope,
-      messageId: ids.messageId,
+      segmentId: ids.segmentId,
       role: "assistant",
       delta,
     })
@@ -180,10 +180,10 @@ export function buildSimulatedReplyEvents(
 
   events.push({
     kind: "message-completed",
-    eventId: `${ids.messageId}-c`,
+    eventId: `${ids.segmentId}-c`,
     seq: nextSeq(),
     ...envelope,
-    messageId: ids.messageId,
+    segmentId: ids.segmentId,
     role: "assistant",
     content: reply,
   })
@@ -200,7 +200,7 @@ export function buildSimulatedReplyEvents(
 export type SimulateAssistantReplyInput = {
   input: string
   initialState?: SessionStreamState
-  ids?: { runId: string; messageId: string }
+  ids?: { runId: string; segmentId: string }
   executionStyle?: "fast" | "thinking"
   stepMs?: number
   onState: (snapshot: SessionStreamSnapshot) => void
@@ -221,7 +221,7 @@ export function simulateAssistantReply(
 ): LiveSessionHandle {
   const ids = args.ids ?? {
     runId: createLocalId("run"),
-    messageId: createLocalId("msg"),
+    segmentId: createLocalId("msg"),
   }
   const executionStyle = args.executionStyle ?? "fast"
   const events = buildSimulatedReplyEvents(args.input, ids, executionStyle)

@@ -57,7 +57,7 @@ const messageDeltaSchema = eventEnvelopeSchema.extend({
   event: z.literal("message.delta"),
   payload: z
     .object({
-      message_id: z.string().min(1),
+      segment_id: z.string().min(1),
       delta: z.string(),
       role: z.enum(["assistant", "user"]),
       format: z.string().min(1).optional(),
@@ -70,7 +70,7 @@ const messageCompletedSchema = eventEnvelopeSchema.extend({
   event: z.literal("message.completed"),
   payload: z
     .object({
-      message_id: z.string().min(1),
+      segment_id: z.string().min(1),
       role: z.enum(["assistant", "user"]),
       content: z.string(),
       citations: z.array(z.unknown()).optional(),
@@ -84,7 +84,7 @@ const thinkingDeltaSchema = eventEnvelopeSchema.extend({
   event: z.literal("thinking.delta"),
   payload: z
     .object({
-      message_id: z.string().min(1),
+      segment_id: z.string().min(1),
       delta: z.string(),
     })
     .strict(),
@@ -94,7 +94,7 @@ const toolInvokedSchema = eventEnvelopeSchema.extend({
   event: z.literal("tool.invoked"),
   payload: z
     .object({
-      message_id: z.string().min(1),
+      segment_id: z.string().min(1),
       tool_id: z.string().min(1),
       name: z.string().min(1),
       args: z.record(z.unknown()),
@@ -106,7 +106,7 @@ const toolReturnedSchema = eventEnvelopeSchema.extend({
   event: z.literal("tool.returned"),
   payload: z
     .object({
-      message_id: z.string().min(1),
+      segment_id: z.string().min(1),
       tool_id: z.string().min(1),
       name: z.string().min(1),
       result: z.string(),
@@ -134,7 +134,7 @@ const subagentStartedSchema = eventEnvelopeSchema.extend({
   event: z.literal("subagent.started"),
   payload: z
     .object({
-      message_id: z.string().min(1),
+      segment_id: z.string().min(1),
       subagent_id: z.string().min(1),
       name: z.string().min(1),
       description: z.string(),
@@ -148,7 +148,7 @@ const subagentFinishedSchema = eventEnvelopeSchema.extend({
   event: z.literal("subagent.finished"),
   payload: z
     .object({
-      message_id: z.string().min(1),
+      segment_id: z.string().min(1),
       subagent_id: z.string().min(1),
       name: z.string().min(1),
       subagent_type: z.string().min(1),
@@ -161,7 +161,7 @@ const subagentTextDeltaSchema = eventEnvelopeSchema.extend({
   event: z.literal("subagent.text.delta"),
   payload: z
     .object({
-      message_id: z.string().min(1),
+      segment_id: z.string().min(1),
       subagent_id: z.string().min(1),
       text: z.string(),
     })
@@ -172,7 +172,7 @@ const subagentTextCompletedSchema = eventEnvelopeSchema.extend({
   event: z.literal("subagent.text.completed"),
   payload: z
     .object({
-      message_id: z.string().min(1),
+      segment_id: z.string().min(1),
       subagent_id: z.string().min(1),
       text: z.string(),
     })

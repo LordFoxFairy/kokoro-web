@@ -64,7 +64,7 @@ describe("applySessionEvent", () => {
       conversation_id: "conv_01",
       run_id: "run_01",
       timestamp: "2026-05-28T12:00:00.000Z",
-      payload: { message_id: "msg_01", delta: "Hi", role: "assistant" },
+      payload: { segment_id: "msg_01", delta: "Hi", role: "assistant" },
     })
 
     const once = applySessionEvent(createSessionStreamState(), event)
@@ -83,25 +83,25 @@ describe("applySessionEvent", () => {
         event: "tool.invoked",
         event_id: "e1",
         seq: 1,
-        payload: { message_id: "m1", tool_id: "t1", name: "a", args: {} },
+        payload: { segment_id: "m1", tool_id: "t1", name: "a", args: {} },
       },
       {
         event: "message.delta",
         event_id: "e2",
         seq: 2,
-        payload: { message_id: "m1", delta: "x", role: "assistant" as const },
+        payload: { segment_id: "m1", delta: "x", role: "assistant" as const },
       },
       {
         event: "tool.invoked",
         event_id: "e3",
         seq: 3,
-        payload: { message_id: "m1", tool_id: "t2", name: "b", args: {} },
+        payload: { segment_id: "m1", tool_id: "t2", name: "b", args: {} },
       },
       {
         event: "message.delta",
         event_id: "e4",
         seq: 4,
-        payload: { message_id: "m2", delta: "y", role: "assistant" as const },
+        payload: { segment_id: "m2", delta: "y", role: "assistant" as const },
       },
     ].map((spec) =>
       requireDomainEvent({
@@ -132,7 +132,7 @@ describe("applySessionEvent", () => {
         run_id: "run_01",
         seq: 1,
         timestamp: "2026-05-28T12:00:00.000Z",
-        payload: { message_id: "m1", tool_id: "t1", name: "a", args: {} },
+        payload: { segment_id: "m1", tool_id: "t1", name: "a", args: {} },
       }),
       requireDomainEvent({
         event: "message.delta",
@@ -142,7 +142,7 @@ describe("applySessionEvent", () => {
         run_id: "run_01",
         seq: 2,
         timestamp: "2026-05-28T12:00:01.000Z",
-        payload: { message_id: "m1", delta: "first", role: "assistant" },
+        payload: { segment_id: "m1", delta: "first", role: "assistant" },
       }),
       requireDomainEvent({
         event: "tool.invoked",
@@ -152,7 +152,7 @@ describe("applySessionEvent", () => {
         run_id: "run_01",
         seq: 3,
         timestamp: "2026-05-28T12:00:02.000Z",
-        payload: { message_id: "m2", tool_id: "t2", name: "b", args: {} },
+        payload: { segment_id: "m2", tool_id: "t2", name: "b", args: {} },
       }),
       requireDomainEvent({
         event: "message.delta",
@@ -162,7 +162,7 @@ describe("applySessionEvent", () => {
         run_id: "run_01",
         seq: 4,
         timestamp: "2026-05-28T12:00:03.000Z",
-        payload: { message_id: "m2", delta: "second", role: "assistant" },
+        payload: { segment_id: "m2", delta: "second", role: "assistant" },
       }),
     ]
     const state = events.reduce(applySessionEvent, createSessionStreamState())
@@ -188,7 +188,7 @@ describe("applySessionEvent", () => {
       run_id: "run_01",
       seq: 1,
       timestamp: "2026-05-28T12:00:00.000Z",
-      payload: { message_id: "m1", tool_id: "t1", name: "get_weather", args: { city: "北京" } },
+      payload: { segment_id: "m1", tool_id: "t1", name: "get_weather", args: { city: "北京" } },
     })
     const text = requireDomainEvent({
       event: "message.delta",
@@ -198,7 +198,7 @@ describe("applySessionEvent", () => {
       run_id: "run_01",
       seq: 2,
       timestamp: "2026-05-28T12:00:01.000Z",
-      payload: { message_id: "m1", delta: "结果", role: "assistant" },
+      payload: { segment_id: "m1", delta: "结果", role: "assistant" },
     })
     const returned = requireDomainEvent({
       event: "tool.returned",
@@ -208,7 +208,7 @@ describe("applySessionEvent", () => {
       run_id: "run_01",
       seq: 3,
       timestamp: "2026-05-28T12:00:02.000Z",
-      payload: { message_id: "m1", tool_id: "t1", name: "get_weather", result: "北京: 晴" },
+      payload: { segment_id: "m1", tool_id: "t1", name: "get_weather", result: "北京: 晴" },
     })
 
     let state = [invoked, text].reduce(applySessionEvent, createSessionStreamState())
@@ -236,7 +236,7 @@ describe("applySessionEvent", () => {
         run_id: "run_01",
         seq: 12,
         timestamp: "2026-05-28T12:00:00.000Z",
-        payload: { message_id: "msg_01", delta: "He", role: "assistant" },
+        payload: { segment_id: "msg_01", delta: "He", role: "assistant" },
       }),
       requireDomainEvent({
         event: "message.delta",
@@ -246,7 +246,7 @@ describe("applySessionEvent", () => {
         run_id: "run_01",
         seq: 13,
         timestamp: "2026-05-28T12:00:01.000Z",
-        payload: { message_id: "msg_01", delta: "llo", role: "assistant" },
+        payload: { segment_id: "msg_01", delta: "llo", role: "assistant" },
       }),
       requireDomainEvent({
         event: "message.completed",
@@ -256,7 +256,7 @@ describe("applySessionEvent", () => {
         run_id: "run_01",
         seq: 14,
         timestamp: "2026-05-28T12:00:02.000Z",
-        payload: { message_id: "msg_01", role: "assistant", content: "Hello" },
+        payload: { segment_id: "msg_01", role: "assistant", content: "Hello" },
       }),
     ].reduce(applySessionEvent, createSessionStreamState())
 
@@ -272,7 +272,7 @@ describe("applySessionEvent", () => {
       run_id: "run_01",
       seq: 12,
       timestamp: "2026-05-28T12:00:00.000Z",
-      payload: { message_id: "msg_01", delta: "He", role: "assistant" },
+      payload: { segment_id: "msg_01", delta: "He", role: "assistant" },
     })
     const secondDelta = requireDomainEvent({
       event: "message.delta",
@@ -282,7 +282,7 @@ describe("applySessionEvent", () => {
       run_id: "run_01",
       seq: 13,
       timestamp: "2026-05-28T12:00:01.000Z",
-      payload: { message_id: "msg_01", delta: "llo", role: "assistant" },
+      payload: { segment_id: "msg_01", delta: "llo", role: "assistant" },
     })
 
     const firstState = applySessionEvent(createSessionStreamState(), firstDelta)
@@ -342,7 +342,7 @@ describe("applySessionEvent", () => {
       run_id: "run_01",
       seq: 2,
       timestamp: "2026-05-28T12:00:01.000Z",
-      payload: { message_id: "msg_01", delta: "Hi", role: "assistant" },
+      payload: { segment_id: "msg_01", delta: "Hi", role: "assistant" },
     })
 
     const state = [sessionCreated, collidingDelta].reduce(
@@ -354,7 +354,7 @@ describe("applySessionEvent", () => {
     expect(state.messages).toEqual([])
   })
 
-  it("keeps the role fixed at first delta for a messageId (role integrity)", () => {
+  it("keeps the role fixed at first delta for a segmentId (role integrity)", () => {
     const firstDelta = requireDomainEvent({
       event: "message.delta",
       event_id: "evt_01",
@@ -363,7 +363,7 @@ describe("applySessionEvent", () => {
       run_id: "run_01",
       seq: 12,
       timestamp: "2026-05-28T12:00:00.000Z",
-      payload: { message_id: "msg_01", delta: "He", role: "assistant" },
+      payload: { segment_id: "msg_01", delta: "He", role: "assistant" },
     })
     const driftingDelta = requireDomainEvent({
       event: "message.delta",
@@ -373,7 +373,7 @@ describe("applySessionEvent", () => {
       run_id: "run_01",
       seq: 13,
       timestamp: "2026-05-28T12:00:01.000Z",
-      payload: { message_id: "msg_01", delta: "llo", role: "user" },
+      payload: { segment_id: "msg_01", delta: "llo", role: "user" },
     })
 
     const state = [firstDelta, driftingDelta].reduce(
@@ -398,7 +398,7 @@ describe("applySessionEvent", () => {
         run_id: "run_01",
         seq: 12,
         timestamp: "2026-05-28T12:00:00.000Z",
-        payload: { message_id: "msg_01", delta: "", role: "assistant" },
+        payload: { segment_id: "msg_01", delta: "", role: "assistant" },
       }),
       requireDomainEvent({
         event: "message.delta",
@@ -408,7 +408,7 @@ describe("applySessionEvent", () => {
         run_id: "run_01",
         seq: 13,
         timestamp: "2026-05-28T12:00:01.000Z",
-        payload: { message_id: "msg_01", delta: huge, role: "assistant" },
+        payload: { segment_id: "msg_01", delta: huge, role: "assistant" },
       }),
     ].reduce(applySessionEvent, createSessionStreamState())
 
@@ -424,7 +424,7 @@ describe("applySessionEvent", () => {
         run_id: "run_01",
         seq: 14,
         timestamp: "2026-05-28T12:00:02.000Z",
-        payload: { message_id: "msg_01", role: "assistant", content: "Hello" },
+        payload: { segment_id: "msg_01", role: "assistant", content: "Hello" },
       }),
     )
 
@@ -502,7 +502,7 @@ describe("appendUserMessage", () => {
       sessionId: "ses_01",
       conversationId: "conv_01",
       runId: "run_01",
-      messageId: "msg_a1",
+      segmentId: "msg_a1",
       role: "assistant",
       content: "第一轮回答",
     })
@@ -532,7 +532,7 @@ describe("appendUserMessage", () => {
         sessionId: "ses_01",
         conversationId: "conv_01",
         runId: "run_02",
-        messageId: "msg_r1",
+        segmentId: "msg_r1",
         role: "assistant" as const,
         delta: "好的，",
       },
@@ -543,7 +543,7 @@ describe("appendUserMessage", () => {
         sessionId: "ses_01",
         conversationId: "conv_01",
         runId: "run_02",
-        messageId: "msg_r1",
+        segmentId: "msg_r1",
         role: "assistant" as const,
         content: "好的，我们开始。",
       },
@@ -573,7 +573,7 @@ describe("appendUserMessage", () => {
       sessionId: "ses_01",
       conversationId: "conv_01",
       runId: "run_01",
-      messageId: "m_prev",
+      segmentId: "m_prev",
       role: "assistant",
       content: "上一段",
     })
@@ -584,7 +584,7 @@ describe("appendUserMessage", () => {
       sessionId: "ses_01",
       conversationId: "conv_01",
       runId: "run_01",
-      messageId: "m_prev",
+      segmentId: "m_prev",
       toolId: "t_prev",
       name: "get_weather",
       args: { city: "北京" },
@@ -623,7 +623,7 @@ describe("parseStoredSessionState", () => {
         sessionId: "ses_01",
         conversationId: "conv_01",
         runId: "run_01",
-        messageId: "msg_p1",
+        segmentId: "msg_p1",
         role: "assistant" as const,
         content: "已恢复的回答",
       },
@@ -663,7 +663,7 @@ describe("parseStoredSessionState", () => {
       sessionId: "ses_01",
       conversationId: "conv_01",
       runId: "run_01",
-      messageId: "m1",
+      segmentId: "m1",
       delta: "先想",
     })
     state = applySessionEvent(state, {
@@ -673,7 +673,7 @@ describe("parseStoredSessionState", () => {
       sessionId: "ses_01",
       conversationId: "conv_01",
       runId: "run_01",
-      messageId: "m1",
+      segmentId: "m1",
       toolId: "t1",
       name: "get_weather",
       args: { city: "北京" },
@@ -685,7 +685,7 @@ describe("parseStoredSessionState", () => {
       sessionId: "ses_01",
       conversationId: "conv_01",
       runId: "run_01",
-      messageId: "m1",
+      segmentId: "m1",
       toolId: "t1",
       name: "get_weather",
       result: "晴",
@@ -697,7 +697,7 @@ describe("parseStoredSessionState", () => {
       sessionId: "ses_01",
       conversationId: "conv_01",
       runId: "run_01",
-      messageId: "m1",
+      segmentId: "m1",
       role: "assistant",
       content: "晴，适合出门。",
     })
@@ -767,7 +767,7 @@ describe("parseStoredSessionState", () => {
         seenEventIds: [],
         messages: [],
         runStatus: "idle",
-        stepsByRun: { run_01: [{ kind: "mystery", seq: 1, messageId: "m1" }] },
+        stepsByRun: { run_01: [{ kind: "mystery", seq: 1, segmentId: "m1" }] },
       },
     ],
   ])(
@@ -860,7 +860,7 @@ describe("applySessionEvent activity families", () => {
       ...base,
       seq: 1,
       payload: {
-        message_id: "m1",
+        segment_id: "m1",
         tool_id: "t1",
         name: "get_weather",
         args: { city: "北京" },
@@ -872,7 +872,7 @@ describe("applySessionEvent activity families", () => {
       ...base,
       seq: 2,
       payload: {
-        message_id: "m1",
+        segment_id: "m1",
         tool_id: "t1",
         name: "get_weather",
         result: "北京: 晴",
@@ -900,7 +900,7 @@ describe("applySessionEvent activity families", () => {
       sessionId: "ses_01",
       conversationId: "conv_01",
       runId: "run_01",
-      messageId: "m1",
+      segmentId: "m1",
       role: "assistant",
       content: "第一段",
     })
@@ -912,7 +912,7 @@ describe("applySessionEvent activity families", () => {
         ...base,
         seq: 3,
         payload: {
-          message_id: "m1",
+          segment_id: "m1",
           tool_id: "tool_1",
           name: "get_weather",
           args: { city: "北京" },
@@ -927,7 +927,7 @@ describe("applySessionEvent activity families", () => {
         ...base,
         seq: 4,
         payload: {
-          message_id: "m1",
+          segment_id: "m1",
           subagent_id: "sa_1",
           name: "researcher",
           description: "查资料",
@@ -950,7 +950,7 @@ describe("applySessionEvent activity families", () => {
       ...base,
       seq: 1,
       payload: {
-        message_id: "m1",
+        segment_id: "m1",
         subagent_id: "sa1",
         name: "researcher",
         description: "查资料",
@@ -964,7 +964,7 @@ describe("applySessionEvent activity families", () => {
       ...base,
       seq: 2,
       payload: {
-        message_id: "m1",
+        segment_id: "m1",
         subagent_id: "sa1",
         name: "researcher",
         subagent_type: "researcher",
@@ -986,7 +986,7 @@ describe("applySessionEvent activity families", () => {
         ...base,
         seq: 1,
         payload: {
-          message_id: "m1",
+          segment_id: "m1",
           subagent_id: "sa1",
           name: "researcher",
           description: "查资料",
@@ -1002,7 +1002,7 @@ describe("applySessionEvent activity families", () => {
       sessionId: "ses_01",
       conversationId: "conv_01",
       runId: "run_01",
-      messageId: "m1",
+      segmentId: "m1",
       subagentId: "sa1",
       text: "子智能体结论",
     })
@@ -1019,14 +1019,14 @@ describe("applySessionEvent activity families", () => {
       event_id: "evt_k1",
       ...base,
       seq: 1,
-      payload: { message_id: "m1", delta: "先想" },
+      payload: { segment_id: "m1", delta: "先想" },
     })
     const b = requireDomainEvent({
       event: "thinking.delta",
       event_id: "evt_k2",
       ...base,
       seq: 2,
-      payload: { message_id: "m1", delta: "再想" },
+      payload: { segment_id: "m1", delta: "再想" },
     })
     let state = applySessionEvent(createSessionStreamState(), a)
     state = applySessionEvent(state, b)
@@ -1046,7 +1046,7 @@ describe("applySessionEvent activity families", () => {
       sessionId: "ses_01",
       conversationId: "conv_01",
       runId: "run_01",
-      messageId: "m1",
+      segmentId: "m1",
       delta: "先想想",
     })
     const vThinking = computeActivityVersion(state)
@@ -1059,7 +1059,7 @@ describe("applySessionEvent activity families", () => {
       sessionId: "ses_01",
       conversationId: "conv_01",
       runId: "run_01",
-      messageId: "m1",
+      segmentId: "m1",
       delta: "再想想",
     })
     expect(computeActivityVersion(state)).toBeGreaterThan(vThinking)
@@ -1072,7 +1072,7 @@ describe("applySessionEvent activity families", () => {
       sessionId: "ses_01",
       conversationId: "conv_01",
       runId: "run_01",
-      messageId: "m1",
+      segmentId: "m1",
       toolId: "t1",
       name: "get_weather",
       args: { city: "北京" },
@@ -1087,7 +1087,7 @@ describe("applySessionEvent activity families", () => {
       sessionId: "ses_01",
       conversationId: "conv_01",
       runId: "run_01",
-      messageId: "m1",
+      segmentId: "m1",
       subagentId: "sa1",
       name: "researcher",
       description: "查资料",
@@ -1104,7 +1104,7 @@ describe("applySessionEvent activity families", () => {
       sessionId: "ses_01",
       conversationId: "conv_01",
       runId: "run_01",
-      messageId: "m1",
+      segmentId: "m1",
       subagentId: "sa1",
       text: "子智能体在写结论",
     })
@@ -1119,7 +1119,7 @@ describe("applySessionEvent activity families", () => {
       sessionId: "ses_01",
       conversationId: "conv_01",
       runId: "run_01",
-      messageId: "m1",
+      segmentId: "m1",
       delta: "abc",
     })
     const b = applySessionEvent(createSessionStreamState(), {
@@ -1129,7 +1129,7 @@ describe("applySessionEvent activity families", () => {
       sessionId: "ses_01",
       conversationId: "conv_01",
       runId: "run_01",
-      messageId: "m1",
+      segmentId: "m1",
       delta: "xyz",
     })
     expect(computeActivityVersion(a)).toBe(computeActivityVersion(b))
@@ -1151,7 +1151,7 @@ describe("buildThreadItems grouping", () => {
       sessionId: "ses_01",
       conversationId: "conv_01",
       runId: "run_01",
-      messageId: "m1",
+      segmentId: "m1",
       role: "assistant",
       content: "第一段",
     })
@@ -1162,7 +1162,7 @@ describe("buildThreadItems grouping", () => {
       sessionId: "ses_01",
       conversationId: "conv_01",
       runId: "run_01",
-      messageId: "m2",
+      segmentId: "m2",
       role: "assistant",
       content: "第二段",
     })
@@ -1188,7 +1188,7 @@ describe("buildThreadItems grouping", () => {
       sessionId: "ses_01",
       conversationId: "conv_01",
       runId: "run_01",
-      messageId: "m1",
+      segmentId: "m1",
       role: "assistant",
       content: "答一",
     })
@@ -1200,7 +1200,7 @@ describe("buildThreadItems grouping", () => {
       sessionId: "ses_01",
       conversationId: "conv_01",
       runId: "run_02",
-      messageId: "m2",
+      segmentId: "m2",
       role: "assistant",
       content: "答二",
     })
@@ -1223,7 +1223,7 @@ describe("buildThreadItems grouping", () => {
       sessionId: "ses_01",
       conversationId: "conv_01",
       runId: "run_01",
-      messageId: "m1",
+      segmentId: "m1",
       delta: "先想",
     })
 

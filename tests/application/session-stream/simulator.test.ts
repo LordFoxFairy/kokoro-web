@@ -36,7 +36,7 @@ afterEach(() => {
 
 describe("buildSimulatedReplyEvents", () => {
   it("is deterministic and terminates with run-completed", () => {
-    const ids = { runId: "run_x", messageId: "msg_x" }
+    const ids = { runId: "run_x", segmentId: "msg_x" }
     const first = buildSimulatedReplyEvents("讲讲今天", ids)
     const second = buildSimulatedReplyEvents("讲讲今天", ids)
 
@@ -48,13 +48,13 @@ describe("buildSimulatedReplyEvents", () => {
     // 所有增量必须归属同一条 assistant 消息，才能正确归并成一段流式正文。
     const deltas = first.filter((event) => event.kind === "message-delta")
     expect(deltas.length).toBeGreaterThan(0)
-    expect(deltas.every((event) => event.messageId === "msg_x")).toBe(true)
+    expect(deltas.every((event) => event.segmentId === "msg_x")).toBe(true)
   })
 
   it("lightly echoes the user input so the reply is grounded", () => {
     const events = buildSimulatedReplyEvents("买杯咖啡", {
       runId: "run_y",
-      messageId: "msg_y",
+      segmentId: "msg_y",
     })
     const completed = events.find((event) => event.kind === "message-completed")
 
@@ -66,7 +66,7 @@ describe("buildSimulatedReplyEvents", () => {
   it("fast mode emits only message deltas + completed, no thinking/tools/todos", () => {
     const events = buildSimulatedReplyEvents(
       "今天天气怎么样",
-      { runId: "run_f", messageId: "msg_f" },
+      { runId: "run_f", segmentId: "msg_f" },
       "fast",
     )
 
@@ -85,7 +85,7 @@ describe("buildSimulatedReplyEvents", () => {
   it("thinking mode emits thinking + tool pair + todo BEFORE message-completed", () => {
     const events = buildSimulatedReplyEvents(
       "今天天气怎么样",
-      { runId: "run_t", messageId: "msg_t" },
+      { runId: "run_t", segmentId: "msg_t" },
       "thinking",
     )
 
@@ -112,12 +112,12 @@ describe("buildSimulatedReplyEvents", () => {
     const todo = events.find((e) => e.kind === "todo-updated")
     expect(todo?.kind === "todo-updated" && todo.todos).toHaveLength(2)
 
-    // thinking deltas + message deltas all carry the same messageId as the reply.
+    // thinking deltas + message deltas all carry the same segmentId as the reply.
     const thinkingDeltas = events.filter((e) => e.kind === "thinking-delta")
     expect(thinkingDeltas.length).toBeGreaterThan(0)
     expect(
       thinkingDeltas.every(
-        (e) => e.kind === "thinking-delta" && e.messageId === "msg_t",
+        (e) => e.kind === "thinking-delta" && e.segmentId === "msg_t",
       ),
     ).toBe(true)
 
@@ -125,7 +125,7 @@ describe("buildSimulatedReplyEvents", () => {
   })
 
   it("thinking mode is deterministic (no randomness / wall clock)", () => {
-    const ids = { runId: "run_d", messageId: "msg_d" }
+    const ids = { runId: "run_d", segmentId: "msg_d" }
     const first = buildSimulatedReplyEvents("讲讲今天", ids, "thinking")
     const second = buildSimulatedReplyEvents("讲讲今天", ids, "thinking")
 
@@ -135,7 +135,7 @@ describe("buildSimulatedReplyEvents", () => {
   it("chunks latin text on whole words, not rigid 2-char slices", () => {
     const events = buildSimulatedReplyEvents(
       "please tell me about today weather",
-      { runId: "run_w", messageId: "msg_w" },
+      { runId: "run_w", segmentId: "msg_w" },
       "fast",
     )
     const deltas = events
@@ -180,7 +180,7 @@ describe("simulateAssistantReply", () => {
     simulateAssistantReply({
       input: "你好",
       initialState,
-      ids: { runId: "run_sim", messageId: "msg_sim" },
+      ids: { runId: "run_sim", segmentId: "msg_sim" },
       stepMs: 1,
       onState: (snapshot) => snapshots.push(snapshot),
       onSettled: () => {
@@ -210,7 +210,7 @@ describe("simulateAssistantReply", () => {
     const snapshots: SessionStreamSnapshot[] = []
     simulateAssistantReply({
       input: "今天天气",
-      ids: { runId: "run_th", messageId: "msg_th" },
+      ids: { runId: "run_th", segmentId: "msg_th" },
       executionStyle: "thinking",
       stepMs: 1,
       onState: (snapshot) => snapshots.push(snapshot),
@@ -232,7 +232,7 @@ describe("simulateAssistantReply", () => {
     const snapshots: SessionStreamSnapshot[] = []
     simulateAssistantReply({
       input: "今天天气",
-      ids: { runId: "run_fa", messageId: "msg_fa" },
+      ids: { runId: "run_fa", segmentId: "msg_fa" },
       executionStyle: "fast",
       stepMs: 1,
       onState: (snapshot) => snapshots.push(snapshot),
@@ -253,7 +253,7 @@ describe("simulateAssistantReply", () => {
     const snapshots: SessionStreamSnapshot[] = []
     const handle = simulateAssistantReply({
       input: "停",
-      ids: { runId: "run_stop", messageId: "msg_stop" },
+      ids: { runId: "run_stop", segmentId: "msg_stop" },
       stepMs: 1,
       onState: (snapshot) => snapshots.push(snapshot),
     })

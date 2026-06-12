@@ -137,7 +137,7 @@ describe("consumeLiveSession", () => {
     source?.emit(
       "message.delta",
       envelope("message.delta", "evt_01", {
-        message_id: "msg_01",
+        segment_id: "msg_01",
         delta: "Hello ",
         role: "assistant",
       }),
@@ -145,7 +145,7 @@ describe("consumeLiveSession", () => {
     source?.emit(
       "message.delta",
       envelope("message.delta", "evt_02", {
-        message_id: "msg_01",
+        segment_id: "msg_01",
         delta: "world",
         role: "assistant",
       }),
@@ -153,7 +153,7 @@ describe("consumeLiveSession", () => {
     source?.emit(
       "message.completed",
       envelope("message.completed", "evt_03", {
-        message_id: "msg_01",
+        segment_id: "msg_01",
         role: "assistant",
         content: "Hello world from live SSE.",
       }),
@@ -226,7 +226,7 @@ describe("consumeLiveSession", () => {
     source?.emit(
       "message.completed",
       envelope("message.completed", "evt_ok", {
-        message_id: "msg_01",
+        segment_id: "msg_01",
         role: "assistant",
         content: "Recovered.",
       }),
@@ -263,7 +263,7 @@ describe("consumeLiveSession", () => {
     source?.emit(
       "message.completed",
       envelope("message.completed", "evt_msg", {
-        message_id: "msg_01",
+        segment_id: "msg_01",
         role: "assistant",
         content: "Recovered after run.created.",
       }),
@@ -339,7 +339,7 @@ describe("consumeLiveSession", () => {
     source?.emit(
       "message.completed",
       envelope("message.completed", "evt_reply", {
-        message_id: "msg_turn2",
+        segment_id: "msg_turn2",
         role: "assistant",
         content: "第二轮回答。",
       }),
@@ -392,7 +392,7 @@ describe("consumeLiveSession", () => {
     source?.emit(
       "message.completed",
       envelope("message.completed", "evt_big", {
-        message_id: "msg_big",
+        segment_id: "msg_big",
         role: "assistant",
         content: hugeBody,
       }),
@@ -455,7 +455,7 @@ describe("consumeLiveSession", () => {
     source?.emit(
       "subagent.started",
       envelope("subagent.started", "evt_sub_1", {
-        message_id: "msg_01",
+        segment_id: "msg_01",
         subagent_id: "sa_1",
         name: "researcher",
         description: "查资料",
@@ -466,7 +466,7 @@ describe("consumeLiveSession", () => {
     source?.emit(
       "subagent.text.delta",
       envelope("subagent.text.delta", "evt_sub_2", {
-        message_id: "msg_01",
+        segment_id: "msg_01",
         subagent_id: "sa_1",
         text: "子智能体",
       }),
@@ -474,7 +474,7 @@ describe("consumeLiveSession", () => {
     source?.emit(
       "subagent.text.completed",
       envelope("subagent.text.completed", "evt_sub_3", {
-        message_id: "msg_01",
+        segment_id: "msg_01",
         subagent_id: "sa_1",
         text: "子智能体结论",
       }),
