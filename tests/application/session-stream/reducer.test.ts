@@ -13,13 +13,13 @@ import {
   parseStoredSessionState,
   serializeSessionState,
 } from "@/application/session-stream/state-schema"
-import { toSessionStreamEvent } from "@/infrastructure/session-event-mapper"
-import { parseSessionEvent } from "@/infrastructure/session-event-schema"
+import { toSessionStreamEvent } from "@/infrastructure/transport-event-mapper"
+import { parseTransportEvent } from "@/infrastructure/transport-event-schema"
 
 function requireDomainEvent(
-  input: Parameters<typeof parseSessionEvent>[0],
+  input: Parameters<typeof parseTransportEvent>[0],
 ) {
-  const mappedEvent = toSessionStreamEvent(parseSessionEvent(input))
+  const mappedEvent = toSessionStreamEvent(parseTransportEvent(input))
 
   if (!mappedEvent) {
     throw new Error("Expected a domain event")

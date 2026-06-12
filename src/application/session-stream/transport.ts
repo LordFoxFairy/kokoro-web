@@ -1,6 +1,6 @@
 import type { SessionStreamEvent } from "@/domain/session-stream-event"
-import { toSessionStreamEvent } from "@/infrastructure/session-event-mapper"
-import { parseSessionEvent } from "@/infrastructure/session-event-schema"
+import { toSessionStreamEvent } from "@/infrastructure/transport-event-mapper"
+import { parseTransportEvent } from "@/infrastructure/transport-event-schema"
 
 import {
   applySessionEvent,
@@ -81,7 +81,7 @@ function decodeStreamMessage(event: Event): SessionStreamEvent | null {
 
   try {
     const raw: unknown = JSON.parse(event.data)
-    return toSessionStreamEvent(parseSessionEvent(raw))
+    return toSessionStreamEvent(parseTransportEvent(raw))
   } catch {
     return null
   }
