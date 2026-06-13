@@ -153,15 +153,12 @@ describe("AssistantTurn legibility (B layer)", () => {
     expect(strip).not.toBeNull()
     expect(strip?.textContent).toMatch(/重连中/)
     expect(strip?.getAttribute("data-anchor")).toBe("reconnecting")
+    // 状态条带脉冲三点，与无正文路径的成形盒动态线索一致（兑现「正在重连」可读）。
+    expect(strip?.querySelectorAll(".kk-thread__pulse span")).toHaveLength(3)
     // 半截正文仍在 streaming 盒里照常渲染。
     expect(within(container).getByText("已经生成了一半")).toBeInTheDocument()
-    // 恰一个「重连中…」：有正文走状态条，无 forming 盒重复。
-    expect(container.querySelectorAll("*")).toBeTruthy()
-    expect(
-      Array.from(container.querySelectorAll("*")).filter(
-        (el) => el.childNodes.length === 1 && el.textContent === "重连中…",
-      ).length,
-    ).toBe(1)
+    // 恰一个「重连中…」可见：有正文走状态条，无 forming 盒重复（getAllByText 命中文本宿主，对包裹稳健）。
+    expect(within(container).getAllByText("重连中…")).toHaveLength(1)
   })
 
   it("B1: no turn-level strip when reconnecting with no text yet (forming box carries 重连中)", () => {
@@ -191,6 +188,39 @@ describe("AssistantTurn legibility (B layer)", () => {
     expect(box?.getAttribute("data-state")).toBe("forming")
     expect(box?.querySelector(".kk-turn__forming")).not.toBeNull()
     expect(container.querySelector(".kk-caret")).toBeNull()
+    // 正面钉死标题意图：不存在空白 streaming 盒。
+    expect(
+      container.querySelector(".kk-turn__answer[data-state='streaming']"),
+    ).toBeNull()
+  })
+
+  it("B2 side-effect: a settled empty-content message renders no bubble box at all", () => {
+    // B2 把判据从 message-truthiness 改为 hasText 后的反面契约：落定的空正文段不再渲染空气泡。
+    const empty: SessionMessage = { id: "m1", role: "assistant", content: "", runId: "run_01" }
+    const { container } = render(
+      <AssistantTurn
+        steps={[textStep("m1", 1)]}
+        messagesById={{ m1: empty }}
+        isLive={false}
+      />,
+    )
+    expect(container.querySelector(".kk-turn__answer")).toBeNull()
+  })
+
+  it("B2 side-effect: a fully-empty segment (no text, no process) renders no segment wrapper", () => {
+    // 既无气泡又无过程的空段不该留下一个占位 .kk-turn__segment（多段时会多撑一个 gap 槽）。
+    const first: SessionMessage = { id: "m1", role: "assistant", content: "有内容", runId: "run_01" }
+    const emptyMid: SessionMessage = { id: "m2", role: "assistant", content: "", runId: "run_01" }
+    const { container } = render(
+      <AssistantTurn
+        steps={[textStep("m1", 1), textStep("m2", 2)]}
+        messagesById={{ m1: first, m2: emptyMid }}
+        isLive={false}
+      />,
+    )
+    // 只有 1 段有内容 → 只渲染 1 个 segment（空段被跳过）。
+    expect(container.querySelectorAll(".kk-turn__segment")).toHaveLength(1)
+    expect(container.querySelectorAll(".kk-turn__answer")).toHaveLength(1)
   })
 })
 
