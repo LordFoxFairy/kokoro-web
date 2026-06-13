@@ -42,6 +42,7 @@ export type SessionStreamEvent =
       toolId: string
       name: string
       result: string
+      isError: boolean
     }
   | {
       kind: "todo-updated"

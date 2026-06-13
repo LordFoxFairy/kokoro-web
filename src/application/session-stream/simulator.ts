@@ -152,6 +152,7 @@ export function buildSimulatedReplyEvents(
       toolId: previewTool.toolId,
       name: previewTool.name,
       result: previewTool.result,
+      isError: false,
     })
 
     events.push({

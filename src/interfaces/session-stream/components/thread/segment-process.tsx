@@ -25,10 +25,18 @@ type SegmentProcessProps = {
   mode?: AgentMode
 }
 
-// 落定摘要：「思考过程 · N 工具 · M 子智能体」，省略为零的维度。
-function settledSummary(verb: string, tools: number, subs: number): string {
+// 落定摘要：「思考过程 · N 工具(K 失败) · M 子智能体」，省略为零的维度。
+// 失败数作为「工具」的从属括注（非并列维度），让子集关系一眼可辨、不被误读为相加。
+function settledSummary(
+  verb: string,
+  tools: number,
+  subs: number,
+  failed: number,
+): string {
   const parts = [`${verb}过程`]
-  if (tools > 0) parts.push(`${tools} 个工具`)
+  if (tools > 0) {
+    parts.push(failed > 0 ? `${tools} 个工具（${failed} 失败）` : `${tools} 个工具`)
+  }
   if (subs > 0) parts.push(`${subs} 个子智能体`)
   return parts.join(" · ")
 }
@@ -58,9 +66,10 @@ export function SegmentProcess({
   }
 
   const verb = mode === "fast" ? "处理" : "思考"
+  const failedTools = tools.filter((tool) => tool.status === "error").length
   const summary = live
     ? `${verb}中…`
-    : settledSummary(verb, tools.length, subagents.length)
+    : settledSummary(verb, tools.length, subagents.length, failedTools)
 
   return (
     <div className="kk-process" data-mode={mode} data-open={open}>

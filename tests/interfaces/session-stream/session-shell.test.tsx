@@ -1225,6 +1225,7 @@ describe("SessionShell agent activity", () => {
         toolId: `tool-${id}`,
         name: "get_weather",
         result: "北京：晴",
+        isError: false,
       })
       next = applySessionEvent(next, {
         kind: "message-completed",
