@@ -207,6 +207,27 @@ describe("AssistantTurn legibility (B layer)", () => {
     expect(container.querySelector(".kk-turn__answer")).toBeNull()
   })
 
+  it("#7.2: a non-tail process-only segment renders its process, no spurious forming placeholder", () => {
+    // 分析：段只在 text.completed 时推进，故非尾段必有文本；唯一无文本的是尾段(=forming，已处理)。
+    // 这里构造一个非尾、有思考无文本的段，钉死它渲染过程块、不冒「正在…」假占位（更多文本不会来了）。
+    const tailMsg: SessionMessage = { id: "m2", role: "assistant", content: "最终答案", runId: "run_01" }
+    const steps: SessionStep[] = [
+      { kind: "thinking", seq: 1, segmentId: "m1", text: "中间段只有思考" },
+      textStep("m2", 2),
+    ]
+    const { container } = render(
+      <AssistantTurn steps={steps} messagesById={{ m2: tailMsg }} isLive={false} />,
+    )
+    const segments = Array.from(container.querySelectorAll(".kk-turn__segment"))
+    expect(segments).toHaveLength(2)
+    // 第一段：过程块在场、无气泡、无 forming 占位。
+    expect(segments[0]?.querySelector(".kk-process")).not.toBeNull()
+    expect(segments[0]?.querySelector(".kk-turn__answer")).toBeNull()
+    expect(segments[0]?.querySelector(".kk-turn__forming")).toBeNull()
+    // 第二段：最终答案气泡在场。
+    expect(segments[1]?.querySelector(".kk-turn__answer[data-state='settled']")).not.toBeNull()
+  })
+
   it("B2 side-effect: a fully-empty segment (no text, no process) renders no segment wrapper", () => {
     // 既无气泡又无过程的空段不该留下一个占位 .kk-turn__segment（多段时会多撑一个 gap 槽）。
     const first: SessionMessage = { id: "m1", role: "assistant", content: "有内容", runId: "run_01" }
