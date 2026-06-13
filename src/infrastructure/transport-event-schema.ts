@@ -1,14 +1,16 @@
+// DO NOT EDIT — generated from contract/events.yaml by contract/generate.py.
+// Run `python3 contract/generate.py` after changing the contract.
+
 import { z } from "zod"
 
-// 传输层先严格解析线上的 session envelope，再向内映射成领域可消费事件。
 const eventEnvelopeSchema = z
   .object({
     event: z.enum([
       "session.created",
       "run.created",
+      "thinking.delta",
       "message.delta",
       "message.completed",
-      "thinking.delta",
       "tool.invoked",
       "tool.returned",
       "todo.updated",
@@ -20,7 +22,7 @@ const eventEnvelopeSchema = z
       "run.failed",
     ]),
     event_id: z.string().min(1),
-    // 一等发射序号（session 透传 agent seq）：唯一排序源，web 据此定序。
+    // seq：session 透传 agent 的一等发射序号，是真实发射顺序的唯一排序源。
     seq: z.number().int().nonnegative(),
     session_id: z.string().min(1),
     conversation_id: z.string().min(1),
@@ -53,6 +55,16 @@ const runCreatedSchema = eventEnvelopeSchema.extend({
     .strict(),
 })
 
+const thinkingDeltaSchema = eventEnvelopeSchema.extend({
+  event: z.literal("thinking.delta"),
+  payload: z
+    .object({
+      segment_id: z.string().min(1),
+      delta: z.string(),
+    })
+    .strict(),
+})
+
 const messageDeltaSchema = eventEnvelopeSchema.extend({
   event: z.literal("message.delta"),
   payload: z
@@ -79,17 +91,6 @@ const messageCompletedSchema = eventEnvelopeSchema.extend({
     .strict(),
 })
 
-// 活动事件族（思考 / 工具 / todo / 子智能体）：与 kokoro-session 出站协议同形。
-const thinkingDeltaSchema = eventEnvelopeSchema.extend({
-  event: z.literal("thinking.delta"),
-  payload: z
-    .object({
-      segment_id: z.string().min(1),
-      delta: z.string(),
-    })
-    .strict(),
-})
-
 const toolInvokedSchema = eventEnvelopeSchema.extend({
   event: z.literal("tool.invoked"),
   payload: z
@@ -110,8 +111,7 @@ const toolReturnedSchema = eventEnvelopeSchema.extend({
       tool_id: z.string().min(1),
       name: z.string().min(1),
       result: z.string(),
-      // 严格 required：生产端始终发送 is_error；缺失即 fail-loud（skip-and-continue），
-      // 绝不用默认 false 掩盖一个真失败的工具。无兼容兜底。
+      // 严格 required：生产端始终发送；缺失即 fail-loud，绝不用默认 false 掩盖真失败。无兼容兜底。
       is_error: z.boolean(),
     })
     .strict(),
@@ -121,14 +121,7 @@ const todoUpdatedSchema = eventEnvelopeSchema.extend({
   event: z.literal("todo.updated"),
   payload: z
     .object({
-      todos: z.array(
-        z
-          .object({
-            content: z.string(),
-            status: z.enum(["pending", "in_progress", "completed"]),
-          })
-          .strict(),
-      ),
+      todos: z.array(z.object({ content: z.string(), status: z.enum(["pending", "in_progress", "completed"]) }).strict()),
     })
     .strict(),
 })
@@ -187,9 +180,9 @@ const runCompletedSchema = eventEnvelopeSchema.extend({
   payload: z
     .object({
       run_id: z.string().min(1),
-      // web 不消费 status(只读 final_message_id):放宽到任意非空终态,新终态绝不 strict-parse 成 null 卡死客户端。
+      // web 放宽到任意非空终态：新终态绝不 strict-parse 成 null 卡死客户端。
       status: z.string().min(1),
-      final_message_id: z.string().optional(),
+      final_message_id: z.string().min(1).optional(),
     })
     .strict(),
 })
@@ -202,7 +195,7 @@ const runFailedSchema = eventEnvelopeSchema.extend({
       error_kind: z.string().min(1),
       message: z.string().min(1),
       retryable: z.boolean().optional(),
-      request_id: z.string().optional(),
+      request_id: z.string().min(1).optional(),
     })
     .strict(),
 })
@@ -210,9 +203,9 @@ const runFailedSchema = eventEnvelopeSchema.extend({
 const sessionEventSchema = z.union([
   sessionCreatedSchema,
   runCreatedSchema,
+  thinkingDeltaSchema,
   messageDeltaSchema,
   messageCompletedSchema,
-  thinkingDeltaSchema,
   toolInvokedSchema,
   toolReturnedSchema,
   todoUpdatedSchema,
