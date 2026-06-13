@@ -554,8 +554,20 @@
   margin-left: auto;
 }
 
+/* D1：行级「可展开」chevron——只有 <details> 行渲染它，静态 <div> 行没有，让可点 vs 静态一眼可辨。
+   尺寸/淡度对齐过程块 chevron；展开时翻转。 */
+.kk-tool__chevron,
 .kk-subagent__chevron {
-  display: none;
+  width: 0.7rem;
+  height: 0.7rem;
+  flex-shrink: 0;
+  opacity: 0.5;
+  transition: transform 150ms ease;
+}
+
+details.kk-tool[open] .kk-tool__chevron,
+details.kk-subagent[open] .kk-subagent__chevron {
+  transform: rotate(180deg);
 }
 
 /* 展开后的嵌套面板：职责 + 结论。结论整段换行、左侧细线区隔，

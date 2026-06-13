@@ -173,6 +173,33 @@ describe("SegmentProcess collapse-on-settle", () => {
     expect(isOpen(b.container)).toBe(false)
   })
 
+  it("D2: aggregates failed tools into the settled summary (failures readable without expanding)", () => {
+    // 为什么重要：多工具有失败时，用户不必逐个展开就能从收起的摘要里看到「N 失败」。
+    const tools: SessionToolCall[] = [
+      { id: "a", name: "x", args: {}, status: "done", result: "ok" },
+      { id: "b", name: "y", args: {}, status: "error", errorText: "boom" },
+      { id: "c", name: "z", args: {}, status: "error", errorText: "boom2" },
+    ]
+    const { container } = render(
+      <SegmentProcess segmentId={SEG} thinking="" tools={tools} subagents={[]} live={false} />,
+    )
+    const title = container.querySelector(".kk-process__title") as HTMLElement
+    expect(title.textContent).toMatch(/3 个工具/)
+    expect(title.textContent).toMatch(/2 个失败/)
+  })
+
+  it("D2: no failure count in the summary when nothing failed", () => {
+    const tools: SessionToolCall[] = [
+      { id: "a", name: "x", args: {}, status: "done", result: "ok" },
+    ]
+    const { container } = render(
+      <SegmentProcess segmentId={SEG} thinking="" tools={tools} subagents={[]} live={false} />,
+    )
+    expect(
+      (container.querySelector(".kk-process__title") as HTMLElement).textContent,
+    ).not.toMatch(/失败/)
+  })
+
   it("exposes button a11y: aria-expanded tracks open, aria-controls points at the body", () => {
     // 为什么重要：换掉原生 details 后，展开语义必须由 button 的 aria 显式承担，键盘可达。
     const { container } = render(

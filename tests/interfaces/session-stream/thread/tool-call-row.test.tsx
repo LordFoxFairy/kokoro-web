@@ -65,6 +65,22 @@ describe("ToolCallRow", () => {
     expect(screen.getByText("get_weather")).toBeInTheDocument()
   })
 
+  it("D1: shows a chevron affordance only on expandable rows (so 可点 vs 静态 is legible)", () => {
+    // 为什么重要：可展开行与静态行视觉几乎一样，用户看不出哪个可点；chevron 作为统一的「可展开」提示。
+    const expandable = render(
+      <ToolCallRow tool={makeTool({ status: "done", result: "晴" })} />,
+    )
+    expect(
+      expandable.container.querySelector(".kk-tool__chevron"),
+    ).not.toBeNull()
+    expandable.unmount()
+
+    const staticRow = render(
+      <ToolCallRow tool={makeTool({ args: {}, result: undefined, status: "done" })} />,
+    )
+    expect(staticRow.container.querySelector(".kk-tool__chevron")).toBeNull()
+  })
+
   it("surfaces an error state with its errorText, staying expanded", () => {
     // 为什么重要：工具失败是段级状态（本轮通常继续）——必须显式露出失败原因并保持展开，
     // 绝不塌成沉默的空行。即便无入参也作为可展开的 <details> 呈现错误面板。
