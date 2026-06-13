@@ -194,6 +194,65 @@ describe("AssistantTurn legibility (B layer)", () => {
     ).toBeNull()
   })
 
+  it("interleaved text→tool→text while the third part streams: text1 settled, text2 live+caret, tool under text2", () => {
+    // 用户问的核心：AI 发 text→tool→text，第三段(text2)还在生成中如何挂载。
+    // 分段归属：text1=seg1（落定，无过程）；tool+text2=seg2（工具挂在「催生它的答案」text2 下面）。
+    const text1: SessionMessage = { id: "s1", role: "assistant", content: "让我查一下天气。", runId: "run_01" }
+    const text2: SessionMessage = { id: "s2", role: "assistant", content: "北京今天晴", runId: "run_01" }
+    const steps: SessionStep[] = [
+      { kind: "text", seq: 1, segmentId: "s1" },
+      {
+        kind: "tool",
+        seq: 2,
+        segmentId: "s2",
+        tool: { id: "t1", name: "get_weather", args: {}, status: "done", result: "晴" },
+      },
+      { kind: "text", seq: 3, segmentId: "s2" },
+    ]
+    const { container } = render(
+      <AssistantTurn steps={steps} messagesById={{ s1: text1, s2: text2 }} isLive />,
+    )
+    // 一个头像、两段、顺序 text1 在上 text2 在下。
+    expect(container.querySelectorAll(".kk-turn__avatar--bot")).toHaveLength(1)
+    const segs = Array.from(container.querySelectorAll(".kk-turn__segment"))
+    expect(segs).toHaveLength(2)
+    // seg1：text1 落定气泡、无 caret、无工具。
+    expect(segs[0]?.querySelector(".kk-turn__answer")?.getAttribute("data-state")).toBe("settled")
+    expect(segs[0]?.querySelector(".kk-caret")).toBeNull()
+    expect(segs[0]?.querySelector(".kk-tool__name")).toBeNull()
+    // seg2（尾段、live）：text2 流式气泡 + caret（第三段正在生成），工具挂在它下面。
+    expect(segs[1]?.querySelector(".kk-turn__answer")?.getAttribute("data-state")).toBe("streaming")
+    expect(segs[1]?.querySelector(".kk-caret")).not.toBeNull()
+    expect(within(segs[1] as HTMLElement).getByText("get_weather")).toBeInTheDocument()
+    // 段内顺序：答案气泡在过程之上。
+    const bubble = segs[1]?.querySelector(".kk-turn__answer") as HTMLElement
+    const proc = segs[1]?.querySelector(".kk-process") as HTMLElement
+    expect(bubble.compareDocumentPosition(proc) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it("interleaved transient: tool arrived but its text not yet → seg2 forming bubble above the running tool", () => {
+    // text1 落定后工具先到、text2 未到的瞬间：seg2 气泡位回落成形态「正在…」，工具在下面跑。
+    const text1: SessionMessage = { id: "s1", role: "assistant", content: "让我查一下。", runId: "run_01" }
+    const steps: SessionStep[] = [
+      { kind: "text", seq: 1, segmentId: "s1" },
+      {
+        kind: "tool",
+        seq: 2,
+        segmentId: "s2",
+        tool: { id: "t1", name: "get_weather", args: {}, status: "running" },
+      },
+    ]
+    const { container } = render(
+      <AssistantTurn steps={steps} messagesById={{ s1: text1 }} isLive />,
+    )
+    const segs = Array.from(container.querySelectorAll(".kk-turn__segment"))
+    expect(segs).toHaveLength(2)
+    // seg2：成形态气泡（无空白横条）+ 运行中工具在下。
+    expect(segs[1]?.querySelector(".kk-turn__answer")?.getAttribute("data-state")).toBe("forming")
+    expect(segs[1]?.querySelector(".kk-turn__forming")).not.toBeNull()
+    expect(within(segs[1] as HTMLElement).getByText("get_weather")).toBeInTheDocument()
+  })
+
   it("B2 side-effect: a settled empty-content message renders no bubble box at all", () => {
     // B2 把判据从 message-truthiness 改为 hasText 后的反面契约：落定的空正文段不再渲染空气泡。
     const empty: SessionMessage = { id: "m1", role: "assistant", content: "", runId: "run_01" }
