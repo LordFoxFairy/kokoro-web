@@ -110,8 +110,9 @@ const toolReturnedSchema = eventEnvelopeSchema.extend({
       tool_id: z.string().min(1),
       name: z.string().min(1),
       result: z.string(),
-      // 消费端宽容：旧事件缺 is_error 时降级 false，不撕流（生产端始终发送）。
-      is_error: z.boolean().optional().default(false),
+      // 严格 required：生产端始终发送 is_error；缺失即 fail-loud（skip-and-continue），
+      // 绝不用默认 false 掩盖一个真失败的工具。无兼容兜底。
+      is_error: z.boolean(),
     })
     .strict(),
 })
