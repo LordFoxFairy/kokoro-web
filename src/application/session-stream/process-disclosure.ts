@@ -1,40 +1,59 @@
 // 过程块展开意图的持久化（UI-only，不污染域 conversation-store）：用户手动展开/收起某段过程后，
 // 刷新仍保留该意图。按全局唯一的 segmentId 键，只存 override（缺省跟随 live 信号），带容量上限防无界增长。
+// 跨标签页同步与读时回读对齐姊妹 use-persistent-store：raw 比对短路缓存 + storage 事件失效。
 
 export const DISCLOSURE_KEY = "kokoro:process-disclosure"
 export const DISCLOSURE_CAP = 500
 
 type DisclosureMap = Record<string, boolean>
 
+// cache 与它构建时的原始字符串：raw 一致才复用，否则回读 localStorage（跨标签页写入即被感知）。
+let cacheRaw: string | null = null
 let cache: DisclosureMap | null = null
 const listeners = new Set<() => void>()
+let storageBound = false
 
-function load(): DisclosureMap {
-  if (cache) {
-    return cache
-  }
-  if (typeof window === "undefined") {
+// 解析持久化盘面：非对象/数组/坏 JSON → {}；**逐值只放行 boolean**（localStorage 是不可信外部边界，
+// 篡改/旧格式注入的非布尔值不得泄漏成 aria-expanded / inert / CSS 的脏开关）。
+function parse(raw: string | null): DisclosureMap {
+  if (!raw) {
     return {}
   }
   try {
-    const raw = window.localStorage.getItem(DISCLOSURE_KEY)
-    const parsed: unknown = raw ? JSON.parse(raw) : {}
-    cache =
-      parsed && typeof parsed === "object" && !Array.isArray(parsed)
-        ? (parsed as DisclosureMap)
-        : {}
+    const parsed: unknown = JSON.parse(raw)
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return {}
+    }
+    return Object.fromEntries(
+      Object.entries(parsed as Record<string, unknown>).filter(
+        ([, value]) => typeof value === "boolean",
+      ),
+    ) as DisclosureMap
   } catch {
-    // 损坏的 JSON 直接放过：降级为无 override，绝不因脏数据崩溃。
-    cache = {}
+    return {}
   }
+}
+
+function load(): DisclosureMap {
+  if (typeof window === "undefined") {
+    return {}
+  }
+  const raw = window.localStorage.getItem(DISCLOSURE_KEY)
+  if (raw === cacheRaw && cache) {
+    return cache
+  }
+  cacheRaw = raw
+  cache = parse(raw)
   return cache
 }
 
 function persist(map: DisclosureMap): void {
   cache = map
+  const raw = JSON.stringify(map)
+  cacheRaw = raw
   if (typeof window !== "undefined") {
     try {
-      window.localStorage.setItem(DISCLOSURE_KEY, JSON.stringify(map))
+      window.localStorage.setItem(DISCLOSURE_KEY, raw)
     } catch {
       // 配额/隐私模式写入失败：保留内存态，不崩。
     }
@@ -44,10 +63,22 @@ function persist(map: DisclosureMap): void {
   }
 }
 
+function onStorage(event: StorageEvent): void {
+  // 只对本键（或 clear() 的 key=null）响应：另一标签页写入即失效缓存 + 通知本页重渲染。
+  if (event.key !== null && event.key !== DISCLOSURE_KEY) {
+    return
+  }
+  cacheRaw = null
+  cache = null
+  for (const listener of listeners) {
+    listener()
+  }
+}
+
 // 该段的手动 override：true=手动展开 / false=手动收起 / null=无 override（跟随 live）。
 export function getDisclosure(segmentId: string): boolean | null {
   const value = load()[segmentId]
-  return value === undefined ? null : value
+  return typeof value === "boolean" ? value : null
 }
 
 export function setDisclosure(segmentId: string, open: boolean): void {
@@ -66,11 +97,20 @@ export function setDisclosure(segmentId: string, open: boolean): void {
 
 export function subscribeDisclosure(onChange: () => void): () => void {
   listeners.add(onChange)
+  if (!storageBound && typeof window !== "undefined") {
+    window.addEventListener("storage", onStorage)
+    storageBound = true
+  }
   return () => {
     listeners.delete(onChange)
+    if (listeners.size === 0 && storageBound && typeof window !== "undefined") {
+      window.removeEventListener("storage", onStorage)
+      storageBound = false
+    }
   }
 }
 
 export function __resetDisclosureCacheForTest(): void {
   cache = null
+  cacheRaw = null
 }

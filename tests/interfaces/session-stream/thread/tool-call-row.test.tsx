@@ -70,9 +70,10 @@ describe("ToolCallRow", () => {
     const expandable = render(
       <ToolCallRow tool={makeTool({ status: "done", result: "晴" })} />,
     )
-    expect(
-      expandable.container.querySelector(".kk-tool__chevron"),
-    ).not.toBeNull()
+    const chevron = expandable.container.querySelector(".kk-tool__chevron")
+    expect(chevron).not.toBeNull()
+    // chevron 必须落在 <summary> 内（点击区域），否则提示与触发区脱节。
+    expect(chevron?.closest("summary.kk-tool__summary")).not.toBeNull()
     expandable.unmount()
 
     const staticRow = render(

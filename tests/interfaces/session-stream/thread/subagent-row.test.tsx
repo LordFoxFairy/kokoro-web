@@ -27,9 +27,9 @@ describe("SubagentRow", () => {
         subagent={makeSubagent({ status: "done", output: "结论" })}
       />,
     )
-    expect(
-      expandable.container.querySelector(".kk-subagent__chevron"),
-    ).not.toBeNull()
+    const chevron = expandable.container.querySelector(".kk-subagent__chevron")
+    expect(chevron).not.toBeNull()
+    expect(chevron?.closest("summary.kk-subagent__summary")).not.toBeNull()
     expandable.unmount()
 
     const staticRow = render(
