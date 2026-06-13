@@ -224,6 +224,8 @@ describe("applySessionEvent", () => {
       result: "北京: 晴",
       status: "done",
     })
+    // 成功态不得残留 errorText（is_error=false 路径只写 status/result）。
+    expect(toolSteps(state)[0]).not.toHaveProperty("errorText")
   })
 
   it("maps a failed tool return (is_error=true) to status=error + errorText", () => {

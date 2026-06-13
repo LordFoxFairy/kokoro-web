@@ -58,7 +58,8 @@ export function ToolCallRow({ tool }: { tool: SessionToolCall }) {
         ) : null}
         {failed ? (
           <p className="kk-tool__error" role="status">
-            {tool.errorText ?? "工具调用失败"}
+            {/* || 而非 ??：空串错误文本（无消息异常）也回落到兜底文案，绝不渲染空白红条。 */}
+            {tool.errorText || "工具调用失败"}
           </p>
         ) : tool.result ? (
           <pre className="kk-tool__result">{tool.result}</pre>
