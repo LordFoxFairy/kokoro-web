@@ -163,7 +163,7 @@ describe("AssistantTurn structure (one avatar per turn)", () => {
     expect(container.querySelectorAll(".kk-turn__avatar--bot")).toHaveLength(1)
     expect(container.querySelector(".kk-msg__avatar--live")).not.toBeNull()
     // 单条成形占位，文案为「正在…」。
-    const forming = container.querySelector(".kk-msg__bubble--forming")
+    const forming = container.querySelector(".kk-turn__answer[data-state='forming']")
     expect(forming).not.toBeNull()
     expect(forming?.textContent).toMatch(/正在/)
   })
@@ -173,7 +173,7 @@ describe("AssistantTurn structure (one avatar per turn)", () => {
     const { container } = render(
       <AssistantTurn steps={[]} messagesById={{}} isLive={false} />,
     )
-    expect(container.querySelector(".kk-msg__bubble--forming")).toBeNull()
+    expect(container.querySelector(".kk-turn__answer[data-state='forming']")).toBeNull()
   })
 
   it("shows a forming placeholder (not an empty bubble) for the tail segment whose text has not arrived", () => {
@@ -206,7 +206,7 @@ describe("AssistantTurn structure (one avatar per turn)", () => {
     const segments = container.querySelectorAll(".kk-turn__segment")
     expect(segments).toHaveLength(2)
     const tail = segments[1] as HTMLElement
-    const forming = tail.querySelector(".kk-msg__bubble--forming")
+    const forming = tail.querySelector(".kk-turn__answer[data-state='forming']")
     // 成形占位（非空气泡）在上，工具过程在下。
     expect(forming).not.toBeNull()
     expect(forming?.textContent).toMatch(/正在/)
