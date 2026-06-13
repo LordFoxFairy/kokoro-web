@@ -136,6 +136,64 @@ describe("AssistantTurn shared answer-bubble skeleton (A1)", () => {
   })
 })
 
+describe("AssistantTurn legibility (B layer)", () => {
+  it("B1: shows a turn-level 重连中 strip when reconnecting a run that already has half a message", () => {
+    // 为什么重要：刷新回到半截 run 时，若该段已有正文（streaming 盒），重连信号原本只剩头像呼吸、
+    // 看不出在重连还是卡死。turn 级状态条让「重连中…」在有正文时也可见。
+    const half: SessionMessage = { id: "m1", role: "assistant", content: "已经生成了一半", runId: "run_01" }
+    const { container } = render(
+      <AssistantTurn
+        steps={[textStep("m1", 1)]}
+        messagesById={{ m1: half }}
+        isLive
+        reconnecting
+      />,
+    )
+    const strip = container.querySelector(".kk-turn__reconnect")
+    expect(strip).not.toBeNull()
+    expect(strip?.textContent).toMatch(/重连中/)
+    expect(strip?.getAttribute("data-anchor")).toBe("reconnecting")
+    // 半截正文仍在 streaming 盒里照常渲染。
+    expect(within(container).getByText("已经生成了一半")).toBeInTheDocument()
+    // 恰一个「重连中…」：有正文走状态条，无 forming 盒重复。
+    expect(container.querySelectorAll("*")).toBeTruthy()
+    expect(
+      Array.from(container.querySelectorAll("*")).filter(
+        (el) => el.childNodes.length === 1 && el.textContent === "重连中…",
+      ).length,
+    ).toBe(1)
+  })
+
+  it("B1: no turn-level strip when reconnecting with no text yet (forming box carries 重连中)", () => {
+    // 无正文时仍由成形盒显示「重连中…」，状态条不重复出现（避免双重朗读/双标签）。
+    const { container } = render(
+      <AssistantTurn
+        steps={[{ kind: "thinking", seq: 1, segmentId: "m1", text: "想" }]}
+        messagesById={{}}
+        isLive
+        reconnecting
+      />,
+    )
+    expect(container.querySelector(".kk-turn__reconnect")).toBeNull()
+    expect(
+      container.querySelector(".kk-turn__answer[data-state='forming']")?.textContent,
+    ).toMatch(/重连中/)
+  })
+
+  it("B2: an empty-content live message falls back to the forming state (no blank streaming bar)", () => {
+    // 为什么重要：message 已建但 content 为空的瞬间，原本是一条空白带边框横条；
+    // 回落成形态显示「正在…」脉冲，消除空窗。
+    const empty: SessionMessage = { id: "m1", role: "assistant", content: "", runId: "run_01" }
+    const { container } = render(
+      <AssistantTurn steps={[textStep("m1", 1)]} messagesById={{ m1: empty }} isLive />,
+    )
+    const box = container.querySelector(".kk-turn__answer")
+    expect(box?.getAttribute("data-state")).toBe("forming")
+    expect(box?.querySelector(".kk-turn__forming")).not.toBeNull()
+    expect(container.querySelector(".kk-caret")).toBeNull()
+  })
+})
+
 describe("AssistantTurn structure (one avatar per turn)", () => {
   it("renders exactly ONE bot avatar for a multi-segment turn", () => {
     // 核心不变量：一轮（一个 runId）只一个头像，不分段、不为成形态另起。
