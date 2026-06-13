@@ -1,3 +1,6 @@
+// DO NOT EDIT — generated from contract/events.yaml by contract/generate.py.
+// Run `python3 contract/generate.py` after changing the contract.
+
 export type SessionMessageRole = "assistant" | "user"
 
 export type SessionTodoStatus = "pending" | "in_progress" | "completed"
@@ -7,7 +10,7 @@ export type SessionTodo = {
   status: SessionTodoStatus
 }
 
-// seq：来自传输信封游标的单调整数（见 toSessionStreamEvent），是真实发射顺序的唯一来源。
+// seq：session 透传 agent 的一等发射序号，是真实发射顺序的唯一排序源。
 export type SessionStreamEvent =
   | {
       kind: "thinking-delta"
@@ -18,6 +21,28 @@ export type SessionStreamEvent =
       runId: string
       segmentId: string
       delta: string
+    }
+  | {
+      kind: "message-delta"
+      eventId: string
+      seq: number
+      sessionId: string
+      conversationId: string
+      runId: string
+      segmentId: string
+      role: SessionMessageRole
+      delta: string
+    }
+  | {
+      kind: "message-completed"
+      eventId: string
+      seq: number
+      sessionId: string
+      conversationId: string
+      runId: string
+      segmentId: string
+      role: SessionMessageRole
+      content: string
     }
   | {
       kind: "tool-invoked"
@@ -103,38 +128,6 @@ export type SessionStreamEvent =
       text: string
     }
   | {
-      kind: "session-created"
-      eventId: string
-      seq: number
-      sessionId: string
-      conversationId: string
-      runId: string
-      title: string
-      ownerId: string
-    }
-  | {
-      kind: "message-delta"
-      eventId: string
-      seq: number
-      sessionId: string
-      conversationId: string
-      runId: string
-      segmentId: string
-      role: SessionMessageRole
-      delta: string
-    }
-  | {
-      kind: "message-completed"
-      eventId: string
-      seq: number
-      sessionId: string
-      conversationId: string
-      runId: string
-      segmentId: string
-      role: SessionMessageRole
-      content: string
-    }
-  | {
       kind: "run-completed"
       eventId: string
       seq: number
@@ -154,4 +147,14 @@ export type SessionStreamEvent =
       message: string
       retryable?: boolean
       requestId?: string
+    }
+  | {
+      kind: "session-created"
+      eventId: string
+      seq: number
+      sessionId: string
+      conversationId: string
+      runId: string
+      title: string
+      ownerId: string
     }
