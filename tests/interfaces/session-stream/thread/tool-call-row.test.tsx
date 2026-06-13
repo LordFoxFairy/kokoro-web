@@ -96,4 +96,14 @@ describe("ToolCallRow", () => {
     expect((details as HTMLDetailsElement).open).toBe(true)
     expect(screen.getByText("timeout after 30s")).toBeInTheDocument()
   })
+
+  it("falls back to a default error message when errorText is empty (no blank red bar)", () => {
+    // 无消息异常 → errorText 空串：错误面板回落到兜底文案，绝不渲染空白红条。
+    const { container } = render(
+      <ToolCallRow tool={makeTool({ status: "error", errorText: "" })} />,
+    )
+    const error = container.querySelector(".kk-tool__error") as HTMLElement
+    expect(error).not.toBeNull()
+    expect(error.textContent).toBe("工具调用失败")
+  })
 })
