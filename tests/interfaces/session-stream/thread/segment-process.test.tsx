@@ -101,6 +101,38 @@ describe("SegmentProcess collapse-on-settle", () => {
     expect(isOpen(container)).toBe(false)
   })
 
+  it("removes collapsed process content from the a11y tree (inert when closed)", () => {
+    // 为什么重要：原生 details 收起时把内容移出无障碍树；换成 div 后必须用 inert 补回该语义，
+    // 否则 aria-expanded=false 但读屏仍朗读折叠的思考/工具，自相矛盾。inert 不设 display:none，
+    // 故高度过渡仍可动（靠 clip 的 overflow:hidden 视觉裁剪）。
+    const { container, rerender } = render(
+      <SegmentProcess thinking="想" tools={[tool]} subagents={[]} live />,
+    )
+    const body = () => container.querySelector(".kk-process__body") as HTMLElement
+    // 展开（live）态：内容在无障碍树里、可聚焦。
+    expect(body().hasAttribute("inert")).toBe(false)
+
+    rerender(
+      <SegmentProcess thinking="想" tools={[tool]} subagents={[]} live={false} />,
+    )
+    // 落定收起：内容移出无障碍树 + 不可聚焦。
+    expect(body().hasAttribute("inert")).toBe(true)
+  })
+
+  it("keeps the reveal>clip>body layering so collapse clips the body scroll viewport to 0", () => {
+    // 为什么重要：收起态（grid 0fr）靠 __clip(overflow:hidden) 把 __body 自带的滚动视口整体裁到 0；
+    // 少了 clip 层就会残留一截空盒（曾真实发生）。结构断言守住这条三层不变量防回归。
+    const { container } = render(
+      <SegmentProcess thinking="想" tools={[tool]} subagents={[]} live />,
+    )
+    const reveal = container.querySelector(".kk-process__reveal")
+    const clip = reveal?.querySelector(":scope > .kk-process__clip")
+    const body = clip?.querySelector(":scope > .kk-process__body")
+    expect(reveal).not.toBeNull()
+    expect(clip).not.toBeNull()
+    expect(body).not.toBeNull()
+  })
+
   it("exposes button a11y: aria-expanded tracks open, aria-controls points at the body", () => {
     // 为什么重要：换掉原生 details 后，展开语义必须由 button 的 aria 显式承担，键盘可达。
     const { container } = render(

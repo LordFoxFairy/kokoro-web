@@ -84,7 +84,9 @@ export function SegmentProcess({
           含其滚动视口）；body 保留自身滚动封顶。少一层 clip 收起就裁不净嵌套滚动容器。 */}
       <div className="kk-process__reveal">
         <div className="kk-process__clip">
-          <div className="kk-process__body" id={bodyId}>
+          {/* inert（收起时）把内容移出无障碍树 + 不可聚焦，补回原生 details 的隐藏语义；
+              它不设 display:none，故 grid 高度过渡仍能动（视觉裁剪由 clip 的 overflow:hidden 负责）。 */}
+          <div className="kk-process__body" id={bodyId} inert={!open}>
             {thinking ? <p className="kk-process__thinking">{thinking}</p> : null}
 
             {tools.length > 0 ? (
