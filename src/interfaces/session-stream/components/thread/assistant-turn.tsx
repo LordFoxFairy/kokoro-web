@@ -128,6 +128,12 @@ export function AssistantTurn({
         {showReconnectStrip ? (
           <div className="kk-turn__reconnect" data-anchor="reconnecting">
             重连中…
+            {/* 脉冲三点：与无正文路径的成形盒动态线索一致，让「正在重连」可读。 */}
+            <span className="kk-thread__pulse" aria-hidden>
+              <span />
+              <span />
+              <span />
+            </span>
           </div>
         ) : null}
         {showScaffold ? (
@@ -149,6 +155,14 @@ export function AssistantTurn({
           // B2：尾段正文未到（过程先到）或 message 已建但 content 仍空，都回落成形态
           //（同一气泡盒先放「正在…」），消除空白带边框横条的空窗；过程仍挂在下面。
           const forming = liveSegment && !hasText
+          const hasProcess =
+            segment.thinking.length > 0 ||
+            segment.tools.length > 0 ||
+            segment.subagents.length > 0
+          // 既无气泡又无过程的空段不渲染：避免落定空正文段留一个占位 segment（多段时多撑一个 gap 槽）。
+          if (!hasText && !forming && !hasProcess) {
+            return null
+          }
           return (
             <div className="kk-turn__segment" key={segment.segmentId}>
               {/* 段内贯穿 forming→streaming→settled 三态：复用同一 .kk-turn__answer 元素、同一盒模型，
