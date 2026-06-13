@@ -86,6 +86,56 @@ describe("AssistantTurn streaming caret", () => {
   })
 })
 
+describe("AssistantTurn shared answer-bubble skeleton (A1)", () => {
+  it("tags the box data-state=streaming on a live tail segment with text", () => {
+    const { container } = render(
+      <AssistantTurn steps={[textStep("m1", 1)]} messagesById={{ m1: answer }} isLive />,
+    )
+    expect(
+      container.querySelector(".kk-turn__answer[data-state='streaming']"),
+    ).not.toBeNull()
+  })
+
+  it("tags the box data-state=settled once the turn settles", () => {
+    const { container } = render(
+      <AssistantTurn
+        steps={[textStep("m1", 1)]}
+        messagesById={{ m1: answer }}
+        isLive={false}
+      />,
+    )
+    expect(
+      container.querySelector(".kk-turn__answer[data-state='settled']"),
+    ).not.toBeNull()
+  })
+
+  it("reuses the SAME box element across forming→streaming (no remount, no box jump)", () => {
+    // A1 核心不变量：尾段从 forming（过程先到、正文未到）到 streaming（正文到）必须复用
+    // 同一个 .kk-turn__answer DOM 元素——只换盒内内容，整盒不卸载重挂。用元素身份证明。
+    const steps: SessionStep[] = [
+      { kind: "thinking", seq: 1, segmentId: "m1", text: "先想" },
+    ]
+    const { container, rerender } = render(
+      <AssistantTurn steps={steps} messagesById={{}} isLive />,
+    )
+    const formingBox = container.querySelector(".kk-turn__answer")
+    expect(formingBox?.getAttribute("data-state")).toBe("forming")
+
+    // 正文到达：同段加一个 text step + message。
+    rerender(
+      <AssistantTurn
+        steps={[...steps, textStep("m1", 2)]}
+        messagesById={{ m1: answer }}
+        isLive
+      />,
+    )
+    const streamingBox = container.querySelector(".kk-turn__answer")
+    expect(streamingBox?.getAttribute("data-state")).toBe("streaming")
+    // 同一个 DOM 节点被复用（身份相等），而非新建——这才是「整盒不跳」。
+    expect(streamingBox).toBe(formingBox)
+  })
+})
+
 describe("AssistantTurn structure (one avatar per turn)", () => {
   it("renders exactly ONE bot avatar for a multi-segment turn", () => {
     // 核心不变量：一轮（一个 runId）只一个头像，不分段、不为成形态另起。

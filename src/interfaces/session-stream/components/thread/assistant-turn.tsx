@@ -140,8 +140,9 @@ export function AssistantTurn({
           const forming = liveSegment && !message
           return (
             <div className="kk-turn__segment" key={segment.segmentId}>
-              {/* 答案气泡盒贯穿 forming→streaming→settled 三态：同一元素、同一盒模型，
-                  data-state 只切换盒内内容（成形线索 ↔ 正文），首 token 不跳换整盒。 */}
+              {/* 段内贯穿 forming→streaming→settled 三态：复用同一 .kk-turn__answer 元素、同一盒模型，
+                  data-state 只切换盒内内容（成形线索 ↔ 正文），首 token 不跳换整盒。
+                  注：scaffold（零 segment）→ 首段是跨分支 remount（窄路径，仅同尺寸盒一次 opacity 重淡入，无布局跳动）。 */}
               {message || forming ? (
                 <div
                   className="kk-msg__bubble kk-turn__answer"

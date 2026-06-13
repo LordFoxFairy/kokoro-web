@@ -176,6 +176,14 @@
   font-weight: 500;
 }
 
+/* 键盘焦点：贴合全仓暖木 inset 环惯例（kk-thread__retry / kk-shell__jump），
+   inset 不被父盒 overflow 裁掉；圆角对齐 .kk-process 顶角避免方角焦点框。 */
+.kk-process__summary:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--brand-wood);
+  border-radius: 0.7rem;
+}
+
 .kk-process__spark {
   width: 0.95rem;
   height: 0.95rem;
