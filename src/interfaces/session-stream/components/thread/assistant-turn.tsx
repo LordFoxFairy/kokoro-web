@@ -103,10 +103,15 @@ export function AssistantTurn({
   const segments = groupSegments(steps)
   const tailId =
     segments.length > 0 ? segments[segments.length - 1]?.segmentId : undefined
+  const tailMessage = tailId ? messagesById[tailId] : undefined
+  const tailHasText = Boolean(tailMessage) && (tailMessage?.content.length ?? 0) > 0
   const formingLabel = mode === "fast" ? "正在整理回答" : "正在思考"
   // 提交后首个 step/token 未到：这一轮还没有任何 segment，但仍在途——给一个成形脚手架
   // （头像已 live + 单条「正在…」），绝不让在途轮塌成空帧。落定/非流式则不渲染脚手架。
   const showScaffold = isLive && segments.length === 0
+  // B1 重连可读：尾段已有正文时（streaming 盒，无 forming 盒承载「重连中…」），用 turn 级状态条补出
+  // 重连信号——否则刷新回半截 run 只剩头像呼吸、看不出在重连还是卡死。无正文时仍由成形盒显示，互斥不重复。
+  const showReconnectStrip = reconnecting && tailHasText
 
   return (
     <article
@@ -120,6 +125,11 @@ export function AssistantTurn({
         <RobotIcon />
       </div>
       <div className="kk-turn__spine">
+        {showReconnectStrip ? (
+          <div className="kk-turn__reconnect" data-anchor="reconnecting">
+            重连中…
+          </div>
+        ) : null}
         {showScaffold ? (
           <div className="kk-turn__segment">
             <div
@@ -133,29 +143,30 @@ export function AssistantTurn({
         ) : null}
         {segments.map((segment) => {
           const message = messagesById[segment.segmentId]
+          const hasText = Boolean(message) && (message?.content.length ?? 0) > 0
           const liveSegment = isLive && segment.segmentId === tailId
-          const showCaret =
-            liveSegment && Boolean(message) && (message?.content.length ?? 0) > 0
-          // 尾段正文未到（过程先到）：同一个气泡盒先放「正在…」成形态，过程仍挂在下面。
-          const forming = liveSegment && !message
+          const showCaret = liveSegment && hasText
+          // B2：尾段正文未到（过程先到）或 message 已建但 content 仍空，都回落成形态
+          //（同一气泡盒先放「正在…」），消除空白带边框横条的空窗；过程仍挂在下面。
+          const forming = liveSegment && !hasText
           return (
             <div className="kk-turn__segment" key={segment.segmentId}>
               {/* 段内贯穿 forming→streaming→settled 三态：复用同一 .kk-turn__answer 元素、同一盒模型，
                   data-state 只切换盒内内容（成形线索 ↔ 正文），首 token 不跳换整盒。
                   注：scaffold（零 segment）→ 首段是跨分支 remount（窄路径，仅同尺寸盒一次 opacity 重淡入，无布局跳动）。 */}
-              {message || forming ? (
+              {hasText || forming ? (
                 <div
                   className="kk-msg__bubble kk-turn__answer"
                   data-state={
-                    message ? (liveSegment ? "streaming" : "settled") : "forming"
+                    hasText ? (liveSegment ? "streaming" : "settled") : "forming"
                   }
                   data-anchor={
-                    !message && reconnecting ? "reconnecting" : undefined
+                    forming && reconnecting ? "reconnecting" : undefined
                   }
                 >
-                  {message ? (
+                  {hasText ? (
                     <>
-                      <MarkdownMessage content={message.content} />
+                      <MarkdownMessage content={message?.content ?? ""} />
                       {/* 正在出字的就近线索：紧跟正文的内联闪烁光标，对读屏隐藏；落定即消失。 */}
                       {showCaret ? <span className="kk-caret" aria-hidden /> : null}
                     </>

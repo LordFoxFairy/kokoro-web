@@ -384,9 +384,10 @@
   display: none;
 }
 
-/* 运行中：名称用暖木强调，左侧竖条点亮；动效（脉动）只在未要求减少动态时启用。 */
+/* 运行中：名称用暖木强调，左侧竖条点亮；动效（脉动）只在未要求减少动态时启用。
+   B3：基线提至 60%，让「在跑」在快速扫读时一眼可读（仅改颜色，竖条宽度不变、不挤布局）。 */
 .kk-tool--running {
-  border-left-color: color-mix(in srgb, var(--brand-wood) 45%, transparent);
+  border-left-color: color-mix(in srgb, var(--brand-wood) 60%, transparent);
 }
 
 .kk-tool--running .kk-tool__name {
@@ -413,10 +414,10 @@
 @keyframes kk-accent-pulse {
   0%,
   100% {
-    border-left-color: color-mix(in srgb, var(--brand-wood) 28%, transparent);
+    border-left-color: color-mix(in srgb, var(--brand-wood) 40%, transparent);
   }
   50% {
-    border-left-color: color-mix(in srgb, var(--brand-wood) 65%, transparent);
+    border-left-color: color-mix(in srgb, var(--brand-wood) 95%, transparent);
   }
 }
 
@@ -731,6 +732,22 @@
 .kk-turn__answer[data-anchor="reconnecting"] .kk-forming__label {
   color: color-mix(in srgb, var(--brand-wood) 72%, var(--foreground) 28%);
   font-weight: 500;
+}
+
+/* B1 重连状态条：尾段已有正文时（无成形盒可承载），turn 级一行「重连中…」暖木胶囊，
+   置于脊顶（头像旁），让「正在重新接上这一轮」在有正文时也始终可读。脉冲点复用 .kk-thread__pulse。 */
+.kk-turn__reconnect {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 0.4rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--brand-wood) 45%, var(--border-soft) 55%);
+  background: color-mix(in srgb, var(--brand-wood-soft) 40%, var(--surface) 60%);
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: color-mix(in srgb, var(--brand-wood) 72%, var(--foreground) 28%);
 }
 
 /* 运行中占位：工具结果未到 / 子智能体结论未到时，结果位显示「运行中…」+ 脉冲点，
