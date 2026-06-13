@@ -208,7 +208,7 @@ describe("applySessionEvent", () => {
       run_id: "run_01",
       seq: 3,
       timestamp: "2026-05-28T12:00:02.000Z",
-      payload: { segment_id: "m1", tool_id: "t1", name: "get_weather", result: "北京: 晴" },
+      payload: { segment_id: "m1", tool_id: "t1", name: "get_weather", result: "北京: 晴", is_error: false },
     })
 
     let state = [invoked, text].reduce(applySessionEvent, createSessionStreamState())
@@ -916,6 +916,7 @@ describe("applySessionEvent activity families", () => {
         tool_id: "t1",
         name: "get_weather",
         result: "北京: 晴",
+        is_error: false,
       },
     })
     let state = applySessionEvent(createSessionStreamState(), invoked)
