@@ -1,16 +1,20 @@
-import { useId, useState } from "react"
+import { useId } from "react"
 
 import type { AgentMode } from "@/application/conversation-store"
 import type {
   SessionSubagent,
   SessionToolCall,
 } from "@/application/session-stream/reducer"
+import { setDisclosure } from "@/application/session-stream/process-disclosure"
 
+import { useProcessDisclosure } from "../../hooks/use-process-disclosure"
 import { ChevronIcon, SparkIcon } from "../icons"
 import { SubagentRow } from "./subagent-row"
 import { ToolCallRow } from "./tool-call-row"
 
 type SegmentProcessProps = {
+  // 该段全局唯一 id：作为持久化展开意图（manualOpen）的键，跨刷新保留。
+  segmentId: string
   // 这一段的过程：思考独白 + 该段用到的工具 + 子智能体。
   thinking: string
   tools: SessionToolCall[]
@@ -32,6 +36,7 @@ function settledSummary(verb: string, tools: number, subs: number): string {
 // 一段的「过程块」：挂在该段答案气泡【下面】的可折叠次级披露——比气泡更轻（muted）。
 // 流式中（尾段）默认展开方便实时看，落定后收成一行摘要，保持对话干净。全空时不渲染。
 export function SegmentProcess({
+  segmentId,
   thinking,
   tools,
   subagents,
@@ -40,8 +45,9 @@ export function SegmentProcess({
 }: SegmentProcessProps) {
   // 默认展开态跟随 live 信号：尾段流式时摊开实时看，落定即收成一行摘要。
   // 一旦用户手动切换（manualOpen 落定），就以用户意图为准、不再随 live 变化对抗用户。
+  // manualOpen 持久化在按 segmentId 键的 disclosure store（跨刷新保留），非组件本地 state。
   // 用受控 div+button（非原生 details）以便给展开/收起做高度过渡；状态机不靠 remount。
-  const [manualOpen, setManualOpen] = useState<boolean | null>(null)
+  const manualOpen = useProcessDisclosure(segmentId)
   const open = manualOpen ?? live
   const bodyId = useId()
 
@@ -63,7 +69,7 @@ export function SegmentProcess({
         className="kk-process__summary"
         aria-expanded={open}
         aria-controls={bodyId}
-        onClick={() => setManualOpen(!open)}
+        onClick={() => setDisclosure(segmentId, !open)}
       >
         <SparkIcon className="kk-process__spark" />
         {/* key 随 live 翻转：落定时标题 remount，配合 CSS 让新摘要淡入（live↔settled 不硬跳）。 */}

@@ -193,6 +193,7 @@ export function AssistantTurn({
                 </div>
               ) : null}
               <SegmentProcess
+                segmentId={segment.segmentId}
                 thinking={segment.thinking}
                 tools={segment.tools}
                 subagents={segment.subagents}

@@ -2,9 +2,17 @@ import { cleanup, fireEvent, render } from "@testing-library/react"
 import { afterEach, describe, expect, it } from "vitest"
 
 import type { SessionToolCall } from "@/application/session-stream/reducer"
+import { __resetDisclosureCacheForTest } from "@/application/session-stream/process-disclosure"
 import { SegmentProcess } from "@/interfaces/session-stream/components/thread/segment-process"
 
-afterEach(cleanup)
+// 展开意图持久化在 disclosure store（module 级 + localStorage）：每个用例后清空，隔离。
+afterEach(() => {
+  cleanup()
+  window.localStorage.clear()
+  __resetDisclosureCacheForTest()
+})
+
+const SEG = "run_1:seg_0001"
 
 const tool: SessionToolCall = {
   id: "t1",
@@ -31,7 +39,7 @@ function clickSummary(container: HTMLElement): void {
 describe("SegmentProcess collapse-on-settle", () => {
   it("opens by default while the segment is live", () => {
     const { container } = render(
-      <SegmentProcess thinking="想" tools={[]} subagents={[]} live />,
+      <SegmentProcess segmentId={SEG} thinking="想" tools={[]} subagents={[]} live />,
     )
     expect(isOpen(container)).toBe(true)
   })
@@ -40,12 +48,13 @@ describe("SegmentProcess collapse-on-settle", () => {
     // 为什么重要：尾段流式时展开方便实时看；落定后必须自动收成一行摘要，
     // 而不是永远摊开——且不靠 remount（不翻 key），保留展开状态机。
     const { container, rerender } = render(
-      <SegmentProcess thinking="想" tools={[tool]} subagents={[]} live />,
+      <SegmentProcess segmentId={SEG} thinking="想" tools={[tool]} subagents={[]} live />,
     )
     expect(isOpen(container)).toBe(true)
 
     rerender(
       <SegmentProcess
+        segmentId={SEG}
         thinking="想"
         tools={[tool]}
         subagents={[]}
@@ -62,6 +71,7 @@ describe("SegmentProcess collapse-on-settle", () => {
     // 为什么重要：用户手动展开后，落定不得把它强行收起——尊重用户意图，不与之对抗。
     const { container, rerender } = render(
       <SegmentProcess
+        segmentId={SEG}
         thinking="想"
         tools={[tool]}
         subagents={[]}
@@ -78,6 +88,7 @@ describe("SegmentProcess collapse-on-settle", () => {
     // 同一段再次 settled 渲染：用户手动展开必须保留。
     rerender(
       <SegmentProcess
+        segmentId={SEG}
         thinking="想"
         tools={[tool]}
         subagents={[]}
@@ -90,13 +101,13 @@ describe("SegmentProcess collapse-on-settle", () => {
   it("respects a manual collapse while still live", () => {
     // 为什么重要：流式中用户手动收起后，后续 live 渲染不得把它强行重新展开。
     const { container, rerender } = render(
-      <SegmentProcess thinking="想" tools={[tool]} subagents={[]} live />,
+      <SegmentProcess segmentId={SEG} thinking="想" tools={[tool]} subagents={[]} live />,
     )
     clickSummary(container)
     expect(isOpen(container)).toBe(false)
 
     rerender(
-      <SegmentProcess thinking="想想更多" tools={[tool]} subagents={[]} live />,
+      <SegmentProcess segmentId={SEG} thinking="想想更多" tools={[tool]} subagents={[]} live />,
     )
     expect(isOpen(container)).toBe(false)
   })
@@ -106,14 +117,14 @@ describe("SegmentProcess collapse-on-settle", () => {
     // 否则 aria-expanded=false 但读屏仍朗读折叠的思考/工具，自相矛盾。inert 不设 display:none，
     // 故高度过渡仍可动（靠 clip 的 overflow:hidden 视觉裁剪）。
     const { container, rerender } = render(
-      <SegmentProcess thinking="想" tools={[tool]} subagents={[]} live />,
+      <SegmentProcess segmentId={SEG} thinking="想" tools={[tool]} subagents={[]} live />,
     )
     const body = () => container.querySelector(".kk-process__body") as HTMLElement
     // 展开（live）态：内容在无障碍树里、可聚焦。
     expect(body().hasAttribute("inert")).toBe(false)
 
     rerender(
-      <SegmentProcess thinking="想" tools={[tool]} subagents={[]} live={false} />,
+      <SegmentProcess segmentId={SEG} thinking="想" tools={[tool]} subagents={[]} live={false} />,
     )
     // 落定收起：内容移出无障碍树 + 不可聚焦。
     expect(body().hasAttribute("inert")).toBe(true)
@@ -123,7 +134,7 @@ describe("SegmentProcess collapse-on-settle", () => {
     // 为什么重要：收起态（grid 0fr）靠 __clip(overflow:hidden) 把 __body 自带的滚动视口整体裁到 0；
     // 少了 clip 层就会残留一截空盒（曾真实发生）。结构断言守住这条三层不变量防回归。
     const { container } = render(
-      <SegmentProcess thinking="想" tools={[tool]} subagents={[]} live />,
+      <SegmentProcess segmentId={SEG} thinking="想" tools={[tool]} subagents={[]} live />,
     )
     const reveal = container.querySelector(".kk-process__reveal")
     const clip = reveal?.querySelector(":scope > .kk-process__clip")
@@ -133,10 +144,39 @@ describe("SegmentProcess collapse-on-settle", () => {
     expect(body).not.toBeNull()
   })
 
+  it("C: a manual expand survives a fresh mount (persists across refresh, not component-local)", () => {
+    // Scope C 核心：手动展开意图落 disclosure store（按 segmentId），刷新（全新挂载）后仍展开，
+    // 而非像组件本地 state 那样丢失。这里卸载后用相同 segmentId 重新挂载来模拟刷新。
+    const first = render(
+      <SegmentProcess segmentId={SEG} thinking="想" tools={[tool]} subagents={[]} live={false} />,
+    )
+    expect(isOpen(first.container)).toBe(false)
+    clickSummary(first.container)
+    expect(isOpen(first.container)).toBe(true)
+    first.unmount()
+
+    const second = render(
+      <SegmentProcess segmentId={SEG} thinking="想" tools={[tool]} subagents={[]} live={false} />,
+    )
+    expect(isOpen(second.container)).toBe(true)
+  })
+
+  it("C: distinct segmentIds keep independent disclosure overrides", () => {
+    const a = render(
+      <SegmentProcess segmentId="run_1:seg_0001" thinking="想" tools={[tool]} subagents={[]} live={false} />,
+    )
+    clickSummary(a.container)
+    expect(isOpen(a.container)).toBe(true)
+    const b = render(
+      <SegmentProcess segmentId="run_1:seg_0002" thinking="想" tools={[tool]} subagents={[]} live={false} />,
+    )
+    expect(isOpen(b.container)).toBe(false)
+  })
+
   it("exposes button a11y: aria-expanded tracks open, aria-controls points at the body", () => {
     // 为什么重要：换掉原生 details 后，展开语义必须由 button 的 aria 显式承担，键盘可达。
     const { container } = render(
-      <SegmentProcess thinking="想" tools={[]} subagents={[]} live />,
+      <SegmentProcess segmentId={SEG} thinking="想" tools={[]} subagents={[]} live />,
     )
     const button = container.querySelector(".kk-process__summary") as HTMLButtonElement
     expect(button.tagName).toBe("BUTTON")
