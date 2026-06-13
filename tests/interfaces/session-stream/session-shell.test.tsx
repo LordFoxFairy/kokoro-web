@@ -376,7 +376,7 @@ describe("SessionShell submitted-no-token scaffold", () => {
     expect(turns).toHaveLength(1)
     expect(container.querySelectorAll(".kk-msg__avatar--live")).toHaveLength(1)
     // 成形占位（「正在…」）在场——不是空帧。
-    const forming = container.querySelector(".kk-msg__bubble--forming")
+    const forming = container.querySelector(".kk-turn__answer[data-state='forming']")
     expect(forming).not.toBeNull()
     expect(forming?.textContent).toMatch(/正在/)
   })
@@ -391,7 +391,7 @@ describe("SessionShell submitted-no-token scaffold", () => {
 
     expect(screen.getByText("答：正常一轮")).toBeInTheDocument()
     // 已落定：无成形占位、无 live 头像。
-    expect(container.querySelector(".kk-msg__bubble--forming")).toBeNull()
+    expect(container.querySelector(".kk-turn__answer[data-state='forming']")).toBeNull()
     expect(container.querySelector(".kk-msg__avatar--live")).toBeNull()
   })
 })
@@ -409,7 +409,7 @@ describe("SessionShell single live anchor", () => {
     expect(screen.getByText("答：第一轮")).toBeInTheDocument()
     // 落定态：零 caret、零成形脉冲。
     expect(container.querySelectorAll(".kk-caret")).toHaveLength(0)
-    expect(container.querySelectorAll(".kk-msg__bubble--forming")).toHaveLength(0)
+    expect(container.querySelectorAll(".kk-turn__answer[data-state='forming']")).toHaveLength(0)
   })
 
   it("renders at most one caret and one forming pulse while streaming a second turn", () => {
@@ -429,7 +429,7 @@ describe("SessionShell single live anchor", () => {
     // 全线程最多一个 caret、最多一个成形脉冲。
     expect(container.querySelectorAll(".kk-caret").length).toBeLessThanOrEqual(1)
     expect(
-      container.querySelectorAll(".kk-msg__bubble--forming").length,
+      container.querySelectorAll(".kk-turn__answer[data-state='forming']").length,
     ).toBeLessThanOrEqual(1)
     // 至多一个 live 头像（在途轮）。
     expect(

@@ -1,4 +1,4 @@
-import { type ReactEventHandler, useState } from "react"
+import { useId, useState } from "react"
 
 import type { AgentMode } from "@/application/conversation-store"
 import type {
@@ -40,22 +40,15 @@ export function SegmentProcess({
 }: SegmentProcessProps) {
   // 默认展开态跟随 live 信号：尾段流式时摊开实时看，落定即收成一行摘要。
   // 一旦用户手动切换（manualOpen 落定），就以用户意图为准、不再随 live 变化对抗用户。
-  // 不靠 remount/翻 key——保留 details 自身的滚动与状态，仅在未被接管时让默认值随 live 流动。
+  // 用受控 div+button（非原生 details）以便给展开/收起做高度过渡；状态机不靠 remount。
   const [manualOpen, setManualOpen] = useState<boolean | null>(null)
   const open = manualOpen ?? live
+  const bodyId = useId()
 
   const hasActivity =
     thinking.length > 0 || tools.length > 0 || subagents.length > 0
   if (!hasActivity) {
     return null
-  }
-
-  const handleToggle: ReactEventHandler<HTMLDetailsElement> = (event) => {
-    // 仅当用户真正改变了展开态（结果 ≠ 本帧受控下发的 open）才记为手动接管；
-    // React 因 live 翻转同步 open 而触发的 toggle 与 open 一致，忽略，避免冻结住跟随。
-    if (event.currentTarget.open !== open) {
-      setManualOpen(event.currentTarget.open)
-    }
   }
 
   const verb = mode === "fast" ? "处理" : "思考"
@@ -64,15 +57,19 @@ export function SegmentProcess({
     : settledSummary(verb, tools.length, subagents.length)
 
   return (
-    <details
-      className="kk-process"
-      data-mode={mode}
-      open={open}
-      onToggle={handleToggle}
-    >
-      <summary className="kk-process__summary">
+    <div className="kk-process" data-mode={mode} data-open={open}>
+      <button
+        type="button"
+        className="kk-process__summary"
+        aria-expanded={open}
+        aria-controls={bodyId}
+        onClick={() => setManualOpen(!open)}
+      >
         <SparkIcon className="kk-process__spark" />
-        <span className="kk-process__title">{summary}</span>
+        {/* key 随 live 翻转：落定时标题 remount，配合 CSS 让新摘要淡入（live↔settled 不硬跳）。 */}
+        <span className="kk-process__title" key={live ? "live" : "settled"}>
+          {summary}
+        </span>
         {live ? (
           <span className="kk-process__live" aria-label={`${verb}中`}>
             <i />
@@ -81,27 +78,33 @@ export function SegmentProcess({
           </span>
         ) : null}
         <ChevronIcon className="kk-process__chevron" />
-      </summary>
+      </button>
 
-      <div className="kk-process__body">
-        {thinking ? <p className="kk-process__thinking">{thinking}</p> : null}
+      {/* 三层：reveal 做 grid 0fr↔1fr 高度过渡；clip 是纯裁剪的 grid 项（收起时把 body 整体裁到 0，
+          含其滚动视口）；body 保留自身滚动封顶。少一层 clip 收起就裁不净嵌套滚动容器。 */}
+      <div className="kk-process__reveal">
+        <div className="kk-process__clip">
+          <div className="kk-process__body" id={bodyId}>
+            {thinking ? <p className="kk-process__thinking">{thinking}</p> : null}
 
-        {tools.length > 0 ? (
-          <div className="kk-actgroup" aria-label="工具调用">
-            {tools.map((tool) => (
-              <ToolCallRow key={tool.id} tool={tool} />
-            ))}
+            {tools.length > 0 ? (
+              <div className="kk-actgroup" aria-label="工具调用">
+                {tools.map((tool) => (
+                  <ToolCallRow key={tool.id} tool={tool} />
+                ))}
+              </div>
+            ) : null}
+
+            {subagents.length > 0 ? (
+              <div className="kk-actgroup" aria-label="子智能体">
+                {subagents.map((subagent) => (
+                  <SubagentRow key={subagent.id} subagent={subagent} />
+                ))}
+              </div>
+            ) : null}
           </div>
-        ) : null}
-
-        {subagents.length > 0 ? (
-          <div className="kk-actgroup" aria-label="子智能体">
-            {subagents.map((subagent) => (
-              <SubagentRow key={subagent.id} subagent={subagent} />
-            ))}
-          </div>
-        ) : null}
+        </div>
       </div>
-    </details>
+    </div>
   )
 }

@@ -160,19 +160,20 @@
   font-size: 0.84rem;
 }
 
+/* summary 现为 button：抹平浏览器默认按钮外观，铺满宽度、文本左对齐、字体继承。 */
 .kk-process__summary {
   display: flex;
+  width: 100%;
   align-items: center;
   gap: 0.4rem;
   cursor: pointer;
-  list-style: none;
+  border: none;
+  background: transparent;
   padding: 0.4rem 0.6rem;
+  text-align: left;
+  font: inherit;
   color: color-mix(in srgb, var(--brand-wood) 60%, var(--foreground) 40%);
   font-weight: 500;
-}
-
-.kk-process__summary::-webkit-details-marker {
-  display: none;
 }
 
 .kk-process__spark {
@@ -198,8 +199,26 @@
   transition: transform 150ms ease;
 }
 
-.kk-process[open] .kk-process__chevron {
+.kk-process[data-open="true"] .kk-process__chevron {
   transform: rotate(180deg);
+}
+
+/* 展开/收起高度过渡：grid-rows 0fr↔1fr 是动画 height:auto 的稳妥手法。
+   clip 是 grid 项、纯 overflow:hidden+min-height:0——收起时把 body（含其滚动视口）整体裁到 0；
+   body 自身保留滚动封顶。减少动态时全局降为瞬时。 */
+.kk-process__reveal {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 220ms ease;
+}
+
+.kk-process[data-open="true"] .kk-process__reveal {
+  grid-template-rows: 1fr;
+}
+
+.kk-process__clip {
+  min-height: 0;
+  overflow: hidden;
 }
 
 /* 「思考中」脉冲点：流式时跟在标题后。 */
@@ -681,13 +700,12 @@
   }
 }
 
-/* 成形占位：这一段活动已在跑、正文还没到——给一个就近的「正在…」气泡 + 脉冲点，
-   而非空白或塌缩。沿用气泡盒模型，正文一到就地替换，尺寸不跳。 */
-.kk-msg__bubble--forming {
+/* 成形态：盒沿用 .kk-turn__answer（同底色/圆角/内距），盒内只放 label + 脉冲点内联排布。
+   故 forming→streaming 是盒内内容替换、整盒不跳——首 token 到达不再换盒。 */
+.kk-turn__forming {
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
-  background: color-mix(in srgb, var(--surface-soft) 60%, var(--surface) 40%);
 }
 
 .kk-forming__label {
@@ -695,14 +713,14 @@
   color: color-mix(in srgb, var(--foreground) 52%, white 48%);
 }
 
-/* 重连续传锚点：与普通成形占位明确区分——暖木描边胶囊 + 实色标签，
-   暗示「正在重新接上这一轮」而非「正在新想」。沿用成形气泡盒模型，尺寸不跳。 */
-.kk-msg__bubble--forming[data-anchor="reconnecting"] {
+/* 重连续传锚点：同一答案气泡盒，仅描边/底色微调暖木，暗示「正在重新接上这一轮」
+   而非「正在新想」；盒模型不变，与普通成形态零跳变。 */
+.kk-turn__answer[data-anchor="reconnecting"] {
   border-color: color-mix(in srgb, var(--brand-wood) 45%, var(--border-soft) 55%);
   background: color-mix(in srgb, var(--brand-wood-soft) 40%, var(--surface) 60%);
 }
 
-.kk-msg__bubble--forming[data-anchor="reconnecting"] .kk-forming__label {
+.kk-turn__answer[data-anchor="reconnecting"] .kk-forming__label {
   color: color-mix(in srgb, var(--brand-wood) 72%, var(--foreground) 28%);
   font-weight: 500;
 }
@@ -752,6 +770,11 @@
 
   .kk-msg__avatar--live {
     animation: kk-avatar-breathe 1.8s ease-in-out infinite;
+  }
+
+  /* A3：摘要在 live↔settled 切换（key 翻转 remount）时淡入，柔化文案/脉冲的瞬切。 */
+  .kk-process__title {
+    animation: kk-message-enter 200ms ease-out;
   }
 }
 

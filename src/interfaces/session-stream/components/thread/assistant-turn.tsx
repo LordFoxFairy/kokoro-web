@@ -65,9 +65,10 @@ function groupSegments(steps: SessionStep[]): Segment[] {
   return order.map((id) => byId.get(id) as Segment)
 }
 
-// 成形占位气泡：过程已到、正文未到（或提交后首 token 未到）时的就近「正在…」线索。
-// 重连续传时换成「重连中…」并打 data-anchor=reconnecting，让 CSS 给它独立、可辨识的样式。
-function FormingBubble({
+// 成形态的盒内内容：就近的「正在…」线索 + 脉冲点。盒由 .kk-turn__answer 统一提供
+// （与答案气泡同底色/圆角/内距），故首 token 到达时是盒内内容替换，而非整盒跳换。
+// 重连续传时换成「重连中…」，盒上的 data-anchor=reconnecting 让 CSS 给独立、可辨识的样式。
+function FormingContent({
   label,
   reconnecting,
 }: {
@@ -75,10 +76,7 @@ function FormingBubble({
   reconnecting: boolean
 }) {
   return (
-    <div
-      className="kk-msg__bubble kk-turn__answer kk-msg__bubble--forming"
-      data-anchor={reconnecting ? "reconnecting" : undefined}
-    >
+    <span className="kk-turn__forming">
       <span className="kk-forming__label">
         {reconnecting ? "重连中…" : label}
       </span>
@@ -87,7 +85,7 @@ function FormingBubble({
         <span />
         <span />
       </span>
-    </div>
+    </span>
   )
 }
 
@@ -124,7 +122,13 @@ export function AssistantTurn({
       <div className="kk-turn__spine">
         {showScaffold ? (
           <div className="kk-turn__segment">
-            <FormingBubble label={formingLabel} reconnecting={reconnecting} />
+            <div
+              className="kk-msg__bubble kk-turn__answer"
+              data-state="forming"
+              data-anchor={reconnecting ? "reconnecting" : undefined}
+            >
+              <FormingContent label={formingLabel} reconnecting={reconnecting} />
+            </div>
           </div>
         ) : null}
         {segments.map((segment) => {
@@ -132,18 +136,35 @@ export function AssistantTurn({
           const liveSegment = isLive && segment.segmentId === tailId
           const showCaret =
             liveSegment && Boolean(message) && (message?.content.length ?? 0) > 0
-          // 尾段正文未到（过程先到）：气泡位给一个「正在…」成形占位，过程仍挂在下面。
+          // 尾段正文未到（过程先到）：同一个气泡盒先放「正在…」成形态，过程仍挂在下面。
           const forming = liveSegment && !message
           return (
             <div className="kk-turn__segment" key={segment.segmentId}>
-              {message ? (
-                <div className="kk-msg__bubble kk-turn__answer">
-                  <MarkdownMessage content={message.content} />
-                  {/* 正在出字的就近线索：紧跟正文的内联闪烁光标，对读屏隐藏；落定即消失。 */}
-                  {showCaret ? <span className="kk-caret" aria-hidden /> : null}
+              {/* 答案气泡盒贯穿 forming→streaming→settled 三态：同一元素、同一盒模型，
+                  data-state 只切换盒内内容（成形线索 ↔ 正文），首 token 不跳换整盒。 */}
+              {message || forming ? (
+                <div
+                  className="kk-msg__bubble kk-turn__answer"
+                  data-state={
+                    message ? (liveSegment ? "streaming" : "settled") : "forming"
+                  }
+                  data-anchor={
+                    !message && reconnecting ? "reconnecting" : undefined
+                  }
+                >
+                  {message ? (
+                    <>
+                      <MarkdownMessage content={message.content} />
+                      {/* 正在出字的就近线索：紧跟正文的内联闪烁光标，对读屏隐藏；落定即消失。 */}
+                      {showCaret ? <span className="kk-caret" aria-hidden /> : null}
+                    </>
+                  ) : (
+                    <FormingContent
+                      label={formingLabel}
+                      reconnecting={reconnecting}
+                    />
+                  )}
                 </div>
-              ) : forming ? (
-                <FormingBubble label={formingLabel} reconnecting={reconnecting} />
               ) : null}
               <SegmentProcess
                 thinking={segment.thinking}
