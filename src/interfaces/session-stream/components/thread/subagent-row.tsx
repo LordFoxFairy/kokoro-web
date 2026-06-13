@@ -1,6 +1,6 @@
 import type { SessionSubagent } from "@/application/session-stream/reducer"
 
-import { RobotIcon } from "../icons"
+import { ChevronIcon, RobotIcon } from "../icons"
 import { MarkdownMessage } from "./markdown-message"
 import { RunState } from "./run-state"
 
@@ -62,6 +62,8 @@ export function SubagentRow({ subagent }: { subagent: SessionSubagent }) {
     >
       <summary className="kk-subagent__summary">
         <SubagentHead subagent={subagent} />
+        {/* D1：chevron 提示「可展开」，与工具行/过程块一致；静态行无 chevron。 */}
+        <ChevronIcon className="kk-subagent__chevron" />
       </summary>
       <div className="kk-subagent__detail">
         {description}

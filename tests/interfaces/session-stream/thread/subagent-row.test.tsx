@@ -21,6 +21,25 @@ function makeSubagent(
 }
 
 describe("SubagentRow", () => {
+  it("D1: shows a chevron only on expandable rows (output present), not on static rows", () => {
+    const expandable = render(
+      <SubagentRow
+        subagent={makeSubagent({ status: "done", output: "结论" })}
+      />,
+    )
+    expect(
+      expandable.container.querySelector(".kk-subagent__chevron"),
+    ).not.toBeNull()
+    expandable.unmount()
+
+    const staticRow = render(
+      <SubagentRow subagent={makeSubagent({ status: "done", output: undefined })} />,
+    )
+    expect(
+      staticRow.container.querySelector(".kk-subagent__chevron"),
+    ).toBeNull()
+  })
+
   it("shows built-in source with a distinct source chip and type label", () => {
     const { container } = render(
       <SubagentRow subagent={makeSubagent({ source: "built-in" })} />,

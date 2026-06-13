@@ -1,6 +1,6 @@
 import type { SessionToolCall } from "@/application/session-stream/reducer"
 
-import { WrenchIcon } from "../icons"
+import { ChevronIcon, WrenchIcon } from "../icons"
 import { RunState } from "./run-state"
 
 // 工具参数压成紧凑 JSON 预览；空参数返回 null（不渲染参数块）。
@@ -47,7 +47,11 @@ export function ToolCallRow({ tool }: { tool: SessionToolCall }) {
 
   return (
     <details className={`kk-tool kk-tool--${tool.status}`} open={running || failed}>
-      <summary className="kk-tool__summary">{head}</summary>
+      {/* D1：chevron 作为统一的「可展开」提示——只有可展开行才有，静态行没有，让两者一眼可辨。 */}
+      <summary className="kk-tool__summary">
+        {head}
+        <ChevronIcon className="kk-tool__chevron" />
+      </summary>
       <div className="kk-tool__detail">
         {argsText !== null ? (
           <pre className="kk-tool__args">{argsText}</pre>
