@@ -226,6 +226,43 @@ describe("applySessionEvent", () => {
     })
   })
 
+  it("maps a failed tool return (is_error=true) to status=error + errorText", () => {
+    // 真实 tool-error 接通：is_error=true 的 tool.returned 把工具 step 翻成 error 态，
+    // 并把错误原因放进 errorText（UI 显红、可展开看错误），而非默默标 done。
+    const invoked = requireDomainEvent({
+      event: "tool.invoked",
+      event_id: "e1",
+      session_id: "ses_01",
+      conversation_id: "conv_01",
+      run_id: "run_01",
+      seq: 1,
+      timestamp: "2026-05-28T12:00:00.000Z",
+      payload: { segment_id: "m1", tool_id: "t1", name: "fetch_url", args: { url: "x" } },
+    })
+    const failed = requireDomainEvent({
+      event: "tool.returned",
+      event_id: "e2",
+      session_id: "ses_01",
+      conversation_id: "conv_01",
+      run_id: "run_01",
+      seq: 2,
+      timestamp: "2026-05-28T12:00:01.000Z",
+      payload: {
+        segment_id: "m1",
+        tool_id: "t1",
+        name: "fetch_url",
+        result: "ValueError: connection refused",
+        is_error: true,
+      },
+    })
+    const state = [invoked, failed].reduce(applySessionEvent, createSessionStreamState())
+    expect(toolSteps(state)[0]).toMatchObject({
+      id: "t1",
+      status: "error",
+      errorText: "ValueError: connection refused",
+    })
+  })
+
   it("lets message.completed replace accumulated delta content", () => {
     const state = [
       requireDomainEvent({
@@ -689,6 +726,7 @@ describe("parseStoredSessionState", () => {
       toolId: "t1",
       name: "get_weather",
       result: "晴",
+      isError: false,
     })
     state = applySessionEvent(state, {
       kind: "message-completed",

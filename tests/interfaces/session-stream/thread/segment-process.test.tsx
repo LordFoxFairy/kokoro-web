@@ -175,6 +175,31 @@ describe("SegmentProcess collapse-on-settle", () => {
     expect(isOpen(b.container)).toBe(false)
   })
 
+  it("D2 (revived): a failed tool shows as a sub-modifier of 工具, not an additive dimension", () => {
+    // 真实 tool-error 接通后 status=error 可达：摘要把失败数括注在「工具」里（子集语义，不被读成相加）。
+    const tools: SessionToolCall[] = [
+      { id: "a", name: "x", args: {}, status: "done", result: "ok" },
+      { id: "b", name: "y", args: {}, status: "error", errorText: "boom" },
+    ]
+    const { container } = render(
+      <SegmentProcess segmentId={SEG} thinking="" tools={tools} subagents={[]} live={false} />,
+    )
+    const title = (container.querySelector(".kk-process__title") as HTMLElement).textContent
+    expect(title).toMatch(/2 个工具（1 失败）/)
+  })
+
+  it("D2: no failure note when nothing failed", () => {
+    const tools: SessionToolCall[] = [
+      { id: "a", name: "x", args: {}, status: "done", result: "ok" },
+    ]
+    const { container } = render(
+      <SegmentProcess segmentId={SEG} thinking="" tools={tools} subagents={[]} live={false} />,
+    )
+    expect(
+      (container.querySelector(".kk-process__title") as HTMLElement).textContent,
+    ).not.toMatch(/失败/)
+  })
+
   it("exposes button a11y: aria-expanded tracks open, aria-controls points at the body", () => {
     // 为什么重要：换掉原生 details 后，展开语义必须由 button 的 aria 显式承担，键盘可达。
     const { container } = render(

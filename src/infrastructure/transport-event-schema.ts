@@ -110,6 +110,8 @@ const toolReturnedSchema = eventEnvelopeSchema.extend({
       tool_id: z.string().min(1),
       name: z.string().min(1),
       result: z.string(),
+      // 消费端宽容：旧事件缺 is_error 时降级 false，不撕流（生产端始终发送）。
+      is_error: z.boolean().optional().default(false),
     })
     .strict(),
 })

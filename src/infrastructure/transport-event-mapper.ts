@@ -85,6 +85,7 @@ export function toSessionStreamEvent(
         toolId: event.payload.tool_id,
         name: event.payload.name,
         result: event.payload.result,
+        isError: event.payload.is_error,
       }
     case "todo.updated":
       return {

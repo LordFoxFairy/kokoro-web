@@ -337,8 +337,10 @@ export function applySessionEvent(
     const hasInvoked = steps.some(
       (step) => step.kind === "tool" && step.tool.id === event.toolId,
     )
+    // is_error=true → 失败态：status=error + errorText 携带原因（UI 显红、可展开看错误）。
+    const returnedStatus = event.isError ? "error" : "done"
     if (hasInvoked) {
-      // 配对：把同一 tool step 由 running 就地翻 done，保持原位置（不重排）。
+      // 配对：把同一 tool step 由 running 就地翻 done/error，保持原位置（不重排）。
       nextState = updateRunStep(
         nextState,
         event.runId,
@@ -347,7 +349,12 @@ export function applySessionEvent(
           step.kind === "tool"
             ? {
                 ...step,
-                tool: { ...step.tool, result: event.result, status: "done" },
+                tool: {
+                  ...step.tool,
+                  result: event.result,
+                  status: returnedStatus,
+                  ...(event.isError ? { errorText: event.result } : {}),
+                },
               }
             : step,
       )
@@ -362,7 +369,8 @@ export function applySessionEvent(
           name: event.name,
           args: {},
           result: event.result,
-          status: "done",
+          status: returnedStatus,
+          ...(event.isError ? { errorText: event.result } : {}),
         },
       })
     }
