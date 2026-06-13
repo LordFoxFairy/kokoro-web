@@ -275,6 +275,22 @@
   max-height: 24rem;
   overflow-y: auto;
   scrollbar-width: thin;
+  /* #7.6 长思考的「还有更多」线索：CSS scroll-shadow——
+     cover 层(local，随内容滚)在滚到底时盖住 shadow；shadow 层(随视口固定)只在下方仍有内容时露出底部暖木渐隐。
+     纯 CSS、无 JS：内容不溢出或已滚到底时 cover 完全遮住 shadow，自动隐藏。 */
+  background:
+    linear-gradient(
+        to top,
+        color-mix(in srgb, var(--surface-soft) 55%, var(--surface) 45%),
+        transparent
+      )
+      center bottom / 100% 1.4rem no-repeat local,
+    radial-gradient(
+        farthest-side at 50% 100%,
+        color-mix(in srgb, var(--brand-wood) 16%, transparent),
+        transparent
+      )
+      center bottom / 100% 0.7rem no-repeat;
 }
 
 /* Fast/Thinking 过程密度差异：Thinking 略松（更像逐步深思），Fast 略紧（更直接）。
