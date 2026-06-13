@@ -144,9 +144,9 @@ describe("SegmentProcess collapse-on-settle", () => {
     expect(body).not.toBeNull()
   })
 
-  it("C: a manual expand survives a fresh mount (persists across refresh, not component-local)", () => {
-    // Scope C 核心：手动展开意图落 disclosure store（按 segmentId），刷新（全新挂载）后仍展开，
-    // 而非像组件本地 state 那样丢失。这里卸载后用相同 segmentId 重新挂载来模拟刷新。
+  it("C: a manual expand persists to localStorage and reloads from it (not just module-singleton)", () => {
+    // Scope C 核心：手动展开意图落 localStorage（按 segmentId）。卸载后清掉 module 缓存（模拟「全新页面」，
+    // 内存单例不复存在），重新挂载仍展开——证明恢复来自落盘 localStorage，而非仅 module 单例存活。
     const first = render(
       <SegmentProcess segmentId={SEG} thinking="想" tools={[tool]} subagents={[]} live={false} />,
     )
@@ -155,6 +155,8 @@ describe("SegmentProcess collapse-on-settle", () => {
     expect(isOpen(first.container)).toBe(true)
     first.unmount()
 
+    // 清 module 缓存（保留 localStorage）= 真刷新语义：内存态没了，只剩盘面。
+    __resetDisclosureCacheForTest()
     const second = render(
       <SegmentProcess segmentId={SEG} thinking="想" tools={[tool]} subagents={[]} live={false} />,
     )
@@ -171,33 +173,6 @@ describe("SegmentProcess collapse-on-settle", () => {
       <SegmentProcess segmentId="run_1:seg_0002" thinking="想" tools={[tool]} subagents={[]} live={false} />,
     )
     expect(isOpen(b.container)).toBe(false)
-  })
-
-  it("D2: aggregates failed tools into the settled summary (failures readable without expanding)", () => {
-    // 为什么重要：多工具有失败时，用户不必逐个展开就能从收起的摘要里看到「N 失败」。
-    const tools: SessionToolCall[] = [
-      { id: "a", name: "x", args: {}, status: "done", result: "ok" },
-      { id: "b", name: "y", args: {}, status: "error", errorText: "boom" },
-      { id: "c", name: "z", args: {}, status: "error", errorText: "boom2" },
-    ]
-    const { container } = render(
-      <SegmentProcess segmentId={SEG} thinking="" tools={tools} subagents={[]} live={false} />,
-    )
-    const title = container.querySelector(".kk-process__title") as HTMLElement
-    expect(title.textContent).toMatch(/3 个工具/)
-    expect(title.textContent).toMatch(/2 个失败/)
-  })
-
-  it("D2: no failure count in the summary when nothing failed", () => {
-    const tools: SessionToolCall[] = [
-      { id: "a", name: "x", args: {}, status: "done", result: "ok" },
-    ]
-    const { container } = render(
-      <SegmentProcess segmentId={SEG} thinking="" tools={tools} subagents={[]} live={false} />,
-    )
-    expect(
-      (container.querySelector(".kk-process__title") as HTMLElement).textContent,
-    ).not.toMatch(/失败/)
   })
 
   it("exposes button a11y: aria-expanded tracks open, aria-controls points at the body", () => {
