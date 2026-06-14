@@ -126,6 +126,8 @@ const toolReturnedSchema = eventEnvelopeSchema.extend({
       result: z.string(),
       // 严格 required：生产端始终发送；缺失即 fail-loud，绝不用默认 false 掩盖真失败。无兼容兜底。
       is_error: z.boolean(),
+      // 可选：仅 HITL 拒绝(用户点拒绝或审批超时回退)时为 true；缺省=未拒绝。replay 安全地区别于绿勾 done。
+      rejected: z.boolean().optional(),
     })
     .strict(),
 })

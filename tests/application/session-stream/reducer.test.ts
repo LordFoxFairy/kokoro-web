@@ -1307,6 +1307,67 @@ describe("applySessionEvent activity families", () => {
     expect(tools[0]?.status).toBe("rejected")
   })
 
+  it("a tool.returned carrying rejected=true shows rejected without any optimistic click (timeout path)", () => {
+    const base = {
+      sessionId: "ses_01",
+      conversationId: "conv_01",
+      runId: "run_01",
+      segmentId: "m1",
+      name: "fetch_url",
+      args: { url: "http://x" },
+    }
+    // 审批超时回退 reject：后端 tool.returned 带 rejected=true（is_error=false），
+    // 用户从没点过拒绝（无乐观）。replay/重连也走这条——必须 deterministically 显 rejected。
+    const state = [
+      { kind: "tool-invoked" as const, eventId: "e1", seq: 1, toolId: "t1", ...base },
+      { kind: "tool-awaiting-approval" as const, eventId: "e2", seq: 2, toolId: "t1", ...base },
+      {
+        kind: "tool-returned" as const,
+        eventId: "e3",
+        seq: 3,
+        sessionId: "ses_01",
+        conversationId: "conv_01",
+        runId: "run_01",
+        segmentId: "m1",
+        toolId: "t1",
+        name: "fetch_url",
+        result: "用户拒绝了工具 fetch_url 的调用。",
+        isError: false,
+        rejected: true,
+      },
+    ].reduce(applySessionEvent, createSessionStreamState())
+    const tools = toolSteps(state)
+    expect(tools[0]?.status).toBe("rejected")
+  })
+
+  it("a normal tool.returned (no rejected flag) still flips to done — not rejected", () => {
+    const base = {
+      sessionId: "ses_01",
+      conversationId: "conv_01",
+      runId: "run_01",
+      segmentId: "m1",
+      name: "now",
+      args: {},
+    }
+    const state = [
+      { kind: "tool-invoked" as const, eventId: "e1", seq: 1, toolId: "t1", ...base },
+      {
+        kind: "tool-returned" as const,
+        eventId: "e2",
+        seq: 2,
+        sessionId: "ses_01",
+        conversationId: "conv_01",
+        runId: "run_01",
+        segmentId: "m1",
+        toolId: "t1",
+        name: "now",
+        result: "2026-06-14",
+        isError: false,
+      },
+    ].reduce(applySessionEvent, createSessionStreamState())
+    expect(toolSteps(state)[0]?.status).toBe("done")
+  })
+
   it("a rejected tool is not re-flipped to error when the run ends", () => {
     const base = {
       sessionId: "ses_01",
