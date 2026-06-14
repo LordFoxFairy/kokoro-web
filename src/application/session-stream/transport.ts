@@ -1,35 +1,29 @@
 import type { SessionStreamEvent } from "@/domain/session-stream-event"
 import { toSessionStreamEvent } from "@/infrastructure/transport-event-mapper"
-import { parseTransportEvent } from "@/infrastructure/transport-event-schema"
+import {
+  parseTransportEvent,
+  transportEventNames,
+} from "@/infrastructure/transport-event-schema"
 
 import {
   applySessionEvent,
   createSessionStreamState,
+  markToolRejected,
   type SessionStreamState,
 } from "./reducer"
 
-// 传输层监听的事件名全集；run.created 由 toSessionStreamEvent 映射为 null（解析但不投影）。
-const transportEventNames = [
-  "session.created",
-  "run.created",
-  "message.delta",
-  "message.completed",
-  "thinking.delta",
-  "tool.invoked",
-  "tool.returned",
-  "todo.updated",
-  "subagent.started",
-  "subagent.finished",
-  "subagent.text.delta",
-  "subagent.text.completed",
-  "run.completed",
-  "run.failed",
-] as const
+// transportEventNames（从契约生成）是 live EventSource 注册的具名监听全集：
+// 漏一个 kind 就会在实时流里被静默丢弃（SSE 用具名事件）。run.created 由
+// toSessionStreamEvent 映射为 null（解析但不投影）。
 
 export type SessionStreamSnapshot = SessionStreamState
 
 export type LiveSessionHandle = {
   close: () => void
+  // HITL：用户拒绝时本地把该 run 待批工具置 rejected，落进流的权威 state——否则后续
+  // tool.returned（拒绝回流 is_error=false）会把它翻成绿勾 done（reducer 保留 rejected）。
+  // 可选：真实链路（transport/simulator/reattach）都实现；测试替身可省。
+  markToolRejected?: (runId: string) => void
 }
 
 export type ConsumeLiveSessionInput = {
@@ -116,7 +110,7 @@ type OpenSessionStreamArgs = {
 // 由 consumeLiveSession（先 POST 再监听）与 reattachLiveSession（仅监听、断后续传）共用。
 export function openSessionStream(args: OpenSessionStreamArgs): LiveSessionHandle {
   if (typeof EventSource === "undefined") {
-    return { close: () => {} }
+    return { close: () => {}, markToolRejected: () => {} }
   }
 
   let state = args.initialState
@@ -158,7 +152,13 @@ export function openSessionStream(args: OpenSessionStreamArgs): LiveSessionHandl
     args.onError?.(event)
   }
 
-  return { close }
+  return {
+    close,
+    markToolRejected: (runId: string) => {
+      state = markToolRejected(state, runId)
+      args.onState(state)
+    },
+  }
 }
 
 function buildRunUrl(input: ConsumeLiveSessionInput, baseUrl: string) {

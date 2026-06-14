@@ -13,7 +13,10 @@ import type {
   StartReplyInput,
 } from "@/application/session-stream/reply"
 import type { ReattachReply } from "@/interfaces/session-stream/hooks/use-conversation"
-import { applySessionEvent } from "@/application/session-stream/reducer"
+import {
+  applySessionEvent,
+  markToolRejected as reducerMarkToolRejected,
+} from "@/application/session-stream/reducer"
 import { SessionShell } from "@/interfaces/session-stream/session-shell"
 
 // HITL 拒绝走 transport.sendRunControl（真 fetch）；桩掉它,只验本地乐观 rejected 渲染。
@@ -1725,6 +1728,7 @@ describe("SessionShell interrupt recovery", () => {
 })
 
 // 被门控工具进入待批：推 tool.invoked + tool.awaiting_approval,永不 settle（awaiting 持续）。
+// 持有自身权威 state + onState（镜像真实 transport）,实现 markToolRejected 让拒绝落进流的 state。
 const awaitingReply: StartReply = ({ initialState, onState }: StartReplyInput) => {
   stubCounter += 1
   const runId = `aw-run-${stubCounter}`
@@ -1742,14 +1746,20 @@ const awaitingReply: StartReply = ({ initialState, onState }: StartReplyInput) =
     seq: 1,
     ...base,
   })
-  const awaiting = applySessionEvent(invoked, {
+  let state = applySessionEvent(invoked, {
     kind: "tool-awaiting-approval",
     eventId: `aw-a-${stubCounter}`,
     seq: 2,
     ...base,
   })
-  onState(awaiting)
-  return { close: () => {} }
+  onState(state)
+  return {
+    close: () => {},
+    markToolRejected: (rid: string) => {
+      state = reducerMarkToolRejected(state, rid)
+      onState(state)
+    },
+  }
 }
 
 describe("SessionShell HITL reject", () => {

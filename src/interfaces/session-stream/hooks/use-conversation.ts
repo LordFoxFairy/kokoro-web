@@ -37,7 +37,6 @@ import {
   appendUserMessage,
   createSessionStreamState,
   findAwaitingRunId,
-  markToolRejected,
   type SessionStreamState,
 } from "@/application/session-stream/reducer"
 
@@ -468,22 +467,13 @@ export function useConversation(
         return
       }
       void sendRunControl({ sessionId: activeId, runId, decision })
-      // reject 经门控工具以 is_error=false 回流（普通逻辑会翻绿勾 done），本地乐观置 rejected 显著区分。
+      // reject 经门控工具以 is_error=false 回流（普通逻辑会翻绿勾 done）：让 live 句柄把该工具
+      // 落进流的权威 state 为 rejected，后续 tool.returned 由 reducer 保留 rejected（显著区分）。
       if (decision === "reject") {
-        setLiveStore((prev) => {
-          const current = prev ?? persistedStore
-          if (!current) {
-            return prev
-          }
-          return withActiveThread(
-            current,
-            markToolRejected(activeThreadOf(current), runId),
-            nowMs(),
-          )
-        })
+        replyHandleRef.current?.markToolRejected?.(runId)
       }
     },
-    [activeId, persistedStore],
+    [activeId],
   )
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
