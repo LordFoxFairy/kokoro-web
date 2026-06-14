@@ -244,3 +244,12 @@ export function CheckCircleIcon({ className }: IconProps) {
     </svg>
   )
 }
+
+export function BanCircleIcon({ className }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <circle cx="12" cy="12" r="8" />
+      <path d="M6.3 6.3l11.4 11.4" />
+    </svg>
+  )
+}

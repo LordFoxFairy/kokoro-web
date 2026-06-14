@@ -654,6 +654,13 @@ details.kk-subagent[open] .kk-subagent__chevron {
   animation: kk-accent-pulse 1.6s ease-in-out infinite;
 }
 
+/* 已拒绝：中性的禁止圈（哑光石板灰），与绿勾 done、红点 error 都显著区分——用户主动驳回，非失败。 */
+.kk-actstate--rejected {
+  width: 0.85rem;
+  height: 0.85rem;
+  color: color-mix(in srgb, #8a8f99 80%, var(--foreground) 20%);
+}
+
 .kk-tool__approve:disabled,
 .kk-tool__reject:disabled {
   opacity: 0.5;
@@ -679,6 +686,27 @@ details.kk-subagent[open] .kk-subagent__chevron {
   line-height: 1.45;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+/* 已拒绝：哑光石板灰边与说明面板，工具名淡出——明确「未执行」且非错误。 */
+.kk-tool--rejected {
+  border-left-color: color-mix(in srgb, #8a8f99 55%, transparent);
+}
+
+.kk-tool--rejected .kk-tool__name {
+  color: color-mix(in srgb, #8a8f99 70%, var(--foreground) 30%);
+  text-decoration: line-through;
+}
+
+.kk-tool__rejected {
+  margin: 0;
+  padding: 0.4rem 0.5rem;
+  border-left: 2px solid color-mix(in srgb, #8a8f99 45%, transparent);
+  border-radius: 0 0.4rem 0.4rem 0;
+  background: color-mix(in srgb, #8a8f99 8%, var(--surface) 92%);
+  color: color-mix(in srgb, #5c616b 85%, var(--foreground) 15%);
+  font-size: 0.78rem;
+  line-height: 1.45;
 }
 
 /* CSS-only 流式脉冲：三点，仅在用户未要求减少动态时律动，

@@ -17,7 +17,7 @@ const storedToolCallSchema = z
     name: z.string(),
     args: z.record(z.unknown()),
     result: z.string().optional(),
-    status: z.enum(["running", "awaiting", "done", "error"]),
+    status: z.enum(["running", "awaiting", "rejected", "done", "error"]),
     errorText: z.string().optional(),
   })
   .strict()
