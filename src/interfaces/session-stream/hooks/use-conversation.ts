@@ -36,7 +36,7 @@ import {
 import {
   appendUserMessage,
   createSessionStreamState,
-  findAwaitingRunId,
+  findActiveRunId,
   type SessionStreamState,
 } from "@/application/session-stream/reducer"
 
@@ -357,19 +357,20 @@ export function useConversation(
     submit(draft)
   }
 
-  const rejectActiveAwaiting = useCallback(() => {
-    // 放弃在途 run 前,若有工具待批,发 reject 立即解阻塞 agent worker（不挂到 90s 超时）。
-    if (!store || !activeId) {
+  const cancelActiveRun = useCallback(() => {
+    // 放弃/停止在途 run：发 cancel 让 worker 取消整个 run（真停后端，不白烧 token；
+    // 一并解阻塞所有待批门，不挂到 90s 超时）。仅在流式中才有在途 run 可取消。
+    if (!store || !activeId || !isStreaming) {
       return
     }
-    const rid = findAwaitingRunId(activeThreadOf(store))
+    const rid = findActiveRunId(activeThreadOf(store))
     if (rid) {
-      void sendRunControl({ sessionId: activeId, runId: rid, decision: "reject" })
+      void sendRunControl({ sessionId: activeId, runId: rid, decision: "cancel" })
     }
-  }, [store, activeId])
+  }, [store, activeId, isStreaming])
 
   const stopReply = useCallback(() => {
-    rejectActiveAwaiting()
+    cancelActiveRun()
     replyHandleRef.current?.close()
     replyHandleRef.current = null
     requestInFlightRef.current = false
@@ -378,11 +379,11 @@ export function useConversation(
     setTransportState("idle")
     // 手动中止也清除在途标记：刷新后不再自动重连这一轮。
     setLiveStore((prev) => (prev ? setActivePending(prev, undefined) : prev))
-  }, [rejectActiveAwaiting])
+  }, [cancelActiveRun])
 
   const startNewChat = useCallback(() => {
     // 新对话：中止在途回复，向 store 追加一个空会话并置为活跃，清空输入与瞬态标签。
-    rejectActiveAwaiting()
+    cancelActiveRun()
     replyHandleRef.current?.close()
     replyHandleRef.current = null
     requestInFlightRef.current = false
@@ -395,7 +396,7 @@ export function useConversation(
     setIsReconnecting(false)
     setTransportState("idle")
     composerRef.current?.focus()
-  }, [persistedStore, rejectActiveAwaiting])
+  }, [persistedStore, cancelActiveRun])
 
   const selectConversation = useCallback(
     (id: string) => {
@@ -422,7 +423,7 @@ export function useConversation(
     (id: string) => {
       // 删除活跃会话时先中止在途回复。删空则自动起一个新的空会话。
       if (activeId === id) {
-        rejectActiveAwaiting()
+        cancelActiveRun()
         replyHandleRef.current?.close()
         replyHandleRef.current = null
         requestInFlightRef.current = false
@@ -439,7 +440,7 @@ export function useConversation(
           : current
       })
     },
-    [activeId, persistedStore, rejectActiveAwaiting],
+    [activeId, persistedStore, cancelActiveRun],
   )
 
   const setMode = useCallback(

@@ -55,6 +55,12 @@ export type SessionStreamState = {
   runStatus: "idle" | "completed" | "failed"
 }
 
+// 最近开始的 run（stepsByRun 按插入序，末位即最新）：放弃/停止时据此 cancel 在途 run。
+export function findActiveRunId(state: SessionStreamState): string | null {
+  const runIds = Object.keys(state.stepsByRun)
+  return runIds.length > 0 ? (runIds[runIds.length - 1] as string) : null
+}
+
 // HITL：当前 thread 内有工具在等待批准时返回其 runId（用于放弃 run 时立即 reject 解阻塞 worker）。
 export function findAwaitingRunId(state: SessionStreamState): string | null {
   for (const [runId, steps] of Object.entries(state.stepsByRun)) {

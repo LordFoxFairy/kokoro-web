@@ -68,11 +68,11 @@ export function resolveSessionBaseUrl() {
   return "http://127.0.0.1:3001"
 }
 
-// HITL：把某 run 待批工具的批准/拒绝送到 session control 端点（agent worker 据此恢复/拒绝）。
+// HITL：批准/拒绝待批工具(approve/reject)，或放弃整个 run(cancel) → session control 端点。
 export async function sendRunControl(input: {
   sessionId: string
   runId: string
-  decision: "approve" | "reject"
+  decision: "approve" | "reject" | "cancel"
   baseUrl?: string
 }): Promise<void> {
   const requestUrl = new URL(
