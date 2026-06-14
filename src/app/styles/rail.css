@@ -290,6 +290,13 @@
   padding: 0.5rem;
 }
 
+/* 收起态清零含隐藏标签的 flex 容器 gap：标签虽 max-width:0 仍占 gap，会把图标顶离居中。 */
+.kk-shell[data-rail-collapsed="true"] .kk-rail__brand,
+.kk-shell[data-rail-collapsed="true"] .kk-rail__action,
+.kk-shell[data-rail-collapsed="true"] .kk-rail__search-label {
+  gap: 0;
+}
+
 .kk-shell[data-rail-collapsed="true"] .kk-rail__user-card {
   justify-content: center;
   padding: 0.4rem;
