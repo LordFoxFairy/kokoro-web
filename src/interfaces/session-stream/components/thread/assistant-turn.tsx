@@ -21,6 +21,8 @@ type AssistantTurnProps = {
   reconnecting?: boolean
   // 本会话模式：透传给过程块作密度 / 文案差异钩子。
   mode?: AgentMode
+  // HITL：批准/拒绝本轮待批的工具调用（已按 runId 绑定）。
+  onToolDecision?: (decision: "approve" | "reject") => void
 }
 
 type Segment = {
@@ -99,6 +101,7 @@ export function AssistantTurn({
   isLive,
   reconnecting = false,
   mode,
+  onToolDecision,
 }: AssistantTurnProps) {
   const segments = groupSegments(steps)
   const tailId =
@@ -199,6 +202,7 @@ export function AssistantTurn({
                 subagents={segment.subagents}
                 live={liveSegment}
                 mode={mode}
+                onToolDecision={onToolDecision}
               />
             </div>
           )

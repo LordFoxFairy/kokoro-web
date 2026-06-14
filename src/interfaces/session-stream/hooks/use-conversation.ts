@@ -25,6 +25,7 @@ import {
 } from "@/application/conversation-store"
 import {
   reattachLiveSession,
+  sendRunControl,
   type LiveSessionHandle,
 } from "@/application/session-stream/transport"
 import { createLocalId } from "@/application/session-stream/simulator"
@@ -84,6 +85,8 @@ type Conversation = {
   // 权限档位（会话级，可随时切换，作用于下一轮 run）。
   permissionMode: PermissionMode
   setPermissionMode: (mode: PermissionMode) => void
+  // HITL：批准/拒绝某 run 待批的工具调用。
+  sendToolDecision: (runId: string, decision: "approve" | "reject") => void
 }
 
 function nowMs(): number {
@@ -442,6 +445,16 @@ export function useConversation(
     [modeLocked, store, persistedStore],
   )
 
+  const sendToolDecision = useCallback(
+    (runId: string, decision: "approve" | "reject") => {
+      // 后端 session id = 会话 id（与 startReply/transport 一致）。
+      if (activeId) {
+        void sendRunControl({ sessionId: activeId, runId, decision })
+      }
+    },
+    [activeId],
+  )
+
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     // Enter 发送 / Shift+Enter 换行；IME 合成期（拼音选词）的 Enter 只确认候选词，不发送。
     if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
@@ -478,5 +491,6 @@ export function useConversation(
     modeLocked,
     permissionMode,
     setPermissionMode,
+    sendToolDecision,
   }
 }

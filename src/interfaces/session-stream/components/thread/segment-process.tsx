@@ -23,6 +23,8 @@ type SegmentProcessProps = {
   live: boolean
   // 本会话模式：Fast 把「思考」改称「处理」，避免「直接作答」与「思考」自相矛盾。
   mode?: AgentMode
+  // HITL：批准/拒绝本轮待批工具（已按 runId 绑定）。
+  onToolDecision?: (decision: "approve" | "reject") => void
 }
 
 // 落定摘要：「思考过程 · N 工具(K 失败) · M 子智能体」，省略为零的维度。
@@ -50,6 +52,7 @@ export function SegmentProcess({
   subagents,
   live,
   mode,
+  onToolDecision,
 }: SegmentProcessProps) {
   // 默认展开态跟随 live 信号：尾段流式时摊开实时看，落定即收成一行摘要。
   // 一旦用户手动切换（manualOpen 落定），就以用户意图为准、不再随 live 变化对抗用户。
@@ -107,7 +110,16 @@ export function SegmentProcess({
             {tools.length > 0 ? (
               <div className="kk-actgroup" aria-label="工具调用">
                 {tools.map((tool) => (
-                  <ToolCallRow key={tool.id} tool={tool} />
+                  <ToolCallRow
+                    key={tool.id}
+                    tool={tool}
+                    onApprove={
+                      onToolDecision ? () => onToolDecision("approve") : undefined
+                    }
+                    onReject={
+                      onToolDecision ? () => onToolDecision("reject") : undefined
+                    }
+                  />
                 ))}
               </div>
             ) : null}

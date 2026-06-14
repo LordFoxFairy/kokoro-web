@@ -57,6 +57,18 @@ export type SessionStreamEvent =
       args: Record<string, unknown>
     }
   | {
+      kind: "tool-awaiting-approval"
+      eventId: string
+      seq: number
+      sessionId: string
+      conversationId: string
+      runId: string
+      segmentId: string
+      toolId: string
+      name: string
+      args: Record<string, unknown>
+    }
+  | {
       kind: "tool-returned"
       eventId: string
       seq: number

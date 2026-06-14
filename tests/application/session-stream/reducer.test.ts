@@ -1175,6 +1175,30 @@ describe("applySessionEvent activity families", () => {
     })
     expect(computeActivityVersion(a)).toBe(computeActivityVersion(b))
   })
+
+  it("flips a tool to awaiting on tool-awaiting-approval (HITL)", () => {
+    const base = {
+      sessionId: "ses_01",
+      conversationId: "conv_01",
+      runId: "run_01",
+      segmentId: "m1",
+      name: "fetch_url",
+      args: { url: "http://x" },
+    }
+    const state = [
+      { kind: "tool-invoked" as const, eventId: "e1", seq: 1, toolId: "t1", ...base },
+      {
+        kind: "tool-awaiting-approval" as const,
+        eventId: "e2",
+        seq: 2,
+        toolId: "t1",
+        ...base,
+      },
+    ].reduce(applySessionEvent, createSessionStreamState())
+    const tools = toolSteps(state)
+    expect(tools).toHaveLength(1)
+    expect(tools[0]?.status).toBe("awaiting")
+  })
 })
 
 describe("buildThreadItems grouping", () => {

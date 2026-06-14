@@ -16,8 +16,8 @@ export type SessionToolCall = {
   name: string
   args: Record<string, unknown>
   result?: string
-  // error 是段级状态：工具失败时本轮通常仍继续；errorText 携带失败原因，落定后保持展开。
-  status: "running" | "done" | "error"
+  // awaiting：被门控工具等待用户批准（HITL）；error：工具失败（errorText 携带原因，落定后保持展开）。
+  status: "running" | "awaiting" | "done" | "error"
   errorText?: string
 }
 
@@ -330,6 +330,19 @@ export function applySessionEvent(
         status: "running",
       },
     })
+  }
+
+  if (event.kind === "tool-awaiting-approval") {
+    // 被门控工具等待批准：把同一 tool step 由 running 翻 awaiting（UI 显批准/拒绝）。
+    nextState = updateRunStep(
+      nextState,
+      event.runId,
+      (step) => step.kind === "tool" && step.tool.id === event.toolId,
+      (step) =>
+        step.kind === "tool"
+          ? { ...step, tool: { ...step.tool, status: "awaiting" } }
+          : step,
+    )
   }
 
   if (event.kind === "tool-returned") {
