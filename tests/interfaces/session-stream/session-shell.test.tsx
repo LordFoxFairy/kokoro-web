@@ -1786,4 +1786,18 @@ describe("SessionShell HITL reject", () => {
       expect.objectContaining({ decision: "reject" }),
     )
   })
+
+  it("stopping an in-flight run sends cancel (真停后端 + 解阻塞所有待批)", () => {
+    render(<SessionShell startReply={awaitingReply} />)
+    send("抓个网页")
+
+    const stop = screen.getByLabelText("停止生成")
+    act(() => {
+      fireEvent.click(stop)
+    })
+
+    expect(sendRunControlMock).toHaveBeenCalledWith(
+      expect.objectContaining({ decision: "cancel" }),
+    )
+  })
 })
