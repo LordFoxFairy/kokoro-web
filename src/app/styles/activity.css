@@ -644,6 +644,22 @@ details.kk-subagent[open] .kk-subagent__chevron {
   background: color-mix(in srgb, #b4584f 80%, transparent);
 }
 
+/* 待批准：静止的琥珀点 + 柔和脉冲，区别于「进行中」转圈,提示需要人来决定。 */
+.kk-actstate--awaiting {
+  display: inline-block;
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 999px;
+  background: #c8923c;
+  animation: kk-accent-pulse 1.6s ease-in-out infinite;
+}
+
+.kk-tool__approve:disabled,
+.kk-tool__reject:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .kk-tool--error {
   border-left-color: color-mix(in srgb, #b4584f 55%, transparent);
 }

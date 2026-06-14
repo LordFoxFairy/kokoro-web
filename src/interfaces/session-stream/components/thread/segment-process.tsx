@@ -59,7 +59,9 @@ export function SegmentProcess({
   // manualOpen 持久化在按 segmentId 键的 disclosure store（跨刷新保留），非组件本地 state。
   // 用受控 div+button（非原生 details）以便给展开/收起做高度过渡；状态机不靠 remount。
   const manualOpen = useProcessDisclosure(segmentId)
-  const open = manualOpen ?? live
+  // 有工具待批时强制展开（盖过用户手动折叠）：否则批准/拒绝按钮被裁掉、HITL 卡死无入口。
+  const hasAwaiting = tools.some((tool) => tool.status === "awaiting")
+  const open = hasAwaiting || (manualOpen ?? live)
   const bodyId = useId()
 
   const hasActivity =

@@ -1199,6 +1199,59 @@ describe("applySessionEvent activity families", () => {
     expect(tools).toHaveLength(1)
     expect(tools[0]?.status).toBe("awaiting")
   })
+
+  it("creates an awaiting tool step even without a prior tool-invoked (fallback)", () => {
+    const state = applySessionEvent(createSessionStreamState(), {
+      kind: "tool-awaiting-approval",
+      eventId: "e1",
+      seq: 1,
+      sessionId: "ses_01",
+      conversationId: "conv_01",
+      runId: "run_01",
+      segmentId: "m1",
+      toolId: "t1",
+      name: "fetch_url",
+      args: { url: "http://x" },
+    })
+    const tools = toolSteps(state)
+    expect(tools).toHaveLength(1)
+    expect(tools[0]?.status).toBe("awaiting")
+    expect(tools[0]?.name).toBe("fetch_url")
+  })
+
+  it("resolves a stale awaiting tool to error when the run ends (no ghost)", () => {
+    const base = {
+      sessionId: "ses_01",
+      conversationId: "conv_01",
+      runId: "run_01",
+      segmentId: "m1",
+      name: "fetch_url",
+      args: { url: "http://x" },
+    }
+    const state = [
+      { kind: "tool-invoked" as const, eventId: "e1", seq: 1, toolId: "t1", ...base },
+      {
+        kind: "tool-awaiting-approval" as const,
+        eventId: "e2",
+        seq: 2,
+        toolId: "t1",
+        ...base,
+      },
+      {
+        kind: "run-failed" as const,
+        eventId: "e3",
+        seq: 3,
+        sessionId: "ses_01",
+        conversationId: "conv_01",
+        runId: "run_01",
+        errorKind: "TimeoutError",
+        message: "timeout",
+      },
+    ].reduce(applySessionEvent, createSessionStreamState())
+    const tools = toolSteps(state)
+    expect(tools).toHaveLength(1)
+    expect(tools[0]?.status).toBe("error")
+  })
 })
 
 describe("buildThreadItems grouping", () => {

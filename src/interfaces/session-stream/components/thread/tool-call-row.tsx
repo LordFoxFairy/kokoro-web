@@ -1,3 +1,5 @@
+import { useState } from "react"
+
 import type { SessionToolCall } from "@/application/session-stream/reducer"
 
 import { ChevronIcon, WrenchIcon } from "../icons"
@@ -34,6 +36,8 @@ export function ToolCallRow({
   const failed = tool.status === "error"
   // awaiting：被门控工具等待用户批准（HITL），展开显示批准/拒绝。
   const awaiting = tool.status === "awaiting"
+  // 点击批准/拒绝后本地置 true：立即禁用按钮,防连点发出第二条决定(否则会被下一个待批工具误读)。
+  const [decided, setDecided] = useState(false)
   // 有入参/结果/错误/待批才展开；无任何细节的工具保持紧凑静态行，spinner 已表态。
   const hasDetail = argsText !== null || Boolean(tool.result) || failed || awaiting
 
@@ -42,7 +46,7 @@ export function ToolCallRow({
       <WrenchIcon className="kk-tool__icon" />
       <span className="kk-tool__name">{tool.name}</span>
       <span className="kk-tool__state" aria-hidden>
-        <RunState done={tool.status === "done"} failed={failed} />
+        <RunState done={tool.status === "done"} failed={failed} awaiting={awaiting} />
       </span>
     </>
   )
@@ -71,20 +75,30 @@ export function ToolCallRow({
         ) : null}
         {awaiting ? (
           <div className="kk-tool__approval" role="group" aria-label="工具调用待批准">
-            <p className="kk-tool__approval-prompt">该工具调用需要你的批准。</p>
+            <p className="kk-tool__approval-prompt">
+              {decided ? "已提交你的决定，等待恢复…" : "该工具调用需要你的批准。"}
+            </p>
             {onApprove && onReject ? (
               <div className="kk-tool__approval-actions">
                 <button
                   type="button"
                   className="kk-tool__approve"
-                  onClick={onApprove}
+                  disabled={decided}
+                  onClick={() => {
+                    setDecided(true)
+                    onApprove()
+                  }}
                 >
                   批准
                 </button>
                 <button
                   type="button"
                   className="kk-tool__reject"
-                  onClick={onReject}
+                  disabled={decided}
+                  onClick={() => {
+                    setDecided(true)
+                    onReject()
+                  }}
                 >
                   拒绝
                 </button>
