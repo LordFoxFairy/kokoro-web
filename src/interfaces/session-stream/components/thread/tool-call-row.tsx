@@ -20,12 +20,22 @@ function formatArgs(args: Record<string, unknown>): string | null {
 // 单条工具调用：扳手 + 名称 + 运行态。有入参/结果/错误时是可展开的 <details>，
 // 无任何细节时退化为不可点击的 <div>，避免无意义的死切换。
 // 错误态（status==="error"）携带 errorText，落定后仍保持展开（本轮通常继续）。
-export function ToolCallRow({ tool }: { tool: SessionToolCall }) {
+export function ToolCallRow({
+  tool,
+  onApprove,
+  onReject,
+}: {
+  tool: SessionToolCall
+  onApprove?: () => void
+  onReject?: () => void
+}) {
   const argsText = formatArgs(tool.args)
   const running = tool.status === "running"
   const failed = tool.status === "error"
-  // 有入参/结果/错误才展开；无任何细节的工具（含无入参的运行中）保持紧凑静态行，spinner 已表态。
-  const hasDetail = argsText !== null || Boolean(tool.result) || failed
+  // awaiting：被门控工具等待用户批准（HITL），展开显示批准/拒绝。
+  const awaiting = tool.status === "awaiting"
+  // 有入参/结果/错误/待批才展开；无任何细节的工具保持紧凑静态行，spinner 已表态。
+  const hasDetail = argsText !== null || Boolean(tool.result) || failed || awaiting
 
   const head = (
     <>
@@ -46,7 +56,10 @@ export function ToolCallRow({ tool }: { tool: SessionToolCall }) {
   }
 
   return (
-    <details className={`kk-tool kk-tool--${tool.status}`} open={running || failed}>
+    <details
+      className={`kk-tool kk-tool--${tool.status}`}
+      open={running || failed || awaiting}
+    >
       {/* D1：chevron 作为统一的「可展开」提示——只有可展开行才有，静态行没有，让两者一眼可辨。 */}
       <summary className="kk-tool__summary">
         {head}
@@ -55,6 +68,29 @@ export function ToolCallRow({ tool }: { tool: SessionToolCall }) {
       <div className="kk-tool__detail">
         {argsText !== null ? (
           <pre className="kk-tool__args">{argsText}</pre>
+        ) : null}
+        {awaiting ? (
+          <div className="kk-tool__approval" role="group" aria-label="工具调用待批准">
+            <p className="kk-tool__approval-prompt">该工具调用需要你的批准。</p>
+            {onApprove && onReject ? (
+              <div className="kk-tool__approval-actions">
+                <button
+                  type="button"
+                  className="kk-tool__approve"
+                  onClick={onApprove}
+                >
+                  批准
+                </button>
+                <button
+                  type="button"
+                  className="kk-tool__reject"
+                  onClick={onReject}
+                >
+                  拒绝
+                </button>
+              </div>
+            ) : null}
+          </div>
         ) : null}
         {failed ? (
           <p className="kk-tool__error" role="status">

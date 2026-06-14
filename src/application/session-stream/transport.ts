@@ -74,6 +74,21 @@ export function resolveSessionBaseUrl() {
   return "http://127.0.0.1:3001"
 }
 
+// HITL：把某 run 待批工具的批准/拒绝送到 session control 端点（agent worker 据此恢复/拒绝）。
+export async function sendRunControl(input: {
+  sessionId: string
+  runId: string
+  decision: "approve" | "reject"
+  baseUrl?: string
+}): Promise<void> {
+  const requestUrl = new URL(
+    `/sessions/${input.sessionId}/runs/${input.runId}/control`,
+    input.baseUrl ?? resolveSessionBaseUrl(),
+  )
+  requestUrl.searchParams.set("decision", input.decision)
+  await fetch(requestUrl, { method: "POST" })
+}
+
 // 严格解析 SSE 载荷；任何畸形/未知事件被拒绝且不允许中断整条流。
 function decodeStreamMessage(event: Event): SessionStreamEvent | null {
   if (!(event instanceof MessageEvent) || typeof event.data !== "string") {

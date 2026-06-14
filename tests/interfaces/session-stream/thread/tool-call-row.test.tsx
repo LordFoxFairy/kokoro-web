@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, describe, expect, it } from "vitest"
 
 import type { SessionToolCall } from "@/application/session-stream/reducer"
@@ -105,5 +105,26 @@ describe("ToolCallRow", () => {
     const error = container.querySelector(".kk-tool__error") as HTMLElement
     expect(error).not.toBeNull()
     expect(error.textContent).toBe("工具调用失败")
+  })
+
+  it("renders approve/reject and fires handlers when awaiting (HITL)", () => {
+    const decisions: string[] = []
+    render(
+      <ToolCallRow
+        tool={makeTool({ status: "awaiting", args: { url: "http://x" } })}
+        onApprove={() => decisions.push("approve")}
+        onReject={() => decisions.push("reject")}
+      />,
+    )
+    fireEvent.click(screen.getByText("批准"))
+    fireEvent.click(screen.getByText("拒绝"))
+    expect(decisions).toEqual(["approve", "reject"])
+  })
+
+  it("carries the awaiting state class", () => {
+    const { container } = render(
+      <ToolCallRow tool={makeTool({ status: "awaiting" })} />,
+    )
+    expect(container.querySelector(".kk-tool")).toHaveClass("kk-tool--awaiting")
   })
 })

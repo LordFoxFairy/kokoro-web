@@ -12,6 +12,7 @@ const eventEnvelopeSchema = z
       "message.delta",
       "message.completed",
       "tool.invoked",
+      "tool.awaiting_approval",
       "tool.returned",
       "todo.updated",
       "subagent.started",
@@ -93,6 +94,18 @@ const messageCompletedSchema = eventEnvelopeSchema.extend({
 
 const toolInvokedSchema = eventEnvelopeSchema.extend({
   event: z.literal("tool.invoked"),
+  payload: z
+    .object({
+      segment_id: z.string().min(1),
+      tool_id: z.string().min(1),
+      name: z.string().min(1),
+      args: z.record(z.unknown()),
+    })
+    .strict(),
+})
+
+const toolAwaiting_approvalSchema = eventEnvelopeSchema.extend({
+  event: z.literal("tool.awaiting_approval"),
   payload: z
     .object({
       segment_id: z.string().min(1),
@@ -207,6 +220,7 @@ const sessionEventSchema = z.union([
   messageDeltaSchema,
   messageCompletedSchema,
   toolInvokedSchema,
+  toolAwaiting_approvalSchema,
   toolReturnedSchema,
   todoUpdatedSchema,
   subagentStartedSchema,

@@ -909,3 +909,56 @@ details.kk-subagent[open] .kk-subagent__chevron {
     inset 0 0 0 1px var(--brand-wood);
   outline: none;
 }
+
+/* HITL 工具审批：被门控工具待批时在工具行内显批准/拒绝。 */
+.kk-tool__approval {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-top: 0.3rem;
+}
+
+.kk-tool__approval-prompt {
+  font-size: 0.82rem;
+  color: color-mix(in srgb, var(--brand-wood) 60%, var(--foreground) 40%);
+}
+
+.kk-tool__approval-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.kk-tool__approve,
+.kk-tool__reject {
+  border: 0;
+  border-radius: 999px;
+  padding: 0.3rem 0.85rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+.kk-tool__approve {
+  background: var(--brand-wood);
+  color: #fffdf9;
+}
+
+.kk-tool__approve:hover {
+  background: var(--brand-wood-hover);
+}
+
+.kk-tool__reject {
+  background: color-mix(in srgb, var(--brand-wood-soft) 55%, white 45%);
+  color: color-mix(in srgb, var(--brand-wood) 70%, var(--foreground) 30%);
+}
+
+.kk-tool__reject:hover {
+  background: color-mix(in srgb, var(--brand-wood-soft) 80%, white 20%);
+}
+
+.kk-tool__approve:focus-visible,
+.kk-tool__reject:focus-visible {
+  outline: 2px solid var(--brand-wood);
+  outline-offset: 2px;
+}

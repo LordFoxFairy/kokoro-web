@@ -20,6 +20,8 @@ type ConversationThreadProps = {
   threadEndRef: RefObject<HTMLDivElement | null>
   // 本会话模式：透传给每轮过程块，驱动 Fast/Thinking 的密度与文案差异。
   mode: AgentMode
+  // HITL：批准/拒绝某 run 待批的工具调用。
+  onToolDecision?: (runId: string, decision: "approve" | "reject") => void
 }
 
 export function ConversationThread({
@@ -31,6 +33,7 @@ export function ConversationThread({
   onScroll,
   threadEndRef,
   mode,
+  onToolDecision,
 }: ConversationThreadProps) {
   // 把扁平 messages + 有序 steps 折成线程项：用户气泡 / assistant 轮（一个 runId 一轮）。
   const items = buildThreadItems(thread)
@@ -72,6 +75,11 @@ export function ConversationThread({
               isLive={item.runId === liveRunId}
               reconnecting={item.runId === liveRunId && isReconnecting}
               mode={mode}
+              onToolDecision={
+                onToolDecision
+                  ? (decision) => onToolDecision(item.runId, decision)
+                  : undefined
+              }
             />
           ),
         )}

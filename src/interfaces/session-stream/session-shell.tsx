@@ -69,6 +69,7 @@ export function SessionShell({
     modeLocked,
     permissionMode,
     setPermissionMode,
+    sendToolDecision,
   } = useConversation(startReply, scrollToLatestSeam, reattach)
 
   // 过程块静默生长（思考/工具/子智能体流入，messages 引用不变）也要驱动贴底跟随：
@@ -130,6 +131,7 @@ export function SessionShell({
             onScroll={handleThreadScroll}
             threadEndRef={threadEndRef}
             mode={mode}
+            onToolDecision={sendToolDecision}
           />
         ) : (
           <div className="kk-shell__hero">

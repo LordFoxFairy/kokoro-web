@@ -77,6 +77,15 @@ export function toSessionStreamEvent(
         name: event.payload.name,
         args: event.payload.args,
       }
+    case "tool.awaiting_approval":
+      return {
+        kind: "tool-awaiting-approval",
+        ...base(event, seq),
+        segmentId: event.payload.segment_id,
+        toolId: event.payload.tool_id,
+        name: event.payload.name,
+        args: event.payload.args,
+      }
     case "tool.returned":
       return {
         kind: "tool-returned",
