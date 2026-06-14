@@ -236,3 +236,21 @@ export type SessionTransportEvent = z.infer<typeof sessionEventSchema>
 export function parseTransportEvent(input: unknown): SessionTransportEvent {
   return sessionEventSchema.parse(input)
 }
+
+export const transportEventNames = [
+  "session.created",
+  "run.created",
+  "thinking.delta",
+  "message.delta",
+  "message.completed",
+  "tool.invoked",
+  "tool.awaiting_approval",
+  "tool.returned",
+  "todo.updated",
+  "subagent.started",
+  "subagent.finished",
+  "subagent.text.delta",
+  "subagent.text.completed",
+  "run.completed",
+  "run.failed",
+] as const

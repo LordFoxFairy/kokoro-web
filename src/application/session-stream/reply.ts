@@ -30,7 +30,7 @@ export type StartReply = (args: StartReplyInput) => LiveSessionHandle
 // 让对话在 kokoro-web 单仓内也能完整跑通。settled 时回报落到哪条链路。
 export const startSessionReply: StartReply = (args) => {
   let closed = false
-  let active: LiveSessionHandle = { close: () => {} }
+  let active: LiveSessionHandle = { close: () => {}, markToolRejected: () => {} }
 
   const fallbackToPreview = () => {
     if (closed) {
@@ -77,5 +77,7 @@ export const startSessionReply: StartReply = (args) => {
       closed = true
       active.close()
     },
+    // 委派给当前活跃链路（live 或预览）：拒绝落进它的权威 state。
+    markToolRejected: (runId: string) => active.markToolRejected?.(runId),
   }
 }

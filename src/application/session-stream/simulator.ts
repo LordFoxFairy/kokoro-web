@@ -263,5 +263,7 @@ export function simulateAssistantReply(
         clearTimeout(timer)
       }
     },
+    // 本地预览无门控工具、不会进入待批，故无需处理拒绝。
+    markToolRejected: () => {},
   }
 }
