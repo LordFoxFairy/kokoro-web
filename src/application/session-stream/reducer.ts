@@ -16,8 +16,9 @@ export type SessionToolCall = {
   name: string
   args: Record<string, unknown>
   result?: string
-  // awaiting：被门控工具等待用户批准（HITL）；error：工具失败（errorText 携带原因，落定后保持展开）。
-  status: "running" | "awaiting" | "done" | "error"
+  // awaiting：被门控工具等待用户批准（HITL）；rejected：用户拒绝了该调用（区别于绿勾的 done）；
+  // error：工具失败（errorText 携带原因，落定后保持展开）。
+  status: "running" | "awaiting" | "rejected" | "done" | "error"
   errorText?: string
 }
 
@@ -62,6 +63,30 @@ export function findAwaitingRunId(state: SessionStreamState): string | null {
     }
   }
   return null
+}
+
+// HITL：用户点「拒绝」时本地乐观置该 run 待批工具为 rejected（区别于 reject 回流的 is_error=false 绿勾）。
+// 只翻 awaiting 的工具；done/error/running 不动。
+export function markToolRejected(
+  state: SessionStreamState,
+  runId: string,
+): SessionStreamState {
+  const steps = state.stepsByRun[runId]
+  if (!steps) {
+    return state
+  }
+  let changed = false
+  const next = steps.map((step) => {
+    if (step.kind === "tool" && step.tool.status === "awaiting") {
+      changed = true
+      return { ...step, tool: { ...step.tool, status: "rejected" as const } }
+    }
+    return step
+  })
+  if (!changed) {
+    return state
+  }
+  return { ...state, stepsByRun: { ...state.stepsByRun, [runId]: next } }
 }
 
 // 活动总量的纯派生信号（思考长度+工具/子智能体数+输出长度）：供 auto-scroll 跟随过程块的静默生长。
@@ -394,7 +419,8 @@ export function applySessionEvent(
                 tool: {
                   ...step.tool,
                   result: event.result,
-                  status: returnedStatus,
+                  // 已被用户拒绝的工具:其回流(is_error=false 的拒绝文案)不得把 rejected 降级成绿勾 done。
+                  status: step.tool.status === "rejected" ? "rejected" : returnedStatus,
                   ...(event.isError ? { errorText: event.result } : {}),
                 },
               }

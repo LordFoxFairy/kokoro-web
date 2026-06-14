@@ -16,6 +16,17 @@ import type { ReattachReply } from "@/interfaces/session-stream/hooks/use-conver
 import { applySessionEvent } from "@/application/session-stream/reducer"
 import { SessionShell } from "@/interfaces/session-stream/session-shell"
 
+// HITL 拒绝走 transport.sendRunControl（真 fetch）；桩掉它,只验本地乐观 rejected 渲染。
+// vi.mock 被提升到文件顶,mock fn 须用 vi.hoisted 同步提升,否则 TDZ。
+const { sendRunControlMock } = vi.hoisted(() => ({
+  sendRunControlMock: vi.fn(async () => {}),
+}))
+vi.mock("@/application/session-stream/transport", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/application/session-stream/transport")>()
+  return { ...actual, sendRunControl: sendRunControlMock }
+})
+
 afterEach(() => {
   cleanup()
   // jsdom 的 localStorage 在用例间是共享的，必须清掉以隔离持久化断言。
@@ -1710,5 +1721,59 @@ describe("SessionShell interrupt recovery", () => {
       <SessionShell startReply={instantReply((input) => input)} reattach={reattach} />,
     )
     expect(reattachCalls).toEqual([])
+  })
+})
+
+// 被门控工具进入待批：推 tool.invoked + tool.awaiting_approval,永不 settle（awaiting 持续）。
+const awaitingReply: StartReply = ({ initialState, onState }: StartReplyInput) => {
+  stubCounter += 1
+  const runId = `aw-run-${stubCounter}`
+  const base = {
+    ...envelope,
+    runId,
+    segmentId: `aw-seg-${stubCounter}`,
+    toolId: `aw-tool-${stubCounter}`,
+    name: "fetch_url",
+    args: { url: "http://x" },
+  }
+  const invoked = applySessionEvent(initialState, {
+    kind: "tool-invoked",
+    eventId: `aw-i-${stubCounter}`,
+    seq: 1,
+    ...base,
+  })
+  const awaiting = applySessionEvent(invoked, {
+    kind: "tool-awaiting-approval",
+    eventId: `aw-a-${stubCounter}`,
+    seq: 2,
+    ...base,
+  })
+  onState(awaiting)
+  return { close: () => {} }
+}
+
+describe("SessionShell HITL reject", () => {
+  beforeEach(() => {
+    sendRunControlMock.mockClear()
+  })
+
+  it("clicking 拒绝 flips the tool to a rejected visual (not a green done) and signals the backend", () => {
+    const { container } = render(<SessionShell startReply={awaitingReply} />)
+    send("抓个网页")
+
+    const reject = screen.getByRole("button", { name: "拒绝" })
+    act(() => {
+      fireEvent.click(reject)
+    })
+
+    // 本地乐观:工具行翻 rejected（区别于绿勾 done），并显「未执行」说明。
+    expect(container.querySelector(".kk-tool--rejected")).not.toBeNull()
+    expect(container.querySelector(".kk-tool--done")).toBeNull()
+    expect(screen.getByText("你已拒绝该工具调用，未执行。")).toBeInTheDocument()
+    // 决定真发往后端（解阻塞 worker）。
+    expect(sendRunControlMock).toHaveBeenCalledTimes(1)
+    expect(sendRunControlMock).toHaveBeenCalledWith(
+      expect.objectContaining({ decision: "reject" }),
+    )
   })
 })

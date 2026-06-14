@@ -36,17 +36,25 @@ export function ToolCallRow({
   const failed = tool.status === "error"
   // awaiting：被门控工具等待用户批准（HITL），展开显示批准/拒绝。
   const awaiting = tool.status === "awaiting"
+  // rejected：用户驳回了该调用——工具未执行，显禁止圈而非绿勾。
+  const rejected = tool.status === "rejected"
   // 点击批准/拒绝后本地置 true：立即禁用按钮,防连点发出第二条决定(否则会被下一个待批工具误读)。
   const [decided, setDecided] = useState(false)
-  // 有入参/结果/错误/待批才展开；无任何细节的工具保持紧凑静态行，spinner 已表态。
-  const hasDetail = argsText !== null || Boolean(tool.result) || failed || awaiting
+  // 有入参/结果/错误/待批/已拒绝才展开；无任何细节的工具保持紧凑静态行，spinner 已表态。
+  const hasDetail =
+    argsText !== null || Boolean(tool.result) || failed || awaiting || rejected
 
   const head = (
     <>
       <WrenchIcon className="kk-tool__icon" />
       <span className="kk-tool__name">{tool.name}</span>
       <span className="kk-tool__state" aria-hidden>
-        <RunState done={tool.status === "done"} failed={failed} awaiting={awaiting} />
+        <RunState
+          done={tool.status === "done"}
+          failed={failed}
+          awaiting={awaiting}
+          rejected={rejected}
+        />
       </span>
     </>
   )
@@ -62,7 +70,7 @@ export function ToolCallRow({
   return (
     <details
       className={`kk-tool kk-tool--${tool.status}`}
-      open={running || failed || awaiting}
+      open={running || failed || awaiting || rejected}
     >
       {/* D1：chevron 作为统一的「可展开」提示——只有可展开行才有，静态行没有，让两者一眼可辨。 */}
       <summary className="kk-tool__summary">
@@ -110,6 +118,10 @@ export function ToolCallRow({
           <p className="kk-tool__error" role="status">
             {/* || 而非 ??：空串错误文本（无消息异常）也回落到兜底文案，绝不渲染空白红条。 */}
             {tool.errorText || "工具调用失败"}
+          </p>
+        ) : rejected ? (
+          <p className="kk-tool__rejected" role="status">
+            你已拒绝该工具调用，未执行。
           </p>
         ) : tool.result ? (
           <pre className="kk-tool__result">{tool.result}</pre>
