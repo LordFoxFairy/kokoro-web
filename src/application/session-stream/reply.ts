@@ -21,6 +21,7 @@ export type StartReplyInput = {
   baseUrl?: string
   sessionId?: string
   executionStyle?: "fast" | "thinking"
+  permissionMode?: "auto" | "default" | "plan"
 }
 
 export type StartReply = (args: StartReplyInput) => LiveSessionHandle
@@ -52,6 +53,7 @@ export const startSessionReply: StartReply = (args) => {
         baseUrl: args.baseUrl,
         sessionId: args.sessionId,
         executionStyle: args.executionStyle,
+        permissionMode: args.permissionMode,
         initialState: args.initialState,
         onState: args.onState,
         onSettled: () => args.onSettled?.("live"),

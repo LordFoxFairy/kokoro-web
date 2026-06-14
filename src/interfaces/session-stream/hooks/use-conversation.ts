@@ -51,6 +51,9 @@ export type ConversationSummary = {
   title: string
 }
 
+// 权限档位（Claude-Code 式，会话级全局）：auto 全放行 / default 拦外部副作用 / plan 只读规划。
+export type PermissionMode = "auto" | "default" | "plan"
+
 type Conversation = {
   thread: SessionStreamState
   draft: string
@@ -78,6 +81,9 @@ type Conversation = {
   mode: AgentMode
   setMode: (mode: AgentMode) => void
   modeLocked: boolean
+  // 权限档位（会话级，可随时切换，作用于下一轮 run）。
+  permissionMode: PermissionMode
+  setPermissionMode: (mode: PermissionMode) => void
 }
 
 function nowMs(): number {
@@ -128,6 +134,8 @@ export function useConversation(
   const [transportState, setTransportState] = useState<TransportState>("idle")
   // 空首屏（尚无会话）时选好的模式：首条消息创建首个会话时承接它。会话存在后模式以会话为准。
   const [pendingMode, setPendingMode] = useState<AgentMode>("fast")
+  // 权限档位：会话级全局（仿 Claude Code），默认 auto；可随时切，作用于下一轮 run。
+  const [permissionMode, setPermissionMode] = useState<PermissionMode>("auto")
 
   const replyHandleRef = useRef<LiveSessionHandle | null>(null)
   const composerRef = useRef<HTMLTextAreaElement | null>(null)
@@ -249,6 +257,7 @@ export function useConversation(
         // 每个会话用自己的 backend session id（= 会话 id）：replay 流互不混淆，中断恢复可精确重订阅。
         sessionId: storeAtStart.activeId,
         executionStyle: mode,
+        permissionMode,
         onState: (next: SessionStreamState) => {
           setTransportState((prev) => (prev === "live" ? prev : "preview"))
           setLiveStore((prev) =>
@@ -275,7 +284,7 @@ export function useConversation(
         },
       })
     },
-    [mode, scrollToLatest, startReply],
+    [mode, permissionMode, scrollToLatest, startReply],
   )
 
   const submit = useCallback(
@@ -467,5 +476,7 @@ export function useConversation(
     mode,
     setMode,
     modeLocked,
+    permissionMode,
+    setPermissionMode,
   }
 }
