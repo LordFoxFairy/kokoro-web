@@ -54,6 +54,16 @@ export type SessionStreamState = {
   runStatus: "idle" | "completed" | "failed"
 }
 
+// HITL：当前 thread 内有工具在等待批准时返回其 runId（用于放弃 run 时立即 reject 解阻塞 worker）。
+export function findAwaitingRunId(state: SessionStreamState): string | null {
+  for (const [runId, steps] of Object.entries(state.stepsByRun)) {
+    if (steps.some((step) => step.kind === "tool" && step.tool.status === "awaiting")) {
+      return runId
+    }
+  }
+  return null
+}
+
 // 活动总量的纯派生信号（思考长度+工具/子智能体数+输出长度）：供 auto-scroll 跟随过程块的静默生长。
 export function computeActivityVersion(state: SessionStreamState): number {
   let version = 0
@@ -333,16 +343,35 @@ export function applySessionEvent(
   }
 
   if (event.kind === "tool-awaiting-approval") {
-    // 被门控工具等待批准：把同一 tool step 由 running 翻 awaiting（UI 显批准/拒绝）。
-    nextState = updateRunStep(
-      nextState,
-      event.runId,
+    const steps = nextState.stepsByRun[event.runId] ?? []
+    const hasInvoked = steps.some(
       (step) => step.kind === "tool" && step.tool.id === event.toolId,
-      (step) =>
-        step.kind === "tool"
-          ? { ...step, tool: { ...step.tool, status: "awaiting" } }
-          : step,
     )
+    if (hasInvoked) {
+      // 配对:把同一 tool step 翻 awaiting（UI 显批准/拒绝）。
+      nextState = updateRunStep(
+        nextState,
+        event.runId,
+        (step) => step.kind === "tool" && step.tool.id === event.toolId,
+        (step) =>
+          step.kind === "tool"
+            ? { ...step, tool: { ...step.tool, status: "awaiting" } }
+            : step,
+      )
+    } else {
+      // 无配对的 invoked（乱序/部分 replay）:仍补建 awaiting 步,绝不让审批 UI 静默丢失。
+      nextState = appendRunStep(nextState, event.runId, {
+        kind: "tool",
+        seq: event.seq,
+        segmentId: event.segmentId,
+        tool: {
+          id: event.toolId,
+          name: event.name,
+          args: event.args,
+          status: "awaiting",
+        },
+      })
+    }
   }
 
   if (event.kind === "tool-returned") {
@@ -453,14 +482,53 @@ export function applySessionEvent(
   }
 
   if (event.kind === "run-completed") {
+    nextState = resolveStaleTools(nextState, event.runId)
     nextState.runStatus = "completed"
   }
 
   if (event.kind === "run-failed") {
+    nextState = resolveStaleTools(nextState, event.runId)
     nextState.runStatus = "failed"
   }
 
   return nextState
+}
+
+// 终态收口:run 结束时把残留的 running/awaiting 工具翻成 error,避免永久「待批准/运行中」幽灵行
+// （及一组已无人消费的批准按钮）。done/error 工具不动。
+function resolveStaleTools(
+  state: SessionStreamState,
+  runId: string,
+): SessionStreamState {
+  const steps = state.stepsByRun[runId]
+  if (!steps) {
+    return state
+  }
+  let changed = false
+  const resolved = steps.map((step) => {
+    if (
+      step.kind === "tool" &&
+      (step.tool.status === "running" || step.tool.status === "awaiting")
+    ) {
+      changed = true
+      return {
+        ...step,
+        tool: {
+          ...step.tool,
+          status: "error" as const,
+          errorText:
+            step.tool.status === "awaiting"
+              ? "运行已结束，该工具未获批准"
+              : "运行已结束，工具未完成",
+        },
+      }
+    }
+    return step
+  })
+  if (!changed) {
+    return state
+  }
+  return { ...state, stepsByRun: { ...state.stepsByRun, [runId]: resolved } }
 }
 
 // 用户输入本地产生、不进 seenEventIds；复位 runStatus 为 idle 并清空 todo，历史步骤保留。

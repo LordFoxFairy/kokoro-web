@@ -107,7 +107,7 @@ describe("ToolCallRow", () => {
     expect(error.textContent).toBe("工具调用失败")
   })
 
-  it("renders approve/reject and fires handlers when awaiting (HITL)", () => {
+  it("fires approve once and disables both buttons after deciding (HITL)", () => {
     const decisions: string[] = []
     render(
       <ToolCallRow
@@ -116,9 +116,26 @@ describe("ToolCallRow", () => {
         onReject={() => decisions.push("reject")}
       />,
     )
-    fireEvent.click(screen.getByText("批准"))
+    const approve = screen.getByText("批准")
+    fireEvent.click(approve)
+    // 点击后两按钮立即禁用：连点不再发第二条决定（否则被下一个待批工具误读）。
+    fireEvent.click(approve)
     fireEvent.click(screen.getByText("拒绝"))
-    expect(decisions).toEqual(["approve", "reject"])
+    expect(decisions).toEqual(["approve"])
+    expect(approve).toBeDisabled()
+  })
+
+  it("fires reject when rejected (HITL)", () => {
+    const decisions: string[] = []
+    render(
+      <ToolCallRow
+        tool={makeTool({ status: "awaiting", args: { url: "http://x" } })}
+        onApprove={() => decisions.push("approve")}
+        onReject={() => decisions.push("reject")}
+      />,
+    )
+    fireEvent.click(screen.getByText("拒绝"))
+    expect(decisions).toEqual(["reject"])
   })
 
   it("carries the awaiting state class", () => {
