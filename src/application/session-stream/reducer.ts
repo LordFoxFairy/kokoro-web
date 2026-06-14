@@ -568,6 +568,36 @@ function resolveStaleTools(
   return { ...state, stepsByRun: { ...state.stepsByRun, [runId]: resolved } }
 }
 
+// 用户停止/放弃在途 run 时本地收口：把该 run 残留的 running/awaiting 工具翻成 error「运行已取消」，
+// 避免停止后还挂着一组无人消费的批准按钮（停止会立即关 SSE，后端 cancelled 终态来不及回流）。
+export function markRunCancelled(
+  state: SessionStreamState,
+  runId: string,
+): SessionStreamState {
+  const steps = state.stepsByRun[runId]
+  if (!steps) {
+    return state
+  }
+  let changed = false
+  const resolved = steps.map((step) => {
+    if (
+      step.kind === "tool" &&
+      (step.tool.status === "running" || step.tool.status === "awaiting")
+    ) {
+      changed = true
+      return {
+        ...step,
+        tool: { ...step.tool, status: "error" as const, errorText: "运行已取消" },
+      }
+    }
+    return step
+  })
+  if (!changed) {
+    return state
+  }
+  return { ...state, stepsByRun: { ...state.stepsByRun, [runId]: resolved } }
+}
+
 // 用户输入本地产生、不进 seenEventIds；复位 runStatus 为 idle 并清空 todo，历史步骤保留。
 export function appendUserMessage(
   state: SessionStreamState,
