@@ -67,6 +67,8 @@ export function SessionShell({
     mode,
     setMode,
     modeLocked,
+    permissionMode,
+    setPermissionMode,
   } = useConversation(startReply, scrollToLatestSeam, reattach)
 
   // 过程块静默生长（思考/工具/子智能体流入，messages 引用不变）也要驱动贴底跟随：
@@ -164,6 +166,8 @@ export function SessionShell({
           mode={mode}
           onModeChange={setMode}
           modeLocked={modeLocked}
+          permissionMode={permissionMode}
+          onPermissionModeChange={setPermissionMode}
         />
       </section>
     </main>

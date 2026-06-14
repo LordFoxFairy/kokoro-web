@@ -38,6 +38,7 @@ export type ConsumeLiveSessionInput = {
   sessionId?: string
   conversationId?: string
   executionStyle?: "fast" | "thinking"
+  permissionMode?: "auto" | "default" | "plan"
   // 持久会话线：让本轮 run 的 assistant 事件折在已有 thread 之上，而不是每轮清零。
   initialState?: SessionStreamState
   onState: (snapshot: SessionStreamSnapshot) => void
@@ -152,6 +153,10 @@ function buildRunUrl(input: ConsumeLiveSessionInput, baseUrl: string) {
   requestUrl.searchParams.set("conversation_id", conversationId)
   requestUrl.searchParams.set("input", input.input)
   requestUrl.searchParams.set("execution_style", input.executionStyle ?? "fast")
+  // 权限档位：默认 auto（后端默认全放行）；仅非默认时附带，省得污染 URL。
+  if (input.permissionMode && input.permissionMode !== "auto") {
+    requestUrl.searchParams.set("permission_mode", input.permissionMode)
+  }
   return { requestUrl, sessionId }
 }
 

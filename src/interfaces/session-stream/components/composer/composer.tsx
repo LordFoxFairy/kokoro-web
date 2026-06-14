@@ -11,6 +11,7 @@ import { createPortal } from "react-dom"
 
 import type { AgentMode } from "@/application/conversation-store"
 
+import type { PermissionMode } from "../../hooks/use-conversation"
 import { MAX_INPUT_LENGTH, resizeComposer } from "./composer-input"
 import {
   ComposerMenu,
@@ -92,6 +93,19 @@ const MODE_LABEL: Record<AgentMode, string> = {
   thinking: "Thinking",
 }
 
+// 权限档位（Claude-Code 式，会话级）：auto 全放行 / default 拦外部副作用 / plan 只读规划。
+const PERMISSION_OPTIONS: MenuOption[] = [
+  { key: "auto", label: "Auto", hint: "全自动，放行所有工具" },
+  { key: "default", label: "Default", hint: "拦外部副作用工具" },
+  { key: "plan", label: "Plan", hint: "只读规划，不执行工具" },
+]
+
+const PERMISSION_LABEL: Record<PermissionMode, string> = {
+  auto: "Auto",
+  default: "Default",
+  plan: "Plan",
+}
+
 type ComposerProps = {
   draft: string
   onDraftChange: (value: string) => void
@@ -107,6 +121,9 @@ type ComposerProps = {
   mode: AgentMode
   onModeChange: (mode: AgentMode) => void
   modeLocked: boolean
+  // 权限档位：会话级，随时可切（不锁定），作用于下一轮 run。
+  permissionMode: PermissionMode
+  onPermissionModeChange: (mode: PermissionMode) => void
 }
 
 export function Composer({
@@ -123,9 +140,12 @@ export function Composer({
   mode,
   onModeChange,
   modeLocked,
+  permissionMode,
+  onPermissionModeChange,
 }: ComposerProps) {
   const modeLabel = MODE_LABEL[mode]
   const ModeIcon = mode === "thinking" ? SparkIcon : ZapIcon
+  const permissionLabel = PERMISSION_LABEL[permissionMode]
 
   // 放大编辑：把同一份草稿摊进一个大编辑面板，方便长文撰写/修改（对齐 Gemini 的展开输入）。
   const [expanded, setExpanded] = useState(false)
@@ -249,6 +269,22 @@ export function Composer({
                 align="end"
               />
             )}
+
+            <ComposerMenu
+              triggerClassName="kk-composer__mode"
+              triggerLabel="切换权限模式"
+              trigger={
+                <>
+                  <LockIcon className="kk-composer__mode-glyph" />
+                  <span>{permissionLabel}</span>
+                  <ChevronIcon className="kk-composer__chevron" />
+                </>
+              }
+              options={PERMISSION_OPTIONS}
+              selectedKey={permissionMode}
+              onSelect={(key) => onPermissionModeChange(key as PermissionMode)}
+              align="end"
+            />
 
             <button
               className="kk-composer__mic"

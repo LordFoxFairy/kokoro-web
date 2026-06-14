@@ -198,6 +198,34 @@ describe("consumeLiveSession", () => {
     handle.close()
   })
 
+  it("includes a non-auto permissionMode and omits it for auto", async () => {
+    vi.stubGlobal("EventSource", MockEventSource as unknown as typeof EventSource)
+
+    const planFetch = vi.fn().mockResolvedValue(new Response(null, { status: 202 }))
+    vi.stubGlobal("fetch", planFetch)
+    const planHandle = await consumeLiveSession({
+      input: "hi",
+      baseUrl: "http://127.0.0.1:3001",
+      permissionMode: "plan",
+      onState: () => {},
+    } as unknown as Parameters<typeof consumeLiveSession>[0])
+    const [planUrl] = planFetch.mock.calls[0] as [string, RequestInit]
+    expect(planUrl).toContain("permission_mode=plan")
+    planHandle.close()
+
+    const autoFetch = vi.fn().mockResolvedValue(new Response(null, { status: 202 }))
+    vi.stubGlobal("fetch", autoFetch)
+    const autoHandle = await consumeLiveSession({
+      input: "hi",
+      baseUrl: "http://127.0.0.1:3001",
+      permissionMode: "auto",
+      onState: () => {},
+    } as unknown as Parameters<typeof consumeLiveSession>[0])
+    const [autoUrl] = autoFetch.mock.calls[0] as [string, RequestInit]
+    expect(autoUrl).not.toContain("permission_mode")
+    autoHandle.close()
+  })
+
   it("ignores malformed envelopes without crashing the stream", async () => {
     vi.stubGlobal(
       "fetch",
