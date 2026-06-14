@@ -95,6 +95,10 @@ export function toSessionStreamEvent(
         name: event.payload.name,
         result: event.payload.result,
         isError: event.payload.is_error,
+        // HITL 拒绝标记(仅拒绝时存在)：让 reducer 置 rejected 而非绿勾 done，replay 安全。
+        ...(event.payload.rejected !== undefined
+          ? { rejected: event.payload.rejected }
+          : {}),
       }
     case "todo.updated":
       return {

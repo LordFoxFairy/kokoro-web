@@ -404,8 +404,13 @@ export function applySessionEvent(
     const hasInvoked = steps.some(
       (step) => step.kind === "tool" && step.tool.id === event.toolId,
     )
+    // rejected（HITL 拒绝，含超时回退）→ rejected 态（replay 安全，区别于绿勾）；
     // is_error=true → 失败态：status=error + errorText 携带原因（UI 显红、可展开看错误）。
-    const returnedStatus = event.isError ? "error" : "done"
+    const returnedStatus = event.rejected
+      ? "rejected"
+      : event.isError
+        ? "error"
+        : "done"
     if (hasInvoked) {
       // 配对：把同一 tool step 由 running 就地翻 done/error，保持原位置（不重排）。
       nextState = updateRunStep(
