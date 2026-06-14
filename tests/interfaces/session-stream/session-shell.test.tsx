@@ -1787,8 +1787,8 @@ describe("SessionShell HITL reject", () => {
     )
   })
 
-  it("stopping an in-flight run sends cancel (真停后端 + 解阻塞所有待批)", () => {
-    render(<SessionShell startReply={awaitingReply} />)
+  it("stopping an in-flight run sends cancel and locally resolves the awaiting tool (no ghost buttons)", () => {
+    const { container } = render(<SessionShell startReply={awaitingReply} />)
     send("抓个网页")
 
     const stop = screen.getByLabelText("停止生成")
@@ -1799,5 +1799,8 @@ describe("SessionShell HITL reject", () => {
     expect(sendRunControlMock).toHaveBeenCalledWith(
       expect.objectContaining({ decision: "cancel" }),
     )
+    // 停止后立即收口：不再有 awaiting 工具行(及其无人消费的批准按钮)。
+    expect(container.querySelector(".kk-tool--awaiting")).toBeNull()
+    expect(screen.queryByRole("button", { name: "批准" })).not.toBeInTheDocument()
   })
 })

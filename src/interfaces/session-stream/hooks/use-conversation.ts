@@ -37,6 +37,7 @@ import {
   appendUserMessage,
   createSessionStreamState,
   findActiveRunId,
+  markRunCancelled,
   type SessionStreamState,
 } from "@/application/session-stream/reducer"
 
@@ -366,8 +367,21 @@ export function useConversation(
     const rid = findActiveRunId(activeThreadOf(store))
     if (rid) {
       void sendRunControl({ sessionId: activeId, runId: rid, decision: "cancel" })
+      // 本地立即收口：停止会立刻关 SSE，后端 cancelled 终态来不及回流触发 resolveStaleTools，
+      // 故在此把该 run 残留的 awaiting/running 工具翻成「运行已取消」，不留无人消费的批准按钮。
+      setLiveStore((prev) => {
+        const current = prev ?? persistedStore
+        if (!current) {
+          return prev
+        }
+        return withActiveThread(
+          current,
+          markRunCancelled(activeThreadOf(current), rid),
+          nowMs(),
+        )
+      })
     }
-  }, [store, activeId, isStreaming])
+  }, [store, activeId, isStreaming, persistedStore])
 
   const stopReply = useCallback(() => {
     cancelActiveRun()
