@@ -17,6 +17,9 @@
   --radius-soft: 20px;
   /* 统一内容列宽：对话线、输入框、首屏共用一栏，保证消息与聊天框对齐。 */
   --kk-content-width: 48rem;
+  /* 衬线栈（系统字体，无需加载）：承载品牌/首屏标题的「米木纸感」暖色身份。 */
+  --font-serif: "Songti SC", "Source Han Serif SC", "Noto Serif CJK SC", Georgia,
+    "Times New Roman", serif;
 
   --a2ui-color-background: var(--surface-soft);
   --a2ui-color-surface: var(--surface);
