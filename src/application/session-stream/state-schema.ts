@@ -15,7 +15,7 @@ const storedToolCallSchema = z
   .object({
     id: z.string(),
     name: z.string(),
-    args: z.record(z.unknown()),
+    args: z.record(z.string(), z.unknown()),
     result: z.string().optional(),
     status: z.enum(["running", "awaiting", "rejected", "done", "error"]),
     errorText: z.string().optional(),
@@ -86,7 +86,7 @@ export const storedSessionStateSchema = z
         .strict(),
     ),
     todos: z.array(storedTodoSchema).default([]),
-    stepsByRun: z.record(z.array(storedStepSchema)).default({}),
+    stepsByRun: z.record(z.string(), z.array(storedStepSchema)).default({}),
     runStatus: z.enum(["idle", "completed", "failed"]),
   })
   // 输入为 unknown（解析任意落盘数据）、输出严格等于 SessionStreamState（漂移在此暴露）。

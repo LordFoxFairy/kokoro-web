@@ -53,7 +53,13 @@ export function SessionRail({
         <span className="kk-rail__action-label">新对话</span>
       </button>
 
-      <button className="kk-rail__action kk-rail__search" type="button">
+      {/* 会话搜索尚未接入：停用入口并以 title 标注，避免 ⌘K 暗示一个不存在的功能。 */}
+      <button
+        className="kk-rail__action kk-rail__search"
+        type="button"
+        title="会话搜索即将支持"
+        disabled
+      >
         <span className="kk-rail__search-label">
           <SearchIcon />
           <span className="kk-rail__action-label">搜索</span>
