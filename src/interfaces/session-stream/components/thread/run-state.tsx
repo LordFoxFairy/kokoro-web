@@ -16,7 +16,7 @@ export function RunState({
     return <span className="kk-actstate kk-actstate--error" />
   }
   if (rejected) {
-    // 已拒绝：禁止圈（与绿勾 done 显著区分），表示用户驳回了该调用、工具未执行。
+    // 已拒绝：禁止圈（与完成态显著区分），表示用户驳回了该调用、工具未执行。
     return (
       <BanCircleIcon className="kk-actstate kk-actstate--rejected" />
     )
