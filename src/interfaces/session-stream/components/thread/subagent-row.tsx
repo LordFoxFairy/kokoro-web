@@ -62,7 +62,7 @@ export function SubagentRow({ subagent }: { subagent: SessionSubagent }) {
     >
       <summary className="kk-subagent__summary">
         <SubagentHead subagent={subagent} />
-        {/* D1：chevron 提示「可展开」，与工具行/过程块一致；静态行无 chevron。 */}
+        {/* chevron 提示「可展开」，与工具行/过程块一致；静态行无 chevron。 */}
         <ChevronIcon className="kk-subagent__chevron" />
       </summary>
       <div className="kk-subagent__detail">
