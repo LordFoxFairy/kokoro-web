@@ -1,260 +1,297 @@
-import type {
-  SessionStreamEvent,
-  SessionTodo,
-} from "@/domain/session-stream-event"
+import type { SessionStreamEvent } from "@/domain/session-stream-event"
 
-export type SessionMessage = {
-  id: string
-  role: "assistant" | "user"
-  content: string
-  // 该消息所属 run；用于把同一 run 的连续 assistant 段归并到一个 turn（用户消息为本地 run）。
-  runId: string
-}
+import {
+  appendRunStep,
+  resolveStaleTools,
+  updateRunStep,
+} from "./state-mutations"
+import type { SessionMessage, SessionStreamState } from "./types"
 
-export type SessionToolCall = {
-  id: string
-  name: string
-  args: Record<string, unknown>
-  result?: string
-  // awaiting：被门控工具等待用户批准（HITL）；rejected：用户拒绝了该调用（区别于绿勾的 done）；
-  // error：工具失败（errorText 携带原因，落定后保持展开）。
-  status: "running" | "awaiting" | "rejected" | "done" | "error"
-  errorText?: string
-}
+// 公开 API 聚合点：types / state-mutations / thread-projection 经此 re-export，
+// 既有 importer 维持从 reducer 取符号，拆分对外不可见。
+export type {
+  SessionMessage,
+  SessionStep,
+  SessionStreamState,
+  SessionSubagent,
+  SessionToolCall,
+  ThreadItem,
+} from "./types"
+export {
+  appendUserMessage,
+  createSessionStreamState,
+  findActiveRunId,
+  findAwaitingRunId,
+  markRunCancelled,
+  markToolRejected,
+  resolveStaleTools,
+} from "./state-mutations"
+export {
+  buildThreadItems,
+  computeActivityVersion,
+} from "./thread-projection"
 
-export type SessionSubagent = {
-  id: string
-  name: string
-  description: string
-  subagentType: string
-  source: "built-in" | "config-custom" | "runtime-custom"
-  output?: string
-  status: "running" | "done"
-}
-
-// 有序 Step：过程与文本按发射时序（seq，来自传输游标）排成一列，而非按 kind 归桶。
-export type SessionStep =
-  | { kind: "thinking"; seq: number; segmentId: string; text: string }
-  | { kind: "tool"; seq: number; segmentId: string; tool: SessionToolCall }
-  | {
-      kind: "subagent"
-      seq: number
-      segmentId: string
-      subagent: SessionSubagent
-    }
-  | { kind: "text"; seq: number; segmentId: string }
-
-export type SessionStreamState = {
-  // 内存用 Set 做 O(1) 去重；落盘序列化为 string[]（见 state-schema）。
-  seenEventIds: Set<string>
-  messages: SessionMessage[]
-  // todo 仍按当前运行整表替换（保留全局 TodoBar，见计划 fork #3）。
-  todos: SessionTodo[]
-  // 有序步骤：按 runId 归集，每个 run 一条 append-only 的 SessionStep 列表（按 seq 定序）。
-  stepsByRun: Record<string, SessionStep[]>
-  runStatus: "idle" | "completed" | "failed"
-}
-
-// 最近开始的 run（stepsByRun 按插入序，末位即最新）：停止/放弃时据此取消在途 run。
-export function findActiveRunId(state: SessionStreamState): string | null {
-  const runIds = Object.keys(state.stepsByRun)
-  return runIds[runIds.length - 1] ?? null
-}
-
-// HITL：当前 thread 内有工具在等待批准时返回其 runId（用于放弃 run 时立即 reject 解阻塞 worker）。
-export function findAwaitingRunId(state: SessionStreamState): string | null {
-  for (const [runId, steps] of Object.entries(state.stepsByRun)) {
-    if (steps.some((step) => step.kind === "tool" && step.tool.status === "awaiting")) {
-      return runId
-    }
-  }
-  return null
-}
-
-// HITL：用户点「拒绝」时本地乐观置该 run 待批工具为 rejected（区别于 reject 回流的 is_error=false 绿勾）。
-// 只翻 awaiting 的工具；done/error/running 不动。
-export function markToolRejected(
+function applyMessageEvent(
   state: SessionStreamState,
-  runId: string,
+  event: Extract<
+    SessionStreamEvent,
+    { kind: "message-delta" | "message-completed" }
+  >,
 ): SessionStreamState {
-  const steps = state.stepsByRun[runId]
-  if (!steps) {
-    return state
-  }
-  let changed = false
-  const next = steps.map((step) => {
-    if (step.kind === "tool" && step.tool.status === "awaiting") {
-      changed = true
-      return { ...step, tool: { ...step.tool, status: "rejected" as const } }
-    }
-    return step
-  })
-  if (!changed) {
-    return state
-  }
-  return { ...state, stepsByRun: { ...state.stepsByRun, [runId]: next } }
-}
-
-// 活动总量的纯派生信号（思考长度+工具/子智能体数+输出长度）：供 auto-scroll 跟随过程块的静默生长。
-export function computeActivityVersion(state: SessionStreamState): number {
-  let version = 0
-
-  for (const steps of Object.values(state.stepsByRun)) {
-    for (const step of steps) {
-      if (step.kind === "thinking") {
-        version += step.text.length
-      } else if (step.kind === "tool") {
-        version += 1
-        version += step.tool.result?.length ?? 0
-      } else if (step.kind === "subagent") {
-        version += 1
-        version += step.subagent.output?.length ?? 0
-      }
-    }
-  }
-
-  return version
-}
-
-// 线程渲染项：连续同 runId 的 assistant 消息归并为一个 turn；用户消息单独成项。
-export type ThreadItem =
-  | { kind: "user"; message: SessionMessage }
-  | {
-      kind: "assistant-turn"
-      runId: string
-      steps: SessionStep[]
-      messagesById: Record<string, SessionMessage>
-    }
-
-// legacy 恢复只回放了 messages：为缺 text 步骤的 assistant 段补合成 text 步骤，保证刷新后答案仍被渲染。
-function withRestoredTextSteps(
-  steps: SessionStep[],
-  messagesById: Record<string, SessionMessage>,
-): SessionStep[] {
-  const covered = new Set(
-    steps.filter((step) => step.kind === "text").map((step) => step.segmentId),
+  const index = state.messages.findIndex(
+    (message) => message.id === event.segmentId,
   )
-  const missing = Object.keys(messagesById).filter((id) => !covered.has(id))
-  if (missing.length === 0) {
-    return steps
-  }
-  let nextSeq = steps.reduce((max, step) => Math.max(max, step.seq), 0)
-  const synthetic: SessionStep[] = missing.map((segmentId) => {
-    nextSeq += 1
-    return { kind: "text", seq: nextSeq, segmentId }
-  })
-  return [...steps, ...synthetic]
-}
 
-export function buildThreadItems(state: SessionStreamState): ThreadItem[] {
-  const items: ThreadItem[] = []
-  const renderedRuns = new Set<string>()
-  let i = 0
-
-  while (i < state.messages.length) {
-    const message = state.messages[i] as SessionMessage
-
-    if (message.role === "user") {
-      items.push({ kind: "user", message })
-      i += 1
-      continue
-    }
-
-    // 收拢连续的同 runId assistant 消息，组成一个 turn 的文本段索引。
-    const runId = message.runId
-    const messagesById: Record<string, SessionMessage> = {}
-    while (i < state.messages.length) {
-      const candidate = state.messages[i] as SessionMessage
-      if (candidate.role !== "assistant" || candidate.runId !== runId) {
-        break
+  if (event.kind === "message-delta") {
+    if (index >= 0) {
+      const existing = state.messages[index]
+      // role/runId 在 segmentId 首个增量时确定一次：后续增量只追加正文。
+      state.messages[index] = {
+        ...(existing as SessionMessage),
+        content: `${existing?.content ?? ""}${event.delta}`,
       }
-      messagesById[candidate.id] = candidate
-      i += 1
+      return state
     }
-
-    renderedRuns.add(runId)
-    items.push({
-      kind: "assistant-turn",
-      runId,
-      steps: withRestoredTextSteps(state.stepsByRun[runId] ?? [], messagesById),
-      messagesById,
+    state.messages.push({
+      id: event.segmentId,
+      role: event.role,
+      content: event.delta,
+      runId: event.runId,
+    })
+    // 文本步骤进入有序列表：标记「这一段文本在此 seq 出现」，渲染时据此与过程交错。
+    return appendRunStep(state, event.runId, {
+      kind: "text",
+      seq: event.seq,
+      segmentId: event.segmentId,
     })
   }
 
-  // 仅有过程步骤、尚无任何 assistant 文本的 run（首 token 未到）：作为一个无文本的成形 turn。
-  for (const runId of Object.keys(state.stepsByRun)) {
-    if (renderedRuns.has(runId)) {
-      continue
+  // completed 必须覆盖累计增量，避免 replay 后残留半句内容。
+  if (index >= 0) {
+    state.messages[index] = {
+      id: event.segmentId,
+      role: event.role,
+      content: event.content,
+      runId: event.runId,
     }
-    items.push({
-      kind: "assistant-turn",
-      runId,
-      steps: state.stepsByRun[runId] ?? [],
-      messagesById: {},
-    })
-  }
-
-  return items
-}
-
-export function createSessionStreamState(): SessionStreamState {
-  return {
-    seenEventIds: new Set(),
-    messages: [],
-    todos: [],
-    stepsByRun: {},
-    runStatus: "idle",
-  }
-}
-
-// 按 (seq, 到达先后) 稳定插入：同 seq 追加在已有同 seq 之后，保持 append 语义。
-function insertOrdered(
-  steps: SessionStep[],
-  step: SessionStep,
-): SessionStep[] {
-  const next = [...steps]
-  // 从尾部找到第一个 seq <= 新步骤 seq 的位置之后插入（稳定：同 seq 排到既有之后）。
-  let index = next.length
-  while (index > 0 && (next[index - 1]?.seq ?? 0) > step.seq) {
-    index -= 1
-  }
-  next.splice(index, 0, step)
-  return next
-}
-
-// 就地更新已存在的步骤（按谓词定位）而不改其位置：tool 翻 done、subagent 续写 output 等。
-function updateRunStep(
-  state: SessionStreamState,
-  runId: string,
-  predicate: (step: SessionStep) => boolean,
-  updater: (step: SessionStep) => SessionStep,
-): SessionStreamState {
-  const steps = state.stepsByRun[runId]
-  if (!steps) {
     return state
   }
-  const index = steps.findIndex(predicate)
-  if (index < 0) {
-    return state
-  }
-  const nextSteps = [...steps]
-  nextSteps[index] = updater(nextSteps[index] as SessionStep)
-  return {
-    ...state,
-    stepsByRun: { ...state.stepsByRun, [runId]: nextSteps },
-  }
+  state.messages.push({
+    id: event.segmentId,
+    role: event.role,
+    content: event.content,
+    runId: event.runId,
+  })
+  return appendRunStep(state, event.runId, {
+    kind: "text",
+    seq: event.seq,
+    segmentId: event.segmentId,
+  })
 }
 
-function appendRunStep(
+function applyThinkingDelta(
   state: SessionStreamState,
-  runId: string,
-  step: SessionStep,
+  event: Extract<SessionStreamEvent, { kind: "thinking-delta" }>,
 ): SessionStreamState {
-  const steps = state.stepsByRun[runId] ?? []
-  return {
-    ...state,
-    stepsByRun: { ...state.stepsByRun, [runId]: insertOrdered(steps, step) },
+  const steps = state.stepsByRun[event.runId] ?? []
+  // 同一段 thinking 续写：找该 segmentId 的既有 thinking step 追加，否则新建一个有序步骤。
+  const existingIndex = steps.findIndex(
+    (step) => step.kind === "thinking" && step.segmentId === event.segmentId,
+  )
+  if (existingIndex >= 0) {
+    const existing = steps[existingIndex]
+    if (existing?.kind === "thinking") {
+      return updateRunStep(
+        state,
+        event.runId,
+        (step) => step === existing,
+        (step) =>
+          step.kind === "thinking"
+            ? { ...step, text: `${step.text}${event.delta}` }
+            : step,
+      )
+    }
+    return state
   }
+  return appendRunStep(state, event.runId, {
+    kind: "thinking",
+    seq: event.seq,
+    segmentId: event.segmentId,
+    text: event.delta,
+  })
+}
+
+function applyToolInvoked(
+  state: SessionStreamState,
+  event: Extract<SessionStreamEvent, { kind: "tool-invoked" }>,
+): SessionStreamState {
+  return appendRunStep(state, event.runId, {
+    kind: "tool",
+    seq: event.seq,
+    segmentId: event.segmentId,
+    tool: {
+      id: event.toolId,
+      name: event.name,
+      args: event.args,
+      status: "running",
+    },
+  })
+}
+
+function applyToolAwaitingApproval(
+  state: SessionStreamState,
+  event: Extract<SessionStreamEvent, { kind: "tool-awaiting-approval" }>,
+): SessionStreamState {
+  const steps = state.stepsByRun[event.runId] ?? []
+  const hasInvoked = steps.some(
+    (step) => step.kind === "tool" && step.tool.id === event.toolId,
+  )
+  if (hasInvoked) {
+    // 配对：把同一 tool step 翻 awaiting（UI 显批准/拒绝）。
+    return updateRunStep(
+      state,
+      event.runId,
+      (step) => step.kind === "tool" && step.tool.id === event.toolId,
+      (step) =>
+        step.kind === "tool"
+          ? { ...step, tool: { ...step.tool, status: "awaiting" } }
+          : step,
+    )
+  }
+  // 无配对的 invoked（乱序/部分 replay）：仍补建 awaiting 步，防止审批 UI 丢失。
+  return appendRunStep(state, event.runId, {
+    kind: "tool",
+    seq: event.seq,
+    segmentId: event.segmentId,
+    tool: {
+      id: event.toolId,
+      name: event.name,
+      args: event.args,
+      status: "awaiting",
+    },
+  })
+}
+
+function applyToolReturned(
+  state: SessionStreamState,
+  event: Extract<SessionStreamEvent, { kind: "tool-returned" }>,
+): SessionStreamState {
+  const steps = state.stepsByRun[event.runId] ?? []
+  const hasInvoked = steps.some(
+    (step) => step.kind === "tool" && step.tool.id === event.toolId,
+  )
+  // rejected（HITL 拒绝，含超时回退）→ rejected 态（replay 安全，区别于 done 态）；
+  // is_error=true → 失败态：status=error，errorText 携带原因（UI 显红、可展开查看）。
+  const returnedStatus = event.rejected
+    ? "rejected"
+    : event.isError
+      ? "error"
+      : "done"
+  if (hasInvoked) {
+    // 配对：把同一 tool step 由 running 就地翻 done/error，保持原位置（不重排）。
+    return updateRunStep(
+      state,
+      event.runId,
+      (step) => step.kind === "tool" && step.tool.id === event.toolId,
+      (step) =>
+        step.kind === "tool"
+          ? {
+              ...step,
+              tool: {
+                ...step.tool,
+                result: event.result,
+                // 已置 rejected 的工具：其回流（is_error=false 的拒绝文案）不得将 rejected 降级为 done。
+                status: step.tool.status === "rejected" ? "rejected" : returnedStatus,
+                ...(event.isError ? { errorText: event.result } : {}),
+              },
+            }
+          : step,
+    )
+  }
+  // 无配对的 invoked（如部分 replay）：仍记录已完成的结果，不丢事件。
+  return appendRunStep(state, event.runId, {
+    kind: "tool",
+    seq: event.seq,
+    segmentId: event.segmentId,
+    tool: {
+      id: event.toolId,
+      name: event.name,
+      args: {},
+      result: event.result,
+      status: returnedStatus,
+      ...(event.isError ? { errorText: event.result } : {}),
+    },
+  })
+}
+
+function applySubagentStarted(
+  state: SessionStreamState,
+  event: Extract<SessionStreamEvent, { kind: "subagent-started" }>,
+): SessionStreamState {
+  return appendRunStep(state, event.runId, {
+    kind: "subagent",
+    seq: event.seq,
+    segmentId: event.segmentId,
+    subagent: {
+      id: event.subagentId,
+      name: event.name,
+      description: event.description,
+      subagentType: event.subagentType,
+      source: event.source,
+      status: "running",
+    },
+  })
+}
+
+function applySubagentFinished(
+  state: SessionStreamState,
+  event: Extract<SessionStreamEvent, { kind: "subagent-finished" }>,
+): SessionStreamState {
+  return updateRunStep(
+    state,
+    event.runId,
+    (step) => step.kind === "subagent" && step.subagent.id === event.subagentId,
+    (step) =>
+      step.kind === "subagent"
+        ? { ...step, subagent: { ...step.subagent, status: "done" } }
+        : step,
+  )
+}
+
+function applySubagentTextDelta(
+  state: SessionStreamState,
+  event: Extract<SessionStreamEvent, { kind: "subagent-text-delta" }>,
+): SessionStreamState {
+  return updateRunStep(
+    state,
+    event.runId,
+    (step) => step.kind === "subagent" && step.subagent.id === event.subagentId,
+    (step) =>
+      step.kind === "subagent"
+        ? {
+            ...step,
+            subagent: {
+              ...step.subagent,
+              output: `${step.subagent.output ?? ""}${event.text}`,
+            },
+          }
+        : step,
+  )
+}
+
+function applySubagentTextCompleted(
+  state: SessionStreamState,
+  event: Extract<SessionStreamEvent, { kind: "subagent-text-completed" }>,
+): SessionStreamState {
+  return updateRunStep(
+    state,
+    event.runId,
+    (step) => step.kind === "subagent" && step.subagent.id === event.subagentId,
+    (step) =>
+      step.kind === "subagent"
+        ? { ...step, subagent: { ...step.subagent, output: event.text } }
+        : step,
+  )
 }
 
 export function applySessionEvent(
@@ -273,344 +310,56 @@ export function applySessionEvent(
     stepsByRun: { ...state.stepsByRun },
   }
 
-  if (event.kind === "session-created") {
+  switch (event.kind) {
     // 仅记录 eventId 用于去重，关闭重复 session-created 被重放的隐患。
-    return nextState
-  }
-
-  if (event.kind === "message-delta" || event.kind === "message-completed") {
-    const index = nextState.messages.findIndex(
-      (message) => message.id === event.segmentId,
-    )
-
-    if (event.kind === "message-delta") {
-      if (index >= 0) {
-        const existing = nextState.messages[index]
-        // role/runId 在 segmentId 首个增量时确定一次：后续增量只追加正文。
-        nextState.messages[index] = {
-          ...(existing as SessionMessage),
-          content: `${existing?.content ?? ""}${event.delta}`,
-        }
-      } else {
-        nextState.messages.push({
-          id: event.segmentId,
-          role: event.role,
-          content: event.delta,
-          runId: event.runId,
-        })
-        // 文本步骤进入有序列表：标记「这一段文本在此 seq 出现」，渲染时据此与过程交错。
-        nextState = appendRunStep(nextState, event.runId, {
-          kind: "text",
-          seq: event.seq,
-          segmentId: event.segmentId,
-        })
-      }
-    } else {
-      // completed 必须覆盖累计增量，避免 replay 后残留半句内容。
-      if (index >= 0) {
-        nextState.messages[index] = {
-          id: event.segmentId,
-          role: event.role,
-          content: event.content,
-          runId: event.runId,
-        }
-      } else {
-        nextState.messages.push({
-          id: event.segmentId,
-          role: event.role,
-          content: event.content,
-          runId: event.runId,
-        })
-        nextState = appendRunStep(nextState, event.runId, {
-          kind: "text",
-          seq: event.seq,
-          segmentId: event.segmentId,
-        })
-      }
+    case "session-created":
+      break
+    case "message-delta":
+    case "message-completed":
+      nextState = applyMessageEvent(nextState, event)
+      break
+    case "thinking-delta":
+      nextState = applyThinkingDelta(nextState, event)
+      break
+    case "tool-invoked":
+      nextState = applyToolInvoked(nextState, event)
+      break
+    case "tool-awaiting-approval":
+      nextState = applyToolAwaitingApproval(nextState, event)
+      break
+    case "tool-returned":
+      nextState = applyToolReturned(nextState, event)
+      break
+    case "todo-updated":
+      // 整表替换：todo.updated 每次携带完整清单，反映当前进度。
+      nextState.todos = event.todos
+      break
+    case "subagent-started":
+      nextState = applySubagentStarted(nextState, event)
+      break
+    case "subagent-finished":
+      nextState = applySubagentFinished(nextState, event)
+      break
+    case "subagent-text-delta":
+      nextState = applySubagentTextDelta(nextState, event)
+      break
+    case "subagent-text-completed":
+      nextState = applySubagentTextCompleted(nextState, event)
+      break
+    case "run-completed":
+      nextState = resolveStaleTools(nextState, event.runId)
+      nextState.runStatus = "completed"
+      break
+    case "run-failed":
+      nextState = resolveStaleTools(nextState, event.runId)
+      nextState.runStatus = "failed"
+      break
+    default: {
+      // 穷尽保护：新增 event.kind 而未在此处理时编译期报错（对齐 mapper 的 exhaustive 风格）。
+      const _exhaustive: never = event
+      return _exhaustive
     }
-  }
-
-  if (event.kind === "thinking-delta") {
-    const steps = nextState.stepsByRun[event.runId] ?? []
-    // 同一段 thinking 续写：找该 segmentId 的既有 thinking step 追加，否则新建一个有序步骤。
-    const existingIndex = steps.findIndex(
-      (step) => step.kind === "thinking" && step.segmentId === event.segmentId,
-    )
-    if (existingIndex >= 0) {
-      const existing = steps[existingIndex]
-      if (existing?.kind === "thinking") {
-        nextState = updateRunStep(
-          nextState,
-          event.runId,
-          (step) => step === existing,
-          (step) =>
-            step.kind === "thinking"
-              ? { ...step, text: `${step.text}${event.delta}` }
-              : step,
-        )
-      }
-    } else {
-      nextState = appendRunStep(nextState, event.runId, {
-        kind: "thinking",
-        seq: event.seq,
-        segmentId: event.segmentId,
-        text: event.delta,
-      })
-    }
-  }
-
-  if (event.kind === "tool-invoked") {
-    nextState = appendRunStep(nextState, event.runId, {
-      kind: "tool",
-      seq: event.seq,
-      segmentId: event.segmentId,
-      tool: {
-        id: event.toolId,
-        name: event.name,
-        args: event.args,
-        status: "running",
-      },
-    })
-  }
-
-  if (event.kind === "tool-awaiting-approval") {
-    const steps = nextState.stepsByRun[event.runId] ?? []
-    const hasInvoked = steps.some(
-      (step) => step.kind === "tool" && step.tool.id === event.toolId,
-    )
-    if (hasInvoked) {
-      // 配对:把同一 tool step 翻 awaiting（UI 显批准/拒绝）。
-      nextState = updateRunStep(
-        nextState,
-        event.runId,
-        (step) => step.kind === "tool" && step.tool.id === event.toolId,
-        (step) =>
-          step.kind === "tool"
-            ? { ...step, tool: { ...step.tool, status: "awaiting" } }
-            : step,
-      )
-    } else {
-      // 无配对的 invoked（乱序/部分 replay）：仍补建 awaiting 步，防止审批 UI 丢失。
-      nextState = appendRunStep(nextState, event.runId, {
-        kind: "tool",
-        seq: event.seq,
-        segmentId: event.segmentId,
-        tool: {
-          id: event.toolId,
-          name: event.name,
-          args: event.args,
-          status: "awaiting",
-        },
-      })
-    }
-  }
-
-  if (event.kind === "tool-returned") {
-    const steps = nextState.stepsByRun[event.runId] ?? []
-    const hasInvoked = steps.some(
-      (step) => step.kind === "tool" && step.tool.id === event.toolId,
-    )
-    // rejected（HITL 拒绝，含超时回退）→ rejected 态（replay 安全，区别于 done 态）；
-    // is_error=true → 失败态：status=error，errorText 携带原因（UI 显红、可展开查看）。
-    const returnedStatus = event.rejected
-      ? "rejected"
-      : event.isError
-        ? "error"
-        : "done"
-    if (hasInvoked) {
-      // 配对：把同一 tool step 由 running 就地翻 done/error，保持原位置（不重排）。
-      nextState = updateRunStep(
-        nextState,
-        event.runId,
-        (step) => step.kind === "tool" && step.tool.id === event.toolId,
-        (step) =>
-          step.kind === "tool"
-            ? {
-                ...step,
-                tool: {
-                  ...step.tool,
-                  result: event.result,
-                  // 已置 rejected 的工具：其回流（is_error=false 的拒绝文案）不得将 rejected 降级为 done。
-                  status: step.tool.status === "rejected" ? "rejected" : returnedStatus,
-                  ...(event.isError ? { errorText: event.result } : {}),
-                },
-              }
-            : step,
-      )
-    } else {
-      // 无配对的 invoked（如部分 replay）：仍记录已完成的结果，不丢事件。
-      nextState = appendRunStep(nextState, event.runId, {
-        kind: "tool",
-        seq: event.seq,
-        segmentId: event.segmentId,
-        tool: {
-          id: event.toolId,
-          name: event.name,
-          args: {},
-          result: event.result,
-          status: returnedStatus,
-          ...(event.isError ? { errorText: event.result } : {}),
-        },
-      })
-    }
-  }
-
-  if (event.kind === "todo-updated") {
-    // 整表替换：todo.updated 每次携带完整清单，反映当前进度。
-    nextState.todos = event.todos
-  }
-
-  if (event.kind === "subagent-started") {
-    nextState = appendRunStep(nextState, event.runId, {
-      kind: "subagent",
-      seq: event.seq,
-      segmentId: event.segmentId,
-      subagent: {
-        id: event.subagentId,
-        name: event.name,
-        description: event.description,
-        subagentType: event.subagentType,
-        source: event.source,
-        status: "running",
-      },
-    })
-  }
-
-  if (event.kind === "subagent-finished") {
-    nextState = updateRunStep(
-      nextState,
-      event.runId,
-      (step) => step.kind === "subagent" && step.subagent.id === event.subagentId,
-      (step) =>
-        step.kind === "subagent"
-          ? { ...step, subagent: { ...step.subagent, status: "done" } }
-          : step,
-    )
-  }
-
-  if (event.kind === "subagent-text-delta") {
-    nextState = updateRunStep(
-      nextState,
-      event.runId,
-      (step) => step.kind === "subagent" && step.subagent.id === event.subagentId,
-      (step) =>
-        step.kind === "subagent"
-          ? {
-              ...step,
-              subagent: {
-                ...step.subagent,
-                output: `${step.subagent.output ?? ""}${event.text}`,
-              },
-            }
-          : step,
-    )
-  }
-
-  if (event.kind === "subagent-text-completed") {
-    nextState = updateRunStep(
-      nextState,
-      event.runId,
-      (step) => step.kind === "subagent" && step.subagent.id === event.subagentId,
-      (step) =>
-        step.kind === "subagent"
-          ? { ...step, subagent: { ...step.subagent, output: event.text } }
-          : step,
-    )
-  }
-
-  if (event.kind === "run-completed") {
-    nextState = resolveStaleTools(nextState, event.runId)
-    nextState.runStatus = "completed"
-  }
-
-  if (event.kind === "run-failed") {
-    nextState = resolveStaleTools(nextState, event.runId)
-    nextState.runStatus = "failed"
   }
 
   return nextState
-}
-
-// run 终态时将残留的 running/awaiting 工具置为 error，避免永久挂起的「待批准/运行中」行
-// 及无人消费的批准按钮。done/error 工具不变。
-function resolveStaleTools(
-  state: SessionStreamState,
-  runId: string,
-): SessionStreamState {
-  const steps = state.stepsByRun[runId]
-  if (!steps) {
-    return state
-  }
-  let changed = false
-  const resolved = steps.map((step) => {
-    if (
-      step.kind === "tool" &&
-      (step.tool.status === "running" || step.tool.status === "awaiting")
-    ) {
-      changed = true
-      return {
-        ...step,
-        tool: {
-          ...step.tool,
-          status: "error" as const,
-          errorText:
-            step.tool.status === "awaiting"
-              ? "运行已结束，该工具未获批准"
-              : "运行已结束，工具未完成",
-        },
-      }
-    }
-    return step
-  })
-  if (!changed) {
-    return state
-  }
-  return { ...state, stepsByRun: { ...state.stepsByRun, [runId]: resolved } }
-}
-
-// 用户停止/放弃在途 run 时本地收口：把该 run 残留的 running/awaiting 工具翻成 error「运行已取消」，
-// 避免停止后还挂着一组无人消费的批准按钮（停止会立即关 SSE，后端 cancelled 终态来不及回流）。
-export function markRunCancelled(
-  state: SessionStreamState,
-  runId: string,
-): SessionStreamState {
-  const steps = state.stepsByRun[runId]
-  if (!steps) {
-    return state
-  }
-  let changed = false
-  const resolved = steps.map((step) => {
-    if (
-      step.kind === "tool" &&
-      (step.tool.status === "running" || step.tool.status === "awaiting")
-    ) {
-      changed = true
-      return {
-        ...step,
-        tool: { ...step.tool, status: "error" as const, errorText: "运行已取消" },
-      }
-    }
-    return step
-  })
-  if (!changed) {
-    return state
-  }
-  return { ...state, stepsByRun: { ...state.stepsByRun, [runId]: resolved } }
-}
-
-// 用户输入本地产生、不进 seenEventIds；复位 runStatus 为 idle 并清空 todo，历史步骤保留。
-export function appendUserMessage(
-  state: SessionStreamState,
-  message: { id: string; content: string },
-): SessionStreamState {
-  return {
-    ...state,
-    messages: [
-      ...state.messages,
-      // 用户消息用自身 id 作 runId：grouping 据此把它与任一 assistant run 隔开，单独成行。
-      { id: message.id, role: "user", content: message.content, runId: message.id },
-    ],
-    todos: [],
-    runStatus: "idle",
-  }
 }
