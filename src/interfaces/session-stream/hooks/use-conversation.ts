@@ -11,22 +11,14 @@ import {
 import {
   type AgentMode,
   type ConversationStore,
-  activeMode,
   activeThreadOf,
   addConversation,
-  isActiveModeLocked,
   removeConversation,
   selectConversation as selectConversationOp,
-  serializeConversationStore,
-  setActiveMode,
   setActivePending,
-  sortedConversations,
   withActiveThread,
 } from "@/application/conversation-store"
-import {
-  reattachLiveSession,
-  type LiveSessionHandle,
-} from "@/application/session-stream/transport"
+import { type LiveSessionHandle } from "@/application/session-stream/transport"
 import { createLocalId } from "@/application/session-stream/simulator"
 import {
   type ReplyMode,
@@ -34,12 +26,19 @@ import {
 } from "@/application/session-stream/reply"
 import {
   appendUserMessage,
-  createSessionStreamState,
   type SessionStreamState,
 } from "@/application/session-stream/reducer"
 
+import {
+  type ConversationSummary,
+  useConversationStore,
+} from "./use-conversation-store"
 import { useHitlControl } from "./use-hitl-control"
-import { STORAGE_KEY, usePersistentStore } from "./use-persistent-store"
+import {
+  defaultReattach,
+  type ReattachReply,
+  useSessionReattach,
+} from "./use-session-reattach"
 import { MAX_INPUT_LENGTH } from "../components/composer/composer-input"
 import {
   modePresentation,
@@ -47,10 +46,9 @@ import {
   type TransportState,
 } from "./mode-presentation"
 
-export type ConversationSummary = {
-  id: string
-  title: string
-}
+// 对外契约：消费组件从本模块导入这些类型，故在此再导出，保持公开 API 表面稳定。
+export type { ConversationSummary } from "./use-conversation-store"
+export type { ReattachReply } from "./use-session-reattach"
 
 // 权限档位（Claude-Code 式，会话级全局）：auto 全放行 / default 拦外部副作用 / plan 只读规划。
 export type PermissionMode = "auto" | "default" | "plan"
@@ -97,49 +95,30 @@ function nowMs(): number {
   return Date.now()
 }
 
-// 中断恢复用的重连接口：不发新 POST，只重订阅某 session 的 SSE 续传。可注入以便测试。
-export type ReattachReply = (args: {
-  sessionId: string
-  initialState: SessionStreamState
-  onState: (snapshot: SessionStreamState) => void
-  onSettled: () => void
-}) => LiveSessionHandle
-
-const defaultReattach: ReattachReply = (args) =>
-  reattachLiveSession({
-    sessionId: args.sessionId,
-    initialState: args.initialState,
-    onState: args.onState,
-    onSettled: args.onSettled,
-  })
-
-// 重连兜底：若 90s 内未收到终态（后端已停/网络长断），放弃续传以免永久卡在 streaming。
-const REATTACH_TIMEOUT_MS = 90_000
-
 export function useConversation(
   startReply: StartReply,
   scrollToLatest: () => void,
   reattach: ReattachReply = defaultReattach,
 ): Conversation {
-  // 持久化种子：水合后才出现，作为会话 store 的初始值。
-  const persistedStore = usePersistentStore()
-  // 本会话内的所有变更都落在 liveStore；一旦出现就盖过种子。
-  const [liveStore, setLiveStore] = useState<ConversationStore | null>(null)
-  const store = liveStore ?? persistedStore
-  // 活跃会话是否有在途 live run（用于中断恢复）。在重连 effect 之前求出，避免 TDZ。
-  const pendingConvId =
-    store?.conversations.find((entry) => entry.id === store.activeId)
-      ?.pendingInput
-      ? store.activeId
-      : null
+  const {
+    store,
+    setLiveStore,
+    persistedStore,
+    pendingConvId,
+    thread,
+    conversations,
+    activeId,
+    mode,
+    modeLocked,
+    pendingMode,
+    setMode,
+  } = useConversationStore()
 
   const [draft, setDraft] = useState("")
   const [isStreaming, setIsStreaming] = useState(false)
   // 重连续传态：仅在「重订阅在途 run」的窗口为真（区别于普通流式/思考），驱动「重连中…」锚点。
   const [isReconnecting, setIsReconnecting] = useState(false)
   const [transportState, setTransportState] = useState<TransportState>("idle")
-  // 空首屏（尚无会话）时选好的模式：首条消息创建首个会话时承接它。会话存在后模式以会话为准。
-  const [pendingMode, setPendingMode] = useState<AgentMode>("fast")
   // 权限档位：会话级全局（仿 Claude Code），默认 auto；可随时切，作用于下一轮 run。
   const [permissionMode, setPermissionMode] = useState<PermissionMode>("auto")
 
@@ -158,86 +137,23 @@ export function useConversation(
     }
   }, [])
 
-  // 会话 store 变化即落盘；仅在 liveStore 出现后写入——种子本就来自存储，无需原样回写。
-  useEffect(() => {
-    if (typeof window === "undefined" || liveStore === null) {
-      return
-    }
+  useSessionReattach({
+    pendingConvId,
+    store,
+    reattach,
+    nowMs,
+    replyHandleRef,
+    requestInFlightRef,
+    lastInputRef,
+    reattachedRef,
+    setLiveStore,
+    setIsStreaming,
+    setIsReconnecting,
+    setTransportState,
+  })
 
-    window.localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify(serializeConversationStore(liveStore)),
-    )
-  }, [liveStore])
-
-  // 中断恢复：活跃会话有在途 run 时重订阅其 SSE 续传；每个 pending 会话只触发一次。
-  useEffect(() => {
-    if (!pendingConvId || reattachedRef.current === pendingConvId) {
-      return
-    }
-    // 闭包捕获 pendingConvId 变为非空那一刻的 store（含在途会话与其线程）。
-    const base = store
-    const entry = base?.conversations.find((e) => e.id === pendingConvId)
-    if (!base || !entry) {
-      return
-    }
-    reattachedRef.current = pendingConvId
-
-    // 重连进入流式态 + isReconnecting：续传窗口内 thread 渲染「重连中…」而非「正在思考…」。
-    /* eslint-disable react-hooks/set-state-in-effect */
-    setIsStreaming(true)
-    setIsReconnecting(true)
-    setTransportState("live")
-    /* eslint-enable react-hooks/set-state-in-effect */
-    lastInputRef.current = entry.pendingInput ?? ""
-
-    const settle = () => {
-      setIsStreaming(false)
-      setIsReconnecting(false)
-      requestInFlightRef.current = false
-      setTransportState("live")
-      setLiveStore((prev) => (prev ? setActivePending(prev, undefined) : prev))
-    }
-
-    const handle = reattach({
-      sessionId: pendingConvId,
-      initialState: entry.thread,
-      onState: (next) => {
-        // 续传第一批事件一到即退出「重连中」——此后是正常流式（思考/出字），不再是等待重连。
-        setIsReconnecting(false)
-        setLiveStore((prev) => withActiveThread(prev ?? base, next, nowMs()))
-      },
-      onSettled: settle,
-    })
-    replyHandleRef.current = handle
-
-    // 兜底：长时间无终态（后端已停/网络长断）则放弃续传，避免永久卡在 streaming。
-    const timeout = setTimeout(() => {
-      handle.close()
-      settle()
-    }, REATTACH_TIMEOUT_MS)
-
-    return () => {
-      clearTimeout(timeout)
-    }
-    // 故意只依赖 pendingConvId/reattach：把 store 列入会让每个流式增量重跑此 effect、
-    // 误清兜底计时器。我们只需在 pending 会话变化时捕获一次当时的 store。
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingConvId, reattach])
-
-  const thread = store ? activeThreadOf(store) : createSessionStreamState()
-  const conversations: ConversationSummary[] = store
-    ? sortedConversations(store).map((entry) => ({
-        id: entry.id,
-        title: entry.title,
-      }))
-    : []
-  const activeId = store?.activeId ?? null
   const hasMessages = thread.messages.length > 0
   const hasFailed = thread.runStatus === "failed" && !isStreaming
-  // 模式以活跃会话为准；尚无会话时用 pendingMode。开聊后锁定。
-  const mode: AgentMode = store ? activeMode(store) : pendingMode
-  const modeLocked = store ? isActiveModeLocked(store) : false
   const presentation = modePresentation(
     mode,
     hasFailed ? "failed" : transportState,
@@ -290,7 +206,7 @@ export function useConversation(
         },
       })
     },
-    [mode, permissionMode, scrollToLatest, startReply],
+    [mode, permissionMode, scrollToLatest, startReply, setLiveStore],
   )
 
   const submit = useCallback(
@@ -379,7 +295,7 @@ export function useConversation(
     setTransportState("idle")
     // 手动中止也清除在途标记：刷新后不再自动重连这一轮。
     setLiveStore((prev) => (prev ? setActivePending(prev, undefined) : prev))
-  }, [cancelActiveRun])
+  }, [cancelActiveRun, setLiveStore])
 
   const startNewChat = useCallback(() => {
     // 新对话：中止在途回复，向 store 追加一个空会话并置为活跃，清空输入与瞬态标签。
@@ -396,7 +312,7 @@ export function useConversation(
     setIsReconnecting(false)
     setTransportState("idle")
     composerRef.current?.focus()
-  }, [persistedStore, cancelActiveRun])
+  }, [persistedStore, cancelActiveRun, setLiveStore])
 
   const selectConversation = useCallback(
     (id: string) => {
@@ -416,7 +332,7 @@ export function useConversation(
       setTransportState("idle")
       composerRef.current?.focus()
     },
-    [persistedStore],
+    [persistedStore, setLiveStore],
   )
 
   const deleteConversation = useCallback(
@@ -440,25 +356,7 @@ export function useConversation(
           : current
       })
     },
-    [activeId, persistedStore, cancelActiveRun],
-  )
-
-  const setMode = useCallback(
-    (next: AgentMode) => {
-      // 已开聊即锁定：忽略切换。无会话时落在 pendingMode，有会话时写入活跃会话。
-      if (modeLocked) {
-        return
-      }
-      if (store) {
-        setLiveStore((prev) => {
-          const current = prev ?? persistedStore
-          return current ? setActiveMode(current, next) : current
-        })
-      } else {
-        setPendingMode(next)
-      }
-    },
-    [modeLocked, store, persistedStore],
+    [activeId, persistedStore, cancelActiveRun, setLiveStore],
   )
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
