@@ -87,7 +87,6 @@ type Conversation = {
   sendToolDecision: (
     runId: string,
     decision: "approve" | "reject",
-    args?: Record<string, unknown>,
   ) => Promise<void>
 }
 
