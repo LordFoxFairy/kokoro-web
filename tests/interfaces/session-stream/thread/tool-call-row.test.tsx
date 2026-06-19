@@ -125,6 +125,37 @@ describe("ToolCallRow", () => {
     expect(approve).toBeDisabled()
   })
 
+  it("approve sends the user-edited tool args from the textarea (HITL)", () => {
+    const approved: Array<Record<string, unknown> | undefined> = []
+    render(
+      <ToolCallRow
+        tool={makeTool({ status: "awaiting", args: { url: "http://original" } })}
+        onApprove={(args) => { approved.push(args) }}
+        onReject={() => {}}
+      />,
+    )
+    const editor = screen.getByLabelText("工具参数（可编辑后批准）") as HTMLTextAreaElement
+    fireEvent.change(editor, { target: { value: '{"url":"http://edited"}' } })
+    fireEvent.click(screen.getByText("批准"))
+    expect(approved).toEqual([{ url: "http://edited" }])
+  })
+
+  it("malformed edited args block approval and show a parse hint (fails loud)", () => {
+    const approved: unknown[] = []
+    render(
+      <ToolCallRow
+        tool={makeTool({ status: "awaiting", args: { url: "http://x" } })}
+        onApprove={(args) => { approved.push(args) }}
+        onReject={() => {}}
+      />,
+    )
+    const editor = screen.getByLabelText("工具参数（可编辑后批准）") as HTMLTextAreaElement
+    fireEvent.change(editor, { target: { value: "not json" } })
+    fireEvent.click(screen.getByText("批准"))
+    expect(approved).toEqual([])
+    expect(screen.getByText(/参数不是合法 JSON 对象/)).toBeInTheDocument()
+  })
+
   it("fires reject when rejected (HITL)", () => {
     const decisions: string[] = []
     render(

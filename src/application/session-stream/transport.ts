@@ -73,6 +73,7 @@ export async function sendRunControl(input: {
   sessionId: string
   runId: string
   decision: "approve" | "reject" | "cancel"
+  args?: Record<string, unknown>
   baseUrl?: string
 }): Promise<void> {
   const requestUrl = new URL(
@@ -80,6 +81,10 @@ export async function sendRunControl(input: {
     input.baseUrl ?? resolveSessionBaseUrl(),
   )
   requestUrl.searchParams.set("decision", input.decision)
+  // args 仅 approve 有意义：用户在审批暂停时编辑后的工具参数，urlencoded JSON 透传给 session。
+  if (input.args !== undefined) {
+    requestUrl.searchParams.set("args", JSON.stringify(input.args))
+  }
   const response = await fetch(requestUrl, { method: "POST" })
   if (!response.ok) {
     throw new Error(`control request failed: ${response.status}`)

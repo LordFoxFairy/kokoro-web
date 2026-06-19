@@ -22,7 +22,10 @@ type AssistantTurnProps = {
   // 本会话模式：透传给过程块作密度 / 文案差异钩子。
   mode?: AgentMode
   // HITL：批准/拒绝本轮待批的工具调用（已按 runId 绑定）。Promise 用于把 control POST 失败抛回按钮层。
-  onToolDecision?: (decision: "approve" | "reject") => void | Promise<void>
+  onToolDecision?: (
+    decision: "approve" | "reject",
+    args?: Record<string, unknown>,
+  ) => void | Promise<void>
 }
 
 type Segment = {
