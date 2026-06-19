@@ -23,8 +23,8 @@ type SegmentProcessProps = {
   live: boolean
   // 本会话模式：Fast 把「思考」改称「处理」，避免「直接作答」与「思考」自相矛盾。
   mode?: AgentMode
-  // HITL：批准/拒绝本轮待批工具（已按 runId 绑定）。
-  onToolDecision?: (decision: "approve" | "reject") => void
+  // HITL：批准/拒绝本轮待批工具（已按 runId 绑定）。Promise 用于把 control POST 失败抛回按钮层。
+  onToolDecision?: (decision: "approve" | "reject") => void | Promise<void>
 }
 
 // 落定摘要：「思考过程 · N 工具(K 失败) · M 子智能体」，省略为零的维度。

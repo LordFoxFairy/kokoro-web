@@ -28,8 +28,8 @@ export function ToolCallRow({
   onReject,
 }: {
   tool: SessionToolCall
-  onApprove?: () => void
-  onReject?: () => void
+  onApprove?: () => void | Promise<void>
+  onReject?: () => void | Promise<void>
 }) {
   const argsText = formatArgs(tool.args)
   const running = tool.status === "running"
@@ -40,6 +40,7 @@ export function ToolCallRow({
   const rejected = tool.status === "rejected"
   // 点击批准/拒绝后本地置 true：立即禁用按钮,防连点发出第二条决定(否则会被下一个待批工具误读)。
   const [decided, setDecided] = useState(false)
+  const [approvalError, setApprovalError] = useState(false)
   // 有入参/结果/错误/待批/已拒绝才展开；无任何细节的工具保持紧凑静态行，spinner 已表态。
   const hasDetail =
     argsText !== null || Boolean(tool.result) || failed || awaiting || rejected
@@ -84,7 +85,7 @@ export function ToolCallRow({
         {awaiting ? (
           <div className="kk-tool__approval" role="group" aria-label="工具调用待批准">
             <p className="kk-tool__approval-prompt">
-              {decided ? "已提交你的决定，等待恢复…" : "该工具调用需要你的批准。"}
+              {approvalError ? "决定发送失败，请重试。" : decided ? "已提交你的决定，等待恢复…" : "该工具调用需要你的批准。"}
             </p>
             {onApprove && onReject ? (
               <div className="kk-tool__approval-actions">
@@ -92,9 +93,15 @@ export function ToolCallRow({
                   type="button"
                   className="kk-tool__approve"
                   disabled={decided}
-                  onClick={() => {
+                  onClick={async () => {
+                    setApprovalError(false)
                     setDecided(true)
-                    onApprove()
+                    try {
+                      await onApprove?.()
+                    } catch {
+                      setDecided(false)
+                      setApprovalError(true)
+                    }
                   }}
                 >
                   批准
@@ -103,9 +110,15 @@ export function ToolCallRow({
                   type="button"
                   className="kk-tool__reject"
                   disabled={decided}
-                  onClick={() => {
+                  onClick={async () => {
+                    setApprovalError(false)
                     setDecided(true)
-                    onReject()
+                    try {
+                      await onReject?.()
+                    } catch {
+                      setDecided(false)
+                      setApprovalError(true)
+                    }
                   }}
                 >
                   拒绝

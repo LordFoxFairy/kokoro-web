@@ -93,6 +93,10 @@ const MODE_LABEL: Record<AgentMode, string> = {
   thinking: "Thinking",
 }
 
+// 守卫：菜单回调的 key 是 string，按 MODE_LABEL 键集收窄，非法 key 不再被强断言为枚举。
+const isAgentMode = (value: string): value is AgentMode =>
+  Object.hasOwn(MODE_LABEL, value)
+
 // 权限档位（Claude-Code 式，会话级）：auto 全放行 / default 拦外部副作用 / plan 只读规划。
 const PERMISSION_OPTIONS: MenuOption[] = [
   { key: "auto", label: "Auto", hint: "全自动，放行所有工具" },
@@ -105,6 +109,10 @@ const PERMISSION_LABEL: Record<PermissionMode, string> = {
   default: "Default",
   plan: "Plan",
 }
+
+// 守卫：同上，按 PERMISSION_LABEL 键集收窄菜单回调的 string key。
+const isPermissionMode = (value: string): value is PermissionMode =>
+  Object.hasOwn(PERMISSION_LABEL, value)
 
 type ComposerProps = {
   draft: string
@@ -265,7 +273,11 @@ export function Composer({
                 }
                 options={MODE_OPTIONS}
                 selectedKey={mode}
-                onSelect={(key) => onModeChange(key as AgentMode)}
+                onSelect={(key) => {
+                  if (isAgentMode(key)) {
+                    onModeChange(key)
+                  }
+                }}
                 align="end"
               />
             )}
@@ -282,7 +294,11 @@ export function Composer({
               }
               options={PERMISSION_OPTIONS}
               selectedKey={permissionMode}
-              onSelect={(key) => onPermissionModeChange(key as PermissionMode)}
+              onSelect={(key) => {
+                if (isPermissionMode(key)) {
+                  onPermissionModeChange(key)
+                }
+              }}
               align="end"
             />
 

@@ -80,7 +80,10 @@ export async function sendRunControl(input: {
     input.baseUrl ?? resolveSessionBaseUrl(),
   )
   requestUrl.searchParams.set("decision", input.decision)
-  await fetch(requestUrl, { method: "POST" })
+  const response = await fetch(requestUrl, { method: "POST" })
+  if (!response.ok) {
+    throw new Error(`control request failed: ${response.status}`)
+  }
 }
 
 // 严格解析 SSE 载荷；任何畸形/未知事件被拒绝且不允许中断整条流。
