@@ -92,8 +92,8 @@ export const storedSessionStateSchema = z
   // 输入为 unknown（解析任意落盘数据）、输出严格等于 SessionStreamState（漂移在此暴露）。
   .strict() satisfies z.ZodType<SessionStreamState, z.ZodTypeDef, unknown>
 
-// 解析本地持久化的会话快照：严格校验，任何不合法（多余字段/缺字段/枚举越界/类型错）
-// 都返回 null 而非抛错，让调用方可以安全地降级到空首屏，绝不因脏数据崩溃。
+// 解析本地持久化快照：严格校验，任何不合法（多余字段/缺字段/枚举越界/类型错）
+// 都返回 null 而非抛错，使调用方安全降级到空初始状态，不因脏数据崩溃。
 export function parseStoredSessionState(
   raw: unknown,
 ): SessionStreamState | null {

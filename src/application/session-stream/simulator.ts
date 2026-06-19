@@ -63,7 +63,7 @@ export function chunkText(text: string): string[] {
     ) {
       end += 1
     }
-    // 吞掉紧随的空白，使词与其分隔一同呈现。
+    // 将词后紧随的空白并入当前 chunk，使词与分隔符同批输出。
     while (end < text.length && /\s/.test(text[end] ?? "") && !CJK_PATTERN.test(text[end] ?? "")) {
       end += 1
     }

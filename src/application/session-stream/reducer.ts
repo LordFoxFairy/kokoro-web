@@ -55,10 +55,10 @@ export type SessionStreamState = {
   runStatus: "idle" | "completed" | "failed"
 }
 
-// 最近开始的 run（stepsByRun 按插入序，末位即最新）：放弃/停止时据此 cancel 在途 run。
+// 最近开始的 run（stepsByRun 按插入序，末位即最新）：停止/放弃时据此取消在途 run。
 export function findActiveRunId(state: SessionStreamState): string | null {
   const runIds = Object.keys(state.stepsByRun)
-  return runIds.length > 0 ? (runIds[runIds.length - 1] as string) : null
+  return runIds[runIds.length - 1] ?? null
 }
 
 // HITL：当前 thread 内有工具在等待批准时返回其 runId（用于放弃 run 时立即 reject 解阻塞 worker）。
@@ -390,7 +390,7 @@ export function applySessionEvent(
             : step,
       )
     } else {
-      // 无配对的 invoked（乱序/部分 replay）:仍补建 awaiting 步,绝不让审批 UI 静默丢失。
+      // 无配对的 invoked（乱序/部分 replay）：仍补建 awaiting 步，防止审批 UI 丢失。
       nextState = appendRunStep(nextState, event.runId, {
         kind: "tool",
         seq: event.seq,
@@ -410,8 +410,8 @@ export function applySessionEvent(
     const hasInvoked = steps.some(
       (step) => step.kind === "tool" && step.tool.id === event.toolId,
     )
-    // rejected（HITL 拒绝，含超时回退）→ rejected 态（replay 安全，区别于绿勾）；
-    // is_error=true → 失败态：status=error + errorText 携带原因（UI 显红、可展开看错误）。
+    // rejected（HITL 拒绝，含超时回退）→ rejected 态（replay 安全，区别于 done 态）；
+    // is_error=true → 失败态：status=error，errorText 携带原因（UI 显红、可展开查看）。
     const returnedStatus = event.rejected
       ? "rejected"
       : event.isError
@@ -430,7 +430,7 @@ export function applySessionEvent(
                 tool: {
                   ...step.tool,
                   result: event.result,
-                  // 已被用户拒绝的工具:其回流(is_error=false 的拒绝文案)不得把 rejected 降级成绿勾 done。
+                  // 已置 rejected 的工具：其回流（is_error=false 的拒绝文案）不得将 rejected 降级为 done。
                   status: step.tool.status === "rejected" ? "rejected" : returnedStatus,
                   ...(event.isError ? { errorText: event.result } : {}),
                 },
@@ -531,8 +531,8 @@ export function applySessionEvent(
   return nextState
 }
 
-// 终态收口:run 结束时把残留的 running/awaiting 工具翻成 error,避免永久「待批准/运行中」幽灵行
-// （及一组已无人消费的批准按钮）。done/error 工具不动。
+// run 终态时将残留的 running/awaiting 工具置为 error，避免永久挂起的「待批准/运行中」行
+// 及无人消费的批准按钮。done/error 工具不变。
 function resolveStaleTools(
   state: SessionStreamState,
   runId: string,
