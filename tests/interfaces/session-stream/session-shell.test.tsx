@@ -1767,13 +1767,15 @@ describe("SessionShell HITL reject", () => {
     sendRunControlMock.mockClear()
   })
 
-  it("clicking 拒绝 flips the tool to a rejected visual (not a green done) and signals the backend", () => {
+  it("clicking 拒绝 flips the tool to a rejected visual (not a green done) and signals the backend", async () => {
     const { container } = render(<SessionShell startReply={awaitingReply} />)
     send("抓个网页")
 
     const reject = screen.getByRole("button", { name: "拒绝" })
-    act(() => {
+    await act(async () => {
       fireEvent.click(reject)
+      await Promise.resolve()
+      await Promise.resolve()
     })
 
     // 本地乐观:工具行翻 rejected（区别于绿勾 done），并显「未执行」说明。
@@ -1787,13 +1789,47 @@ describe("SessionShell HITL reject", () => {
     )
   })
 
-  it("stopping an in-flight run sends cancel and locally resolves the awaiting tool (no ghost buttons)", () => {
+  it("a failed reject control request keeps the tool awaiting and re-enables the reject button", async () => {
+    sendRunControlMock.mockRejectedValueOnce(new Error("offline"))
+    const { container } = render(<SessionShell startReply={awaitingReply} />)
+    send("抓个网页")
+
+    const reject = screen.getByRole("button", { name: "拒绝" })
+    await act(async () => {
+      fireEvent.click(reject)
+    })
+
+    // 失败不撒谎：不翻 rejected；仍 awaiting 且按钮可重试。
+    expect(container.querySelector(".kk-tool--rejected")).toBeNull()
+    expect(container.querySelector(".kk-tool--awaiting")).not.toBeNull()
+    expect(screen.getByRole("button", { name: "拒绝" })).toBeEnabled()
+  })
+
+  it("a failed cancel control request does not locally mark the run cancelled", async () => {
+    sendRunControlMock.mockRejectedValueOnce(new Error("offline"))
     const { container } = render(<SessionShell startReply={awaitingReply} />)
     send("抓个网页")
 
     const stop = screen.getByLabelText("停止生成")
-    act(() => {
+    await act(async () => {
       fireEvent.click(stop)
+    })
+
+    // 取消请求没发出去：不能本地自作主张显示“运行已取消”。
+    expect(screen.queryByText("运行已取消")).not.toBeInTheDocument()
+    expect(container.querySelector(".kk-tool--awaiting")).not.toBeNull()
+    expect(screen.getByRole("button", { name: "批准" })).toBeInTheDocument()
+  })
+
+  it("stopping an in-flight run sends cancel and locally resolves the awaiting tool (no ghost buttons)", async () => {
+    const { container } = render(<SessionShell startReply={awaitingReply} />)
+    send("抓个网页")
+
+    const stop = screen.getByLabelText("停止生成")
+    await act(async () => {
+      fireEvent.click(stop)
+      await Promise.resolve()
+      await Promise.resolve()
     })
 
     expect(sendRunControlMock).toHaveBeenCalledWith(
