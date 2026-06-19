@@ -112,8 +112,8 @@ describe("ToolCallRow", () => {
     render(
       <ToolCallRow
         tool={makeTool({ status: "awaiting", args: { url: "http://x" } })}
-        onApprove={() => decisions.push("approve")}
-        onReject={() => decisions.push("reject")}
+        onApprove={() => { decisions.push("approve") }}
+        onReject={() => { decisions.push("reject") }}
       />,
     )
     const approve = screen.getByText("批准")
@@ -130,13 +130,15 @@ describe("ToolCallRow", () => {
     render(
       <ToolCallRow
         tool={makeTool({ status: "awaiting", args: { url: "http://x" } })}
-        onApprove={() => decisions.push("approve")}
-        onReject={() => decisions.push("reject")}
+        onApprove={() => { decisions.push("approve") }}
+        onReject={() => { decisions.push("reject") }}
       />,
     )
     fireEvent.click(screen.getByText("拒绝"))
     expect(decisions).toEqual(["reject"])
   })
+
+
 
   it("carries the awaiting state class", () => {
     const { container } = render(
