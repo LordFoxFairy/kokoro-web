@@ -2,9 +2,8 @@ import type { AgentMode } from "@/application/conversation-store"
 import type {
   SessionMessage,
   SessionStep,
-  SessionSubagent,
-  SessionToolCall,
 } from "@/application/session-stream/reducer"
+import { groupSegments } from "@/application/session-stream/thread-projection"
 
 import { RobotIcon } from "../icons"
 import { MarkdownMessage } from "./markdown-message"
@@ -23,49 +22,6 @@ type AssistantTurnProps = {
   mode?: AgentMode
   // HITL：批准/拒绝本轮待批的工具调用（已按 runId 绑定）。Promise 用于把 control POST 失败抛回按钮层。
   onToolDecision?: (decision: "approve" | "reject") => void | Promise<void>
-}
-
-type Segment = {
-  segmentId: string
-  thinking: string
-  tools: SessionToolCall[]
-  subagents: SessionSubagent[]
-}
-
-// 按 segmentId 把有序步骤分段，保持「首次出现」顺序（即真实发生时序）；
-// 每段聚合它自己的思考/工具/子智能体。工具属于它后面那段文本（由 segment_id 归属保证），
-// 因此每段的过程正好是「催生这段答案」的那批过程。
-function groupSegments(steps: SessionStep[]): Segment[] {
-  // ordered 保留首次出现顺序；byId 仅做去重定位，二者指向同一对象——避免回读时的非空断言。
-  const ordered: Segment[] = []
-  const byId = new Map<string, Segment>()
-  const segmentFor = (id: string): Segment => {
-    const existing = byId.get(id)
-    if (existing) {
-      return existing
-    }
-    const created: Segment = {
-      segmentId: id,
-      thinking: "",
-      tools: [],
-      subagents: [],
-    }
-    byId.set(id, created)
-    ordered.push(created)
-    return created
-  }
-  for (const step of steps) {
-    const segment = segmentFor(step.segmentId)
-    if (step.kind === "thinking") {
-      segment.thinking += step.text
-    } else if (step.kind === "tool") {
-      segment.tools.push(step.tool)
-    } else if (step.kind === "subagent") {
-      segment.subagents.push(step.subagent)
-    }
-    // text 步骤只标记该段存在；正文从 messagesById 取。
-  }
-  return ordered
 }
 
 // 成形态的盒内内容：就近的「正在…」线索 + 脉冲点。盒由 .kk-turn__answer 统一提供
