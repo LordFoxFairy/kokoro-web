@@ -2,6 +2,8 @@
 // 刷新仍保留该意图。按全局唯一的 segmentId 键，只存 override（缺省跟随 live 信号），带容量上限防无界增长。
 // 跨标签页同步与读时回读对齐姊妹 use-persistent-store：raw 比对短路缓存 + storage 事件失效。
 
+import { z } from "zod"
+
 export const DISCLOSURE_KEY = "kokoro:process-disclosure"
 export const DISCLOSURE_CAP = 500
 
@@ -13,25 +15,32 @@ let cache: DisclosureMap | null = null
 const listeners = new Set<() => void>()
 let storageBound = false
 
-// 解析持久化盘面：非对象/数组/坏 JSON → {}；**逐值只放行 boolean**（localStorage 是不可信外部边界，
+// 外层仅放行「键为 string 的普通对象」（数组/标量/null 整体退化为 {}）；值逐项过滤，语义等价于原
+// `typeof value === "boolean"`（boolean 值留存、其余丢弃），并额外硬化字面量原型键（z.record 会剥离 __proto__）。
+const recordSchema = z.record(z.string(), z.unknown())
+const booleanValue = z.boolean()
+
+// 解析持久化盘面：坏 JSON/非对象 → {}；**逐值只放行 boolean**（localStorage 是不可信外部边界，
 // 篡改/旧格式注入的非布尔值不得泄漏成 aria-expanded / inert / CSS 的脏开关）。
 function parse(raw: string | null): DisclosureMap {
   if (!raw) {
     return {}
   }
+  let parsed: unknown
   try {
-    const parsed: unknown = JSON.parse(raw)
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      return {}
-    }
-    return Object.fromEntries(
-      Object.entries(parsed as Record<string, unknown>).filter(
-        ([, value]) => typeof value === "boolean",
-      ),
-    ) as DisclosureMap
+    parsed = JSON.parse(raw)
   } catch {
     return {}
   }
+  const record = recordSchema.safeParse(parsed)
+  if (!record.success) {
+    return {}
+  }
+  return Object.fromEntries(
+    Object.entries(record.data).filter(
+      ([, value]) => booleanValue.safeParse(value).success,
+    ),
+  ) as DisclosureMap
 }
 
 function load(): DisclosureMap {
