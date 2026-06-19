@@ -25,7 +25,6 @@ import {
 } from "@/application/conversation-store"
 import {
   reattachLiveSession,
-  sendRunControl,
   type LiveSessionHandle,
 } from "@/application/session-stream/transport"
 import { createLocalId } from "@/application/session-stream/simulator"
@@ -36,11 +35,10 @@ import {
 import {
   appendUserMessage,
   createSessionStreamState,
-  findActiveRunId,
-  markRunCancelled,
   type SessionStreamState,
 } from "@/application/session-stream/reducer"
 
+import { useHitlControl } from "./use-hitl-control"
 import { STORAGE_KEY, usePersistentStore } from "./use-persistent-store"
 import { MAX_INPUT_LENGTH } from "../components/composer/composer-input"
 import {
@@ -87,8 +85,11 @@ type Conversation = {
   // 权限档位（会话级，可随时切换，作用于下一轮 run）。
   permissionMode: PermissionMode
   setPermissionMode: (mode: PermissionMode) => void
-  // HITL：批准/拒绝某 run 待批的工具调用。
-  sendToolDecision: (runId: string, decision: "approve" | "reject") => void
+  // HITL：批准/拒绝某 run 待批的工具调用。若 control POST 失败，Promise reject 让按钮层恢复可重试。
+  sendToolDecision: (
+    runId: string,
+    decision: "approve" | "reject",
+  ) => Promise<void>
 }
 
 function nowMs(): number {
@@ -358,33 +359,18 @@ export function useConversation(
     submit(draft)
   }
 
-  const cancelActiveRun = useCallback(() => {
-    // 放弃/停止在途 run：发 cancel 让 worker 取消整个 run（真停后端，不白烧 token；
-    // 一并解阻塞所有待批门，不挂到 90s 超时）。仅在流式中才有在途 run 可取消。
-    if (!store || !activeId || !isStreaming) {
-      return
-    }
-    const rid = findActiveRunId(activeThreadOf(store))
-    if (rid) {
-      void sendRunControl({ sessionId: activeId, runId: rid, decision: "cancel" })
-      // 本地立即收口：停止会立刻关 SSE，后端 cancelled 终态来不及回流触发 resolveStaleTools，
-      // 故在此把该 run 残留的 awaiting/running 工具翻成「运行已取消」，不留无人消费的批准按钮。
-      setLiveStore((prev) => {
-        const current = prev ?? persistedStore
-        if (!current) {
-          return prev
-        }
-        return withActiveThread(
-          current,
-          markRunCancelled(activeThreadOf(current), rid),
-          nowMs(),
-        )
-      })
-    }
-  }, [store, activeId, isStreaming, persistedStore])
+  const { cancelActiveRun, sendToolDecision } = useHitlControl({
+    activeId,
+    isStreaming,
+    nowMs,
+    persistedStore,
+    replyHandleRef,
+    setLiveStore,
+    store,
+  })
 
   const stopReply = useCallback(() => {
-    cancelActiveRun()
+    void cancelActiveRun().catch(() => {})
     replyHandleRef.current?.close()
     replyHandleRef.current = null
     requestInFlightRef.current = false
@@ -397,7 +383,7 @@ export function useConversation(
 
   const startNewChat = useCallback(() => {
     // 新对话：中止在途回复，向 store 追加一个空会话并置为活跃，清空输入与瞬态标签。
-    cancelActiveRun()
+    void cancelActiveRun().catch(() => {})
     replyHandleRef.current?.close()
     replyHandleRef.current = null
     requestInFlightRef.current = false
@@ -437,7 +423,7 @@ export function useConversation(
     (id: string) => {
       // 删除活跃会话时先中止在途回复。删空则自动起一个新的空会话。
       if (activeId === id) {
-        cancelActiveRun()
+        void cancelActiveRun().catch(() => {})
         replyHandleRef.current?.close()
         replyHandleRef.current = null
         requestInFlightRef.current = false
@@ -473,22 +459,6 @@ export function useConversation(
       }
     },
     [modeLocked, store, persistedStore],
-  )
-
-  const sendToolDecision = useCallback(
-    (runId: string, decision: "approve" | "reject") => {
-      // 后端 session id = 会话 id（与 startReply/transport 一致）。
-      if (!activeId) {
-        return
-      }
-      void sendRunControl({ sessionId: activeId, runId, decision })
-      // reject 经门控工具以 is_error=false 回流（普通逻辑会翻绿勾 done）：让 live 句柄把该工具
-      // 落进流的权威 state 为 rejected，后续 tool.returned 由 reducer 保留 rejected（显著区分）。
-      if (decision === "reject") {
-        replyHandleRef.current?.markToolRejected?.(runId)
-      }
-    },
-    [activeId],
   )
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
