@@ -211,7 +211,9 @@
   align-items: center;
   justify-content: center;
   border-radius: 999px;
-  background: #9fd1ff;
+  /* 木色发送键（铁律：禁 cyan，play/发送一律木色或暖绿）；深底配暖白图标。 */
+  background: var(--brand-wood);
+  color: #fffdf9;
   font-size: 1rem;
   transition:
     background-color 140ms ease,
@@ -220,9 +222,9 @@
     transform 140ms ease;
 }
 
-/* 可发送时悬停略加深蓝并加阴影；禁用态不响应——仅改色与阴影，尺寸不变。 */
+/* 可发送时悬停略加深木色并加阴影；禁用态不响应——仅改色与阴影，尺寸不变。 */
 .kk-composer__send:not(:disabled):hover {
-  background: color-mix(in srgb, #9fd1ff 86%, var(--brand-wood) 14%);
+  background: var(--brand-wood-hover);
   box-shadow: 0 4px 12px rgba(139, 111, 71, 0.16);
 }
 

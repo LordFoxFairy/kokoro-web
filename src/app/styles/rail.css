@@ -86,15 +86,19 @@
 }
 
 .kk-rail__brand-title {
-  font-size: 1.05rem;
+  /* 衬线品牌字标，与首屏标题同一暖色身份。 */
+  font-family: var(--font-serif);
+  font-size: 1.12rem;
   font-weight: 600;
+  letter-spacing: 0.01em;
   color: var(--foreground);
 }
 
 .kk-rail__brand-subtitle {
   margin-top: 0.05rem;
-  font-size: 0.65rem;
-  letter-spacing: 0.18em;
+  font-family: var(--font-serif);
+  font-size: 0.68rem;
+  letter-spacing: 0.16em;
   /* 0.65 alpha 在该浅底上达 ~4.7:1，满足 WCAG AA 正文对比度。 */
   color: rgba(43, 37, 32, 0.65);
 }

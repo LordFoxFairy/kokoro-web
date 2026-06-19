@@ -62,10 +62,12 @@
 
 /* 高对比近黑大标题（Lessie 式），字距微收紧显现代。 */
 .kk-shell__headline {
-  font-size: clamp(1.875rem, 3.6vw, 2.75rem);
-  line-height: 1.12;
+  /* 衬线首屏标题：米木纸感暖色身份的主入口。 */
+  font-family: var(--font-serif);
+  font-size: clamp(1.95rem, 3.6vw, 2.85rem);
+  line-height: 1.16;
   font-weight: 600;
-  letter-spacing: -0.01em;
+  letter-spacing: 0.005em;
   color: var(--foreground);
 }
 
