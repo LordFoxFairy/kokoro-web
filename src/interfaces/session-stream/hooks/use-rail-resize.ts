@@ -14,7 +14,7 @@ const RAIL_DEFAULT = 248
 
 function clampRail(raw: number, containerWidth: number): number {
   const max = Math.min(RAIL_MAX, containerWidth - MAIN_MIN)
-  // 容器极窄时 max 可能小于 min：以 min 兜底，绝不返回负数/反转区间。
+  // 容器极窄时 max 可能小于 min：回退到 min，不返回负数/反转区间。
   return Math.max(RAIL_MIN, Math.min(raw, Math.max(RAIL_MIN, max)))
 }
 

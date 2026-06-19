@@ -19,7 +19,7 @@ export function MessageBubble({ message }: MessageBubbleProps) {
         {message.role === "assistant" ? (
           <MarkdownMessage content={message.content} />
         ) : (
-          // 用户输入保持纯文本：原样呈现，绝不把用户键入的 markdown 记号当语法解析。
+          // 用户输入保持纯文本：原样呈现，不将用户键入的 markdown 记号当作语法解析。
           <p className="kk-msg__body">{message.content}</p>
         )}
       </div>

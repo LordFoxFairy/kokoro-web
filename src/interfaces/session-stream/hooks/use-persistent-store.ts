@@ -36,7 +36,7 @@ function readPersistedStore(): ConversationStore | null {
   try {
     cachedSeed = parseStoredConversationStore(JSON.parse(raw))
   } catch {
-    // 损坏的 JSON 直接放过：种子降级为 null，停留在空首屏，绝不因脏数据崩溃。
+    // 损坏的 JSON 直接忽略：种子降级为 null，停留在空首屏，不因脏数据崩溃。
     cachedSeed = null
   }
 

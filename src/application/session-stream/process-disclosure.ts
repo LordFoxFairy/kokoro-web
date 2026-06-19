@@ -50,12 +50,14 @@ function load(): DisclosureMap {
 function persist(map: DisclosureMap): void {
   cache = map
   const raw = JSON.stringify(map)
-  cacheRaw = raw
-  if (typeof window !== "undefined") {
+  if (typeof window === "undefined") {
+    cacheRaw = raw
+  } else {
     try {
       window.localStorage.setItem(DISCLOSURE_KEY, raw)
+      cacheRaw = raw
     } catch {
-      // 配额/隐私模式写入失败：保留内存态，不崩。
+      // 配额/隐私模式写入失败：cacheRaw 不更新，使 load() 短路回内存态而非回读旧磁盘值。
     }
   }
   for (const listener of listeners) {
