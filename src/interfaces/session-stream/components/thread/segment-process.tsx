@@ -24,10 +24,7 @@ type SegmentProcessProps = {
   // 本会话模式：Fast 把「思考」改称「处理」，避免「直接作答」与「思考」自相矛盾。
   mode?: AgentMode
   // HITL：批准/拒绝本轮待批工具（已按 runId 绑定）。Promise 用于把 control POST 失败抛回按钮层。
-  onToolDecision?: (
-    decision: "approve" | "reject",
-    args?: Record<string, unknown>,
-  ) => void | Promise<void>
+  onToolDecision?: (decision: "approve" | "reject") => void | Promise<void>
 }
 
 // 落定摘要：「思考过程 · N 工具(K 失败) · M 子智能体」，省略为零的维度。
@@ -119,9 +116,7 @@ export function SegmentProcess({
                     key={tool.id}
                     tool={tool}
                     onApprove={
-                      onToolDecision
-                        ? (args) => onToolDecision("approve", args)
-                        : undefined
+                      onToolDecision ? () => onToolDecision("approve") : undefined
                     }
                     onReject={
                       onToolDecision ? () => onToolDecision("reject") : undefined

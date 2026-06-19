@@ -28,7 +28,7 @@ export function ToolCallRow({
   onReject,
 }: {
   tool: SessionToolCall
-  onApprove?: (args?: Record<string, unknown>) => void | Promise<void>
+  onApprove?: () => void | Promise<void>
   onReject?: () => void | Promise<void>
 }) {
   const argsText = formatArgs(tool.args)
@@ -41,10 +41,6 @@ export function ToolCallRow({
   // 点击批准/拒绝后本地置 true：立即禁用按钮,防连点发出第二条决定(否则会被下一个待批工具误读)。
   const [decided, setDecided] = useState(false)
   const [approvalError, setApprovalError] = useState(false)
-  // 待批时可在批准前编辑参数：草稿默认=原参数 JSON；parseError 标记草稿非合法 JSON 对象。
-  const [argsDraft, setArgsDraft] = useState(() => argsText ?? "")
-  const [parseError, setParseError] = useState(false)
-  const editableArgs = awaiting && argsText !== null
   // 有入参/结果/错误/待批/已拒绝才展开；无任何细节的工具保持紧凑静态行，spinner 已表态。
   const hasDetail =
     argsText !== null || Boolean(tool.result) || failed || awaiting || rejected
@@ -84,34 +80,12 @@ export function ToolCallRow({
       </summary>
       <div className="kk-tool__detail">
         {argsText !== null ? (
-          editableArgs ? (
-            <textarea
-              className="kk-tool__args-edit"
-              value={argsDraft}
-              onChange={(event) => {
-                setArgsDraft(event.target.value)
-                setParseError(false)
-              }}
-              disabled={decided}
-              spellCheck={false}
-              aria-label="工具参数（可编辑后批准）"
-            />
-          ) : (
-            <pre className="kk-tool__args">{argsText}</pre>
-          )
+          <pre className="kk-tool__args">{argsText}</pre>
         ) : null}
         {awaiting ? (
           <div className="kk-tool__approval" role="group" aria-label="工具调用待批准">
             <p className="kk-tool__approval-prompt">
-              {approvalError
-                ? "决定发送失败，请重试。"
-                : parseError
-                  ? "参数不是合法 JSON 对象，修正后再批准。"
-                  : decided
-                    ? "已提交你的决定，等待恢复…"
-                    : editableArgs
-                      ? "可在上方编辑参数后批准，或直接批准。"
-                      : "该工具调用需要你的批准。"}
+              {approvalError ? "决定发送失败，请重试。" : decided ? "已提交你的决定，等待恢复…" : "该工具调用需要你的批准。"}
             </p>
             {onApprove && onReject ? (
               <div className="kk-tool__approval-actions">
@@ -120,28 +94,10 @@ export function ToolCallRow({
                   className="kk-tool__approve"
                   disabled={decided}
                   onClick={async () => {
-                    let editedArgs: Record<string, unknown> | undefined
-                    if (editableArgs) {
-                      try {
-                        const parsed: unknown = JSON.parse(argsDraft)
-                        if (
-                          parsed === null ||
-                          typeof parsed !== "object" ||
-                          Array.isArray(parsed)
-                        ) {
-                          throw new Error("not a json object")
-                        }
-                        editedArgs = parsed as Record<string, unknown>
-                      } catch {
-                        setParseError(true)
-                        return
-                      }
-                    }
                     setApprovalError(false)
-                    setParseError(false)
                     setDecided(true)
                     try {
-                      await onApprove?.(editedArgs)
+                      await onApprove?.()
                     } catch {
                       setDecided(false)
                       setApprovalError(true)
