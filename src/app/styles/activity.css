@@ -484,6 +484,27 @@
   scrollbar-width: thin;
 }
 
+/* 待批工具参数可编辑：批准前用户可改 JSON，与只读 args 同视觉、可纵向缩放。 */
+.kk-tool__args-edit {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.4rem 0.5rem;
+  border-radius: 0.4rem;
+  border: 1px solid color-mix(in srgb, var(--brand-wood) 30%, transparent);
+  background: color-mix(in srgb, var(--surface-soft) 72%, transparent);
+  color: color-mix(in srgb, var(--foreground) 86%, white 14%);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  min-height: 3.5rem;
+  max-height: 12rem;
+  resize: vertical;
+}
+
+.kk-tool__args-edit:disabled {
+  opacity: 0.6;
+}
+
 .kk-tool__result {
   border-left: 2px solid color-mix(in srgb, var(--brand-wood) 28%, transparent);
 }
