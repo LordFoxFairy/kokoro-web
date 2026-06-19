@@ -59,16 +59,11 @@ export function useHitlControl({
   }, [activeId, isStreaming, nowMs, persistedStore, setLiveStore, store])
 
   const sendToolDecision = useCallback(
-    async (
-      runId: string,
-      decision: "approve" | "reject",
-      args?: Record<string, unknown>,
-    ) => {
+    async (runId: string, decision: "approve" | "reject") => {
       if (!activeId) {
         return
       }
-      // args 仅 approve 透传：用户编辑后的工具参数；reject 忽略。
-      await sendRunControl({ sessionId: activeId, runId, decision, args })
+      await sendRunControl({ sessionId: activeId, runId, decision })
       // reject 仅在 control POST 成功后才做本地即时反馈；失败时保持 awaiting，按钮层可恢复重试。
       if (decision === "reject") {
         replyHandleRef.current?.markToolRejected?.(runId)
