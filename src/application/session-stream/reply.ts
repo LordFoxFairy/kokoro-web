@@ -32,45 +32,57 @@ export const startSessionReply: StartReply = (args) => {
   let closed = false
   let active: LiveSessionHandle = { close: () => {}, markToolRejected: () => {} }
 
+  // 终态降级，亦是异步链的兜底 rejection handler：自身异常就地吞住,
+  // 绝不再向外抛——它已是最后一道防线,逃逸只会变成静默的 unhandledRejection。
   const fallbackToPreview = () => {
     if (closed) {
       return
     }
 
-    active = simulateAssistantReply({
-      input: args.input,
-      initialState: args.initialState,
-      executionStyle: args.executionStyle,
-      onState: args.onState,
-      onSettled: () => args.onSettled?.("preview"),
-    })
+    try {
+      active = simulateAssistantReply({
+        input: args.input,
+        initialState: args.initialState,
+        executionStyle: args.executionStyle,
+        onState: args.onState,
+        onSettled: () => args.onSettled?.("preview"),
+      })
+    } catch {
+      // 预览本身崩溃无可恢复路径；吞掉以免污染全局未处理 rejection。
+    }
   }
 
-  void (async () => {
+  const establishLive = async () => {
+    const handle = await consumeLiveSession({
+      input: args.input,
+      baseUrl: args.baseUrl,
+      sessionId: args.sessionId,
+      executionStyle: args.executionStyle,
+      permissionMode: args.permissionMode,
+      initialState: args.initialState,
+      onState: args.onState,
+      onSettled: () => args.onSettled?.("live"),
+    })
+
+    if (closed) {
+      handle.close()
+      return
+    }
+
     try {
-      const handle = await consumeLiveSession({
-        input: args.input,
-        baseUrl: args.baseUrl,
-        sessionId: args.sessionId,
-        executionStyle: args.executionStyle,
-        permissionMode: args.permissionMode,
-        initialState: args.initialState,
-        onState: args.onState,
-        onSettled: () => args.onSettled?.("live"),
-      })
-
-      if (closed) {
-        handle.close()
-        return
-      }
-
-      active = handle
       // POST 成功 = live 链路确立：通知调用方标记在途 run（用于刷新后重连续传）。
       args.onLive?.()
-    } catch {
-      fallbackToPreview()
+    } catch (error) {
+      // onLive 抛错时 SSE 已开：先关掉它再让上层降级,避免 live/preview 双开泄漏 EventSource。
+      handle.close()
+      throw error
     }
-  })()
+
+    active = handle
+  }
+
+  // 显式消费 promise：POST/传输/超时/回调任一异常都汇入 fallback,不靠 void 静默丢。
+  establishLive().catch(fallbackToPreview)
 
   return {
     close: () => {
