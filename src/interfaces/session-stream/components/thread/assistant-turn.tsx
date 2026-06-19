@@ -36,7 +36,8 @@ type Segment = {
 // 每段聚合它自己的思考/工具/子智能体。工具属于它后面那段文本（由 segment_id 归属保证），
 // 因此每段的过程正好是「催生这段答案」的那批过程。
 function groupSegments(steps: SessionStep[]): Segment[] {
-  const order: string[] = []
+  // ordered 保留首次出现顺序；byId 仅做去重定位，二者指向同一对象——避免回读时的非空断言。
+  const ordered: Segment[] = []
   const byId = new Map<string, Segment>()
   const segmentFor = (id: string): Segment => {
     const existing = byId.get(id)
@@ -50,7 +51,7 @@ function groupSegments(steps: SessionStep[]): Segment[] {
       subagents: [],
     }
     byId.set(id, created)
-    order.push(id)
+    ordered.push(created)
     return created
   }
   for (const step of steps) {
@@ -64,7 +65,7 @@ function groupSegments(steps: SessionStep[]): Segment[] {
     }
     // text 步骤只标记该段存在；正文从 messagesById 取。
   }
-  return order.map((id) => byId.get(id) as Segment)
+  return ordered
 }
 
 // 成形态的盒内内容：就近的「正在…」线索 + 脉冲点。盒由 .kk-turn__answer 统一提供
@@ -104,8 +105,7 @@ export function AssistantTurn({
   onToolDecision,
 }: AssistantTurnProps) {
   const segments = groupSegments(steps)
-  const tailId =
-    segments.length > 0 ? segments[segments.length - 1]?.segmentId : undefined
+  const tailId = segments.at(-1)?.segmentId
   const tailMessage = tailId ? messagesById[tailId] : undefined
   const tailHasText = Boolean(tailMessage) && (tailMessage?.content.length ?? 0) > 0
   const formingLabel = mode === "fast" ? "正在整理回答" : "正在思考"
