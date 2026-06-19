@@ -143,5 +143,10 @@ export function toSessionStreamEvent(
         subagentId: event.payload.subagent_id,
         text: event.payload.text,
       }
+    default: {
+      // 穷尽性保护：新增 transport 事件类型时在此编译期暴露，而非静默漏映射。
+      const _exhaustive: never = event
+      return _exhaustive
+    }
   }
 }
