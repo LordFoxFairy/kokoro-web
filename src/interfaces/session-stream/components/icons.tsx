@@ -37,6 +37,72 @@ export function SearchIcon({ className = "kk-rail__icon" }: IconProps) {
   )
 }
 
+export function ChatsIcon({ className = "kk-rail__icon" }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h7A2.5 2.5 0 0 1 16 6.5v3A2.5 2.5 0 0 1 13.5 12H8l-4 3.5V6.5Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+      <path d="M9 14.5a2.5 2.5 0 0 0 2.5 2.5H16l4 3v-9A2.5 2.5 0 0 0 17.5 8.5" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+export function FolderIcon({ className = "kk-rail__icon" }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path d="M3.5 6.5A2 2 0 0 1 5.5 4.5h3.2a2 2 0 0 1 1.5.7l1 1.2h7.3a2 2 0 0 1 2 2v8.4a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2V6.5Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+export function ArtifactsIcon({ className = "kk-rail__icon" }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden>
+      <rect x="4" y="4.5" width="9" height="9" rx="1.6" stroke="currentColor" strokeWidth="1.6" />
+      <circle cx="14.5" cy="14.5" r="5" stroke="currentColor" strokeWidth="1.6" />
+    </svg>
+  )
+}
+
+export function CodeIcon({ className = "kk-rail__icon" }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path d="m9 8-4 4 4 4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="m15 8 4 4-4 4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+export function BriefcaseIcon({ className = "kk-rail__icon" }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden>
+      <rect x="3.5" y="7.5" width="17" height="12" rx="2" stroke="currentColor" strokeWidth="1.6" />
+      <path d="M9 7.5V6.2A1.7 1.7 0 0 1 10.7 4.5h2.6A1.7 1.7 0 0 1 15 6.2v1.3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+export function PaletteIcon({ className = "kk-rail__icon" }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path d="M12 4a8 8 0 0 0 0 16c1.3 0 1.8-1 1.4-2-.4-1 .2-1.8 1.3-1.8H17a3 3 0 0 0 3-3 8 8 0 0 0-8-9.2Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+      <circle cx="8.5" cy="11" r="1" fill="currentColor" />
+      <circle cx="12" cy="8.5" r="1" fill="currentColor" />
+      <circle cx="15.5" cy="11" r="1" fill="currentColor" />
+    </svg>
+  )
+}
+
+export function SlidersIcon({ className = "kk-rail__icon" }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden>
+      <line x1="8.5" y1="5" x2="8.5" y2="19" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+      <line x1="15.5" y1="5" x2="15.5" y2="19" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+      <circle cx="8.5" cy="9" r="2" fill="var(--background)" stroke="currentColor" strokeWidth="1.6" />
+      <circle cx="15.5" cy="15" r="2" fill="var(--background)" stroke="currentColor" strokeWidth="1.6" />
+    </svg>
+  )
+}
+
 // 助手头像：机器人(头 + 天线 + 双眼)，比抽象的「心」更直观表达 AI 身份。
 export function RobotIcon({ className }: IconProps) {
   return (
