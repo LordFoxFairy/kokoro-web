@@ -8,7 +8,7 @@ import {
 
 import type { AgentMode } from "@/application/conversation-store"
 
-import type { PermissionMode } from "../../hooks/use-conversation"
+import type { PermissionMode } from "@/application/session-stream/transport"
 import { MAX_INPUT_LENGTH, resizeComposer } from "./composer-input"
 import { ComposerMenu } from "./composer-menu"
 import { ExpandDialog } from "./expand-dialog"

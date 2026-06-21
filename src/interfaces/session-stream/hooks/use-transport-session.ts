@@ -10,7 +10,10 @@ import {
   type StartReply,
 } from "@/application/session-stream/reply"
 import { type SessionStreamState } from "@/application/session-stream/reducer"
-import { type LiveSessionHandle } from "@/application/session-stream/transport"
+import {
+  type LiveSessionHandle,
+  type PermissionMode,
+} from "@/application/session-stream/transport"
 
 import { type TransportState } from "./mode-presentation"
 
@@ -50,7 +53,7 @@ export function useTransportSession(
   startReply: StartReply,
   scrollToLatest: () => void,
   mode: "fast" | "thinking",
-  permissionMode: "auto" | "default" | "plan",
+  permissionMode: PermissionMode,
   setLiveStore: SetLiveStore,
   nowMs: () => number,
 ): TransportSession {
