@@ -20,6 +20,8 @@ export type SessionStreamSnapshot = SessionStreamState
 
 export type LiveSessionHandle = {
   close: () => void
+  // 本句柄正在跟踪的 run：onLive 据此把在途 runId 持久化，刷新后 reattach 才能锚定本轮终态。
+  runId?: string
   // HITL：用户拒绝时本地把该 run 待批工具置 rejected，落进流的权威 state——否则后续
   // tool.returned（拒绝回流 is_error=false）会把它翻成绿勾 done（reducer 保留 rejected）。
   // 可选：真实链路（transport/simulator/reattach）都实现；测试替身可省。
@@ -46,6 +48,9 @@ export type ConsumeLiveSessionInput = {
 export type ReattachLiveSessionInput = {
   sessionId: string
   baseUrl?: string
+  // 续传锚定的在途 run：刷新前持久化的 pendingRunId，使 reattach 只在本轮终态收束，
+  // 不被 replay 流里历史 run 的终态提前关闭（与 consumeLiveSession 同一道防线）。
+  runId?: string
   initialState: SessionStreamState
   onState: (snapshot: SessionStreamSnapshot) => void
   onSettled?: () => void
@@ -165,6 +170,7 @@ export function openSessionStream(args: OpenSessionStreamArgs): LiveSessionHandl
 
   return {
     close,
+    runId: args.runId,
     markToolRejected: (runId: string) => {
       state = markToolRejected(state, runId)
       args.onState(state)
@@ -228,6 +234,7 @@ export function reattachLiveSession(
   return openSessionStream({
     sessionId: input.sessionId,
     baseUrl: input.baseUrl ?? resolveSessionBaseUrl(),
+    runId: input.runId,
     initialState: input.initialState,
     onState: input.onState,
     onSettled: input.onSettled,

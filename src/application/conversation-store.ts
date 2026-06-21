@@ -24,6 +24,8 @@ export type ConversationEntry = {
   mode: AgentMode
   // 在途 live run 的输入：刷新/断线后据此重连续传；run 落定即清除。
   pendingInput?: string
+  // 在途 live run 的 id：刷新后 reattach 据此锚定本轮终态，不被历史 run 终态提前关流。
+  pendingRunId?: string
 }
 
 export type ConversationStore = {
@@ -134,15 +136,18 @@ export function isActiveModeLocked(store: ConversationStore): boolean {
   return activeThreadOf(store).messages.length > 0
 }
 
-// 标记/清除活跃会话的在途 run（pendingInput）。clear 传 undefined。
+// 标记/清除活跃会话的在途 run（输入 + runId）。clear 两参都传 undefined，input/runId 一起设置或清空。
 export function setActivePending(
   store: ConversationStore,
   pendingInput: string | undefined,
+  pendingRunId?: string,
 ): ConversationStore {
   return {
     ...store,
     conversations: store.conversations.map((entry) =>
-      entry.id === store.activeId ? { ...entry, pendingInput } : entry,
+      entry.id === store.activeId
+        ? { ...entry, pendingInput, pendingRunId }
+        : entry,
     ),
   }
 }
@@ -187,6 +192,7 @@ const storedEntrySchema = z
     // 旧版落盘无 mode：默认补 fast，保持向后兼容，不因新增字段判脏。
     mode: z.enum(["fast", "thinking"]).default("fast"),
     pendingInput: z.string().optional(),
+    pendingRunId: z.string().optional(),
   })
   .strict()
 

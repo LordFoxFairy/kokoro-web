@@ -16,6 +16,8 @@ import { type TransportSession } from "./use-transport-session"
 // 中断恢复用的重连接口：不发新 POST，只重订阅某 session 的 SSE 续传。可注入以便测试。
 export type ReattachReply = (args: {
   sessionId: string
+  // 刷新前持久化的在途 runId：reattach 据此只在本轮终态收束，不被历史 run 终态提前关流。
+  runId?: string
   initialState: SessionStreamState
   onState: (snapshot: SessionStreamState) => void
   onSettled: () => void
@@ -24,6 +26,7 @@ export type ReattachReply = (args: {
 export const defaultReattach: ReattachReply = (args) =>
   reattachLiveSession({
     sessionId: args.sessionId,
+    runId: args.runId,
     initialState: args.initialState,
     onState: args.onState,
     onSettled: args.onSettled,
@@ -85,6 +88,7 @@ export function useSessionReattach({
 
     const handle = reattach({
       sessionId: pendingConvId,
+      runId: entry.pendingRunId,
       initialState: entry.thread,
       onState: (next) => {
         tx.clearReconnecting()
