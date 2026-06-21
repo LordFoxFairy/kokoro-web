@@ -40,8 +40,12 @@ vitest-report/
 CLAUDE.md
 
 # local agent / MCP tooling scratch
+.claude/
 .playwright-mcp/
 .superpowers/
+
+# 包管理器以 bun.lock + package-lock.json 为准；pnpm 锁是野生件，忽略以免三锁打架
+pnpm-lock.yaml
 
 # e2e 实证截图(会话产物,不入库)
 e2e-*.png
