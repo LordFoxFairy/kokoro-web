@@ -106,14 +106,14 @@ export function useTransportSession(
             withActiveThread(prev ?? storeAtStart, next, nowMs()),
           )
         },
-        onLive: () => {
-          // 确认 live：标记在途 run，刷新/断线后可重连续传。
+        onLive: (runId) => {
+          // 确认 live：连同 runId 标记在途 run，刷新/断线后据此锚定本轮终态续传。
           // 本挂载内这轮已由 live 句柄接着——预先占住重连守卫，
           // 否则 pendingInput 一落地重连 effect 就会对在途 run 二次订阅并覆盖句柄。
           reattachedRef.current = storeAtStart.activeId
           setTransportState("live")
           setLiveStore((prev) =>
-            prev ? setActivePending(prev, content) : prev,
+            prev ? setActivePending(prev, content, runId) : prev,
           )
         },
         onSettled: (replyMode: ReplyMode) => {
