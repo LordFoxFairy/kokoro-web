@@ -2,7 +2,7 @@ import { createElement } from "react"
 
 import type { AgentMode } from "@/application/conversation-store"
 
-import type { PermissionMode } from "../../hooks/use-conversation"
+import type { PermissionMode } from "@/application/session-stream/transport"
 import type { MenuOption } from "./composer-menu"
 import { SparkIcon, ZapIcon } from "../icons"
 

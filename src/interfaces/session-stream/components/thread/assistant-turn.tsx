@@ -1,9 +1,9 @@
 import type { AgentMode } from "@/application/conversation-store"
-import type {
-  SessionMessage,
-  SessionStep,
+import {
+  groupSegments,
+  type SessionMessage,
+  type SessionStep,
 } from "@/application/session-stream/reducer"
-import { groupSegments } from "@/application/session-stream/thread-projection"
 
 import { RobotIcon } from "../icons"
 import { MarkdownMessage } from "./markdown-message"

@@ -100,11 +100,11 @@ export function markToolRejected(
   return { ...state, stepsByRun: { ...state.stepsByRun, [runId]: next } }
 }
 
-// run 终态时将残留的 running/awaiting 工具置为 error，避免永久挂起的「待批准/运行中」行
-// 及无人消费的批准按钮。done/error 工具不变。
-export function resolveStaleTools(
+// 把该 run 残留的 running/awaiting 工具就地翻 error（done/error 工具不动）；文案由调用方按档位决定。
+function resolveOpenTools(
   state: SessionStreamState,
   runId: string,
+  errorTextFor: (status: "running" | "awaiting") => string,
 ): SessionStreamState {
   const steps = state.stepsByRun[runId]
   if (!steps) {
@@ -122,10 +122,7 @@ export function resolveStaleTools(
         tool: {
           ...step.tool,
           status: "error" as const,
-          errorText:
-            step.tool.status === "awaiting"
-              ? "运行已结束，该工具未获批准"
-              : "运行已结束，工具未完成",
+          errorText: errorTextFor(step.tool.status),
         },
       }
     }
@@ -137,34 +134,23 @@ export function resolveStaleTools(
   return { ...state, stepsByRun: { ...state.stepsByRun, [runId]: resolved } }
 }
 
-// 用户停止/放弃在途 run 时本地收口：把该 run 残留的 running/awaiting 工具翻成 error「运行已取消」，
+// run 终态时将残留的 running/awaiting 工具置为 error，避免永久挂起的「待批准/运行中」行及无人消费的批准按钮。
+export function resolveStaleTools(
+  state: SessionStreamState,
+  runId: string,
+): SessionStreamState {
+  return resolveOpenTools(state, runId, (status) =>
+    status === "awaiting" ? "运行已结束，该工具未获批准" : "运行已结束，工具未完成",
+  )
+}
+
+// 用户停止/放弃在途 run 时本地收口：把残留的 running/awaiting 工具翻 error「运行已取消」，
 // 避免停止后还挂着一组无人消费的批准按钮（停止会立即关 SSE，后端 cancelled 终态来不及回流）。
 export function markRunCancelled(
   state: SessionStreamState,
   runId: string,
 ): SessionStreamState {
-  const steps = state.stepsByRun[runId]
-  if (!steps) {
-    return state
-  }
-  let changed = false
-  const resolved = steps.map((step) => {
-    if (
-      step.kind === "tool" &&
-      (step.tool.status === "running" || step.tool.status === "awaiting")
-    ) {
-      changed = true
-      return {
-        ...step,
-        tool: { ...step.tool, status: "error" as const, errorText: "运行已取消" },
-      }
-    }
-    return step
-  })
-  if (!changed) {
-    return state
-  }
-  return { ...state, stepsByRun: { ...state.stepsByRun, [runId]: resolved } }
+  return resolveOpenTools(state, runId, () => "运行已取消")
 }
 
 // 用户输入本地产生、不进 seenEventIds；复位 runStatus 为 idle 并清空 todo，历史步骤保留。

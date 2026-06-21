@@ -5,6 +5,7 @@ import { simulateAssistantReply } from "./simulator"
 import type { SessionStreamState } from "./reducer"
 import type {
   LiveSessionHandle,
+  PermissionMode,
   SessionStreamSnapshot,
 } from "./transport"
 
@@ -21,7 +22,7 @@ export type StartReplyInput = {
   baseUrl?: string
   sessionId?: string
   executionStyle?: "fast" | "thinking"
-  permissionMode?: "auto" | "default" | "plan"
+  permissionMode?: PermissionMode
 }
 
 export type StartReply = (args: StartReplyInput) => LiveSessionHandle
