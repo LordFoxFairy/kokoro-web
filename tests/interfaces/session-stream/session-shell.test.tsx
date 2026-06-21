@@ -225,7 +225,7 @@ describe("SessionShell first screen", () => {
 
     expect(screen.getByText("Kokoro")).toBeInTheDocument()
     expect(screen.getByText("新对话")).toBeInTheDocument()
-    expect(screen.getByText("搜索")).toBeInTheDocument()
+    expect(screen.getByLabelText("搜索会话")).toBeInTheDocument()
     expect(screen.getByText("当前用户")).toBeInTheDocument()
 
     expect(
@@ -1407,7 +1407,7 @@ describe("SessionShell sessions list", () => {
     expect(inLog("第二段")).toBeInTheDocument()
 
     // rail 历史列表同时列出两段（标题=各自首条消息）。
-    const list = screen.getByRole("navigation", { name: "历史会话" })
+    const list = screen.getByRole("navigation", { name: "最近会话" })
     expect(within(list).getByText("第一段")).toBeInTheDocument()
     expect(within(list).getByText("第二段")).toBeInTheDocument()
 
@@ -1422,7 +1422,7 @@ describe("SessionShell sessions list", () => {
     render(<SessionShell startReply={instantReply((input) => `答：${input}`)} />)
 
     send("待删除")
-    const list = screen.getByRole("navigation", { name: "历史会话" })
+    const list = screen.getByRole("navigation", { name: "最近会话" })
     expect(within(list).getByText("待删除")).toBeInTheDocument()
 
     fireEvent.click(screen.getByLabelText("删除会话 待删除"))
@@ -1471,7 +1471,7 @@ describe("SessionShell sessions list", () => {
     expect(inLog("第二段的旧流")).toBeInTheDocument()
 
     // 流式中切回第一段：旧句柄被关恰一次，旧流内容不得出现在第一段里。
-    const list = screen.getByRole("navigation", { name: "历史会话" })
+    const list = screen.getByRole("navigation", { name: "最近会话" })
     fireEvent.click(within(list).getByText("第一段"))
     expect(close).toHaveBeenCalledTimes(1)
     expect(within(screen.getByRole("log")).queryByText("第二段的旧流")).toBeNull()
