@@ -1,5 +1,8 @@
+import { useEffect, useRef, useState } from "react"
+
 import type { ConversationSummary } from "../hooks/use-conversation"
 import { PanelIcon, PlusIcon, SearchIcon } from "./icons"
+import { filterConversations } from "./session-rail-search"
 
 type SessionRailProps = {
   collapsed: boolean
@@ -20,6 +23,25 @@ export function SessionRail({
   onSelectConversation,
   onDeleteConversation,
 }: SessionRailProps) {
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [query, setQuery] = useState("")
+  const searchInputRef = useRef<HTMLInputElement>(null)
+
+  // 打开搜索即聚焦输入框，省去一次额外点击。
+  useEffect(() => {
+    if (searchOpen) {
+      searchInputRef.current?.focus()
+    }
+  }, [searchOpen])
+
+  const closeSearch = () => {
+    setSearchOpen(false)
+    setQuery("")
+  }
+
+  const filtered = filterConversations(conversations, query)
+  const hasConversations = conversations.length > 0
+
   return (
     <aside className="kk-rail" aria-label="会话导航">
       <div className="kk-rail__head">
@@ -33,16 +55,58 @@ export function SessionRail({
           </div>
         </div>
 
-        <button
-          className="kk-rail__collapse"
-          type="button"
-          onClick={onToggleCollapse}
-          aria-label={collapsed ? "展开侧栏" : "收起侧栏"}
-          aria-expanded={!collapsed}
-        >
-          <PanelIcon />
-        </button>
+        <div className="kk-rail__head-actions">
+          {/* 搜索切换：仅过滤本地「最近」列表，故收起态（列表已隐藏）不显此键。 */}
+          <button
+            className="kk-rail__head-btn kk-rail__search-toggle"
+            type="button"
+            onClick={() => (searchOpen ? closeSearch() : setSearchOpen(true))}
+            aria-label="搜索会话"
+            aria-expanded={searchOpen}
+            aria-pressed={searchOpen}
+            data-active={searchOpen ? "true" : "false"}
+          >
+            <SearchIcon />
+          </button>
+          <button
+            className="kk-rail__head-btn"
+            type="button"
+            onClick={onToggleCollapse}
+            aria-label={collapsed ? "展开侧栏" : "收起侧栏"}
+            aria-expanded={!collapsed}
+          >
+            <PanelIcon />
+          </button>
+        </div>
       </div>
+
+      {searchOpen ? (
+        <div className="kk-rail__search-box">
+          <SearchIcon className="kk-rail__search-glyph" />
+          <input
+            ref={searchInputRef}
+            className="kk-rail__search-input"
+            type="search"
+            value={query}
+            placeholder="搜索最近会话…"
+            aria-label="搜索最近会话"
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                closeSearch()
+              }
+            }}
+          />
+          <button
+            className="kk-rail__search-close"
+            type="button"
+            aria-label="关闭搜索"
+            onClick={closeSearch}
+          >
+            ×
+          </button>
+        </div>
+      ) : null}
 
       <button
         className="kk-rail__action kk-rail__new-chat"
@@ -53,50 +117,41 @@ export function SessionRail({
         <span className="kk-rail__action-label">新对话</span>
       </button>
 
-      {/* 会话搜索尚未接入：停用入口并以 title 标注，避免 ⌘K 暗示一个不存在的功能。 */}
-      <button
-        className="kk-rail__action kk-rail__search"
-        type="button"
-        title="会话搜索即将支持"
-        disabled
-      >
-        <span className="kk-rail__search-label">
-          <SearchIcon />
-          <span className="kk-rail__action-label">搜索</span>
-        </span>
-        <span className="kk-rail__search-shortcut">⌘K</span>
-      </button>
-
-      {conversations.length > 0 ? (
-        <nav className="kk-rail__list" aria-label="历史会话">
-          {conversations.map((conversation) => (
-            <div
-              key={conversation.id}
-              className="kk-rail__item"
-              data-active={conversation.id === activeId ? "true" : "false"}
-            >
-              <button
-                className="kk-rail__item-select"
-                type="button"
-                onClick={() => onSelectConversation(conversation.id)}
-                aria-current={
-                  conversation.id === activeId ? "true" : undefined
-                }
+      {hasConversations ? (
+        <nav className="kk-rail__list" aria-label="最近会话">
+          <p className="kk-rail__section">最近</p>
+          {filtered.length > 0 ? (
+            filtered.map((conversation) => (
+              <div
+                key={conversation.id}
+                className="kk-rail__item"
+                data-active={conversation.id === activeId ? "true" : "false"}
               >
-                <span className="kk-rail__item-title">
-                  {conversation.title}
-                </span>
-              </button>
-              <button
-                className="kk-rail__item-delete"
-                type="button"
-                aria-label={`删除会话 ${conversation.title}`}
-                onClick={() => onDeleteConversation(conversation.id)}
-              >
-                ×
-              </button>
-            </div>
-          ))}
+                <button
+                  className="kk-rail__item-select"
+                  type="button"
+                  onClick={() => onSelectConversation(conversation.id)}
+                  aria-current={
+                    conversation.id === activeId ? "true" : undefined
+                  }
+                >
+                  <span className="kk-rail__item-title">
+                    {conversation.title}
+                  </span>
+                </button>
+                <button
+                  className="kk-rail__item-delete"
+                  type="button"
+                  aria-label={`删除会话 ${conversation.title}`}
+                  onClick={() => onDeleteConversation(conversation.id)}
+                >
+                  ×
+                </button>
+              </div>
+            ))
+          ) : (
+            <p className="kk-rail__empty">没有匹配的会话</p>
+          )}
         </nav>
       ) : null}
 
