@@ -1,7 +1,18 @@
 import { useEffect, useRef, useState } from "react"
 
 import type { ConversationSummary } from "../hooks/use-conversation"
-import { PanelIcon, PlusIcon, SearchIcon } from "./icons"
+import {
+  ArtifactsIcon,
+  BriefcaseIcon,
+  ChatsIcon,
+  CodeIcon,
+  FolderIcon,
+  PaletteIcon,
+  PanelIcon,
+  PlusIcon,
+  SearchIcon,
+  SlidersIcon,
+} from "./icons"
 import { filterConversations } from "./session-rail-search"
 
 type SessionRailProps = {
@@ -12,6 +23,36 @@ type SessionRailProps = {
   activeId: string | null
   onSelectConversation: (id: string) => void
   onDeleteConversation: (id: string) => void
+}
+
+type IconComponent = (props: { className?: string }) => React.ReactElement
+type NavPlaceholder = { id: string; label: string; Icon: IconComponent; badge?: string }
+
+// 占位导航项：kokoro 暂无这些功能，按用户要求照搬 Claude 布局但以停用态呈现，不假装可点。
+const PRIMARY_PLACEHOLDERS: NavPlaceholder[] = [
+  { id: "projects", label: "项目", Icon: FolderIcon },
+  { id: "artifacts", label: "作品", Icon: ArtifactsIcon },
+  { id: "code", label: "代码", Icon: CodeIcon, badge: "升级" },
+  { id: "customize", label: "自定义", Icon: BriefcaseIcon },
+]
+
+const PRODUCT_PLACEHOLDERS: NavPlaceholder[] = [
+  { id: "design", label: "设计", Icon: PaletteIcon },
+]
+
+function PlaceholderRow({ label, Icon, badge }: NavPlaceholder) {
+  return (
+    <button
+      className="kk-rail__nav-item"
+      type="button"
+      disabled
+      title={`${label}功能即将支持`}
+    >
+      <Icon />
+      <span className="kk-rail__nav-label">{label}</span>
+      {badge ? <span className="kk-rail__nav-badge">{badge}</span> : null}
+    </button>
+  )
 }
 
 export function SessionRail({
@@ -108,18 +149,52 @@ export function SessionRail({
         </div>
       ) : null}
 
-      <button
-        className="kk-rail__action kk-rail__new-chat"
-        type="button"
-        onClick={onNewChat}
-      >
-        <PlusIcon />
-        <span className="kk-rail__action-label">新对话</span>
-      </button>
+      <nav className="kk-rail__nav" aria-label="主导航">
+        {/* 新对话：唯一真实操作，带 ⇧⌘O 快捷键（SessionShell 已接入键盘）。 */}
+        <button
+          className="kk-rail__nav-item kk-rail__nav-item--action"
+          type="button"
+          onClick={onNewChat}
+        >
+          <PlusIcon />
+          <span className="kk-rail__nav-label">新对话</span>
+          <span className="kk-rail__nav-shortcut" aria-hidden>
+            ⇧⌘O
+          </span>
+        </button>
+
+        {/* 对话：当前所在视图——非动作，仅作高亮指示（kokoro 即聊天本身）。 */}
+        <div className="kk-rail__nav-item" data-active="true" aria-current="page">
+          <ChatsIcon />
+          <span className="kk-rail__nav-label">对话</span>
+        </div>
+
+        {PRIMARY_PLACEHOLDERS.map((item) => (
+          <PlaceholderRow key={item.id} {...item} />
+        ))}
+      </nav>
+
+      <div className="kk-rail__group">
+        <p className="kk-rail__section">产品</p>
+        {PRODUCT_PLACEHOLDERS.map((item) => (
+          <PlaceholderRow key={item.id} {...item} />
+        ))}
+      </div>
 
       {hasConversations ? (
         <nav className="kk-rail__list" aria-label="最近会话">
-          <p className="kk-rail__section">最近</p>
+          <div className="kk-rail__section-row">
+            <p className="kk-rail__section">最近</p>
+            <button
+              className="kk-rail__sort"
+              type="button"
+              disabled
+              title="会话排序即将支持"
+              aria-label="会话排序"
+            >
+              <SlidersIcon />
+            </button>
+          </div>
           {filtered.length > 0 ? (
             filtered.map((conversation) => (
               <div
