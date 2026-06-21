@@ -106,13 +106,16 @@ function decodeStreamMessage(event: Event): SessionStreamEvent | null {
 type OpenSessionStreamArgs = {
   sessionId: string
   baseUrl: string
+  // 本轮关注的 run：SSE 从流首重放会带上历史 run 的终态，只有匹配本轮 runId 的终态才收束；
+  // 不传（如 reattach 无从得知在途 runId）则退回「任一终态即收束」的旧行为。
+  runId?: string
   initialState: SessionStreamState
   onState: (snapshot: SessionStreamSnapshot) => void
   onSettled?: () => void
   onError?: (event: Event) => void
 }
 
-// 打开某 session 的 SSE，把 AGUI 事件折进 reducer，run.completed/run.failed 关闭流。
+// 打开某 session 的 SSE，把 AGUI 事件折进 reducer；仅本轮 run 的 run.completed/run.failed 关闭流。
 // 由 consumeLiveSession（先 POST 再监听）与 reattachLiveSession（仅监听、断后续传）共用。
 export function openSessionStream(args: OpenSessionStreamArgs): LiveSessionHandle {
   if (typeof EventSource === "undefined") {
@@ -141,8 +144,10 @@ export function openSessionStream(args: OpenSessionStreamArgs): LiveSessionHandl
     args.onState(state)
 
     if (
-      sessionEvent.kind === "run-completed" ||
-      sessionEvent.kind === "run-failed"
+      (sessionEvent.kind === "run-completed" ||
+        sessionEvent.kind === "run-failed") &&
+      // 只在本轮 run 的终态收束；重放到历史 run 的终态时保持监听，等本轮事件到达。
+      (args.runId === undefined || sessionEvent.runId === args.runId)
     ) {
       close()
       args.onSettled?.()
@@ -194,9 +199,20 @@ export async function consumeLiveSession(
     throw new Error(`session start failed with status ${response.status}`)
   }
 
+  // 用 POST 回执里的 runId 锚定本轮：SSE 重放历史 run 的终态时不提前收束，避免丢本轮回答。
+  // 非 JSON 回执（或缺 runId）退回无 runId 旧行为，绝不因解析失败让整轮回复崩掉。
+  let runId: string | undefined
+  try {
+    const body = (await response.json()) as { runId?: string }
+    runId = body?.runId
+  } catch {
+    runId = undefined
+  }
+
   return openSessionStream({
     sessionId,
     baseUrl,
+    runId,
     initialState: input.initialState ?? createSessionStreamState(),
     onState: input.onState,
     onSettled: input.onSettled,
