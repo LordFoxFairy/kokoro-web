@@ -2,7 +2,7 @@
 .kk-rail {
   display: flex;
   flex-direction: column;
-  gap: 0.1rem;
+  gap: 0.15rem;
   border-right: 1px solid var(--border-soft);
   padding: 0.85rem 0.6rem;
   background: color-mix(in srgb, var(--background) 93%, white 7%);
@@ -14,7 +14,6 @@
    收窄时 max-width→0 + opacity→0，文字被裁且不占据居中空间。 */
 .kk-rail__brand-text,
 .kk-rail__action-label,
-.kk-rail__search-shortcut,
 .kk-rail__user-text {
   white-space: nowrap;
   overflow: hidden;
@@ -29,7 +28,7 @@
   display: flex;
   align-items: center;
   gap: 0.3rem;
-  padding: 0.35rem 0.2rem 0.75rem 0.4rem;
+  padding: 0.35rem 0.2rem 0.7rem 0.4rem;
 }
 
 .kk-rail__brand {
@@ -40,7 +39,15 @@
   gap: 0.55rem;
 }
 
-.kk-rail__collapse {
+/* 头部右侧图标簇：搜索 + 收起并排（对齐参考的头部双图标）。 */
+.kk-rail__head-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+  flex-shrink: 0;
+}
+
+.kk-rail__head-btn {
   display: flex;
   height: 2rem;
   width: 2rem;
@@ -57,12 +64,13 @@
     color 120ms ease;
 }
 
-.kk-rail__collapse:hover {
+.kk-rail__head-btn:hover,
+.kk-rail__head-btn[data-active="true"] {
   background: color-mix(in srgb, var(--brand-wood-soft) 55%, white 45%);
   color: var(--foreground);
 }
 
-.kk-rail__collapse:focus-visible {
+.kk-rail__head-btn:focus-visible {
   outline: 2px solid var(--brand-wood);
   outline-offset: 2px;
 }
@@ -103,13 +111,71 @@
   color: rgba(43, 37, 32, 0.65);
 }
 
+/* 搜索过滤框：打开时浮现在头部下方，实时过滤「最近」列表。 */
+.kk-rail__search-box {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0.1rem 0 0.35rem;
+  padding: 0.4rem 0.55rem;
+  border-radius: 0.7rem;
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+}
+
+.kk-rail__search-box:focus-within {
+  border-color: var(--brand-wood);
+}
+
+.kk-rail__search-glyph {
+  width: 0.95rem;
+  height: 0.95rem;
+  flex-shrink: 0;
+  color: rgba(43, 37, 32, 0.5);
+}
+
+.kk-rail__search-input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--foreground);
+  font-size: 0.85rem;
+  outline: none;
+}
+
+.kk-rail__search-input::placeholder {
+  color: rgba(43, 37, 32, 0.42);
+}
+
+/* 隐藏 type=search 的原生清除叉，统一用自绘关闭键。 */
+.kk-rail__search-input::-webkit-search-cancel-button {
+  appearance: none;
+}
+
+.kk-rail__search-close {
+  flex-shrink: 0;
+  border: 0;
+  background: transparent;
+  padding: 0 0.15rem;
+  font-size: 1rem;
+  line-height: 1;
+  color: color-mix(in srgb, var(--foreground) 45%, white 55%);
+  cursor: pointer;
+  transition: color 120ms ease;
+}
+
+.kk-rail__search-close:hover {
+  color: var(--brand-wood-hover);
+}
+
 /* Gemini 式轻量导航行：无边框、透明底，仅 hover 显柔和 pill；键盘聚焦才显暖木描边。
    均不改变盒模型，无回流。 */
 .kk-rail__action {
   display: flex;
   width: 100%;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 0.6rem;
   border: 0;
   border-radius: 999px;
@@ -123,14 +189,9 @@
 
 /* 主操作：柔和填充 pill，区别于其它行又不抢戏。 */
 .kk-rail__new-chat {
-  justify-content: flex-start;
   background: color-mix(in srgb, var(--brand-wood-soft) 60%, white 40%);
   color: var(--brand-wood-hover);
   font-weight: 600;
-}
-
-.kk-rail__search {
-  color: rgba(43, 37, 32, 0.6);
 }
 
 .kk-rail__action:hover {
@@ -147,15 +208,20 @@
   outline-offset: 2px;
 }
 
-.kk-rail__search-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.55rem;
+/* 分组标题：纤细、克制的「最近」锚，给历史会话一个结构起点（对齐参考的 Recents）。 */
+.kk-rail__section {
+  padding: 0.45rem 0.7rem 0.3rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: rgba(43, 37, 32, 0.5);
 }
 
-.kk-rail__search-shortcut {
-  font-size: 0.72rem;
-  color: rgba(43, 37, 32, 0.42);
+/* 搜索无匹配时的柔和空态，不撑动列表节奏。 */
+.kk-rail__empty {
+  padding: 0.4rem 0.7rem;
+  font-size: 0.82rem;
+  color: rgba(43, 37, 32, 0.5);
 }
 
 /* 底部账户：纤细一行，无边框，hover 显柔和 pill。 */
@@ -181,7 +247,7 @@
   display: flex;
   flex-direction: column;
   gap: 0.1rem;
-  margin: 0.5rem 0 0.4rem;
+  margin: 0.45rem 0 0.4rem;
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--brand-wood) 40%, transparent)
     transparent;
@@ -237,8 +303,10 @@
   color: var(--brand-wood-hover);
 }
 
-/* 折叠态隐藏列表：标签都没了，列表无意义。 */
-.kk-shell[data-rail-collapsed="true"] .kk-rail__list {
+/* 折叠态隐藏列表与搜索：标签都没了，列表/过滤无意义。 */
+.kk-shell[data-rail-collapsed="true"] .kk-rail__list,
+.kk-shell[data-rail-collapsed="true"] .kk-rail__search-box,
+.kk-shell[data-rail-collapsed="true"] .kk-rail__search-toggle {
   display: none;
 }
 
@@ -281,7 +349,6 @@
 
 .kk-shell[data-rail-collapsed="true"] .kk-rail__brand-text,
 .kk-shell[data-rail-collapsed="true"] .kk-rail__action-label,
-.kk-shell[data-rail-collapsed="true"] .kk-rail__search-shortcut,
 .kk-shell[data-rail-collapsed="true"] .kk-rail__user-text {
   max-width: 0;
   opacity: 0;
@@ -296,8 +363,7 @@
 
 /* 收起态清零含隐藏标签的 flex 容器 gap：标签虽 max-width:0 仍占 gap，会把图标顶离居中。 */
 .kk-shell[data-rail-collapsed="true"] .kk-rail__brand,
-.kk-shell[data-rail-collapsed="true"] .kk-rail__action,
-.kk-shell[data-rail-collapsed="true"] .kk-rail__search-label {
+.kk-shell[data-rail-collapsed="true"] .kk-rail__action {
   gap: 0;
 }
 
@@ -305,4 +371,3 @@
   justify-content: center;
   padding: 0.4rem;
 }
-
