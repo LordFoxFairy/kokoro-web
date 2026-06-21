@@ -178,6 +178,72 @@ describe("consumeLiveSession", () => {
     handle.close()
   })
 
+  it("ignores a prior run's replayed terminal and settles only on the current run", async () => {
+    // 多轮同 session：SSE 从流首重放，会先带上上一轮的 run.completed。消费者必须只在「本轮 run」
+    // 的终态收束，否则重放到上一轮终态就提前关流，丢掉本轮回答（用户报的「AI 没回复」根因）。
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(
+          new Response(JSON.stringify({ runId: "run_two" }), { status: 200 }),
+        ),
+    )
+    vi.stubGlobal("EventSource", MockEventSource as unknown as typeof EventSource)
+
+    const withRun = (
+      event: string,
+      eventId: string,
+      runId: string,
+      payload: Record<string, unknown>,
+    ) => ({ ...envelope(event, eventId, payload), run_id: runId })
+
+    const snapshots: SessionStreamSnapshot[] = []
+    const settled: boolean[] = []
+    await consumeLiveSession({
+      input: "第二句",
+      baseUrl: "http://127.0.0.1:3001",
+      onState: (snapshot: SessionStreamSnapshot) => snapshots.push(snapshot),
+      onSettled: () => settled.push(true),
+    } as unknown as Parameters<typeof consumeLiveSession>[0])
+
+    const source = MockEventSource.instances[0]
+
+    // 重放：上一轮 run_one 的终态先到——不得关流、不得 settle。
+    source?.emit(
+      "run.completed",
+      withRun("run.completed", "evt_prev_done", "run_one", {
+        run_id: "run_one",
+        status: "completed",
+      }),
+    )
+    expect(source?.closed).toBe(false)
+    expect(settled).toEqual([])
+
+    // 本轮 run_two 的事件随后到达，必须被折进 thread 并在本轮终态才收束。
+    source?.emit(
+      "message.completed",
+      withRun("message.completed", "evt_two_msg", "run_two", {
+        segment_id: "run_two:seg_0001",
+        role: "assistant",
+        content: "第二轮答案。",
+      }),
+    )
+    source?.emit(
+      "run.completed",
+      withRun("run.completed", "evt_two_done", "run_two", {
+        run_id: "run_two",
+        status: "completed",
+      }),
+    )
+
+    expect(source?.closed).toBe(true)
+    expect(settled).toEqual([true])
+    expect(snapshots.at(-1)?.messages.map((m) => m.content)).toContain(
+      "第二轮答案。",
+    )
+  })
+
   it("includes the provided executionStyle in the live run request", async () => {
     const fetchMock = vi
       .fn()
