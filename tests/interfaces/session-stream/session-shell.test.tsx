@@ -1084,10 +1084,12 @@ describe("SessionShell markdown rendering", () => {
 
     send("给点 markdown")
 
-    expect(screen.getByText("粗体").tagName).toBe("STRONG")
-    expect(screen.getByText("代码").tagName).toBe("CODE")
-    expect(screen.getByText("一").closest("li")).not.toBeNull()
-    expect(screen.getByText("二").closest("li")).not.toBeNull()
+    // 限定在对话区内断言：侧栏导航也含「代码」等字样，全局查询会撞名。
+    const log = within(screen.getByRole("log"))
+    expect(log.getByText("粗体").tagName).toBe("STRONG")
+    expect(log.getByText("代码").tagName).toBe("CODE")
+    expect(log.getByText("一").closest("li")).not.toBeNull()
+    expect(log.getByText("二").closest("li")).not.toBeNull()
   })
 
   it("keeps user messages as plain text, not parsed markdown", () => {

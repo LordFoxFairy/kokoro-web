@@ -1,6 +1,12 @@
 "use client"
 
-import { type CSSProperties, useCallback, useRef, useState } from "react"
+import {
+  type CSSProperties,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react"
 
 import { computeActivityVersion } from "@/application/session-stream/reducer"
 import {
@@ -11,6 +17,7 @@ import {
 import { Composer } from "./components/composer/composer"
 import { ConversationThread } from "./components/thread/conversation-thread"
 import { SessionRail } from "./components/session-rail"
+import { isNewChatShortcut } from "./components/session-rail-shortcut"
 import { TodoBar } from "./components/todo-bar"
 import { useAutoScroll } from "./hooks/use-auto-scroll"
 import { useConversation, type ReattachReply } from "./hooks/use-conversation"
@@ -71,6 +78,18 @@ export function SessionShell({
     setPermissionMode,
     sendToolDecision,
   } = useConversation(startReply, scrollToLatestSeam, reattach)
+
+  // 新对话快捷键 ⇧⌘O（侧栏展示该提示，故全局接入键盘使其真实可用）。
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (isNewChatShortcut(event)) {
+        event.preventDefault()
+        startNewChat()
+      }
+    }
+    window.addEventListener("keydown", onKeyDown)
+    return () => window.removeEventListener("keydown", onKeyDown)
+  }, [startNewChat])
 
   // 过程块静默生长（思考/工具/子智能体流入，messages 引用不变）也要驱动贴底跟随：
   // 纯派生数，随活动总量单调增大，作为 auto-scroll 跟随 effect 的额外依赖。

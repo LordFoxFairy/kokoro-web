@@ -13,7 +13,7 @@
 /* 收起/展开时文字标签淡出淡入，与列宽过渡同步，避免瞬切。
    收窄时 max-width→0 + opacity→0，文字被裁且不占据居中空间。 */
 .kk-rail__brand-text,
-.kk-rail__action-label,
+.kk-rail__nav-label,
 .kk-rail__user-text {
   white-space: nowrap;
   overflow: hidden;
@@ -169,43 +169,111 @@
   color: var(--brand-wood-hover);
 }
 
-/* Gemini 式轻量导航行：无边框、透明底，仅 hover 显柔和 pill；键盘聚焦才显暖木描边。
-   均不改变盒模型，无回流。 */
-.kk-rail__action {
+/* 分组导航：图标 + 文字行，无边框、透明底，hover 显柔和暖木 pill（对齐参考的分组导航）。 */
+.kk-rail__nav,
+.kk-rail__group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.kk-rail__group {
+  margin-top: 0.35rem;
+}
+
+.kk-rail__nav-item {
   display: flex;
   width: 100%;
   align-items: center;
-  justify-content: flex-start;
   gap: 0.6rem;
   border: 0;
-  border-radius: 999px;
+  border-radius: 0.7rem;
   background: transparent;
-  padding: 0.55rem 0.7rem;
+  padding: 0.5rem 0.7rem;
   color: var(--foreground);
   font-size: 0.9rem;
   text-align: left;
-  transition: background-color 120ms ease;
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
 }
 
-/* 主操作：柔和填充 pill，区别于其它行又不抢戏。 */
-.kk-rail__new-chat {
-  background: color-mix(in srgb, var(--brand-wood-soft) 60%, white 40%);
+.kk-rail__nav-item:hover:not(:disabled),
+.kk-rail__nav-item[data-active="true"] {
+  background: color-mix(in srgb, var(--brand-wood-soft) 55%, white 45%);
+}
+
+/* 新对话：唯一真实操作，暖木字色 + 更实的 hover，从占位项里凸出来。 */
+.kk-rail__nav-item--action {
   color: var(--brand-wood-hover);
   font-weight: 600;
 }
 
-.kk-rail__action:hover {
-  background: color-mix(in srgb, var(--brand-wood-soft) 50%, white 50%);
+.kk-rail__nav-item--action:hover {
+  background: color-mix(in srgb, var(--brand-wood-soft) 78%, white 22%);
 }
 
-.kk-rail__new-chat:hover {
-  background: color-mix(in srgb, var(--brand-wood-soft) 80%, white 20%);
+/* 占位项（kokoro 暂无该功能）：降透明度、禁用光标，不假装可点。 */
+.kk-rail__nav-item:disabled {
+  color: rgba(43, 37, 32, 0.38);
+  cursor: default;
 }
 
-.kk-rail__action:focus-visible,
+.kk-rail__nav-item:focus-visible,
 .kk-rail__user-card:focus-within {
   outline: 2px solid var(--brand-wood);
   outline-offset: 2px;
+}
+
+.kk-rail__nav-label {
+  flex: 1;
+  min-width: 0;
+  text-overflow: ellipsis;
+}
+
+/* 快捷键提示：靠右、纤细，仅装饰。 */
+.kk-rail__nav-shortcut {
+  flex-shrink: 0;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  color: rgba(43, 37, 32, 0.4);
+}
+
+/* 「升级」徽标：描边 pill，对齐参考 Code 行的 Upgrade。 */
+.kk-rail__nav-badge {
+  flex-shrink: 0;
+  border-radius: 999px;
+  border: 1px solid var(--border-soft);
+  padding: 0.05rem 0.5rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--brand-wood);
+}
+
+/* 分组标题行：标题 + 右侧排序图标（对齐参考 Recents 的筛选键）。 */
+.kk-rail__section-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-right: 0.5rem;
+}
+
+.kk-rail__sort {
+  display: flex;
+  height: 1.6rem;
+  width: 1.6rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: rgba(43, 37, 32, 0.4);
+  cursor: default;
+}
+
+.kk-rail__sort .kk-rail__icon {
+  width: 0.95rem;
+  height: 0.95rem;
 }
 
 /* 分组标题：纤细、克制的「最近」锚，给历史会话一个结构起点（对齐参考的 Recents）。 */
@@ -303,10 +371,14 @@
   color: var(--brand-wood-hover);
 }
 
-/* 折叠态隐藏列表与搜索：标签都没了，列表/过滤无意义。 */
+/* 折叠态：只留可操作的图标列（新对话 + 当前视图）。隐藏列表/搜索/占位项/产品分组/快捷键徽标。 */
 .kk-shell[data-rail-collapsed="true"] .kk-rail__list,
 .kk-shell[data-rail-collapsed="true"] .kk-rail__search-box,
-.kk-shell[data-rail-collapsed="true"] .kk-rail__search-toggle {
+.kk-shell[data-rail-collapsed="true"] .kk-rail__search-toggle,
+.kk-shell[data-rail-collapsed="true"] .kk-rail__nav-item:disabled,
+.kk-shell[data-rail-collapsed="true"] .kk-rail__group,
+.kk-shell[data-rail-collapsed="true"] .kk-rail__nav-shortcut,
+.kk-shell[data-rail-collapsed="true"] .kk-rail__nav-badge {
   display: none;
 }
 
@@ -348,13 +420,13 @@
 }
 
 .kk-shell[data-rail-collapsed="true"] .kk-rail__brand-text,
-.kk-shell[data-rail-collapsed="true"] .kk-rail__action-label,
+.kk-shell[data-rail-collapsed="true"] .kk-rail__nav-label,
 .kk-shell[data-rail-collapsed="true"] .kk-rail__user-text {
   max-width: 0;
   opacity: 0;
 }
 
-.kk-shell[data-rail-collapsed="true"] .kk-rail__action {
+.kk-shell[data-rail-collapsed="true"] .kk-rail__nav-item {
   width: 2.4rem;
   margin: 0 auto;
   justify-content: center;
@@ -363,7 +435,7 @@
 
 /* 收起态清零含隐藏标签的 flex 容器 gap：标签虽 max-width:0 仍占 gap，会把图标顶离居中。 */
 .kk-shell[data-rail-collapsed="true"] .kk-rail__brand,
-.kk-shell[data-rail-collapsed="true"] .kk-rail__action {
+.kk-shell[data-rail-collapsed="true"] .kk-rail__nav-item {
   gap: 0;
 }
 
