@@ -23,6 +23,7 @@ import {
   appendUserMessage,
   type SessionStreamState,
 } from "@/application/session-stream/reducer"
+import type { PermissionMode } from "@/application/session-stream/transport"
 
 import {
   type ConversationSummary,
@@ -44,9 +45,6 @@ import {
 // 对外契约：消费组件从本模块导入这些类型，故在此再导出，保持公开 API 表面稳定。
 export type { ConversationSummary } from "./use-conversation-store"
 export type { ReattachReply } from "./use-session-reattach"
-
-// 权限档位（Claude-Code 式，会话级全局）：auto 全放行 / default 拦外部副作用 / plan 只读规划。
-export type PermissionMode = "auto" | "default" | "plan"
 
 type Conversation = {
   thread: SessionStreamState

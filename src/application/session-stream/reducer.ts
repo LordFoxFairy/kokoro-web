@@ -26,9 +26,11 @@ export {
   markToolRejected,
   resolveStaleTools,
 } from "./state-mutations"
+export type { Segment } from "./thread-projection"
 export {
   buildThreadItems,
   computeActivityVersion,
+  groupSegments,
 } from "./thread-projection"
 
 function applyMessageEvent(

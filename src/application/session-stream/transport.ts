@@ -26,13 +26,16 @@ export type LiveSessionHandle = {
   markToolRejected?: (runId: string) => void
 }
 
+// 权限档位（Claude-Code 式，会话级）：auto 全放行 / default 拦外部副作用 / plan 只读规划。
+export type PermissionMode = "auto" | "default" | "plan"
+
 export type ConsumeLiveSessionInput = {
   input: string
   baseUrl?: string
   sessionId?: string
   conversationId?: string
   executionStyle?: "fast" | "thinking"
-  permissionMode?: "auto" | "default" | "plan"
+  permissionMode?: PermissionMode
   // 持久会话线：让本轮 run 的 assistant 事件折在已有 thread 之上，而不是每轮清零。
   initialState?: SessionStreamState
   onState: (snapshot: SessionStreamSnapshot) => void
