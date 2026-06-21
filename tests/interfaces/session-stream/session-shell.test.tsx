@@ -1447,7 +1447,7 @@ describe("SessionShell sessions list", () => {
       if (calls === 1) {
         return instantReply((input) => `答：${input}`)(args)
       }
-      args.onLive?.()
+      args.onLive?.("mix-run")
       const partial = applySessionEvent(args.initialState, {
         kind: "message-delta",
         eventId: "mix-d",
@@ -1676,7 +1676,7 @@ describe("SessionShell interrupt recovery", () => {
       onLive,
     }: StartReplyInput) => {
       stubCounter += 1
-      onLive?.()
+      onLive?.(`stop-run-${stubCounter}`)
       const partial = applySessionEvent(initialState, {
         kind: "message-delta",
         eventId: `stop-d-${stubCounter}`,

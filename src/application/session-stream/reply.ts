@@ -16,9 +16,9 @@ export type StartReplyInput = {
   initialState: SessionStreamState
   onState: (snapshot: SessionStreamSnapshot) => void
   onSettled?: (mode: ReplyMode) => void
-  // 确认走真实 live 链路（POST 成功）时触发——用于标记「在途 run」以便中断恢复；
+  // 确认走真实 live 链路（POST 成功）时触发，带回执 runId——用于标记「在途 run」以便中断恢复；
   // 预览降级链路不会触发，从而不会把本地模拟误标为可重连。
-  onLive?: () => void
+  onLive?: (runId: string | undefined) => void
   baseUrl?: string
   sessionId?: string
   executionStyle?: "fast" | "thinking"
@@ -71,8 +71,8 @@ export const startSessionReply: StartReply = (args) => {
     }
 
     try {
-      // POST 成功 = live 链路确立：通知调用方标记在途 run（用于刷新后重连续传）。
-      args.onLive?.()
+      // POST 成功 = live 链路确立：带回执 runId 通知调用方标记在途 run（用于刷新后重连续传）。
+      args.onLive?.(handle.runId)
     } catch (error) {
       // onLive 抛错时 SSE 已开：先关掉它再让上层降级,避免 live/preview 双开泄漏 EventSource。
       handle.close()

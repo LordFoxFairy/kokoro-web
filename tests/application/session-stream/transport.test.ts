@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 
 import {
   consumeLiveSession,
+  reattachLiveSession,
   type SessionStreamSnapshot,
 } from "@/application/session-stream/transport"
 import {
@@ -527,6 +528,63 @@ describe("consumeLiveSession", () => {
     expect(() => source?.onerror?.(new Event("error"))).not.toThrow()
     expect(recoverableCalls).toBe(1)
     expect(source?.closed).toBe(false)
+  })
+
+  it("reattach settles only on the in-flight run, not a prior replayed terminal", () => {
+    // 刷新续传同样从 replay 流首回放：上一轮 run 的终态会先到。reattach 必须用持久化的
+    // 在途 runId 锚定本轮，否则提前关流、丢掉刷新后在途 run 的回答（与 consumeLiveSession 同根因）。
+    vi.stubGlobal("EventSource", MockEventSource as unknown as typeof EventSource)
+
+    const withRun = (
+      event: string,
+      eventId: string,
+      runId: string,
+      payload: Record<string, unknown>,
+    ) => ({ ...envelope(event, eventId, payload), run_id: runId })
+
+    const snapshots: SessionStreamSnapshot[] = []
+    const settled: boolean[] = []
+    reattachLiveSession({
+      sessionId: "ses_01",
+      runId: "run_inflight",
+      initialState: createSessionStreamState(),
+      onState: (snapshot) => snapshots.push(snapshot),
+      onSettled: () => settled.push(true),
+    })
+
+    const source = MockEventSource.instances[0]
+
+    source?.emit(
+      "run.completed",
+      withRun("run.completed", "evt_prev", "run_done", {
+        run_id: "run_done",
+        status: "completed",
+      }),
+    )
+    expect(source?.closed).toBe(false)
+    expect(settled).toEqual([])
+
+    source?.emit(
+      "message.completed",
+      withRun("message.completed", "evt_live", "run_inflight", {
+        segment_id: "run_inflight:seg_0001",
+        role: "assistant",
+        content: "续传后的回答。",
+      }),
+    )
+    source?.emit(
+      "run.completed",
+      withRun("run.completed", "evt_live_done", "run_inflight", {
+        run_id: "run_inflight",
+        status: "completed",
+      }),
+    )
+
+    expect(source?.closed).toBe(true)
+    expect(settled).toEqual([true])
+    expect(snapshots.at(-1)?.messages.map((m) => m.content)).toContain(
+      "续传后的回答。",
+    )
   })
 
   it("folds subagent internal text into the subagent output field", async () => {
