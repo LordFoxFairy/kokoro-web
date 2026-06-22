@@ -31,11 +31,11 @@ export const MODE_LABEL: Record<AgentMode, string> = {
 export const isAgentMode = (value: string): value is AgentMode =>
   Object.hasOwn(MODE_LABEL, value)
 
-// 权限档位（Claude-Code 式，会话级）：auto 全放行 / default 拦外部副作用 / plan 只读规划。
+// 权限档位（Claude-Code 式，会话级）：auto 全放行 / default 拦外部副作用 / plan 逐工具交互审批。
 export const PERMISSION_OPTIONS: MenuOption[] = [
   { key: "auto", label: "Auto", hint: "全自动，放行所有工具" },
   { key: "default", label: "Default", hint: "拦外部副作用工具" },
-  { key: "plan", label: "Plan", hint: "只读规划，不执行工具" },
+  { key: "plan", label: "Plan", hint: "每个工具都需你逐次批准" },
 ]
 
 export const PERMISSION_LABEL: Record<PermissionMode, string> = {
