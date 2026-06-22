@@ -268,17 +268,19 @@ describe("consumeLiveSession", () => {
   it("includes a non-auto permissionMode and omits it for auto", async () => {
     vi.stubGlobal("EventSource", MockEventSource as unknown as typeof EventSource)
 
-    const planFetch = vi.fn().mockResolvedValue(new Response(null, { status: 202 }))
-    vi.stubGlobal("fetch", planFetch)
-    const planHandle = await consumeLiveSession({
+    const defaultFetch = vi
+      .fn()
+      .mockResolvedValue(new Response(null, { status: 202 }))
+    vi.stubGlobal("fetch", defaultFetch)
+    const defaultHandle = await consumeLiveSession({
       input: "hi",
       baseUrl: "http://127.0.0.1:3001",
-      permissionMode: "plan",
+      permissionMode: "default",
       onState: () => {},
     } as unknown as Parameters<typeof consumeLiveSession>[0])
-    const [planUrl] = planFetch.mock.calls[0] as [string, RequestInit]
-    expect(planUrl).toContain("permission_mode=plan")
-    planHandle.close()
+    const [defaultUrl] = defaultFetch.mock.calls[0] as [string, RequestInit]
+    expect(defaultUrl).toContain("permission_mode=default")
+    defaultHandle.close()
 
     const autoFetch = vi.fn().mockResolvedValue(new Response(null, { status: 202 }))
     vi.stubGlobal("fetch", autoFetch)
