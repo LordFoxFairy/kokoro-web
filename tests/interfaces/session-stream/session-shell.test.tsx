@@ -1842,3 +1842,139 @@ describe("SessionShell HITL reject", () => {
     expect(screen.queryByRole("button", { name: "批准" })).not.toBeInTheDocument()
   })
 })
+
+// 待批工具桩：进入 awaiting；批准后由 approveResume() 模拟后端恢复——补 tool.returned(done) + 回答 + 终态。
+let approveResume: (() => void) | null = null
+
+const approvableReply: StartReply = ({ initialState, onState }: StartReplyInput) => {
+  stubCounter += 1
+  const n = stubCounter
+  const runId = `ok-run-${n}`
+  const seg = `ok-seg-${n}`
+  const base = {
+    ...envelope,
+    runId,
+    segmentId: seg,
+    toolId: `ok-tool-${n}`,
+    name: "fetch_url",
+    args: { url: "http://x" },
+  }
+  let state = applySessionEvent(
+    applySessionEvent(initialState, {
+      kind: "tool-invoked",
+      eventId: `ok-i-${n}`,
+      seq: 1,
+      ...base,
+    }),
+    { kind: "tool-awaiting-approval", eventId: `ok-a-${n}`, seq: 2, ...base },
+  )
+  onState(state)
+  approveResume = () => {
+    state = applySessionEvent(state, {
+      kind: "tool-returned",
+      eventId: `ok-r-${n}`,
+      seq: 3,
+      ...envelope,
+      runId,
+      segmentId: seg,
+      toolId: base.toolId,
+      name: "fetch_url",
+      result: "<html>ok</html>",
+      isError: false,
+    })
+    state = applySessionEvent(state, {
+      kind: "message-completed",
+      eventId: `ok-m-${n}`,
+      seq: 4,
+      ...envelope,
+      runId,
+      segmentId: `ok-msg-${n}`,
+      role: "assistant",
+      content: "抓取完成：示例页内容。",
+    })
+    state = applySessionEvent(state, {
+      kind: "run-completed",
+      eventId: `ok-d-${n}`,
+      seq: 5,
+      ...envelope,
+      runId,
+    })
+    onState(state)
+  }
+  return {
+    close: () => {},
+    markToolRejected: (rid: string) => {
+      state = reducerMarkToolRejected(state, rid)
+      onState(state)
+    },
+  }
+}
+
+describe("SessionShell HITL approve", () => {
+  beforeEach(() => {
+    sendRunControlMock.mockClear()
+    approveResume = null
+  })
+
+  it("clicking 批准 signals approve, then the tool resolves to done and the reply lands (no ghost buttons)", async () => {
+    const { container } = render(<SessionShell startReply={approvableReply} />)
+    send("抓个网页")
+    expect(container.querySelector(".kk-tool--awaiting")).not.toBeNull()
+
+    const approve = screen.getByRole("button", { name: "批准" })
+    await act(async () => {
+      fireEvent.click(approve)
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    // 决定真发往后端（approve）解阻塞 worker。
+    expect(sendRunControlMock).toHaveBeenCalledTimes(1)
+    expect(sendRunControlMock).toHaveBeenCalledWith(
+      expect.objectContaining({ decision: "approve" }),
+    )
+
+    // 后端恢复：工具翻 done、续上回答、终态收束，审批按钮不残留。
+    await act(async () => {
+      approveResume?.()
+      await Promise.resolve()
+    })
+    expect(container.querySelector(".kk-tool--done")).not.toBeNull()
+    expect(container.querySelector(".kk-tool--awaiting")).toBeNull()
+    expect(
+      within(screen.getByRole("log")).getByText("抓取完成：示例页内容。"),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "批准" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "拒绝" })).not.toBeInTheDocument()
+  })
+
+  it("approving a tool in the second conversation does not switch the active conversation", async () => {
+    // 锁住单窗口正确行为（曾被多标签页假象误判）：在「会话二」批准工具，活跃会话不得被甩回「会话一」。
+    let calls = 0
+    const mixed: StartReply = (args: StartReplyInput) => {
+      calls += 1
+      return calls === 1
+        ? instantReply((input) => `答：${input}`)(args)
+        : approvableReply(args)
+    }
+    render(<SessionShell startReply={mixed} />)
+
+    send("会话一")
+    expect(inLog("会话一")).toBeInTheDocument()
+    fireEvent.click(screen.getByText("新对话"))
+    send("会话二要抓取")
+
+    const approve = screen.getByRole("button", { name: "批准" })
+    await act(async () => {
+      fireEvent.click(approve)
+      await Promise.resolve()
+      approveResume?.()
+      await Promise.resolve()
+    })
+
+    // 批准后主对话区仍是「会话二」本轮（回答落入），绝不切回会话一。
+    const log = within(screen.getByRole("log"))
+    expect(log.getByText("抓取完成：示例页内容。")).toBeInTheDocument()
+    expect(log.queryByText("答：会话一")).toBeNull()
+  })
+})

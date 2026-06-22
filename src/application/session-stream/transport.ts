@@ -28,8 +28,8 @@ export type LiveSessionHandle = {
   markToolRejected?: (runId: string) => void
 }
 
-// 权限档位（Claude-Code 式，会话级）：auto 全放行 / default 拦外部副作用 / plan 只读规划。
-export type PermissionMode = "auto" | "default" | "plan"
+// 权限档位（会话级）：auto 全放行 / default 拦外部副作用工具走交互审批。
+export type PermissionMode = "auto" | "default"
 
 export type ConsumeLiveSessionInput = {
   input: string
