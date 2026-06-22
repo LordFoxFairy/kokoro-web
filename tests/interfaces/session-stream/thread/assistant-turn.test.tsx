@@ -212,8 +212,8 @@ describe("AssistantTurn legibility (B layer)", () => {
     const { container } = render(
       <AssistantTurn steps={steps} messagesById={{ s1: text1, s2: text2 }} isLive />,
     )
-    // 一个头像、两段、顺序 text1 在上 text2 在下。
-    expect(container.querySelectorAll(".kk-turn__avatar--bot")).toHaveLength(1)
+    // 一条脊、两段、顺序 text1 在上 text2 在下。
+    expect(container.querySelectorAll(".kk-turn__spine")).toHaveLength(1)
     const segs = Array.from(container.querySelectorAll(".kk-turn__segment"))
     expect(segs).toHaveLength(2)
     // seg1：text1 落定气泡、无 caret、无工具。
@@ -304,9 +304,9 @@ describe("AssistantTurn legibility (B layer)", () => {
   })
 })
 
-describe("AssistantTurn structure (one avatar per turn)", () => {
-  it("renders exactly ONE bot avatar for a multi-segment turn", () => {
-    // 核心不变量：一轮（一个 runId）只一个头像，不分段、不为成形态另起。
+describe("AssistantTurn structure (one spine per turn, no avatar)", () => {
+  it("renders ONE spine for a multi-segment turn", () => {
+    // 核心不变量：一轮（一个 runId）只一条脊，不分段、不为成形态另起。
     const first: SessionMessage = { id: "m1", role: "assistant", content: "第一段", runId: "run_01" }
     const second: SessionMessage = { id: "m2", role: "assistant", content: "第二段", runId: "run_01" }
     const { container } = render(
@@ -317,16 +317,16 @@ describe("AssistantTurn structure (one avatar per turn)", () => {
       />,
     )
 
-    expect(container.querySelectorAll(".kk-turn__avatar--bot")).toHaveLength(1)
+    expect(container.querySelectorAll(".kk-turn__spine")).toHaveLength(1)
     // 两段文本各自成步骤，挂在同一条脊上。
     expect(container.querySelectorAll(".kk-turn__answer")).toHaveLength(2)
   })
 
-  it("lights the single avatar while live, not when settled", () => {
+  it("shows the streaming caret on the tail answer while live, not when settled", () => {
     const { container, rerender } = render(
       <AssistantTurn steps={[textStep("m1", 1)]} messagesById={{ m1: answer }} isLive />,
     )
-    expect(container.querySelector(".kk-msg__avatar--live")).not.toBeNull()
+    expect(container.querySelector(".kk-caret")).not.toBeNull()
 
     rerender(
       <AssistantTurn
@@ -335,7 +335,7 @@ describe("AssistantTurn structure (one avatar per turn)", () => {
         isLive={false}
       />,
     )
-    expect(container.querySelector(".kk-msg__avatar--live")).toBeNull()
+    expect(container.querySelector(".kk-caret")).toBeNull()
   })
 
   it("renders the answer bubble ABOVE its process, with the segment's tools hanging below it", () => {
@@ -372,15 +372,12 @@ describe("AssistantTurn structure (one avatar per turn)", () => {
 
   it("renders a non-blank forming scaffold when live with zero segments", () => {
     // 为什么重要：提交后、首个 step/token 未到时，在途轮不能塌成空白——
-    // 即使没有任何 segment，也要给一个 live 头像 + 单条「正在…」成形线，绝不空帧。
+    // 即使没有任何 segment，也要给一条「正在…」成形线，绝不空帧。
     const { container } = render(
       <AssistantTurn steps={[]} messagesById={{}} isLive />,
     )
 
-    // 仍是一轮：一个点亮的头像。
-    expect(container.querySelectorAll(".kk-turn__avatar--bot")).toHaveLength(1)
-    expect(container.querySelector(".kk-msg__avatar--live")).not.toBeNull()
-    // 单条成形占位，文案为「正在…」。
+    // 单条成形占位即在途 live 信号（无头像），文案为「正在…」。
     const forming = container.querySelector(".kk-turn__answer[data-state='forming']")
     expect(forming).not.toBeNull()
     expect(forming?.textContent).toMatch(/正在/)

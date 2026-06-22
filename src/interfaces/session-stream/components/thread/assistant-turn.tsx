@@ -5,7 +5,6 @@ import {
   type SessionStep,
 } from "@/application/session-stream/reducer"
 
-import { RobotIcon } from "../icons"
 import { MarkdownMessage } from "./markdown-message"
 import { SegmentProcess } from "./segment-process"
 
@@ -24,9 +23,8 @@ type AssistantTurnProps = {
   onToolDecision?: (decision: "approve" | "reject") => void | Promise<void>
 }
 
-// 成形态的盒内内容：就近的「正在…」线索 + 脉冲点。盒由 .kk-turn__answer 统一提供
-// （与答案气泡同底色/圆角/内距），故首 token 到达时是盒内内容替换，而非整盒跳换。
-// 重连续传时换成「重连中…」，盒上的 data-anchor=reconnecting 让 CSS 给独立、可辨识的样式。
+// 成形态内容：就近的「正在…」线索 + 脉冲点，占位与正文同一 .kk-turn__answer 元素，
+// 故首 token 到达是行内内容替换、不跳换。重连续传时换「重连中…」，data-anchor 驱动差异样式。
 function FormingContent({
   label,
   reconnecting,
@@ -48,10 +46,9 @@ function FormingContent({
   )
 }
 
-// 助手一轮 = 一个🤖头像 + 一条竖脊。脊上按段堆叠，每段：
-//   答案气泡在【上】（最醒目）＋ 它自己的过程挂在气泡【下面】（思考/该段工具/子智能体，
-//   收成更轻的可折叠次级块）。多段就是「气泡+过程」依次堆叠，共用一个头像。
-// 只有整轮的尾段在流式时带光标 / 动态头像（唯一 live 锚点）。
+// 助手一轮 = 一条无头像的竖脊（扁平文档观感）。脊上按段堆叠，每段：
+//   正文在【上】＋ 它的过程挂在【下面】（思考/该段工具/子智能体，收成更轻的可折叠次级块）。
+// 只有整轮的尾段在流式时带就近光标（唯一 live 锚点）。
 export function AssistantTurn({
   steps,
   messagesById,
@@ -74,15 +71,9 @@ export function AssistantTurn({
 
   return (
     <article
-      className="kk-turn kk-turn--assistant kk-msg kk-msg--assistant"
+      className="kk-turn kk-turn--assistant"
       aria-atomic={isLive ? true : undefined}
     >
-      <div
-        className={`kk-turn__avatar kk-turn__avatar--bot kk-msg__avatar kk-msg__avatar--bot${isLive ? " kk-msg__avatar--live" : ""}`}
-        aria-hidden
-      >
-        <RobotIcon />
-      </div>
       <div className="kk-turn__spine">
         {showReconnectStrip ? (
           <div className="kk-turn__reconnect" data-anchor="reconnecting">
