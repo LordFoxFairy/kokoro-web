@@ -32,77 +32,27 @@
   width: min(var(--kk-content-width), 100%);
   margin: 0 auto;
   flex-direction: column;
-  gap: 1.15rem;
+  /* 扁平文档观感：轮间留宽呼吸，靠间距而非气泡边框分隔上下两轮。 */
+  gap: 1.75rem;
 }
 
-/* 左右对话布局：assistant 靠左带头像气泡，user 靠右气泡。 */
+/* 扁平对话布局：assistant 全宽无头像、贴页面流；user 靠右单枚柔暖胶囊。 */
 .kk-msg {
   display: flex;
   align-items: flex-start;
-  gap: 0.6rem;
-}
-
-.kk-msg--assistant {
-  justify-content: flex-start;
 }
 
 .kk-msg--user {
   justify-content: flex-end;
 }
 
-.kk-msg__avatar {
-  display: flex;
-  height: 1.75rem;
-  width: 1.75rem;
-  flex-shrink: 0;
-  align-items: center;
-  justify-content: center;
-  border-radius: 999px;
-}
-
-.kk-msg__avatar svg {
-  width: 1rem;
-  height: 1rem;
-}
-
-/* 助手：暖木实底 + 浅色机器人。 */
-.kk-msg__avatar--bot {
-  background: var(--brand-wood);
-  color: #fffdf9;
-}
-
-/* 用户：柔和浅底 + 暖木描线人形，与右侧气泡呼应又区别于助手。 */
-.kk-msg__avatar--user {
-  background: color-mix(in srgb, var(--surface-user-soft) 45%, var(--brand-wood-soft) 55%);
-  border: 1px solid var(--border-user-soft);
-  color: color-mix(in srgb, var(--brand-wood) 72%, var(--foreground) 28%);
-}
-
-.kk-msg__bubble {
-  max-width: 100%;
-  border-radius: 0.95rem;
-  padding: 0.6rem 0.9rem;
-}
-
-/* assistant 占满内容列宽：markdown（代码块/表格/列表）需要横向空间，沿主流聊天布局
-   让助手回复铺满整列；min-width:0 保证超宽代码块在气泡内横向滚动而不撑破布局。缺角朝头像。 */
-.kk-msg--assistant .kk-msg__bubble {
-  flex: 1;
-  min-width: 0;
-  /* 右缘对齐 user 气泡：user 气泡右缘内缩了「头像 1.75rem + 间距 0.6rem」，
-     助手左侧已被头像占去同样的量，故右侧也留 2.35rem，两侧气泡严格等宽对齐、都饱满。 */
-  margin-right: 2.35rem;
-  border: 1px solid var(--border-soft);
-  background: var(--surface);
-  border-top-left-radius: 0.35rem;
-}
-
-/* user 气泡保持紧凑靠右。 */
+/* 用户胶囊：柔暖底、均匀圆角、无尾角、无描边，靠右紧凑。 */
 .kk-msg--user .kk-msg__bubble {
   max-width: 80%;
-  border: 1px solid var(--border-user-soft);
-  background: var(--surface-user-soft);
-  border-top-right-radius: 0.35rem;
+  border-radius: 1.1rem;
+  padding: 0.6rem 0.95rem;
+  background: var(--brand-wood-soft);
+  color: color-mix(in srgb, var(--foreground) 88%, var(--brand-wood) 12%);
 }
 
 .kk-msg__body {

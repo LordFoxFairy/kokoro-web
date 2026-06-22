@@ -52,7 +52,7 @@
     padding: 1rem 0.85rem 0.5rem;
   }
 
-  .kk-msg__bubble {
+  .kk-msg--user .kk-msg__bubble {
     max-width: 86%;
   }
 
