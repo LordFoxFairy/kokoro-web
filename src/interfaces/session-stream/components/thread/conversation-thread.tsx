@@ -52,8 +52,8 @@ export function ConversationThread({
     }
   }
 
-  // 提交后、首个 step/token 未到：在途轮还没产生任何可渲染项（最后一项仍是用户气泡）。
-  // 合成一个无内容的 live 脚手架轮，让 AssistantTurn 渲染「头像 live + 单条正在…成形线」，
+  // 提交后、首个 step/token 未到：在途轮还没产生任何可渲染项（最后一项仍是用户胶囊）。
+  // 合成一个无内容的 live 脚手架轮，让 AssistantTurn 渲染「就近 live 成形线」，
   // 绝不在提交与首 token 之间留空帧。一旦首个 step/text 到达，buildThreadItems 即接管，脚手架退场。
   const showScaffoldTurn =
     isStreaming && items[items.length - 1]?.kind !== "assistant-turn"

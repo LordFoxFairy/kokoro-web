@@ -385,10 +385,10 @@ describe("SessionShell submitted-no-token scaffold", () => {
 
     // 用户气泡在场。
     expect(inLog("还没有任何 token")).toBeInTheDocument()
-    // 恰好一个在途助手轮，头像点亮。
+    // 恰好一个在途助手轮，以 aria-atomic 标记 live（取代旧的点亮头像）。
     const turns = container.querySelectorAll(".kk-turn--assistant")
     expect(turns).toHaveLength(1)
-    expect(container.querySelectorAll(".kk-msg__avatar--live")).toHaveLength(1)
+    expect(container.querySelectorAll(".kk-turn--assistant[aria-atomic='true']")).toHaveLength(1)
     // 成形占位（「正在…」）在场——不是空帧。
     const forming = container.querySelector(".kk-turn__answer[data-state='forming']")
     expect(forming).not.toBeNull()
@@ -537,12 +537,12 @@ describe("SessionShell stop control", () => {
     const { container } = render(<SessionShell startReply={spyableNeverSettles("半句").start} />)
 
     send("说点什么")
-    // 流式中：在途轮头像点亮（live anchor 的雏形）+ 停止控件在场。
-    expect(container.querySelector(".kk-msg__avatar--live")).not.toBeNull()
+    // 流式中：在途轮以 aria-atomic 标记 live anchor + 停止控件在场。
+    expect(container.querySelector(".kk-turn--assistant[aria-atomic='true']")).not.toBeNull()
     expect(screen.getByLabelText("停止生成")).toBeInTheDocument()
 
     fireEvent.click(screen.getByLabelText("停止生成"))
-    expect(container.querySelector(".kk-msg__avatar--live")).toBeNull()
+    expect(container.querySelector(".kk-turn--assistant[aria-atomic='true']")).toBeNull()
     expect(screen.queryByLabelText("停止生成")).not.toBeInTheDocument()
   })
 })
@@ -1057,7 +1057,7 @@ describe("SessionShell accessibility roles and labels", () => {
 
     send("帮我想想")
 
-    const bubble = screen.getByText("正在拼").closest(".kk-msg")
+    const bubble = screen.getByText("正在拼").closest(".kk-turn--assistant")
     expect(bubble).not.toBeNull()
     expect(bubble).toHaveAttribute("aria-atomic", "true")
   })
@@ -1314,11 +1314,11 @@ describe("SessionShell agent activity", () => {
     send("北京今天怎么样")
 
     const log = screen.getByRole("log")
-    // 核心不变量：整轮收在一个 turn 下，只有一个头像。
+    // 核心不变量：整轮收在一个 turn 下，只有一条脊。
     const turns = Array.from(log.querySelectorAll(".kk-turn--assistant"))
     expect(turns).toHaveLength(1)
     const turn = turns[0] as HTMLElement
-    expect(turn.querySelectorAll(".kk-turn__avatar--bot")).toHaveLength(1)
+    expect(turn.querySelectorAll(".kk-turn__spine")).toHaveLength(1)
 
     // 一轮内的两段文本与各自过程都在同一条脊上呈现。
     expect(within(turn).getByText("第一段回答：先给结论。")).toBeInTheDocument()
