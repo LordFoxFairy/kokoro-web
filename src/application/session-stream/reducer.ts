@@ -205,6 +205,7 @@ function applyToolReturned(
                 // 已置 rejected 的工具：其回流（is_error=false 的拒绝文案）不得将 rejected 降级为 done。
                 status: step.tool.status === "rejected" ? "rejected" : returnedStatus,
                 ...(event.isError ? { errorText: event.result } : {}),
+                ...(event.rejectReason !== undefined ? { rejectReason: event.rejectReason } : {}),
               },
             }
           : step,
@@ -222,6 +223,7 @@ function applyToolReturned(
       result: event.result,
       status: returnedStatus,
       ...(event.isError ? { errorText: event.result } : {}),
+      ...(event.rejectReason !== undefined ? { rejectReason: event.rejectReason } : {}),
     },
   })
 }

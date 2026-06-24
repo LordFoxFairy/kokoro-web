@@ -1329,13 +1329,15 @@ describe("applySessionEvent activity families", () => {
         segmentId: "m1",
         toolId: "t1",
         name: "fetch_url",
-        result: "用户拒绝了工具 fetch_url 的调用。",
+        result: "不安全",
         isError: false,
         rejected: true,
+        rejectReason: "不安全",
       },
     ].reduce(applySessionEvent, createSessionStreamState())
     const tools = toolSteps(state)
     expect(tools[0]?.status).toBe("rejected")
+    expect(tools[0]?.rejectReason).toBe("不安全")
   })
 
   it("a normal tool.returned (no rejected flag) still flips to done — not rejected", () => {

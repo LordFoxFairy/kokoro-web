@@ -98,6 +98,10 @@ export function toSessionStreamEvent(
         ...(event.payload.rejected !== undefined
           ? { rejected: event.payload.rejected }
           : {}),
+        // 拒绝理由（仅拒绝时存在）：供 UI 展示，reducer 存到工具实体。
+        ...(event.payload.reject_reason !== undefined
+          ? { rejectReason: event.payload.reject_reason }
+          : {}),
       }
     case "todo.updated":
       return {
