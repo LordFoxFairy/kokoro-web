@@ -58,7 +58,6 @@ export function toSessionStreamEvent(
         ...base(event, seq),
         errorKind: event.payload.error_kind,
         message: event.payload.message,
-        retryable: event.payload.retryable,
         requestId: event.payload.request_id,
       }
     case "thinking.delta":
