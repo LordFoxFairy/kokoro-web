@@ -209,7 +209,6 @@ const runFailedSchema = eventEnvelopeSchema.extend({
       run_id: z.string().min(1),
       error_kind: z.string().min(1),
       message: z.string().min(1),
-      retryable: z.boolean().optional(),
       request_id: z.string().min(1).optional(),
     })
     .strict(),
