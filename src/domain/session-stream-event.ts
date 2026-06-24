@@ -81,6 +81,7 @@ export type SessionStreamEvent =
       result: string
       isError: boolean
       rejected?: boolean
+      rejectReason?: string
     }
   | {
       kind: "todo-updated"
@@ -117,6 +118,8 @@ export type SessionStreamEvent =
       name: string
       subagentType: string
       source: "built-in" | "config-custom" | "runtime-custom"
+      failed?: boolean
+      error?: string
     }
   | {
       kind: "subagent-text-delta"
