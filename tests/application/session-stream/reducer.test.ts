@@ -486,7 +486,6 @@ describe("applySessionEvent", () => {
           run_id: "run_01",
           error_kind: "transport_error",
           message: "stream disconnected",
-          retryable: true,
         },
       }),
       requireDomainEvent({
@@ -501,7 +500,6 @@ describe("applySessionEvent", () => {
           run_id: "run_01",
           error_kind: "transport_error",
           message: "stream disconnected",
-          retryable: true,
         },
       }),
     ].reduce(applySessionEvent, createSessionStreamState())

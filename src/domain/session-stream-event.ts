@@ -158,7 +158,6 @@ export type SessionStreamEvent =
       runId: string
       errorKind: string
       message: string
-      retryable?: boolean
       requestId?: string
     }
   | {
