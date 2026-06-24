@@ -41,6 +41,7 @@ CLAUDE.md
 
 # local agent / MCP tooling scratch
 .claude/
+.jbeval/
 .playwright-mcp/
 .superpowers/
 
