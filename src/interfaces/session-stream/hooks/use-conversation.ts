@@ -76,9 +76,11 @@ type Conversation = {
   // 权限档位（会话级，可随时切换，作用于下一轮 run）。
   permissionMode: PermissionMode
   setPermissionMode: (mode: PermissionMode) => void
-  // HITL：批准/拒绝某 run 待批的工具调用。若 control POST 失败，Promise reject 让按钮层恢复可重试。
+  // HITL：批准/拒绝某 run 某个待批工具。同帧多工具凑齐后统一提交一条 resume；control POST 失败时
+  // Promise reject 让按钮层恢复可重试。
   sendToolDecision: (
     runId: string,
+    toolId: string,
     decision: "approve" | "reject",
   ) => Promise<void>
 }

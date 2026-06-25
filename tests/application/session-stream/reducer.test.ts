@@ -1302,10 +1302,33 @@ describe("applySessionEvent activity families", () => {
       { kind: "tool-awaiting-approval" as const, eventId: "e2", seq: 2, toolId: "t1", ...base },
     ].reduce(applySessionEvent, createSessionStreamState())
 
-    const rejected = markToolRejected(awaiting, "run_01")
+    const rejected = markToolRejected(awaiting, "run_01", ["t1"])
     const tools = toolSteps(rejected)
     expect(tools).toHaveLength(1)
     expect(tools[0]?.status).toBe("rejected")
+  })
+
+  it("markToolRejected flips only the named tool — same-frame partial approval leaves siblings awaiting", () => {
+    const base = {
+      sessionId: "ses_01",
+      conversationId: "conv_01",
+      runId: "run_01",
+      segmentId: "m1",
+      name: "fetch_url",
+      args: { url: "http://x" },
+    }
+    // 同帧两个被门控工具：只拒 tB，tA 必须保持 awaiting（部分审批，批准的工具继续运行）。
+    const awaiting = [
+      { kind: "tool-invoked" as const, eventId: "e1", seq: 1, toolId: "tA", ...base },
+      { kind: "tool-awaiting-approval" as const, eventId: "e2", seq: 2, toolId: "tA", ...base },
+      { kind: "tool-invoked" as const, eventId: "e3", seq: 3, toolId: "tB", ...base },
+      { kind: "tool-awaiting-approval" as const, eventId: "e4", seq: 4, toolId: "tB", ...base },
+    ].reduce(applySessionEvent, createSessionStreamState())
+
+    const rejected = markToolRejected(awaiting, "run_01", ["tB"])
+    const tools = toolSteps(rejected)
+    expect(tools.find((t) => t?.id === "tA")?.status).toBe("awaiting")
+    expect(tools.find((t) => t?.id === "tB")?.status).toBe("rejected")
   })
 
   it("a rejected tool stays rejected when its (is_error=false) return arrives — no green checkmark", () => {
@@ -1321,7 +1344,7 @@ describe("applySessionEvent activity families", () => {
       { kind: "tool-invoked" as const, eventId: "e1", seq: 1, toolId: "t1", ...base },
       { kind: "tool-awaiting-approval" as const, eventId: "e2", seq: 2, toolId: "t1", ...base },
     ].reduce(applySessionEvent, createSessionStreamState())
-    const rejected = markToolRejected(awaiting, "run_01")
+    const rejected = markToolRejected(awaiting, "run_01", ["t1"])
 
     // reject 决定经 control 流回流，被门控工具以 is_error=false 返回拒绝文案 → 普通逻辑会翻绿勾。
     const returned = applySessionEvent(rejected, {
@@ -1453,7 +1476,7 @@ describe("applySessionEvent activity families", () => {
       { kind: "tool-invoked" as const, eventId: "e1", seq: 1, toolId: "t1", ...base },
       { kind: "tool-awaiting-approval" as const, eventId: "e2", seq: 2, toolId: "t1", ...base },
     ].reduce(applySessionEvent, createSessionStreamState())
-    const rejected = markToolRejected(awaiting, "run_01")
+    const rejected = markToolRejected(awaiting, "run_01", ["t1"])
 
     const ended = applySessionEvent(rejected, {
       kind: "run-completed",

@@ -76,19 +76,21 @@ export function findAwaitingRunId(state: SessionStreamState): string | null {
   return null
 }
 
-// HITL：用户点「拒绝」时本地乐观置该 run 待批工具为 rejected（区别于 reject 回流的 is_error=false 绿勾）。
-// 只翻 awaiting 的工具；done/error/running 不动。
+// HITL：用户点「拒绝」时本地乐观把该 run 指定工具置 rejected（区别于 reject 回流的 is_error=false 绿勾）。
+// 只翻 toolIds 命中且仍 awaiting 的工具——同帧多工具部分审批时，批准的工具不受影响继续运行。
 export function markToolRejected(
   state: SessionStreamState,
   runId: string,
+  toolIds: readonly string[],
 ): SessionStreamState {
   const steps = state.stepsByRun[runId]
   if (!steps) {
     return state
   }
+  const rejectSet = new Set(toolIds)
   let changed = false
   const next = steps.map((step) => {
-    if (step.kind === "tool" && step.tool.status === "awaiting") {
+    if (step.kind === "tool" && step.tool.status === "awaiting" && rejectSet.has(step.tool.id)) {
       changed = true
       return { ...step, tool: { ...step.tool, status: "rejected" as const } }
     }

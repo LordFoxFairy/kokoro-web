@@ -20,9 +20,10 @@ type ConversationThreadProps = {
   threadEndRef: RefObject<HTMLDivElement | null>
   // 本会话模式：透传给每轮过程块，驱动 Fast/Thinking 的密度与文案差异。
   mode: AgentMode
-  // HITL：批准/拒绝某 run 待批的工具调用。Promise 用于把 control POST 失败沿链路抛回按钮层复位。
+  // HITL：批准/拒绝某 run 某个待批工具。Promise 用于把 control POST 失败沿链路抛回按钮层复位。
   onToolDecision?: (
     runId: string,
+    toolId: string,
     decision: "approve" | "reject",
   ) => void | Promise<void>
 }
@@ -80,7 +81,7 @@ export function ConversationThread({
               mode={mode}
               onToolDecision={
                 onToolDecision
-                  ? (decision) => onToolDecision(item.runId, decision)
+                  ? (toolId, decision) => onToolDecision(item.runId, toolId, decision)
                   : undefined
               }
             />
