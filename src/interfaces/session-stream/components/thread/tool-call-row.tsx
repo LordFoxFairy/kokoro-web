@@ -38,6 +38,8 @@ export function ToolCallRow({
   const awaiting = tool.status === "awaiting"
   // rejected：用户驳回了该调用——工具未执行，显禁止圈而非绿勾。
   const rejected = tool.status === "rejected"
+  // responded：done 态但结果由人工答复（非工具产出）——加 provenance 标记，让回看者一眼可辨。
+  const responded = Boolean(tool.responded)
   // 点击批准/拒绝后本地置 true：立即禁用按钮,防连点发出第二条决定(否则会被下一个待批工具误读)。
   const [decided, setDecided] = useState(false)
   const [approvalError, setApprovalError] = useState(false)
@@ -49,6 +51,7 @@ export function ToolCallRow({
     <>
       <WrenchIcon className="kk-tool__icon" />
       <span className="kk-tool__name">{tool.name}</span>
+      {responded ? <span className="kk-tool__responded">已人工答复</span> : null}
       <span className="kk-tool__state" aria-hidden>
         <RunState
           done={tool.status === "done"}

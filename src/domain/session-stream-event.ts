@@ -82,6 +82,7 @@ export type SessionStreamEvent =
       isError: boolean
       rejected?: boolean
       rejectReason?: string
+      responded?: boolean
     }
   | {
       kind: "todo-updated"

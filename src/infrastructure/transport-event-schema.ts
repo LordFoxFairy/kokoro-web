@@ -129,6 +129,7 @@ const toolReturnedSchema = eventEnvelopeSchema.extend({
       // 可选：仅 HITL 拒绝(用户点拒绝或审批超时回退)时为 true；缺省=未拒绝。replay 安全地区别于绿勾 done。
       rejected: z.boolean().optional(),
       reject_reason: z.string().optional(),
+      responded: z.boolean().optional(),
     })
     .strict(),
 })
