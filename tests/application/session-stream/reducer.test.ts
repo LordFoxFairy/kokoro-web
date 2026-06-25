@@ -1017,6 +1017,42 @@ describe("applySessionEvent activity families", () => {
     expect(subagentSteps(state)[0]?.status).toBe("done")
   })
 
+  it("subagent.finished carrying failed marks failed (not done) with error", () => {
+    const started = requireDomainEvent({
+      event: "subagent.started",
+      event_id: "evt_s1",
+      ...base,
+      seq: 1,
+      payload: {
+        segment_id: "m1",
+        subagent_id: "sa1",
+        name: "researcher",
+        description: "查资料",
+        subagent_type: "researcher",
+        source: "built-in",
+      },
+    })
+    const failed = requireDomainEvent({
+      event: "subagent.finished",
+      event_id: "evt_s2",
+      ...base,
+      seq: 2,
+      payload: {
+        segment_id: "m1",
+        subagent_id: "sa1",
+        name: "researcher",
+        subagent_type: "researcher",
+        source: "built-in",
+        failed: true,
+        error: "boom",
+      },
+    })
+    let state = applySessionEvent(createSessionStreamState(), started)
+    state = applySessionEvent(state, failed)
+    expect(subagentSteps(state)[0]?.status).toBe("failed")
+    expect(subagentSteps(state)[0]?.error).toBe("boom")
+  })
+
   it("subagent text attaches to the correct subagent step", () => {
     let state = applySessionEvent(
       createSessionStreamState(),

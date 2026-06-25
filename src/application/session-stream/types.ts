@@ -28,7 +28,9 @@ export type SessionSubagent = {
   subagentType: string
   source: "built-in" | "config-custom" | "runtime-custom"
   output?: string
-  status: "running" | "done"
+  // failed：子代理内部异常（error 携带原因）；不再被吞成顶层 run.failed。
+  status: "running" | "done" | "failed"
+  error?: string
 }
 
 // 有序 Step：过程与文本按发射时序（seq，来自传输游标）排成一列，而非按 kind 归桶。

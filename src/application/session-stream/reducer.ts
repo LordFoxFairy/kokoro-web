@@ -257,7 +257,15 @@ function applySubagentFinished(
     (step) => step.kind === "subagent" && step.subagent.id === event.subagentId,
     (step) =>
       step.kind === "subagent"
-        ? { ...step, subagent: { ...step.subagent, status: "done" } }
+        ? {
+            ...step,
+            // failed → 失败有归属（替代过去被吞成顶层 run.failed）；否则正常 done。
+            subagent: {
+              ...step.subagent,
+              status: event.failed ? "failed" : "done",
+              ...(event.error !== undefined ? { error: event.error } : {}),
+            },
+          }
         : step,
   )
 }
