@@ -19,6 +19,8 @@ export type SessionToolCall = {
   errorText?: string
   // HITL 拒绝理由（status=rejected 时由后端权威携带，供 UI 展示）。
   rejectReason?: string
+  // HITL 人工答复：status=done 但结果是人工填的（非工具产出）；UI 显「已人工答复」标记。
+  responded?: boolean
 }
 
 export type SessionSubagent = {

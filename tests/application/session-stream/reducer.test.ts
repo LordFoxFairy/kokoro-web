@@ -1376,6 +1376,42 @@ describe("applySessionEvent activity families", () => {
     expect(tools[0]?.rejectReason).toBe("不安全")
   })
 
+  it("a tool.returned carrying responded=true shows done + responded marker (人工答复)", () => {
+    const base = {
+      sessionId: "ses_01",
+      conversationId: "conv_01",
+      runId: "run_01",
+      segmentId: "m1",
+      name: "fetch_url",
+      args: { url: "http://x" },
+    }
+    // HITL respond：后端 tool.returned 带 responded=true（rejected=false, is_error=false）→
+    // done 态但保留 provenance 标记；replay 安全（结果系人工答复非工具产出）。
+    const state = [
+      { kind: "tool-invoked" as const, eventId: "e1", seq: 1, toolId: "t1", ...base },
+      { kind: "tool-awaiting-approval" as const, eventId: "e2", seq: 2, toolId: "t1", ...base },
+      {
+        kind: "tool-returned" as const,
+        eventId: "e3",
+        seq: 3,
+        sessionId: "ses_01",
+        conversationId: "conv_01",
+        runId: "run_01",
+        segmentId: "m1",
+        toolId: "t1",
+        name: "fetch_url",
+        result: "use cache",
+        isError: false,
+        rejected: false,
+        responded: true,
+      },
+    ].reduce(applySessionEvent, createSessionStreamState())
+    const tools = toolSteps(state)
+    expect(tools[0]?.status).toBe("done")
+    expect(tools[0]?.responded).toBe(true)
+    expect(tools[0]?.result).toBe("use cache")
+  })
+
   it("a normal tool.returned (no rejected flag) still flips to done — not rejected", () => {
     const base = {
       sessionId: "ses_01",

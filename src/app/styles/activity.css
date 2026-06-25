@@ -696,6 +696,17 @@ details.kk-subagent[open] .kk-subagent__chevron {
   line-height: 1.45;
 }
 
+/* respond provenance 标记：done 行内小药丸，暖木色，标明结果系人工答复非工具产出。 */
+.kk-tool__responded {
+  padding: 0.05rem 0.4rem;
+  border-radius: 0.6rem;
+  background: color-mix(in srgb, var(--accent, #8b6f47) 12%, var(--surface) 88%);
+  color: color-mix(in srgb, var(--accent, #8b6f47) 80%, var(--foreground) 20%);
+  font-size: 0.68rem;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+
 /* CSS-only 流式脉冲：三点，仅在用户未要求减少动态时律动，
    减少动态时降为静态实心点——不改变行高/尺寸，避免抖动。 */
 .kk-thread__pulse {

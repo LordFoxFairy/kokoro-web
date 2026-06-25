@@ -102,6 +102,10 @@ export function toSessionStreamEvent(
         ...(event.payload.reject_reason !== undefined
           ? { rejectReason: event.payload.reject_reason }
           : {}),
+        // 人工答复标记（仅 respond 时存在）：reducer 存到工具实体，UI 显「已人工答复」。
+        ...(event.payload.responded !== undefined
+          ? { responded: event.payload.responded }
+          : {}),
       }
     case "todo.updated":
       return {

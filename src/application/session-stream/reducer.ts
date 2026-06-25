@@ -206,6 +206,7 @@ function applyToolReturned(
                 status: step.tool.status === "rejected" ? "rejected" : returnedStatus,
                 ...(event.isError ? { errorText: event.result } : {}),
                 ...(event.rejectReason !== undefined ? { rejectReason: event.rejectReason } : {}),
+                ...(event.responded !== undefined ? { responded: event.responded } : {}),
               },
             }
           : step,
@@ -224,6 +225,7 @@ function applyToolReturned(
       status: returnedStatus,
       ...(event.isError ? { errorText: event.result } : {}),
       ...(event.rejectReason !== undefined ? { rejectReason: event.rejectReason } : {}),
+      ...(event.responded !== undefined ? { responded: event.responded } : {}),
     },
   })
 }
