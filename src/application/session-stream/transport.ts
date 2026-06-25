@@ -29,12 +29,10 @@ export type LiveSessionHandle = {
 }
 
 // HITL 决策（出站到 session control 端点；session 注入 run_id 后转发 agent run.resume）。
-// 镜像 kokoro-session run-control.ts 的 ResumeDecision 判别联合，各带 tool_id。
+// 只含当前审批 UI 实际会发的两型；wire（session/agent）另支持 edit/respond，待 web 有对应 UI 再扩。
 export type ResumeDecisionInput =
   | { type: "approve"; tool_id: string }
-  | { type: "edit"; tool_id: string; edited_action: Record<string, unknown> }
   | { type: "reject"; tool_id: string; message: string }
-  | { type: "respond"; tool_id: string; message: string }
 
 // control 请求体：放弃整个 run，或一次性携同帧全部待批工具的决策（agent 按 tool_id 一一对齐）。
 export type RunControlBody =

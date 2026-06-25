@@ -63,7 +63,8 @@ export function SegmentProcess({
   // 用受控 div+button（非原生 details）以便给展开/收起做高度过渡；状态机不靠 remount。
   const manualOpen = useProcessDisclosure(segmentId)
   // 有工具待批时强制展开（盖过用户手动折叠）：否则批准/拒绝按钮被裁掉、HITL 卡死无入口。
-  const hasAwaiting = tools.some((tool) => tool.status === "awaiting")
+  const awaitingCount = tools.filter((tool) => tool.status === "awaiting").length
+  const hasAwaiting = awaitingCount > 0
   const open = hasAwaiting || (manualOpen ?? live)
   const bodyId = useId()
 
@@ -114,6 +115,13 @@ export function SegmentProcess({
 
             {tools.length > 0 ? (
               <div className="kk-actgroup" aria-label="工具调用">
+                {/* 同帧多工具同属一次暂停，须一起决定后一并提交（langchain HITL 单 interrupt 模型）：
+                    >1 时点明，免用户决了一个见没动静而困惑。 */}
+                {awaitingCount > 1 ? (
+                  <p className="kk-actgroup__hint" role="status">
+                    这一步有 {awaitingCount} 个工具待你审批，全部决定后一并提交、并行执行。
+                  </p>
+                ) : null}
                 {tools.map((tool) => (
                   <ToolCallRow
                     key={tool.id}

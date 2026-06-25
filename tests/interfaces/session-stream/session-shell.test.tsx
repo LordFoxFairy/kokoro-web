@@ -1812,6 +1812,8 @@ describe("SessionShell HITL multi-tool (same-frame batching)", () => {
     send("抓两个网页")
 
     expect(screen.getAllByRole("button", { name: "批准" })).toHaveLength(2)
+    // 多工具暂停点明批量模型：用户决一个不见动静时不至于困惑。
+    expect(screen.getByText(/这一步有 2 个工具待你审批/)).toBeInTheDocument()
 
     // 先批准第一个工具：仍有同帧工具未决 → 绝不发 resume（否则 agent 决策数≠pending 数崩 run）。
     await act(async () => {

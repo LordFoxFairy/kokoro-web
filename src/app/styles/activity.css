@@ -112,6 +112,12 @@
   gap: 0.3rem;
 }
 
+/* 同帧多工具批量审批提示：点明这一步的工具要一起决定，弱化为木色 muted 一行。 */
+.kk-actgroup__hint {
+  font-size: 0.82rem;
+  color: color-mix(in srgb, var(--brand-wood) 60%, var(--foreground) 40%);
+}
+
 /* 运行中转圈：CSS-only 暖木环。 */
 .kk-spinner {
   display: inline-block;
