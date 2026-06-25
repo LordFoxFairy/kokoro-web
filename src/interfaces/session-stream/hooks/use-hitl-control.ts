@@ -57,6 +57,8 @@ export function useHitlControl({
       return
     }
     await sendRunControl({ sessionId: activeId, runId: rid, body: { kind: "run.cancel" } })
+    // run 被放弃：清掉该 run 任何未提交的暂存决策，免得在 stagedRef 里长期滞留。
+    stagedRef.current.delete(rid)
     // 只有 control POST 成功后才本地收口；失败时保持 awaiting，用户可重试，绝不自作主张显示“运行已取消”。
     setLiveStore((prev) => {
       const current = prev ?? persistedStore

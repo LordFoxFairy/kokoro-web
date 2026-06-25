@@ -88,7 +88,9 @@ export function ToolCallRow({
         {awaiting ? (
           <div className="kk-tool__approval" role="group" aria-label="工具调用待批准">
             <p className="kk-tool__approval-prompt">
-              {approvalError ? "决定发送失败，请重试。" : decided ? "已提交你的决定，等待恢复…" : "该工具调用需要你的批准。"}
+              {/* 同帧多工具时本工具的决定可能仅先暂存（待其余工具决定后才统一提交）→ 用「已记录」
+                  而非「已提交」，对单/多工具都诚实，不谎称已发往后端。 */}
+              {approvalError ? "决定发送失败，请重试。" : decided ? "已记录你的决定…" : "该工具调用需要你的批准。"}
             </p>
             {onApprove && onReject ? (
               <div className="kk-tool__approval-actions">
