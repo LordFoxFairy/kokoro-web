@@ -128,6 +128,7 @@ const toolReturnedSchema = eventEnvelopeSchema.extend({
       is_error: z.boolean(),
       // 可选：仅 HITL 拒绝(用户点拒绝或审批超时回退)时为 true；缺省=未拒绝。replay 安全地区别于绿勾 done。
       rejected: z.boolean().optional(),
+      reject_reason: z.string().optional(),
     })
     .strict(),
 })
@@ -164,6 +165,8 @@ const subagentFinishedSchema = eventEnvelopeSchema.extend({
       name: z.string().min(1),
       subagent_type: z.string().min(1),
       source: z.enum(["built-in", "config-custom", "runtime-custom"]),
+      failed: z.boolean().optional(),
+      error: z.string().optional(),
     })
     .strict(),
 })

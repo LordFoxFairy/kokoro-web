@@ -98,6 +98,10 @@ export function toSessionStreamEvent(
         ...(event.payload.rejected !== undefined
           ? { rejected: event.payload.rejected }
           : {}),
+        // 拒绝理由（仅拒绝时存在）：供 UI 展示，reducer 存到工具实体。
+        ...(event.payload.reject_reason !== undefined
+          ? { rejectReason: event.payload.reject_reason }
+          : {}),
       }
     case "todo.updated":
       return {
@@ -125,6 +129,9 @@ export function toSessionStreamEvent(
         name: event.payload.name,
         subagentType: event.payload.subagent_type,
         source: event.payload.source,
+        // 子代理失败标记/理由（仅失败时存在）：reducer 据此置 failed 而非 done。
+        ...(event.payload.failed !== undefined ? { failed: event.payload.failed } : {}),
+        ...(event.payload.error !== undefined ? { error: event.payload.error } : {}),
       }
     case "subagent.text.delta":
       return {
