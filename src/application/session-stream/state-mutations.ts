@@ -66,16 +66,6 @@ export function findActiveRunId(state: SessionStreamState): string | null {
   return runIds[runIds.length - 1] ?? null
 }
 
-// HITL：当前 thread 内有工具在等待批准时返回其 runId（用于放弃 run 时立即 reject 解阻塞 worker）。
-export function findAwaitingRunId(state: SessionStreamState): string | null {
-  for (const [runId, steps] of Object.entries(state.stepsByRun)) {
-    if (steps.some((step) => step.kind === "tool" && step.tool.status === "awaiting")) {
-      return runId
-    }
-  }
-  return null
-}
-
 // HITL：用户点「拒绝」时本地乐观置该 run 待批工具为 rejected（区别于 reject 回流的 is_error=false 绿勾）。
 // 只翻 awaiting 的工具；done/error/running 不动。
 export function markToolRejected(
