@@ -1841,9 +1841,8 @@ describe("SessionShell HITL multi-tool (same-frame batching)", () => {
         }),
       }),
     )
-    const body = (sendRunControlMock.mock.calls[0]![0] as unknown as {
-      body: { decisions: unknown[] }
-    }).body
+    const firstArg = (sendRunControlMock.mock.calls[0] as unknown[])[0]
+    const body = (firstArg as { body: { decisions: unknown[] } }).body
     expect(body.decisions).toHaveLength(2)
   })
 })
