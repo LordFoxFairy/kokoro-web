@@ -22,11 +22,22 @@ export type LiveSessionHandle = {
   close: () => void
   // 本句柄正在跟踪的 run：onLive 据此把在途 runId 持久化，刷新后 reattach 才能锚定本轮终态。
   runId?: string
-  // HITL：用户拒绝时本地把该 run 待批工具置 rejected，落进流的权威 state——否则后续
+  // HITL：用户拒绝时本地把该 run 指定待批工具置 rejected，落进流的权威 state——否则后续
   // tool.returned（拒绝回流 is_error=false）会把它翻成绿勾 done（reducer 保留 rejected）。
-  // 可选：真实链路（transport/simulator/reattach）都实现；测试替身可省。
-  markToolRejected?: (runId: string) => void
+  // toolIds 支持同帧部分审批：只置被拒的工具，批准的不动。真实链路都实现；测试替身可省。
+  markToolRejected?: (runId: string, toolIds: readonly string[]) => void
 }
+
+// HITL 决策（出站到 session control 端点；session 注入 run_id 后转发 agent run.resume）。
+// 只含当前审批 UI 实际会发的两型；wire（session/agent）另支持 edit/respond，待 web 有对应 UI 再扩。
+export type ResumeDecisionInput =
+  | { type: "approve"; tool_id: string }
+  | { type: "reject"; tool_id: string; message: string }
+
+// control 请求体：放弃整个 run，或一次性携同帧全部待批工具的决策（agent 按 tool_id 一一对齐）。
+export type RunControlBody =
+  | { kind: "run.cancel" }
+  | { kind: "run.resume"; decisions: ResumeDecisionInput[] }
 
 // 权限档位（会话级）：auto 全放行 / default 拦外部副作用工具走交互审批。
 export type PermissionMode = "auto" | "default"
@@ -76,19 +87,23 @@ export function resolveSessionBaseUrl() {
   return "http://127.0.0.1:3001"
 }
 
-// HITL：批准/拒绝待批工具(approve/reject)，或放弃整个 run(cancel) → session control 端点。
+// HITL：放弃整个 run，或恢复暂停并携同帧全部工具的审批决策 → session control 端点（POST JSON body，
+// 因决策数组含 edit 的 edited_action 可超 query 串上限）。
 export async function sendRunControl(input: {
   sessionId: string
   runId: string
-  decision: "approve" | "reject" | "cancel"
+  body: RunControlBody
   baseUrl?: string
 }): Promise<void> {
   const requestUrl = new URL(
     `/sessions/${input.sessionId}/runs/${input.runId}/control`,
     input.baseUrl ?? resolveSessionBaseUrl(),
   )
-  requestUrl.searchParams.set("decision", input.decision)
-  const response = await fetch(requestUrl, { method: "POST" })
+  const response = await fetch(requestUrl, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input.body),
+  })
   if (!response.ok) {
     throw new Error(`control request failed: ${response.status}`)
   }
@@ -171,8 +186,8 @@ export function openSessionStream(args: OpenSessionStreamArgs): LiveSessionHandl
   return {
     close,
     runId: args.runId,
-    markToolRejected: (runId: string) => {
-      state = markToolRejected(state, runId)
+    markToolRejected: (runId: string, toolIds: readonly string[]) => {
+      state = markToolRejected(state, runId, toolIds)
       args.onState(state)
     },
   }

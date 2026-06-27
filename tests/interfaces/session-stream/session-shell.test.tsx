@@ -1757,12 +1757,95 @@ const awaitingReply: StartReply = ({ initialState, onState }: StartReplyInput) =
   onState(state)
   return {
     close: () => {},
-    markToolRejected: (rid: string) => {
-      state = reducerMarkToolRejected(state, rid)
+    markToolRejected: (rid: string, toolIds: readonly string[]) => {
+      state = reducerMarkToolRejected(state, rid, toolIds)
       onState(state)
     },
   }
 }
+
+// 同帧两个被门控工具进入待批（同一 run/segment）：验证 web 凑齐全部决策才发一条 resume。
+const multiAwaitingReply: StartReply = ({ initialState, onState }: StartReplyInput) => {
+  stubCounter += 1
+  const runId = `mw-run-${stubCounter}`
+  const base = {
+    ...envelope,
+    runId,
+    segmentId: `mw-seg-${stubCounter}`,
+    name: "fetch_url",
+    args: { url: "http://x" },
+  }
+  let state = initialState
+  ;[`mw-tA-${stubCounter}`, `mw-tB-${stubCounter}`].forEach((toolId, i) => {
+    state = applySessionEvent(state, {
+      kind: "tool-invoked",
+      eventId: `mw-i-${toolId}`,
+      seq: i * 2 + 1,
+      ...base,
+      toolId,
+    })
+    state = applySessionEvent(state, {
+      kind: "tool-awaiting-approval",
+      eventId: `mw-a-${toolId}`,
+      seq: i * 2 + 2,
+      ...base,
+      toolId,
+    })
+  })
+  onState(state)
+  return {
+    close: () => {},
+    markToolRejected: (rid: string, toolIds: readonly string[]) => {
+      state = reducerMarkToolRejected(state, rid, toolIds)
+      onState(state)
+    },
+  }
+}
+
+describe("SessionShell HITL multi-tool (same-frame batching)", () => {
+  beforeEach(() => {
+    sendRunControlMock.mockClear()
+  })
+
+  it("stages each decision and submits one resume only once every awaiting tool is decided", async () => {
+    render(<SessionShell startReply={multiAwaitingReply} />)
+    send("抓两个网页")
+
+    expect(screen.getAllByRole("button", { name: "批准" })).toHaveLength(2)
+    // 多工具暂停点明批量模型：用户决一个不见动静时不至于困惑。
+    expect(screen.getByText(/这一步有 2 个工具待你审批/)).toBeInTheDocument()
+
+    // 先批准第一个工具：仍有同帧工具未决 → 绝不发 resume（否则 agent 决策数≠pending 数崩 run）。
+    await act(async () => {
+      fireEvent.click(screen.getAllByRole("button", { name: "批准" })[0]!)
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(sendRunControlMock).not.toHaveBeenCalled()
+
+    // 再拒绝第二个工具：凑齐 → 发一条 resume，携两条决策（approve + reject）。
+    await act(async () => {
+      fireEvent.click(screen.getAllByRole("button", { name: "拒绝" })[1]!)
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(sendRunControlMock).toHaveBeenCalledTimes(1)
+    expect(sendRunControlMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: expect.objectContaining({
+          kind: "run.resume",
+          decisions: expect.arrayContaining([
+            expect.objectContaining({ type: "approve" }),
+            expect.objectContaining({ type: "reject" }),
+          ]),
+        }),
+      }),
+    )
+    const firstArg = (sendRunControlMock.mock.calls[0] as unknown[])[0]
+    const body = (firstArg as { body: { decisions: unknown[] } }).body
+    expect(body.decisions).toHaveLength(2)
+  })
+})
 
 describe("SessionShell HITL reject", () => {
   beforeEach(() => {
@@ -1787,7 +1870,12 @@ describe("SessionShell HITL reject", () => {
     // 决定真发往后端（解阻塞 worker）。
     expect(sendRunControlMock).toHaveBeenCalledTimes(1)
     expect(sendRunControlMock).toHaveBeenCalledWith(
-      expect.objectContaining({ decision: "reject" }),
+      expect.objectContaining({
+        body: expect.objectContaining({
+          kind: "run.resume",
+          decisions: [expect.objectContaining({ type: "reject" })],
+        }),
+      }),
     )
   })
 
@@ -1835,7 +1923,7 @@ describe("SessionShell HITL reject", () => {
     })
 
     expect(sendRunControlMock).toHaveBeenCalledWith(
-      expect.objectContaining({ decision: "cancel" }),
+      expect.objectContaining({ body: { kind: "run.cancel" } }),
     )
     // 停止后立即收口：不再有 awaiting 工具行(及其无人消费的批准按钮)。
     expect(container.querySelector(".kk-tool--awaiting")).toBeNull()
@@ -1903,8 +1991,8 @@ const approvableReply: StartReply = ({ initialState, onState }: StartReplyInput)
   }
   return {
     close: () => {},
-    markToolRejected: (rid: string) => {
-      state = reducerMarkToolRejected(state, rid)
+    markToolRejected: (rid: string, toolIds: readonly string[]) => {
+      state = reducerMarkToolRejected(state, rid, toolIds)
       onState(state)
     },
   }
@@ -1931,7 +2019,12 @@ describe("SessionShell HITL approve", () => {
     // 决定真发往后端（approve）解阻塞 worker。
     expect(sendRunControlMock).toHaveBeenCalledTimes(1)
     expect(sendRunControlMock).toHaveBeenCalledWith(
-      expect.objectContaining({ decision: "approve" }),
+      expect.objectContaining({
+        body: expect.objectContaining({
+          kind: "run.resume",
+          decisions: [expect.objectContaining({ type: "approve" })],
+        }),
+      }),
     )
 
     // 后端恢复：工具翻 done、续上回答、终态收束，审批按钮不残留。

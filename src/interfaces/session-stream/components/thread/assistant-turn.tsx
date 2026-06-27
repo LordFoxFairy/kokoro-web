@@ -19,8 +19,11 @@ type AssistantTurnProps = {
   reconnecting?: boolean
   // 本会话模式：透传给过程块作密度 / 文案差异钩子。
   mode?: AgentMode
-  // HITL：批准/拒绝本轮待批的工具调用（已按 runId 绑定）。Promise 用于把 control POST 失败抛回按钮层。
-  onToolDecision?: (decision: "approve" | "reject") => void | Promise<void>
+  // HITL：批准/拒绝本轮某个待批工具（已按 runId 绑定，留 toolId）。Promise 用于把 control POST 失败抛回按钮层。
+  onToolDecision?: (
+    toolId: string,
+    decision: "approve" | "reject",
+  ) => void | Promise<void>
 }
 
 // 成形态内容：就近的「正在…」线索 + 脉冲点，占位与正文同一 .kk-turn__answer 元素，

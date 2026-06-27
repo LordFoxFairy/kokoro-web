@@ -90,7 +90,8 @@ export const startSessionReply: StartReply = (args) => {
       closed = true
       active.close()
     },
-    // 委派给当前活跃链路（live 或预览）：拒绝落进它的权威 state。
-    markToolRejected: (runId: string) => active.markToolRejected?.(runId),
+    // 委派给当前活跃链路（live 或预览）：把被拒工具落进它的权威 state（toolIds 支持同帧部分审批）。
+    markToolRejected: (runId: string, toolIds: readonly string[]) =>
+      active.markToolRejected?.(runId, toolIds),
   }
 }
