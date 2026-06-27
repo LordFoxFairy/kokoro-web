@@ -21,7 +21,6 @@ export {
   appendUserMessage,
   createSessionStreamState,
   findActiveRunId,
-  findAwaitingRunId,
   markRunCancelled,
   markToolRejected,
   resolveStaleTools,
