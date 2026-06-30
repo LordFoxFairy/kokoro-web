@@ -60,7 +60,6 @@ describe("applySessionEvent", () => {
     const event = requireDomainEvent({
       event: "message.delta",
       event_id: "evt_01",
-      seq: 12,
       session_id: "ses_01",
       conversation_id: "conv_01",
       run_id: "run_01",
@@ -76,32 +75,27 @@ describe("applySessionEvent", () => {
     expect(twice.seenEventIds).toEqual(new Set(["evt_01"]))
   })
 
-  it("threads a strictly increasing seq through the ordered stream", () => {
-    // 为什么重要：信封的一等 seq 承载真实发射序号；丢弃它就无法还原 thinking→tool→text 的时序。
-    // 一段有序流（tool → message → tool → message）映射后 seq 必须严格递增。
+  it("maps an ordered transport stream without requiring a sort field", () => {
+    // 为什么重要：session 的 SSE 已经按 DB replay + live tail 顺序送达；web 不再要求额外排序字段。
     const events = [
       {
         event: "tool.invoked",
         event_id: "e1",
-        seq: 1,
         payload: { segment_id: "m1", tool_id: "t1", name: "a", args: {} },
       },
       {
         event: "message.delta",
         event_id: "e2",
-        seq: 2,
         payload: { segment_id: "m1", delta: "x", role: "assistant" as const },
       },
       {
         event: "tool.invoked",
         event_id: "e3",
-        seq: 3,
         payload: { segment_id: "m1", tool_id: "t2", name: "b", args: {} },
       },
       {
         event: "message.delta",
         event_id: "e4",
-        seq: 4,
         payload: { segment_id: "m2", delta: "y", role: "assistant" as const },
       },
     ].map((spec) =>
@@ -114,15 +108,11 @@ describe("applySessionEvent", () => {
       }),
     )
 
-    const seqs = events.map((event) => event.seq)
-    expect(seqs).toEqual([1, 2, 3, 4])
-    for (let i = 1; i < seqs.length; i += 1) {
-      expect(seqs[i]).toBeGreaterThan(seqs[i - 1] as number)
-    }
+    expect(events.map((event) => event.eventId)).toEqual(["e1", "e2", "e3", "e4"])
   })
 
   it("replays tool→text→tool→text as four ordered steps in order", () => {
-    // 为什么重要：真实时序是 tool→text→tool→text；reducer 必须按 seq APPEND 成四个有序步骤，
+    // 为什么重要：真实时序是 tool→text→tool→text；reducer 必须按接收顺序 APPEND 成四个有序步骤，
     // 而非按 kind 归桶。文本步骤与工具步骤交错排列，顺序严格还原。
     const events = [
       requireDomainEvent({
@@ -131,7 +121,6 @@ describe("applySessionEvent", () => {
         session_id: "ses_01",
         conversation_id: "conv_01",
         run_id: "run_01",
-        seq: 1,
         timestamp: "2026-05-28T12:00:00.000Z",
         payload: { segment_id: "m1", tool_id: "t1", name: "a", args: {} },
       }),
@@ -141,7 +130,6 @@ describe("applySessionEvent", () => {
         session_id: "ses_01",
         conversation_id: "conv_01",
         run_id: "run_01",
-        seq: 2,
         timestamp: "2026-05-28T12:00:01.000Z",
         payload: { segment_id: "m1", delta: "first", role: "assistant" },
       }),
@@ -151,7 +139,6 @@ describe("applySessionEvent", () => {
         session_id: "ses_01",
         conversation_id: "conv_01",
         run_id: "run_01",
-        seq: 3,
         timestamp: "2026-05-28T12:00:02.000Z",
         payload: { segment_id: "m2", tool_id: "t2", name: "b", args: {} },
       }),
@@ -161,7 +148,6 @@ describe("applySessionEvent", () => {
         session_id: "ses_01",
         conversation_id: "conv_01",
         run_id: "run_01",
-        seq: 4,
         timestamp: "2026-05-28T12:00:03.000Z",
         payload: { segment_id: "m2", delta: "second", role: "assistant" },
       }),
@@ -175,7 +161,7 @@ describe("applySessionEvent", () => {
       "tool",
       "text",
     ])
-    expect(steps.map((step) => step.seq)).toEqual([1, 2, 3, 4])
+    expect(steps.map((step) => step.segmentId)).toEqual(["m1", "m1", "m2", "m2"])
   })
 
   it("updates the SAME tool step from running to done on its return (no reorder)", () => {
@@ -187,7 +173,6 @@ describe("applySessionEvent", () => {
       session_id: "ses_01",
       conversation_id: "conv_01",
       run_id: "run_01",
-      seq: 1,
       timestamp: "2026-05-28T12:00:00.000Z",
       payload: { segment_id: "m1", tool_id: "t1", name: "get_weather", args: { city: "北京" } },
     })
@@ -197,7 +182,6 @@ describe("applySessionEvent", () => {
       session_id: "ses_01",
       conversation_id: "conv_01",
       run_id: "run_01",
-      seq: 2,
       timestamp: "2026-05-28T12:00:01.000Z",
       payload: { segment_id: "m1", delta: "结果", role: "assistant" },
     })
@@ -207,7 +191,6 @@ describe("applySessionEvent", () => {
       session_id: "ses_01",
       conversation_id: "conv_01",
       run_id: "run_01",
-      seq: 3,
       timestamp: "2026-05-28T12:00:02.000Z",
       payload: { segment_id: "m1", tool_id: "t1", name: "get_weather", result: "北京: 晴", is_error: false },
     })
@@ -238,7 +221,6 @@ describe("applySessionEvent", () => {
       session_id: "ses_01",
       conversation_id: "conv_01",
       run_id: "run_01",
-      seq: 1,
       timestamp: "2026-05-28T12:00:00.000Z",
       payload: { segment_id: "m1", tool_id: "t1", name: "fetch_url", args: { url: "x" } },
     })
@@ -248,7 +230,6 @@ describe("applySessionEvent", () => {
       session_id: "ses_01",
       conversation_id: "conv_01",
       run_id: "run_01",
-      seq: 2,
       timestamp: "2026-05-28T12:00:01.000Z",
       payload: {
         segment_id: "m1",
@@ -274,7 +255,6 @@ describe("applySessionEvent", () => {
         session_id: "ses_01",
         conversation_id: "conv_01",
         run_id: "run_01",
-        seq: 12,
         timestamp: "2026-05-28T12:00:00.000Z",
         payload: { segment_id: "msg_01", delta: "He", role: "assistant" },
       }),
@@ -284,7 +264,6 @@ describe("applySessionEvent", () => {
         session_id: "ses_01",
         conversation_id: "conv_01",
         run_id: "run_01",
-        seq: 13,
         timestamp: "2026-05-28T12:00:01.000Z",
         payload: { segment_id: "msg_01", delta: "llo", role: "assistant" },
       }),
@@ -294,7 +273,6 @@ describe("applySessionEvent", () => {
         session_id: "ses_01",
         conversation_id: "conv_01",
         run_id: "run_01",
-        seq: 14,
         timestamp: "2026-05-28T12:00:02.000Z",
         payload: { segment_id: "msg_01", role: "assistant", content: "Hello" },
       }),
@@ -310,7 +288,6 @@ describe("applySessionEvent", () => {
       session_id: "ses_01",
       conversation_id: "conv_01",
       run_id: "run_01",
-      seq: 12,
       timestamp: "2026-05-28T12:00:00.000Z",
       payload: { segment_id: "msg_01", delta: "He", role: "assistant" },
     })
@@ -320,7 +297,6 @@ describe("applySessionEvent", () => {
       session_id: "ses_01",
       conversation_id: "conv_01",
       run_id: "run_01",
-      seq: 13,
       timestamp: "2026-05-28T12:00:01.000Z",
       payload: { segment_id: "msg_01", delta: "llo", role: "assistant" },
     })
@@ -340,7 +316,6 @@ describe("applySessionEvent", () => {
       session_id: "ses_01",
       conversation_id: "conv_01",
       run_id: "run_01",
-      seq: 1,
       timestamp: "2026-05-28T12:00:00.000Z",
       payload: {
         session_id: "ses_01",
@@ -365,7 +340,6 @@ describe("applySessionEvent", () => {
       session_id: "ses_01",
       conversation_id: "conv_01",
       run_id: "run_01",
-      seq: 1,
       timestamp: "2026-05-28T12:00:00.000Z",
       payload: {
         session_id: "ses_01",
@@ -380,7 +354,6 @@ describe("applySessionEvent", () => {
       session_id: "ses_01",
       conversation_id: "conv_01",
       run_id: "run_01",
-      seq: 2,
       timestamp: "2026-05-28T12:00:01.000Z",
       payload: { segment_id: "msg_01", delta: "Hi", role: "assistant" },
     })
@@ -401,7 +374,6 @@ describe("applySessionEvent", () => {
       session_id: "ses_01",
       conversation_id: "conv_01",
       run_id: "run_01",
-      seq: 12,
       timestamp: "2026-05-28T12:00:00.000Z",
       payload: { segment_id: "msg_01", delta: "He", role: "assistant" },
     })
@@ -411,7 +383,6 @@ describe("applySessionEvent", () => {
       session_id: "ses_01",
       conversation_id: "conv_01",
       run_id: "run_01",
-      seq: 13,
       timestamp: "2026-05-28T12:00:01.000Z",
       payload: { segment_id: "msg_01", delta: "llo", role: "user" },
     })
@@ -436,7 +407,6 @@ describe("applySessionEvent", () => {
         session_id: "ses_01",
         conversation_id: "conv_01",
         run_id: "run_01",
-        seq: 12,
         timestamp: "2026-05-28T12:00:00.000Z",
         payload: { segment_id: "msg_01", delta: "", role: "assistant" },
       }),
@@ -446,7 +416,6 @@ describe("applySessionEvent", () => {
         session_id: "ses_01",
         conversation_id: "conv_01",
         run_id: "run_01",
-        seq: 13,
         timestamp: "2026-05-28T12:00:01.000Z",
         payload: { segment_id: "msg_01", delta: huge, role: "assistant" },
       }),
@@ -462,7 +431,6 @@ describe("applySessionEvent", () => {
         session_id: "ses_01",
         conversation_id: "conv_01",
         run_id: "run_01",
-        seq: 14,
         timestamp: "2026-05-28T12:00:02.000Z",
         payload: { segment_id: "msg_01", role: "assistant", content: "Hello" },
       }),
@@ -480,7 +448,6 @@ describe("applySessionEvent", () => {
         session_id: "ses_01",
         conversation_id: "conv_01",
         run_id: "run_01",
-        seq: 20,
         timestamp: "2026-05-28T12:00:10.000Z",
         payload: {
           run_id: "run_01",
@@ -494,7 +461,6 @@ describe("applySessionEvent", () => {
         session_id: "ses_01",
         conversation_id: "conv_01",
         run_id: "run_01",
-        seq: 20,
         timestamp: "2026-05-28T12:00:10.000Z",
         payload: {
           run_id: "run_01",
@@ -536,7 +502,6 @@ describe("appendUserMessage", () => {
     const assistantTurn = applySessionEvent(createSessionStreamState(), {
       kind: "message-completed",
       eventId: "evt_a1",
-      seq: 1,
       sessionId: "ses_01",
       conversationId: "conv_01",
       runId: "run_01",
@@ -566,7 +531,6 @@ describe("appendUserMessage", () => {
       {
         kind: "message-delta" as const,
         eventId: "evt_r1",
-        seq: 1,
         sessionId: "ses_01",
         conversationId: "conv_01",
         runId: "run_02",
@@ -577,7 +541,6 @@ describe("appendUserMessage", () => {
       {
         kind: "message-completed" as const,
         eventId: "evt_r2",
-        seq: 2,
         sessionId: "ses_01",
         conversationId: "conv_01",
         runId: "run_02",
@@ -588,7 +551,6 @@ describe("appendUserMessage", () => {
       {
         kind: "run-completed" as const,
         eventId: "evt_r3",
-        seq: 3,
         sessionId: "ses_01",
         conversationId: "conv_01",
         runId: "run_02",
@@ -607,7 +569,6 @@ describe("appendUserMessage", () => {
     let state = applySessionEvent(createSessionStreamState(), {
       kind: "message-completed",
       eventId: "evt_prev_msg",
-      seq: 1,
       sessionId: "ses_01",
       conversationId: "conv_01",
       runId: "run_01",
@@ -618,7 +579,6 @@ describe("appendUserMessage", () => {
     state = applySessionEvent(state, {
       kind: "tool-invoked",
       eventId: "evt_tool_prev",
-      seq: 2,
       sessionId: "ses_01",
       conversationId: "conv_01",
       runId: "run_01",
@@ -630,7 +590,6 @@ describe("appendUserMessage", () => {
     state = applySessionEvent(state, {
       kind: "todo-updated",
       eventId: "evt_t",
-      seq: 3,
       sessionId: "ses_01",
       conversationId: "conv_01",
       runId: "run_01",
@@ -657,7 +616,6 @@ describe("parseStoredSessionState", () => {
       {
         kind: "message-completed" as const,
         eventId: "evt_p1",
-        seq: 1,
         sessionId: "ses_01",
         conversationId: "conv_01",
         runId: "run_01",
@@ -668,7 +626,6 @@ describe("parseStoredSessionState", () => {
       {
         kind: "run-completed" as const,
         eventId: "evt_p2",
-        seq: 2,
         sessionId: "ses_01",
         conversationId: "conv_01",
         runId: "run_01",
@@ -697,7 +654,6 @@ describe("parseStoredSessionState", () => {
     state = applySessionEvent(state, {
       kind: "thinking-delta",
       eventId: "k1",
-      seq: 1,
       sessionId: "ses_01",
       conversationId: "conv_01",
       runId: "run_01",
@@ -707,7 +663,6 @@ describe("parseStoredSessionState", () => {
     state = applySessionEvent(state, {
       kind: "tool-invoked",
       eventId: "ti",
-      seq: 2,
       sessionId: "ses_01",
       conversationId: "conv_01",
       runId: "run_01",
@@ -719,7 +674,6 @@ describe("parseStoredSessionState", () => {
     state = applySessionEvent(state, {
       kind: "tool-returned",
       eventId: "tr",
-      seq: 3,
       sessionId: "ses_01",
       conversationId: "conv_01",
       runId: "run_01",
@@ -732,7 +686,6 @@ describe("parseStoredSessionState", () => {
     state = applySessionEvent(state, {
       kind: "message-completed",
       eventId: "c1",
-      seq: 4,
       sessionId: "ses_01",
       conversationId: "conv_01",
       runId: "run_01",
@@ -806,7 +759,7 @@ describe("parseStoredSessionState", () => {
         seenEventIds: [],
         messages: [],
         runStatus: "idle",
-        stepsByRun: { run_01: [{ kind: "mystery", seq: 1, segmentId: "m1" }] },
+        stepsByRun: { run_01: [{ kind: "mystery", segmentId: "m1" }] },
       },
     ],
   ])(
@@ -863,7 +816,6 @@ describe("applySessionEvent activity families", () => {
       event: "todo.updated",
       event_id: "evt_t1",
       ...base,
-      seq: 1,
       payload: {
         todos: [
           { content: "查天气", status: "in_progress" },
@@ -875,7 +827,6 @@ describe("applySessionEvent activity families", () => {
       event: "todo.updated",
       event_id: "evt_t2",
       ...base,
-      seq: 2,
       payload: {
         todos: [
           { content: "查天气", status: "completed" },
@@ -897,7 +848,6 @@ describe("applySessionEvent activity families", () => {
       event: "tool.invoked",
       event_id: "evt_i",
       ...base,
-      seq: 1,
       payload: {
         segment_id: "m1",
         tool_id: "t1",
@@ -909,7 +859,6 @@ describe("applySessionEvent activity families", () => {
       event: "tool.returned",
       event_id: "evt_r",
       ...base,
-      seq: 2,
       payload: {
         segment_id: "m1",
         tool_id: "t1",
@@ -931,12 +880,11 @@ describe("applySessionEvent activity families", () => {
     })
   })
 
-  it("interleaves tool then subagent in seq order on the same run", () => {
+  it("interleaves tool then subagent in append order on the same run", () => {
     let state = createSessionStreamState()
     state = applySessionEvent(state, {
       kind: "message-completed",
       eventId: "evt_m1",
-      seq: 1,
       sessionId: "ses_01",
       conversationId: "conv_01",
       runId: "run_01",
@@ -950,7 +898,6 @@ describe("applySessionEvent activity families", () => {
         event: "tool.invoked",
         event_id: "evt_tool_m1",
         ...base,
-        seq: 3,
         payload: {
           segment_id: "m1",
           tool_id: "tool_1",
@@ -965,7 +912,6 @@ describe("applySessionEvent activity families", () => {
         event: "subagent.started",
         event_id: "evt_sub_m2",
         ...base,
-        seq: 4,
         payload: {
           segment_id: "m1",
           subagent_id: "sa_1",
@@ -977,7 +923,7 @@ describe("applySessionEvent activity families", () => {
       }),
     )
 
-    // 同一 run 的有序步骤：text(seq1) → tool(seq3) → subagent(seq4)。
+    // 同一 run 的有序步骤：text → tool → subagent。
     expect(stepsOf(state).map((s) => s.kind)).toEqual(["text", "tool", "subagent"])
     expect(toolSteps(state)).toHaveLength(1)
     expect(subagentSteps(state)).toHaveLength(1)
@@ -988,7 +934,6 @@ describe("applySessionEvent activity families", () => {
       event: "subagent.started",
       event_id: "evt_s1",
       ...base,
-      seq: 1,
       payload: {
         segment_id: "m1",
         subagent_id: "sa1",
@@ -1002,7 +947,6 @@ describe("applySessionEvent activity families", () => {
       event: "subagent.finished",
       event_id: "evt_s2",
       ...base,
-      seq: 2,
       payload: {
         segment_id: "m1",
         subagent_id: "sa1",
@@ -1022,7 +966,6 @@ describe("applySessionEvent activity families", () => {
       event: "subagent.started",
       event_id: "evt_s1",
       ...base,
-      seq: 1,
       payload: {
         segment_id: "m1",
         subagent_id: "sa1",
@@ -1036,7 +979,6 @@ describe("applySessionEvent activity families", () => {
       event: "subagent.finished",
       event_id: "evt_s2",
       ...base,
-      seq: 2,
       payload: {
         segment_id: "m1",
         subagent_id: "sa1",
@@ -1060,7 +1002,6 @@ describe("applySessionEvent activity families", () => {
         event: "subagent.started",
         event_id: "evt_s1",
         ...base,
-        seq: 1,
         payload: {
           segment_id: "m1",
           subagent_id: "sa1",
@@ -1074,7 +1015,6 @@ describe("applySessionEvent activity families", () => {
     state = applySessionEvent(state, {
       kind: "subagent-text-completed",
       eventId: "evt_sub_text",
-      seq: 2,
       sessionId: "ses_01",
       conversationId: "conv_01",
       runId: "run_01",
@@ -1094,14 +1034,12 @@ describe("applySessionEvent activity families", () => {
       event: "thinking.delta",
       event_id: "evt_k1",
       ...base,
-      seq: 1,
       payload: { segment_id: "m1", delta: "先想" },
     })
     const b = requireDomainEvent({
       event: "thinking.delta",
       event_id: "evt_k2",
       ...base,
-      seq: 2,
       payload: { segment_id: "m1", delta: "再想" },
     })
     let state = applySessionEvent(createSessionStreamState(), a)
@@ -1118,7 +1056,6 @@ describe("applySessionEvent activity families", () => {
     let state = applySessionEvent(createSessionStreamState(), {
       kind: "thinking-delta",
       eventId: "av-think-1",
-      seq: 1,
       sessionId: "ses_01",
       conversationId: "conv_01",
       runId: "run_01",
@@ -1131,7 +1068,6 @@ describe("applySessionEvent activity families", () => {
     state = applySessionEvent(state, {
       kind: "thinking-delta",
       eventId: "av-think-2",
-      seq: 2,
       sessionId: "ses_01",
       conversationId: "conv_01",
       runId: "run_01",
@@ -1144,7 +1080,6 @@ describe("applySessionEvent activity families", () => {
     state = applySessionEvent(state, {
       kind: "tool-invoked",
       eventId: "av-tool",
-      seq: 3,
       sessionId: "ses_01",
       conversationId: "conv_01",
       runId: "run_01",
@@ -1159,7 +1094,6 @@ describe("applySessionEvent activity families", () => {
     state = applySessionEvent(state, {
       kind: "subagent-started",
       eventId: "av-sub",
-      seq: 4,
       sessionId: "ses_01",
       conversationId: "conv_01",
       runId: "run_01",
@@ -1176,7 +1110,6 @@ describe("applySessionEvent activity families", () => {
     state = applySessionEvent(state, {
       kind: "subagent-text-delta",
       eventId: "av-sub-text",
-      seq: 5,
       sessionId: "ses_01",
       conversationId: "conv_01",
       runId: "run_01",
@@ -1191,7 +1124,6 @@ describe("applySessionEvent activity families", () => {
     const a = applySessionEvent(createSessionStreamState(), {
       kind: "thinking-delta",
       eventId: "pa-1",
-      seq: 1,
       sessionId: "ses_01",
       conversationId: "conv_01",
       runId: "run_01",
@@ -1201,7 +1133,6 @@ describe("applySessionEvent activity families", () => {
     const b = applySessionEvent(createSessionStreamState(), {
       kind: "thinking-delta",
       eventId: "pb-1",
-      seq: 1,
       sessionId: "ses_01",
       conversationId: "conv_01",
       runId: "run_01",
@@ -1221,11 +1152,10 @@ describe("applySessionEvent activity families", () => {
       args: { url: "http://x" },
     }
     const state = [
-      { kind: "tool-invoked" as const, eventId: "e1", seq: 1, toolId: "t1", ...base },
+      { kind: "tool-invoked" as const, eventId: "e1", toolId: "t1", ...base },
       {
         kind: "tool-awaiting-approval" as const,
         eventId: "e2",
-        seq: 2,
         toolId: "t1",
         ...base,
       },
@@ -1239,7 +1169,6 @@ describe("applySessionEvent activity families", () => {
     const state = applySessionEvent(createSessionStreamState(), {
       kind: "tool-awaiting-approval",
       eventId: "e1",
-      seq: 1,
       sessionId: "ses_01",
       conversationId: "conv_01",
       runId: "run_01",
@@ -1264,18 +1193,16 @@ describe("applySessionEvent activity families", () => {
       args: { url: "http://x" },
     }
     const state = [
-      { kind: "tool-invoked" as const, eventId: "e1", seq: 1, toolId: "t1", ...base },
+      { kind: "tool-invoked" as const, eventId: "e1", toolId: "t1", ...base },
       {
         kind: "tool-awaiting-approval" as const,
         eventId: "e2",
-        seq: 2,
         toolId: "t1",
         ...base,
       },
       {
         kind: "run-failed" as const,
         eventId: "e3",
-        seq: 3,
         sessionId: "ses_01",
         conversationId: "conv_01",
         runId: "run_01",
@@ -1298,8 +1225,8 @@ describe("applySessionEvent activity families", () => {
       args: { url: "http://x" },
     }
     const awaiting = [
-      { kind: "tool-invoked" as const, eventId: "e1", seq: 1, toolId: "t1", ...base },
-      { kind: "tool-awaiting-approval" as const, eventId: "e2", seq: 2, toolId: "t1", ...base },
+      { kind: "tool-invoked" as const, eventId: "e1", toolId: "t1", ...base },
+      { kind: "tool-awaiting-approval" as const, eventId: "e2", toolId: "t1", ...base },
     ].reduce(applySessionEvent, createSessionStreamState())
 
     const rejected = markToolRejected(awaiting, "run_01", ["t1"])
@@ -1319,10 +1246,10 @@ describe("applySessionEvent activity families", () => {
     }
     // 同帧两个被门控工具：只拒 tB，tA 必须保持 awaiting（部分审批，批准的工具继续运行）。
     const awaiting = [
-      { kind: "tool-invoked" as const, eventId: "e1", seq: 1, toolId: "tA", ...base },
-      { kind: "tool-awaiting-approval" as const, eventId: "e2", seq: 2, toolId: "tA", ...base },
-      { kind: "tool-invoked" as const, eventId: "e3", seq: 3, toolId: "tB", ...base },
-      { kind: "tool-awaiting-approval" as const, eventId: "e4", seq: 4, toolId: "tB", ...base },
+      { kind: "tool-invoked" as const, eventId: "e1", toolId: "tA", ...base },
+      { kind: "tool-awaiting-approval" as const, eventId: "e2", toolId: "tA", ...base },
+      { kind: "tool-invoked" as const, eventId: "e3", toolId: "tB", ...base },
+      { kind: "tool-awaiting-approval" as const, eventId: "e4", toolId: "tB", ...base },
     ].reduce(applySessionEvent, createSessionStreamState())
 
     const rejected = markToolRejected(awaiting, "run_01", ["tB"])
@@ -1341,8 +1268,8 @@ describe("applySessionEvent activity families", () => {
       args: { url: "http://x" },
     }
     const awaiting = [
-      { kind: "tool-invoked" as const, eventId: "e1", seq: 1, toolId: "t1", ...base },
-      { kind: "tool-awaiting-approval" as const, eventId: "e2", seq: 2, toolId: "t1", ...base },
+      { kind: "tool-invoked" as const, eventId: "e1", toolId: "t1", ...base },
+      { kind: "tool-awaiting-approval" as const, eventId: "e2", toolId: "t1", ...base },
     ].reduce(applySessionEvent, createSessionStreamState())
     const rejected = markToolRejected(awaiting, "run_01", ["t1"])
 
@@ -1350,7 +1277,6 @@ describe("applySessionEvent activity families", () => {
     const returned = applySessionEvent(rejected, {
       kind: "tool-returned",
       eventId: "e3",
-      seq: 3,
       sessionId: "ses_01",
       conversationId: "conv_01",
       runId: "run_01",
@@ -1376,12 +1302,11 @@ describe("applySessionEvent activity families", () => {
     // 审批超时回退 reject：后端 tool.returned 带 rejected=true（is_error=false），
     // 用户从没点过拒绝（无乐观）。replay/重连也走这条——必须 deterministically 显 rejected。
     const state = [
-      { kind: "tool-invoked" as const, eventId: "e1", seq: 1, toolId: "t1", ...base },
-      { kind: "tool-awaiting-approval" as const, eventId: "e2", seq: 2, toolId: "t1", ...base },
+      { kind: "tool-invoked" as const, eventId: "e1", toolId: "t1", ...base },
+      { kind: "tool-awaiting-approval" as const, eventId: "e2", toolId: "t1", ...base },
       {
         kind: "tool-returned" as const,
         eventId: "e3",
-        seq: 3,
         sessionId: "ses_01",
         conversationId: "conv_01",
         runId: "run_01",
@@ -1411,12 +1336,11 @@ describe("applySessionEvent activity families", () => {
     // HITL respond：后端 tool.returned 带 responded=true（rejected=false, is_error=false）→
     // done 态但保留 provenance 标记；replay 安全（结果系人工答复非工具产出）。
     const state = [
-      { kind: "tool-invoked" as const, eventId: "e1", seq: 1, toolId: "t1", ...base },
-      { kind: "tool-awaiting-approval" as const, eventId: "e2", seq: 2, toolId: "t1", ...base },
+      { kind: "tool-invoked" as const, eventId: "e1", toolId: "t1", ...base },
+      { kind: "tool-awaiting-approval" as const, eventId: "e2", toolId: "t1", ...base },
       {
         kind: "tool-returned" as const,
         eventId: "e3",
-        seq: 3,
         sessionId: "ses_01",
         conversationId: "conv_01",
         runId: "run_01",
@@ -1445,11 +1369,10 @@ describe("applySessionEvent activity families", () => {
       args: {},
     }
     const state = [
-      { kind: "tool-invoked" as const, eventId: "e1", seq: 1, toolId: "t1", ...base },
+      { kind: "tool-invoked" as const, eventId: "e1", toolId: "t1", ...base },
       {
         kind: "tool-returned" as const,
         eventId: "e2",
-        seq: 2,
         sessionId: "ses_01",
         conversationId: "conv_01",
         runId: "run_01",
@@ -1473,15 +1396,14 @@ describe("applySessionEvent activity families", () => {
       args: { url: "http://x" },
     }
     const awaiting = [
-      { kind: "tool-invoked" as const, eventId: "e1", seq: 1, toolId: "t1", ...base },
-      { kind: "tool-awaiting-approval" as const, eventId: "e2", seq: 2, toolId: "t1", ...base },
+      { kind: "tool-invoked" as const, eventId: "e1", toolId: "t1", ...base },
+      { kind: "tool-awaiting-approval" as const, eventId: "e2", toolId: "t1", ...base },
     ].reduce(applySessionEvent, createSessionStreamState())
     const rejected = markToolRejected(awaiting, "run_01", ["t1"])
 
     const ended = applySessionEvent(rejected, {
       kind: "run-completed",
       eventId: "e3",
-      seq: 3,
       sessionId: "ses_01",
       conversationId: "conv_01",
       runId: "run_01",
@@ -1502,7 +1424,6 @@ describe("buildThreadItems grouping", () => {
     state = applySessionEvent(state, {
       kind: "message-completed",
       eventId: "c1",
-      seq: 1,
       sessionId: "ses_01",
       conversationId: "conv_01",
       runId: "run_01",
@@ -1513,7 +1434,6 @@ describe("buildThreadItems grouping", () => {
     state = applySessionEvent(state, {
       kind: "message-completed",
       eventId: "c2",
-      seq: 2,
       sessionId: "ses_01",
       conversationId: "conv_01",
       runId: "run_01",
@@ -1539,7 +1459,6 @@ describe("buildThreadItems grouping", () => {
     state = applySessionEvent(state, {
       kind: "message-completed",
       eventId: "c1",
-      seq: 1,
       sessionId: "ses_01",
       conversationId: "conv_01",
       runId: "run_01",
@@ -1551,7 +1470,6 @@ describe("buildThreadItems grouping", () => {
     state = applySessionEvent(state, {
       kind: "message-completed",
       eventId: "c2",
-      seq: 1,
       sessionId: "ses_01",
       conversationId: "conv_01",
       runId: "run_02",
@@ -1574,7 +1492,6 @@ describe("buildThreadItems grouping", () => {
     const state = applySessionEvent(createSessionStreamState(), {
       kind: "thinking-delta",
       eventId: "k1",
-      seq: 1,
       sessionId: "ses_01",
       conversationId: "conv_01",
       runId: "run_01",
@@ -1590,4 +1507,3 @@ describe("buildThreadItems grouping", () => {
     )
   })
 })
-

@@ -46,9 +46,9 @@ export type ConsumeLiveSessionInput = {
   input: string
   baseUrl?: string
   sessionId?: string
-  conversationId?: string
   executionStyle?: "fast" | "thinking"
   permissionMode?: PermissionMode
+  idempotencyKey?: string
   // 持久会话线：让本轮 run 的 assistant 事件折在已有 thread 之上，而不是每轮清零。
   initialState?: SessionStreamState
   onState: (snapshot: SessionStreamSnapshot) => void
@@ -69,7 +69,6 @@ export type ReattachLiveSessionInput = {
 }
 
 const demoSessionId = "ses_01"
-const demoConversationId = "conv_01"
 
 export function resolveSessionBaseUrl() {
   if (process.env.NEXT_PUBLIC_KOKORO_SESSION_BASE_URL) {
@@ -193,18 +192,22 @@ export function openSessionStream(args: OpenSessionStreamArgs): LiveSessionHandl
   }
 }
 
-function buildRunUrl(input: ConsumeLiveSessionInput, baseUrl: string) {
+function newIdempotencyKey(): string {
+  return globalThis.crypto?.randomUUID?.() ?? `idem_${Date.now()}_${Math.random().toString(36).slice(2)}`
+}
+
+function buildMessageRequest(input: ConsumeLiveSessionInput, baseUrl: string) {
   const sessionId = input.sessionId ?? demoSessionId
-  const conversationId = input.conversationId ?? demoConversationId
-  const requestUrl = new URL(`/sessions/${sessionId}/runs`, baseUrl)
-  requestUrl.searchParams.set("conversation_id", conversationId)
-  requestUrl.searchParams.set("input", input.input)
-  requestUrl.searchParams.set("execution_style", input.executionStyle ?? "fast")
-  // 权限档位：默认 auto（后端默认全放行）；仅非默认时附带，省得污染 URL。
-  if (input.permissionMode && input.permissionMode !== "auto") {
-    requestUrl.searchParams.set("permission_mode", input.permissionMode)
+  const requestUrl = new URL(`/sessions/${sessionId}/messages`, baseUrl)
+  const body: Record<string, unknown> = {
+    idempotencyKey: input.idempotencyKey ?? newIdempotencyKey(),
+    content: input.input,
+    executionStyle: input.executionStyle ?? "fast",
   }
-  return { requestUrl, sessionId }
+  if (input.permissionMode && input.permissionMode !== "auto") {
+    body.permissionMode = input.permissionMode
+  }
+  return { requestUrl, sessionId, body }
 }
 
 // 纯渲染消费者：POST 触发 run，再开 SSE 把 AGUI 事件折进 reducer。
@@ -212,9 +215,13 @@ export async function consumeLiveSession(
   input: ConsumeLiveSessionInput,
 ): Promise<LiveSessionHandle> {
   const baseUrl = input.baseUrl ?? resolveSessionBaseUrl()
-  const { requestUrl, sessionId } = buildRunUrl(input, baseUrl)
+  const { requestUrl, sessionId, body } = buildMessageRequest(input, baseUrl)
 
-  const response = await fetch(requestUrl.toString(), { method: "POST" })
+  const response = await fetch(requestUrl.toString(), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  })
 
   if (!response.ok) {
     throw new Error(`session start failed with status ${response.status}`)

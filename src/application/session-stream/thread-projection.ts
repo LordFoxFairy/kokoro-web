@@ -28,7 +28,7 @@ export function computeActivityVersion(state: SessionStreamState): number {
   return version
 }
 
-// legacy 恢复只回放了 messages：为缺 text 步骤的 assistant 段补合成 text 步骤，保证刷新后答案仍被渲染。
+// 恢复只回放了 messages 时：为缺 text 步骤的 assistant 段补合成 text 步骤，保证刷新后答案仍被渲染。
 function withRestoredTextSteps(
   steps: SessionStep[],
   messagesById: Record<string, SessionMessage>,
@@ -40,11 +40,7 @@ function withRestoredTextSteps(
   if (missing.length === 0) {
     return steps
   }
-  let nextSeq = steps.reduce((max, step) => Math.max(max, step.seq), 0)
-  const synthetic: SessionStep[] = missing.map((segmentId) => {
-    nextSeq += 1
-    return { kind: "text", seq: nextSeq, segmentId }
-  })
+  const synthetic: SessionStep[] = missing.map((segmentId) => ({ kind: "text", segmentId }))
   return [...steps, ...synthetic]
 }
 

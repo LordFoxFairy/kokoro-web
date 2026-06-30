@@ -16,8 +16,9 @@ const answer: SessionMessage = {
   runId: "run_01",
 }
 
-function textStep(segmentId: string, seq: number): SessionStep {
-  return { kind: "text", seq, segmentId }
+function textStep(segmentId: string, order?: number): SessionStep {
+  void order
+  return { kind: "text", segmentId }
 }
 
 describe("AssistantTurn streaming caret", () => {
@@ -55,7 +56,7 @@ describe("AssistantTurn streaming caret", () => {
     // 过程先到、正文未到：这一段没有文本气泡，光标无处可挂。
     const { container } = render(
       <AssistantTurn
-        steps={[{ kind: "thinking", seq: 1, segmentId: "m1", text: "想" }]}
+        steps={[{ kind: "thinking", segmentId: "m1", text: "想" }]}
         messagesById={{}}
         isLive
       />,
@@ -113,7 +114,7 @@ describe("AssistantTurn shared answer-bubble skeleton (A1)", () => {
     // A1 核心不变量：尾段从 forming（过程先到、正文未到）到 streaming（正文到）必须复用
     // 同一个 .kk-turn__answer DOM 元素——只换盒内内容，整盒不卸载重挂。用元素身份证明。
     const steps: SessionStep[] = [
-      { kind: "thinking", seq: 1, segmentId: "m1", text: "先想" },
+      { kind: "thinking", segmentId: "m1", text: "先想" },
     ]
     const { container, rerender } = render(
       <AssistantTurn steps={steps} messagesById={{}} isLive />,
@@ -165,7 +166,7 @@ describe("AssistantTurn legibility (B layer)", () => {
     // 无正文时仍由成形盒显示「重连中…」，状态条不重复出现（避免双重朗读/双标签）。
     const { container } = render(
       <AssistantTurn
-        steps={[{ kind: "thinking", seq: 1, segmentId: "m1", text: "想" }]}
+        steps={[{ kind: "thinking", segmentId: "m1", text: "想" }]}
         messagesById={{}}
         isLive
         reconnecting
@@ -200,14 +201,13 @@ describe("AssistantTurn legibility (B layer)", () => {
     const text1: SessionMessage = { id: "s1", role: "assistant", content: "让我查一下天气。", runId: "run_01" }
     const text2: SessionMessage = { id: "s2", role: "assistant", content: "北京今天晴", runId: "run_01" }
     const steps: SessionStep[] = [
-      { kind: "text", seq: 1, segmentId: "s1" },
+      { kind: "text", segmentId: "s1" },
       {
         kind: "tool",
-        seq: 2,
         segmentId: "s2",
         tool: { id: "t1", name: "get_weather", args: {}, status: "done", result: "晴" },
       },
-      { kind: "text", seq: 3, segmentId: "s2" },
+      { kind: "text", segmentId: "s2" },
     ]
     const { container } = render(
       <AssistantTurn steps={steps} messagesById={{ s1: text1, s2: text2 }} isLive />,
@@ -234,10 +234,9 @@ describe("AssistantTurn legibility (B layer)", () => {
     // text1 落定后工具先到、text2 未到的瞬间：seg2 气泡位回落成形态「正在…」，工具在下面跑。
     const text1: SessionMessage = { id: "s1", role: "assistant", content: "让我查一下。", runId: "run_01" }
     const steps: SessionStep[] = [
-      { kind: "text", seq: 1, segmentId: "s1" },
+      { kind: "text", segmentId: "s1" },
       {
         kind: "tool",
-        seq: 2,
         segmentId: "s2",
         tool: { id: "t1", name: "get_weather", args: {}, status: "running" },
       },
@@ -271,7 +270,7 @@ describe("AssistantTurn legibility (B layer)", () => {
     // 这里构造一个非尾、有思考无文本的段，钉死它渲染过程块、不冒「正在…」假占位（更多文本不会来了）。
     const tailMsg: SessionMessage = { id: "m2", role: "assistant", content: "最终答案", runId: "run_01" }
     const steps: SessionStep[] = [
-      { kind: "thinking", seq: 1, segmentId: "m1", text: "中间段只有思考" },
+      { kind: "thinking", segmentId: "m1", text: "中间段只有思考" },
       textStep("m2", 2),
     ]
     const { container } = render(
@@ -341,10 +340,9 @@ describe("AssistantTurn structure (one spine per turn, no avatar)", () => {
   it("renders the answer bubble ABOVE its process, with the segment's tools hanging below it", () => {
     // 机器人一段信息 = 文本气泡在上、它的过程（思考/该段工具）挂在下面（次级、可折叠）。
     const steps: SessionStep[] = [
-      { kind: "thinking", seq: 1, segmentId: "m1", text: "先想" },
+      { kind: "thinking", segmentId: "m1", text: "先想" },
       {
         kind: "tool",
-        seq: 2,
         segmentId: "m1",
         tool: { id: "t1", name: "get_weather", args: {}, status: "done", result: "晴" },
       },
@@ -398,7 +396,6 @@ describe("AssistantTurn structure (one spine per turn, no avatar)", () => {
       textStep("m1", 1),
       {
         kind: "tool",
-        seq: 2,
         segmentId: "m2",
         tool: { id: "t2", name: "air_quality", args: { city: "北京" }, status: "running" },
       },

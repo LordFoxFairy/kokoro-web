@@ -117,16 +117,11 @@ export function buildSimulatedReplyEvents(
   }
 
   const events: SessionStreamEvent[] = []
-  // 单调 seq：模拟流与真实流同形，按 push 顺序自增，复刻信封游标的发射序号语义。
-  let seq = 0
-  const nextSeq = () => (seq += 1)
-
   if (executionStyle === "thinking") {
     chunkText(previewThinking).forEach((delta, index) => {
       events.push({
         kind: "thinking-delta",
         eventId: `${ids.segmentId}-t${index}`,
-        seq: nextSeq(),
         ...envelope,
         segmentId: ids.segmentId,
         delta,
@@ -136,7 +131,6 @@ export function buildSimulatedReplyEvents(
     events.push({
       kind: "tool-invoked",
       eventId: `${ids.segmentId}-ti`,
-      seq: nextSeq(),
       ...envelope,
       segmentId: ids.segmentId,
       toolId: previewTool.toolId,
@@ -146,7 +140,6 @@ export function buildSimulatedReplyEvents(
     events.push({
       kind: "tool-returned",
       eventId: `${ids.segmentId}-tr`,
-      seq: nextSeq(),
       ...envelope,
       segmentId: ids.segmentId,
       toolId: previewTool.toolId,
@@ -158,7 +151,6 @@ export function buildSimulatedReplyEvents(
     events.push({
       kind: "todo-updated",
       eventId: `${ids.segmentId}-todo`,
-      seq: nextSeq(),
       ...envelope,
       todos: [
         { content: "确认用户意图", status: "completed" },
@@ -171,7 +163,6 @@ export function buildSimulatedReplyEvents(
     events.push({
       kind: "message-delta",
       eventId: `${ids.segmentId}-d${index}`,
-      seq: nextSeq(),
       ...envelope,
       segmentId: ids.segmentId,
       role: "assistant",
@@ -182,7 +173,6 @@ export function buildSimulatedReplyEvents(
   events.push({
     kind: "message-completed",
     eventId: `${ids.segmentId}-c`,
-    seq: nextSeq(),
     ...envelope,
     segmentId: ids.segmentId,
     role: "assistant",
@@ -191,7 +181,6 @@ export function buildSimulatedReplyEvents(
   events.push({
     kind: "run-completed",
     eventId: `${ids.runId}-done`,
-    seq: nextSeq(),
     ...envelope,
   })
 

@@ -51,7 +51,6 @@ function instantReply(makeText: (input: string) => string): StartReply {
     const completed = applySessionEvent(initialState, {
       kind: "message-completed",
       eventId: `stub-c-${id}`,
-      seq: 1,
       ...envelope,
       runId: `stub-run-${id}`,
       segmentId: `stub-msg-${id}`,
@@ -61,7 +60,6 @@ function instantReply(makeText: (input: string) => string): StartReply {
     const done = applySessionEvent(completed, {
       kind: "run-completed",
       eventId: `stub-done-${id}`,
-      seq: 1,
       ...envelope,
       runId: `stub-run-${id}`,
     })
@@ -81,7 +79,6 @@ const neverSettles: StartReply = ({
   const partial = applySessionEvent(initialState, {
     kind: "message-delta",
     eventId: `stub-d-${stubCounter}`,
-    seq: 1,
     ...envelope,
     runId: `stub-run-${stubCounter}`,
     segmentId: `stub-msg-${stubCounter}`,
@@ -104,7 +101,6 @@ function spyableNeverSettles(partialText: string): {
     const partial = applySessionEvent(initialState, {
       kind: "message-delta",
       eventId: `stub-d-${stubCounter}`,
-      seq: 1,
       ...envelope,
       runId: `stub-run-${stubCounter}`,
       segmentId: `stub-msg-${stubCounter}`,
@@ -126,7 +122,6 @@ const failingReply: StartReply = ({
   const failed = applySessionEvent(initialState, {
     kind: "run-failed",
     eventId: `stub-f-${stubCounter}`,
-    seq: 1,
     ...envelope,
     runId: `stub-run-${stubCounter}`,
     errorKind: "agent_error",
@@ -159,7 +154,6 @@ function failThenSucceed(): {
       ? applySessionEvent(initialState, {
           kind: "run-failed",
           eventId: `fts-f-${id}`,
-          seq: 1,
           ...envelope,
           runId: `fts-run-${id}`,
           errorKind: "agent_error",
@@ -169,7 +163,6 @@ function failThenSucceed(): {
           applySessionEvent(initialState, {
             kind: "message-completed",
             eventId: `fts-c-${id}`,
-            seq: 1,
             ...envelope,
             runId: `fts-run-${id}`,
             segmentId: `fts-msg-${id}`,
@@ -179,7 +172,6 @@ function failThenSucceed(): {
           {
             kind: "run-completed",
             eventId: `fts-done-${id}`,
-            seq: 1,
             ...envelope,
             runId: `fts-run-${id}`,
           },
@@ -502,7 +494,6 @@ describe("SessionShell stop control", () => {
       const partial = applySessionEvent(initialState, {
         kind: "message-delta",
         eventId: `stub-nh-${stubCounter}`,
-        seq: 1,
         ...envelope,
         runId: `stub-run-${stubCounter}`,
         segmentId: `stub-msg-${stubCounter}`,
@@ -608,7 +599,6 @@ describe("SessionShell composer ergonomics", () => {
       const partial = applySessionEvent(initialState, {
         kind: "message-delta",
         eventId: `count-${start.mock.calls.length}`,
-        seq: 1,
         ...envelope,
         runId: `count-run-${start.mock.calls.length}`,
         segmentId: `count-msg-${start.mock.calls.length}`,
@@ -831,7 +821,6 @@ describe("SessionShell retry on failure", () => {
         const failed = applySessionEvent(initialState, {
           kind: "run-failed",
           eventId: "retry-guard-f",
-          seq: 1,
           ...envelope,
           runId: "retry-guard-run-1",
           errorKind: "agent_error",
@@ -845,7 +834,6 @@ describe("SessionShell retry on failure", () => {
       const partial = applySessionEvent(initialState, {
         kind: "message-delta",
         eventId: "retry-guard-d",
-        seq: 1,
         ...envelope,
         runId: "retry-guard-run-2",
         segmentId: "retry-guard-msg",
@@ -897,7 +885,6 @@ describe("SessionShell jump-to-latest scroll", () => {
         state = applySessionEvent(state, {
           kind: "message-delta",
           eventId: `defer-${delta}`,
-          seq: 1,
           ...envelope,
           runId: "defer-run",
           segmentId: "defer-msg",
@@ -938,7 +925,6 @@ describe("SessionShell jump-to-latest scroll", () => {
         state = applySessionEvent(state, {
           kind: "message-delta",
           eventId: `near-${delta}`,
-          seq: 1,
           ...envelope,
           runId: "near-run",
           segmentId: "near-msg",
@@ -972,7 +958,6 @@ describe("SessionShell jump-to-latest scroll", () => {
         state = applySessionEvent(state, {
           kind: "message-delta",
           eventId: `jump-${delta}`,
-          seq: 1,
           ...envelope,
           runId: "jump-run",
           segmentId: "jump-msg",
@@ -1140,7 +1125,6 @@ describe("SessionShell agent activity", () => {
       let next = applySessionEvent(initialState, {
         kind: "todo-updated",
         eventId: `todo-${id}`,
-        seq: 1,
         ...envelope,
         runId: `r-${id}`,
         todos: [
@@ -1151,7 +1135,6 @@ describe("SessionShell agent activity", () => {
       next = applySessionEvent(next, {
         kind: "thinking-delta",
         eventId: `think-${id}`,
-        seq: 1,
         ...envelope,
         runId: `r-${id}`,
         segmentId: `m-${id}`,
@@ -1160,7 +1143,6 @@ describe("SessionShell agent activity", () => {
       next = applySessionEvent(next, {
         kind: "message-completed",
         eventId: `c-${id}`,
-        seq: 1,
         ...envelope,
         runId: `r-${id}`,
         segmentId: `m-${id}`,
@@ -1170,7 +1152,6 @@ describe("SessionShell agent activity", () => {
       next = applySessionEvent(next, {
         kind: "run-completed",
         eventId: `done-${id}`,
-        seq: 1,
         ...envelope,
         runId: `r-${id}`,
       })
@@ -1197,9 +1178,8 @@ describe("SessionShell agent activity", () => {
 
   it("groups a multi-segment run under ONE turn with steps in true emission order", () => {
     // 为什么重要：同一 run 的多段 assistant 文本属于一轮——必须收在一个 .kk-turn--assistant 下
-    // （一个头像、一条脊），过程（思考/工具/子智能体）按 seq 渲染在它引出的文本之上，
+    // （一个头像、一条脊），过程（思考/工具/子智能体）按 append order 渲染在它引出的文本之上，
     // 真实时序 thinking→tool→text→thinking→subagent→text 完整还原，绝不重排或只渲染最后一段。
-    let seq = 0
     const multiSegmentReply: StartReply = ({
       initialState,
       onState,
@@ -1214,7 +1194,6 @@ describe("SessionShell agent activity", () => {
       let next = applySessionEvent(initialState, {
         kind: "thinking-delta",
         eventId: `think-1-${id}`,
-        seq: (seq += 1),
         ...envelope,
         runId,
         segmentId: firstMessageId,
@@ -1223,7 +1202,6 @@ describe("SessionShell agent activity", () => {
       next = applySessionEvent(next, {
         kind: "tool-invoked",
         eventId: `tool-invoked-${id}`,
-        seq: (seq += 1),
         ...envelope,
         runId,
         segmentId: firstMessageId,
@@ -1234,7 +1212,6 @@ describe("SessionShell agent activity", () => {
       next = applySessionEvent(next, {
         kind: "tool-returned",
         eventId: `tool-returned-${id}`,
-        seq: (seq += 1),
         ...envelope,
         runId,
         segmentId: firstMessageId,
@@ -1246,7 +1223,6 @@ describe("SessionShell agent activity", () => {
       next = applySessionEvent(next, {
         kind: "message-completed",
         eventId: `completed-1-${id}`,
-        seq: (seq += 1),
         ...envelope,
         runId,
         segmentId: firstMessageId,
@@ -1256,7 +1232,6 @@ describe("SessionShell agent activity", () => {
       next = applySessionEvent(next, {
         kind: "thinking-delta",
         eventId: `think-2-${id}`,
-        seq: (seq += 1),
         ...envelope,
         runId,
         segmentId: secondMessageId,
@@ -1265,7 +1240,6 @@ describe("SessionShell agent activity", () => {
       next = applySessionEvent(next, {
         kind: "subagent-started",
         eventId: `subagent-started-${id}`,
-        seq: (seq += 1),
         ...envelope,
         runId,
         segmentId: secondMessageId,
@@ -1278,7 +1252,6 @@ describe("SessionShell agent activity", () => {
       next = applySessionEvent(next, {
         kind: "subagent-finished",
         eventId: `subagent-finished-${id}`,
-        seq: (seq += 1),
         ...envelope,
         runId,
         segmentId: secondMessageId,
@@ -1290,7 +1263,6 @@ describe("SessionShell agent activity", () => {
       next = applySessionEvent(next, {
         kind: "message-completed",
         eventId: `completed-2-${id}`,
-        seq: (seq += 1),
         ...envelope,
         runId,
         segmentId: secondMessageId,
@@ -1300,7 +1272,6 @@ describe("SessionShell agent activity", () => {
       next = applySessionEvent(next, {
         kind: "run-completed",
         eventId: `done-${id}`,
-        seq: (seq += 1),
         ...envelope,
         runId,
       })
@@ -1451,7 +1422,6 @@ describe("SessionShell sessions list", () => {
       const partial = applySessionEvent(args.initialState, {
         kind: "message-delta",
         eventId: "mix-d",
-        seq: 1,
         ...envelope,
         runId: "mix-run",
         segmentId: "mix-msg",
@@ -1526,14 +1496,13 @@ describe("SessionShell interrupt recovery", () => {
         applySessionEvent(initialState, {
           kind: "message-completed",
           eventId: "re-c",
-          seq: 1,
           ...envelope,
           runId: "r-re",
           segmentId: "a1",
           role: "assistant",
           content: "续传后补完的完整回答",
         }),
-        { kind: "run-completed", eventId: "re-d", seq: 1, ...envelope, runId: "r-re" },
+        { kind: "run-completed", eventId: "re-d", ...envelope, runId: "r-re" },
       )
       onState(done)
       onSettled()
@@ -1680,7 +1649,6 @@ describe("SessionShell interrupt recovery", () => {
       const partial = applySessionEvent(initialState, {
         kind: "message-delta",
         eventId: `stop-d-${stubCounter}`,
-        seq: 1,
         ...envelope,
         runId: `stop-run-${stubCounter}`,
         segmentId: `stop-msg-${stubCounter}`,
@@ -1745,13 +1713,11 @@ const awaitingReply: StartReply = ({ initialState, onState }: StartReplyInput) =
   const invoked = applySessionEvent(initialState, {
     kind: "tool-invoked",
     eventId: `aw-i-${stubCounter}`,
-    seq: 1,
     ...base,
   })
   let state = applySessionEvent(invoked, {
     kind: "tool-awaiting-approval",
     eventId: `aw-a-${stubCounter}`,
-    seq: 2,
     ...base,
   })
   onState(state)
@@ -1776,22 +1742,20 @@ const multiAwaitingReply: StartReply = ({ initialState, onState }: StartReplyInp
     args: { url: "http://x" },
   }
   let state = initialState
-  ;[`mw-tA-${stubCounter}`, `mw-tB-${stubCounter}`].forEach((toolId, i) => {
+  for (const toolId of [`mw-tA-${stubCounter}`, `mw-tB-${stubCounter}`]) {
     state = applySessionEvent(state, {
       kind: "tool-invoked",
       eventId: `mw-i-${toolId}`,
-      seq: i * 2 + 1,
       ...base,
       toolId,
     })
     state = applySessionEvent(state, {
       kind: "tool-awaiting-approval",
       eventId: `mw-a-${toolId}`,
-      seq: i * 2 + 2,
       ...base,
       toolId,
     })
-  })
+  }
   onState(state)
   return {
     close: () => {},
@@ -1951,17 +1915,15 @@ const approvableReply: StartReply = ({ initialState, onState }: StartReplyInput)
     applySessionEvent(initialState, {
       kind: "tool-invoked",
       eventId: `ok-i-${n}`,
-      seq: 1,
       ...base,
     }),
-    { kind: "tool-awaiting-approval", eventId: `ok-a-${n}`, seq: 2, ...base },
+    { kind: "tool-awaiting-approval", eventId: `ok-a-${n}`, ...base },
   )
   onState(state)
   approveResume = () => {
     state = applySessionEvent(state, {
       kind: "tool-returned",
       eventId: `ok-r-${n}`,
-      seq: 3,
       ...envelope,
       runId,
       segmentId: seg,
@@ -1973,7 +1935,6 @@ const approvableReply: StartReply = ({ initialState, onState }: StartReplyInput)
     state = applySessionEvent(state, {
       kind: "message-completed",
       eventId: `ok-m-${n}`,
-      seq: 4,
       ...envelope,
       runId,
       segmentId: `ok-msg-${n}`,
@@ -1983,7 +1944,6 @@ const approvableReply: StartReply = ({ initialState, onState }: StartReplyInput)
     state = applySessionEvent(state, {
       kind: "run-completed",
       eventId: `ok-d-${n}`,
-      seq: 5,
       ...envelope,
       runId,
     })

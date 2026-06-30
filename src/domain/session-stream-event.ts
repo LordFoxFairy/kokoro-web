@@ -10,12 +10,10 @@ export type SessionTodo = {
   status: SessionTodoStatus
 }
 
-// seq：session 透传 agent 的一等发射序号，是真实发射顺序的唯一排序源。
 export type SessionStreamEvent =
   | {
       kind: "thinking-delta"
       eventId: string
-      seq: number
       sessionId: string
       conversationId: string
       runId: string
@@ -25,7 +23,6 @@ export type SessionStreamEvent =
   | {
       kind: "message-delta"
       eventId: string
-      seq: number
       sessionId: string
       conversationId: string
       runId: string
@@ -36,7 +33,6 @@ export type SessionStreamEvent =
   | {
       kind: "message-completed"
       eventId: string
-      seq: number
       sessionId: string
       conversationId: string
       runId: string
@@ -47,7 +43,6 @@ export type SessionStreamEvent =
   | {
       kind: "tool-invoked"
       eventId: string
-      seq: number
       sessionId: string
       conversationId: string
       runId: string
@@ -59,7 +54,6 @@ export type SessionStreamEvent =
   | {
       kind: "tool-awaiting-approval"
       eventId: string
-      seq: number
       sessionId: string
       conversationId: string
       runId: string
@@ -71,7 +65,6 @@ export type SessionStreamEvent =
   | {
       kind: "tool-returned"
       eventId: string
-      seq: number
       sessionId: string
       conversationId: string
       runId: string
@@ -87,7 +80,6 @@ export type SessionStreamEvent =
   | {
       kind: "todo-updated"
       eventId: string
-      seq: number
       sessionId: string
       conversationId: string
       runId: string
@@ -96,7 +88,6 @@ export type SessionStreamEvent =
   | {
       kind: "subagent-started"
       eventId: string
-      seq: number
       sessionId: string
       conversationId: string
       runId: string
@@ -110,7 +101,6 @@ export type SessionStreamEvent =
   | {
       kind: "subagent-finished"
       eventId: string
-      seq: number
       sessionId: string
       conversationId: string
       runId: string
@@ -125,7 +115,6 @@ export type SessionStreamEvent =
   | {
       kind: "subagent-text-delta"
       eventId: string
-      seq: number
       sessionId: string
       conversationId: string
       runId: string
@@ -136,7 +125,6 @@ export type SessionStreamEvent =
   | {
       kind: "subagent-text-completed"
       eventId: string
-      seq: number
       sessionId: string
       conversationId: string
       runId: string
@@ -147,7 +135,6 @@ export type SessionStreamEvent =
   | {
       kind: "run-completed"
       eventId: string
-      seq: number
       sessionId: string
       conversationId: string
       runId: string
@@ -156,7 +143,6 @@ export type SessionStreamEvent =
   | {
       kind: "run-failed"
       eventId: string
-      seq: number
       sessionId: string
       conversationId: string
       runId: string
@@ -167,7 +153,6 @@ export type SessionStreamEvent =
   | {
       kind: "session-created"
       eventId: string
-      seq: number
       sessionId: string
       conversationId: string
       runId: string

@@ -59,10 +59,9 @@ function applyMessageEvent(
       content: event.delta,
       runId: event.runId,
     })
-    // 文本步骤进入有序列表：标记「这一段文本在此 seq 出现」，渲染时据此与过程交错。
+    // 文本步骤进入有序列表：标记「这一段文本在此处出现」，渲染时据此与过程交错。
     return appendRunStep(state, event.runId, {
       kind: "text",
-      seq: event.seq,
       segmentId: event.segmentId,
     })
   }
@@ -85,7 +84,6 @@ function applyMessageEvent(
   })
   return appendRunStep(state, event.runId, {
     kind: "text",
-    seq: event.seq,
     segmentId: event.segmentId,
   })
 }
@@ -116,7 +114,6 @@ function applyThinkingDelta(
   }
   return appendRunStep(state, event.runId, {
     kind: "thinking",
-    seq: event.seq,
     segmentId: event.segmentId,
     text: event.delta,
   })
@@ -128,7 +125,6 @@ function applyToolInvoked(
 ): SessionStreamState {
   return appendRunStep(state, event.runId, {
     kind: "tool",
-    seq: event.seq,
     segmentId: event.segmentId,
     tool: {
       id: event.toolId,
@@ -162,7 +158,6 @@ function applyToolAwaitingApproval(
   // 无配对的 invoked（乱序/部分 replay）：仍补建 awaiting 步，防止审批 UI 丢失。
   return appendRunStep(state, event.runId, {
     kind: "tool",
-    seq: event.seq,
     segmentId: event.segmentId,
     tool: {
       id: event.toolId,
@@ -214,7 +209,6 @@ function applyToolReturned(
   // 无配对的 invoked（如部分 replay）：仍记录已完成的结果，不丢事件。
   return appendRunStep(state, event.runId, {
     kind: "tool",
-    seq: event.seq,
     segmentId: event.segmentId,
     tool: {
       id: event.toolId,
@@ -235,7 +229,6 @@ function applySubagentStarted(
 ): SessionStreamState {
   return appendRunStep(state, event.runId, {
     kind: "subagent",
-    seq: event.seq,
     segmentId: event.segmentId,
     subagent: {
       id: event.subagentId,

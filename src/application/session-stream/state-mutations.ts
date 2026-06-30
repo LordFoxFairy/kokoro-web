@@ -10,21 +10,6 @@ export function createSessionStreamState(): SessionStreamState {
   }
 }
 
-// 按 (seq, 到达先后) 稳定插入：同 seq 追加在已有同 seq 之后，保持 append 语义。
-export function insertOrdered(
-  steps: SessionStep[],
-  step: SessionStep,
-): SessionStep[] {
-  const next = [...steps]
-  // 从尾部找到第一个 seq <= 新步骤 seq 的位置之后插入（稳定：同 seq 排到既有之后）。
-  let index = next.length
-  while (index > 0 && (next[index - 1]?.seq ?? 0) > step.seq) {
-    index -= 1
-  }
-  next.splice(index, 0, step)
-  return next
-}
-
 // 就地更新已存在的步骤（按谓词定位）而不改其位置：tool 翻 done、subagent 续写 output 等。
 export function updateRunStep(
   state: SessionStreamState,
@@ -56,7 +41,7 @@ export function appendRunStep(
   const steps = state.stepsByRun[runId] ?? []
   return {
     ...state,
-    stepsByRun: { ...state.stepsByRun, [runId]: insertOrdered(steps, step) },
+    stepsByRun: { ...state.stepsByRun, [runId]: [...steps, step] },
   }
 }
 

@@ -23,8 +23,6 @@ const eventEnvelopeSchema = z
       "run.failed",
     ]),
     event_id: z.string().min(1),
-    // seq：session 透传 agent 的一等发射序号，是真实发射顺序的唯一排序源。
-    seq: z.number().int().nonnegative(),
     session_id: z.string().min(1),
     conversation_id: z.string().min(1),
     run_id: z.string().min(1),

@@ -66,7 +66,6 @@ class MockEventSource {
   }
 }
 
-let envelopeSeq = 0
 const envelope = (
   event: string,
   eventId: string,
@@ -74,7 +73,6 @@ const envelope = (
 ) => ({
   event,
   event_id: eventId,
-  seq: (envelopeSeq += 1),
   session_id: "ses_01",
   conversation_id: "conv_01",
   run_id: "run_01",
@@ -84,7 +82,6 @@ const envelope = (
 
 afterEach(() => {
   MockEventSource.instances = []
-  envelopeSeq = 0
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
   vi.useRealTimers()
@@ -113,9 +110,13 @@ describe("consumeLiveSession", () => {
       string,
       RequestInit,
     ]
-    expect(requestUrl).toContain("/sessions/ses_01/runs")
-    expect(requestUrl).toContain("input=hello+kokoro")
+    expect(requestUrl).toContain("/sessions/ses_01/messages")
     expect(requestInit.method).toBe("POST")
+    expect(requestInit.headers).toEqual({ "content-type": "application/json" })
+    expect(JSON.parse(String(requestInit.body))).toMatchObject({
+      content: "hello kokoro",
+      executionStyle: "fast",
+    })
 
     const source = MockEventSource.instances[0]
     expect(source).toBeDefined()
@@ -259,8 +260,14 @@ describe("consumeLiveSession", () => {
       onState: () => {},
     } as unknown as Parameters<typeof consumeLiveSession>[0])
 
-    const [requestUrl] = fetchMock.mock.calls[0] as [string, RequestInit]
-    expect(requestUrl).toContain("execution_style=thinking")
+    const [requestUrl, requestInit] = fetchMock.mock.calls[0] as [
+      string,
+      RequestInit,
+    ]
+    expect(requestUrl).toContain("/sessions/ses_01/messages")
+    expect(JSON.parse(String(requestInit.body))).toMatchObject({
+      executionStyle: "thinking",
+    })
 
     handle.close()
   })
@@ -278,8 +285,14 @@ describe("consumeLiveSession", () => {
       permissionMode: "default",
       onState: () => {},
     } as unknown as Parameters<typeof consumeLiveSession>[0])
-    const [defaultUrl] = defaultFetch.mock.calls[0] as [string, RequestInit]
-    expect(defaultUrl).toContain("permission_mode=default")
+    const [defaultUrl, defaultInit] = defaultFetch.mock.calls[0] as [
+      string,
+      RequestInit,
+    ]
+    expect(defaultUrl).toContain("/sessions/ses_01/messages")
+    expect(JSON.parse(String(defaultInit.body))).toMatchObject({
+      permissionMode: "default",
+    })
     defaultHandle.close()
 
     const autoFetch = vi.fn().mockResolvedValue(new Response(null, { status: 202 }))
@@ -290,8 +303,14 @@ describe("consumeLiveSession", () => {
       permissionMode: "auto",
       onState: () => {},
     } as unknown as Parameters<typeof consumeLiveSession>[0])
-    const [autoUrl] = autoFetch.mock.calls[0] as [string, RequestInit]
-    expect(autoUrl).not.toContain("permission_mode")
+    const [autoUrl, autoInit] = autoFetch.mock.calls[0] as [
+      string,
+      RequestInit,
+    ]
+    expect(autoUrl).toContain("/sessions/ses_01/messages")
+    expect(JSON.parse(String(autoInit.body))).not.toHaveProperty(
+      "permissionMode",
+    )
     autoHandle.close()
   })
 

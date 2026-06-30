@@ -40,7 +40,7 @@ bun run build
 
 ## 关键不变量
 
-- **seq 唯一排序源**：渲染顺序只由信封 `seq` 决定（per-run 非递减），不靠到达顺序。
+- **按流到达顺序渲染**：session 负责 DB replay + live tail 的顺序收敛；web 只做 `eventId` 去重并按接收顺序 append。
 - **多段交错**：`tool → text → tool` 不塌缩，工具挂在它产出的答案段下；首 token 不跳盒。
 - **中断恢复**：刷新 reattach 全量重放 + 去重；瞬断 `Last-Event-ID` 增量续传；重连有可辨提示。
 - **严格解析隔离**：单条畸形/未知事件 skip-and-continue，不污染 thread、不整体崩。

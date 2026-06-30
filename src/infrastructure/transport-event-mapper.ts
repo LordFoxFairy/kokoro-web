@@ -3,10 +3,9 @@ import type { SessionStreamEvent } from "@/domain/session-stream-event"
 import type { SessionTransportEvent } from "./transport-event-schema"
 
 // 每个被投影事件共享的信封字段；各 case 只在其上补 kind 与 payload 专属字段。
-function base(event: SessionTransportEvent, seq: number) {
+function base(event: SessionTransportEvent) {
   return {
     eventId: event.event_id,
-    seq,
     sessionId: event.session_id,
     conversationId: event.conversation_id,
     runId: event.run_id,
@@ -16,14 +15,11 @@ function base(event: SessionTransportEvent, seq: number) {
 export function toSessionStreamEvent(
   event: SessionTransportEvent,
 ): SessionStreamEvent | null {
-  // seq 是唯一排序源（session 透传 agent seq）。
-  const seq = event.seq
-
   switch (event.event) {
     case "session.created":
       return {
         kind: "session-created",
-        ...base(event, seq),
+        ...base(event),
         title: event.payload.title,
         ownerId: event.payload.owner_id,
       }
@@ -33,7 +29,7 @@ export function toSessionStreamEvent(
     case "message.delta":
       return {
         kind: "message-delta",
-        ...base(event, seq),
+        ...base(event),
         segmentId: event.payload.segment_id,
         role: event.payload.role,
         delta: event.payload.delta,
@@ -41,7 +37,7 @@ export function toSessionStreamEvent(
     case "message.completed":
       return {
         kind: "message-completed",
-        ...base(event, seq),
+        ...base(event),
         segmentId: event.payload.segment_id,
         role: event.payload.role,
         content: event.payload.content,
@@ -49,13 +45,13 @@ export function toSessionStreamEvent(
     case "run.completed":
       return {
         kind: "run-completed",
-        ...base(event, seq),
+        ...base(event),
         finalMessageId: event.payload.final_message_id,
       }
     case "run.failed":
       return {
         kind: "run-failed",
-        ...base(event, seq),
+        ...base(event),
         errorKind: event.payload.error_kind,
         message: event.payload.message,
         requestId: event.payload.request_id,
@@ -63,14 +59,14 @@ export function toSessionStreamEvent(
     case "thinking.delta":
       return {
         kind: "thinking-delta",
-        ...base(event, seq),
+        ...base(event),
         segmentId: event.payload.segment_id,
         delta: event.payload.delta,
       }
     case "tool.invoked":
       return {
         kind: "tool-invoked",
-        ...base(event, seq),
+        ...base(event),
         segmentId: event.payload.segment_id,
         toolId: event.payload.tool_id,
         name: event.payload.name,
@@ -79,7 +75,7 @@ export function toSessionStreamEvent(
     case "tool.awaiting_approval":
       return {
         kind: "tool-awaiting-approval",
-        ...base(event, seq),
+        ...base(event),
         segmentId: event.payload.segment_id,
         toolId: event.payload.tool_id,
         name: event.payload.name,
@@ -88,7 +84,7 @@ export function toSessionStreamEvent(
     case "tool.returned":
       return {
         kind: "tool-returned",
-        ...base(event, seq),
+        ...base(event),
         segmentId: event.payload.segment_id,
         toolId: event.payload.tool_id,
         name: event.payload.name,
@@ -110,13 +106,13 @@ export function toSessionStreamEvent(
     case "todo.updated":
       return {
         kind: "todo-updated",
-        ...base(event, seq),
+        ...base(event),
         todos: event.payload.todos,
       }
     case "subagent.started":
       return {
         kind: "subagent-started",
-        ...base(event, seq),
+        ...base(event),
         segmentId: event.payload.segment_id,
         subagentId: event.payload.subagent_id,
         name: event.payload.name,
@@ -127,7 +123,7 @@ export function toSessionStreamEvent(
     case "subagent.finished":
       return {
         kind: "subagent-finished",
-        ...base(event, seq),
+        ...base(event),
         segmentId: event.payload.segment_id,
         subagentId: event.payload.subagent_id,
         name: event.payload.name,
@@ -140,7 +136,7 @@ export function toSessionStreamEvent(
     case "subagent.text.delta":
       return {
         kind: "subagent-text-delta",
-        ...base(event, seq),
+        ...base(event),
         segmentId: event.payload.segment_id,
         subagentId: event.payload.subagent_id,
         text: event.payload.text,
@@ -148,7 +144,7 @@ export function toSessionStreamEvent(
     case "subagent.text.completed":
       return {
         kind: "subagent-text-completed",
-        ...base(event, seq),
+        ...base(event),
         segmentId: event.payload.segment_id,
         subagentId: event.payload.subagent_id,
         text: event.payload.text,

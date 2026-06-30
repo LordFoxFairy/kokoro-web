@@ -35,17 +35,16 @@ export type SessionSubagent = {
   error?: string
 }
 
-// 有序 Step：过程与文本按发射时序（seq，来自传输游标）排成一列，而非按 kind 归桶。
+// 有序 Step：过程与文本按 SSE 到达顺序 append 成一列，而非按 kind 归桶。
 export type SessionStep =
-  | { kind: "thinking"; seq: number; segmentId: string; text: string }
-  | { kind: "tool"; seq: number; segmentId: string; tool: SessionToolCall }
+  | { kind: "thinking"; segmentId: string; text: string }
+  | { kind: "tool"; segmentId: string; tool: SessionToolCall }
   | {
       kind: "subagent"
-      seq: number
       segmentId: string
       subagent: SessionSubagent
     }
-  | { kind: "text"; seq: number; segmentId: string }
+  | { kind: "text"; segmentId: string }
 
 export type SessionStreamState = {
   // 内存用 Set 做 O(1) 去重；落盘序列化为 string[]（见 state-schema）。
@@ -53,7 +52,7 @@ export type SessionStreamState = {
   messages: SessionMessage[]
   // todo 仍按当前运行整表替换（保留全局 TodoBar，见计划 fork #3）。
   todos: SessionTodo[]
-  // 有序步骤：按 runId 归集，每个 run 一条 append-only 的 SessionStep 列表（按 seq 定序）。
+  // 有序步骤：按 runId 归集，每个 run 一条 append-only 的 SessionStep 列表。
   stepsByRun: Record<string, SessionStep[]>
   runStatus: "idle" | "completed" | "failed"
 }

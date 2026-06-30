@@ -8,7 +8,6 @@ describe("parseTransportEvent", () => {
     const transportEvent = parseTransportEvent({
       event: "message.delta",
       event_id: "evt_01",
-      seq: 12,
       session_id: "ses_01",
       conversation_id: "conv_01",
       run_id: "run_01",
@@ -25,7 +24,6 @@ describe("parseTransportEvent", () => {
     expect(event).toEqual({
       kind: "message-delta",
       eventId: "evt_01",
-      seq: 12,
       sessionId: "ses_01",
       conversationId: "conv_01",
       runId: "run_01",
@@ -35,25 +33,26 @@ describe("parseTransportEvent", () => {
     })
   })
 
-  it("reads the first-class seq", () => {
+  it("does not require a sort field in the transport envelope", () => {
     const transportEvent = parseTransportEvent({
       event: "message.delta",
-      event_id: "evt_seq",
-      seq: 42,
+      event_id: "evt_no_sort_field",
       session_id: "ses_01",
       conversation_id: "conv_01",
       run_id: "run_01",
       timestamp: "2026-05-28T12:00:00.000Z",
       payload: { segment_id: "msg_01", delta: "Hi", role: "assistant" },
     })
-    expect(toSessionStreamEvent(transportEvent)?.seq).toBe(42)
+    expect(toSessionStreamEvent(transportEvent)).toMatchObject({
+      kind: "message-delta",
+      eventId: "evt_no_sort_field",
+    })
   })
 
   it("accepts a non-'completed' terminal status without dropping the run end (forward-compat)", () => {
     const ev = parseTransportEvent({
       event: "run.completed",
       event_id: "evt_term",
-      seq: 9,
       session_id: "ses_01",
       conversation_id: "conv_01",
       run_id: "run_01",
@@ -67,7 +66,6 @@ describe("parseTransportEvent", () => {
     const transportEvent = parseTransportEvent({
       event: "run.created",
       event_id: "evt_00",
-      seq: 11,
       session_id: "ses_01",
       conversation_id: "conv_01",
       run_id: "run_01",
@@ -85,7 +83,6 @@ describe("parseTransportEvent", () => {
       parseTransportEvent({
         event: "session.created",
         event_id: "evt_title",
-        seq: 10,
         session_id: "ses_01",
         conversation_id: "conv_01",
         run_id: "run_01",
@@ -104,7 +101,6 @@ describe("parseTransportEvent", () => {
       parseTransportEvent({
         event: "run.completed",
         event_id: "evt_02",
-        seq: 13,
         session_id: "ses_01",
         conversation_id: "conv_01",
         run_id: "run_01",

@@ -9,7 +9,7 @@ import { MarkdownMessage } from "./markdown-message"
 import { SegmentProcess } from "./segment-process"
 
 type AssistantTurnProps = {
-  // 这一轮（一个 runId）按 seq 排好的有序步骤：思考/工具/子智能体/文本交错。
+  // 这一轮（一个 runId）按接收顺序排列的有序步骤：思考/工具/子智能体/文本交错。
   steps: SessionStep[]
   // 文本步骤按 segmentId 取这一段正文；过程先到、正文未到时该段可能暂缺。
   messagesById: Record<string, SessionMessage>
