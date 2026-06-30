@@ -22,7 +22,8 @@ type AssistantTurnProps = {
   // HITL：批准/拒绝本轮某个待批工具（已按 runId 绑定，留 toolId）。Promise 用于把 control POST 失败抛回按钮层。
   onToolDecision?: (
     toolId: string,
-    decision: "approve" | "reject",
+    decision: "approve" | "reject" | "respond",
+    message?: string,
   ) => void | Promise<void>
 }
 

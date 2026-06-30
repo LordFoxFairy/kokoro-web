@@ -138,7 +138,100 @@ describe("ToolCallRow", () => {
     expect(decisions).toEqual(["reject"])
   })
 
+  it("renders ask_user_question as a typed answer form and sends a respond payload", () => {
+    const responses: string[] = []
+    render(
+      <ToolCallRow
+        tool={makeTool({
+          name: "ask_user_question",
+          status: "awaiting",
+          args: {
+            prompt: "你想生成什么风格？",
+            inputType: "text",
+            required: true,
+          },
+        })}
+        onRespond={(message) => {
+          responses.push(message)
+        }}
+      />,
+    )
 
+    const input = screen.getByLabelText("你的回答")
+    const submit = screen.getByText("提交")
+    expect(submit).toBeDisabled()
+
+    fireEvent.change(input, { target: { value: "极简科技风" } })
+    fireEvent.click(submit)
+
+    expect(responses).toEqual([
+      JSON.stringify({ submitted: true, value: "极简科技风" }),
+    ])
+  })
+
+  it("sends selected options through respond for ask_user_question choices", () => {
+    const responses: string[] = []
+    render(
+      <ToolCallRow
+        tool={makeTool({
+          name: "ask_user_question",
+          status: "awaiting",
+          args: {
+            prompt: "选择输出格式",
+            inputType: "multi_choice",
+            options: [
+              { id: "md", label: "Markdown" },
+              { id: "pdf", label: "PDF" },
+            ],
+            allowCustomOption: true,
+          },
+        })}
+        onRespond={(message) => {
+          responses.push(message)
+        }}
+      />,
+    )
+
+    fireEvent.click(screen.getByLabelText("Markdown"))
+    fireEvent.change(screen.getByLabelText("自定义选项"), {
+      target: { value: "HTML" },
+    })
+    fireEvent.click(screen.getByText("提交"))
+
+    expect(responses).toEqual([
+      JSON.stringify({
+        submitted: true,
+        value: "Markdown, HTML",
+        selectedOptionIds: ["md"],
+        values: { customOption: "HTML" },
+      }),
+    ])
+  })
+
+  it("treats ask_user_question cancellation as a respond result, not a reject", () => {
+    const responses: string[] = []
+    render(
+      <ToolCallRow
+        tool={makeTool({
+          name: "ask_user_question",
+          status: "awaiting",
+          args: {
+            prompt: "继续执行吗？",
+            inputType: "confirmation",
+          },
+        })}
+        onRespond={(message) => {
+          responses.push(message)
+        }}
+      />,
+    )
+
+    fireEvent.click(screen.getByText("取消"))
+
+    expect(responses).toEqual([
+      JSON.stringify({ submitted: false, cancelled: true }),
+    ])
+  })
 
   it("carries the awaiting state class", () => {
     const { container } = render(

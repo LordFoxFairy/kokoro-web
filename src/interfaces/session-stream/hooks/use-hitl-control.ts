@@ -74,8 +74,24 @@ export function useHitlControl({
   }, [activeId, isStreaming, nowMs, persistedStore, setLiveStore, store])
 
   const sendToolDecision = useCallback(
-    async (runId: string, toolId: string, decision: "approve" | "reject") => {
+    async (
+      runId: string,
+      toolId: string,
+      decision: "approve" | "reject" | "respond",
+      message?: string,
+    ) => {
       if (!activeId) {
+        return
+      }
+      if (decision === "respond") {
+        await sendRunControl({
+          sessionId: activeId,
+          runId,
+          body: {
+            kind: "run.resume",
+            decisions: [{ type: "respond", tool_id: toolId, message: message ?? "" }],
+          },
+        })
         return
       }
       const current = store ?? persistedStore

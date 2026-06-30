@@ -1766,6 +1766,38 @@ const multiAwaitingReply: StartReply = ({ initialState, onState }: StartReplyInp
   }
 }
 
+const askUserQuestionReply: StartReply = ({
+  initialState,
+  onState,
+}: StartReplyInput) => {
+  stubCounter += 1
+  const runId = `ask-run-${stubCounter}`
+  const base = {
+    ...envelope,
+    runId,
+    segmentId: `ask-seg-${stubCounter}`,
+    toolId: `ask-tool-${stubCounter}`,
+    name: "ask_user_question",
+    args: {
+      prompt: "你希望使用什么城市？",
+      inputType: "text",
+      required: true,
+    },
+  }
+  const invoked = applySessionEvent(initialState, {
+    kind: "tool-invoked",
+    eventId: `ask-i-${stubCounter}`,
+    ...base,
+  })
+  const state = applySessionEvent(invoked, {
+    kind: "tool-awaiting-approval",
+    eventId: `ask-a-${stubCounter}`,
+    ...base,
+  })
+  onState(state)
+  return { close: () => {} }
+}
+
 describe("SessionShell HITL multi-tool (same-frame batching)", () => {
   beforeEach(() => {
     sendRunControlMock.mockClear()
@@ -1808,6 +1840,42 @@ describe("SessionShell HITL multi-tool (same-frame batching)", () => {
     const firstArg = (sendRunControlMock.mock.calls[0] as unknown[])[0]
     const body = (firstArg as { body: { decisions: unknown[] } }).body
     expect(body.decisions).toHaveLength(2)
+  })
+})
+
+describe("SessionShell ask_user_question", () => {
+  beforeEach(() => {
+    sendRunControlMock.mockClear()
+  })
+
+  it("submits user input as a respond decision", async () => {
+    render(<SessionShell startReply={askUserQuestionReply} />)
+    send("需要补充城市")
+
+    fireEvent.change(screen.getByLabelText("你的回答"), {
+      target: { value: "东京" },
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "提交" }))
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(sendRunControlMock).toHaveBeenCalledTimes(1)
+    expect(sendRunControlMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: {
+          kind: "run.resume",
+          decisions: [
+            {
+              type: "respond",
+              tool_id: expect.stringMatching(/^ask-tool-/),
+              message: JSON.stringify({ submitted: true, value: "东京" }),
+            },
+          ],
+        },
+      }),
+    )
   })
 })
 

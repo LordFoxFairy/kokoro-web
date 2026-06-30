@@ -24,7 +24,8 @@ type ConversationThreadProps = {
   onToolDecision?: (
     runId: string,
     toolId: string,
-    decision: "approve" | "reject",
+    decision: "approve" | "reject" | "respond",
+    message?: string,
   ) => void | Promise<void>
 }
 
@@ -81,7 +82,8 @@ export function ConversationThread({
               mode={mode}
               onToolDecision={
                 onToolDecision
-                  ? (toolId, decision) => onToolDecision(item.runId, toolId, decision)
+                  ? (toolId, decision, message) =>
+                      onToolDecision(item.runId, toolId, decision, message)
                   : undefined
               }
             />

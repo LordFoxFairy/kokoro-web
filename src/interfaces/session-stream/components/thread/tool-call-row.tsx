@@ -3,6 +3,11 @@ import { useState } from "react"
 import type { SessionToolCall } from "@/application/session-stream/reducer"
 
 import { ChevronIcon, WrenchIcon } from "../icons"
+import {
+  ASK_USER_QUESTION_TOOL_NAME,
+  AskUserQuestionCard,
+  parseAskUserQuestionArgs,
+} from "./ask-user-question-card"
 import { RunState } from "./run-state"
 
 // 工具参数压成紧凑 JSON 预览；空参数返回 null（不渲染参数块）。
@@ -26,10 +31,12 @@ export function ToolCallRow({
   tool,
   onApprove,
   onReject,
+  onRespond,
 }: {
   tool: SessionToolCall
   onApprove?: () => void | Promise<void>
   onReject?: () => void | Promise<void>
+  onRespond?: (message: string) => void | Promise<void>
 }) {
   const argsText = formatArgs(tool.args)
   const running = tool.status === "running"
@@ -46,6 +53,11 @@ export function ToolCallRow({
   // 有入参/结果/错误/待批/已拒绝才展开；无任何细节的工具保持紧凑静态行，spinner 已表态。
   const hasDetail =
     argsText !== null || Boolean(tool.result) || failed || awaiting || rejected
+  const askQuestion =
+    tool.name === ASK_USER_QUESTION_TOOL_NAME
+      ? parseAskUserQuestionArgs(tool.args)
+      : null
+  const showAskQuestion = awaiting && Boolean(askQuestion) && Boolean(onRespond)
 
   const head = (
     <>
@@ -82,10 +94,15 @@ export function ToolCallRow({
         <ChevronIcon className="kk-tool__chevron" />
       </summary>
       <div className="kk-tool__detail">
-        {argsText !== null ? (
+        {argsText !== null && !showAskQuestion ? (
           <pre className="kk-tool__args">{argsText}</pre>
         ) : null}
-        {awaiting ? (
+        {showAskQuestion && askQuestion && onRespond ? (
+          <AskUserQuestionCard
+            question={askQuestion}
+            onRespond={onRespond}
+          />
+        ) : awaiting ? (
           <div className="kk-tool__approval" role="group" aria-label="工具调用待批准">
             <p className="kk-tool__approval-prompt">
               {/* 同帧多工具时本工具的决定可能仅先暂存（待其余工具决定后才统一提交）→ 用「已记录」
