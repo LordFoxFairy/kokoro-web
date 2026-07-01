@@ -24,8 +24,8 @@ src/
 ## 运行
 
 ```bash
-bun install
-bun run dev      # :3000
+npm install
+npm run dev      # :3000
 ```
 
 后端地址用 `NEXT_PUBLIC_KOKORO_SESSION_BASE_URL`（默认 `http://127.0.0.1:3001`）。
@@ -34,10 +34,10 @@ bun run dev      # :3000
 ## 门禁
 
 ```bash
-bun run test         # vitest（schema/reducer/组件边界矩阵 + session-shell 整壳集成）
-bun run typecheck
-bun run lint
-bun run build
+npm test              # vitest（schema/reducer/组件边界矩阵 + session-shell 整壳集成）
+npm run typecheck
+npm run lint
+npm run build
 ```
 
 ## 关键不变量
