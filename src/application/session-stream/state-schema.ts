@@ -19,6 +19,12 @@ const storedToolCallSchema = z
     result: z.string().optional(),
     status: z.enum(["running", "awaiting", "rejected", "done", "error"]),
     errorText: z.string().optional(),
+    rejectReason: z.string().optional(),
+    responded: z.boolean().optional(),
+    description: z.string().optional(),
+    allowedDecisions: z.array(z.enum(["approve", "edit", "reject", "respond"])).optional(),
+    awaitingKind: z.enum(["tool_approval", "ask_user"]).optional(),
+    editable: z.boolean().optional(),
   })
   .strict()
 

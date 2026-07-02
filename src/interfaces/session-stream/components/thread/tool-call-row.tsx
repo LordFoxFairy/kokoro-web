@@ -26,10 +26,12 @@ export function ToolCallRow({
   tool,
   onApprove,
   onReject,
+  onRespond,
 }: {
   tool: SessionToolCall
   onApprove?: () => void | Promise<void>
   onReject?: () => void | Promise<void>
+  onRespond?: (message: string) => void | Promise<void>
 }) {
   const argsText = formatArgs(tool.args)
   const running = tool.status === "running"
@@ -43,6 +45,13 @@ export function ToolCallRow({
   // 点击批准/拒绝后本地置 true：立即禁用按钮,防连点发出第二条决定(否则会被下一个待批工具误读)。
   const [decided, setDecided] = useState(false)
   const [approvalError, setApprovalError] = useState(false)
+  const [response, setResponse] = useState("")
+  const allowedDecisions = tool.allowedDecisions ?? []
+  const canApprove = allowedDecisions.includes("approve")
+  const canReject = allowedDecisions.includes("reject")
+  const canRespond = allowedDecisions.includes("respond")
+  const responseText = response.trim()
+  const prompt = tool.description || "Agent 需要你的回复。"
   // 有入参/结果/错误/待批/已拒绝才展开；无任何细节的工具保持紧凑静态行，spinner 已表态。
   const hasDetail =
     argsText !== null || Boolean(tool.result) || failed || awaiting || rejected
@@ -90,44 +99,76 @@ export function ToolCallRow({
             <p className="kk-tool__approval-prompt">
               {/* 同帧多工具时本工具的决定可能仅先暂存（待其余工具决定后才统一提交）→ 用「已记录」
                   而非「已提交」，对单/多工具都诚实，不谎称已发往后端。 */}
-              {approvalError ? "决定发送失败，请重试。" : decided ? "已记录你的决定…" : "该工具调用需要你的批准。"}
+              {approvalError ? "决定发送失败，请重试。" : decided ? "已记录你的决定…" : prompt}
             </p>
-            {onApprove && onReject ? (
+            {canRespond && onRespond ? (
+              <div className="kk-tool__respond">
+                <input
+                  className="kk-tool__respond-input"
+                  aria-label="回复 agent"
+                  value={response}
+                  disabled={decided}
+                  onChange={(event) => setResponse(event.target.value)}
+                />
+                <button
+                  type="button"
+                  className="kk-tool__respond-send"
+                  disabled={decided || responseText.length === 0}
+                  onClick={async () => {
+                    setApprovalError(false)
+                    setDecided(true)
+                    try {
+                      await onRespond(responseText)
+                    } catch {
+                      setDecided(false)
+                      setApprovalError(true)
+                    }
+                  }}
+                >
+                  发送回复
+                </button>
+              </div>
+            ) : null}
+            {(canApprove || canReject) && onApprove && onReject ? (
               <div className="kk-tool__approval-actions">
-                <button
-                  type="button"
-                  className="kk-tool__approve"
-                  disabled={decided}
-                  onClick={async () => {
-                    setApprovalError(false)
-                    setDecided(true)
-                    try {
-                      await onApprove?.()
-                    } catch {
-                      setDecided(false)
-                      setApprovalError(true)
-                    }
-                  }}
-                >
-                  批准
-                </button>
-                <button
-                  type="button"
-                  className="kk-tool__reject"
-                  disabled={decided}
-                  onClick={async () => {
-                    setApprovalError(false)
-                    setDecided(true)
-                    try {
-                      await onReject?.()
-                    } catch {
-                      setDecided(false)
-                      setApprovalError(true)
-                    }
-                  }}
-                >
-                  拒绝
-                </button>
+                {canApprove ? (
+                  <button
+                    type="button"
+                    className="kk-tool__approve"
+                    disabled={decided}
+                    onClick={async () => {
+                      setApprovalError(false)
+                      setDecided(true)
+                      try {
+                        await onApprove?.()
+                      } catch {
+                        setDecided(false)
+                        setApprovalError(true)
+                      }
+                    }}
+                  >
+                    批准
+                  </button>
+                ) : null}
+                {canReject ? (
+                  <button
+                    type="button"
+                    className="kk-tool__reject"
+                    disabled={decided}
+                    onClick={async () => {
+                      setApprovalError(false)
+                      setDecided(true)
+                      try {
+                        await onReject?.()
+                      } catch {
+                        setDecided(false)
+                        setApprovalError(true)
+                      }
+                    }}
+                  >
+                    拒绝
+                  </button>
+                ) : null}
               </div>
             ) : null}
           </div>

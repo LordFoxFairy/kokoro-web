@@ -46,7 +46,7 @@ CLAUDE.md
 .playwright-mcp/
 .superpowers/
 
-# 包管理器以 bun.lock + package-lock.json 为准；pnpm 锁是野生件，忽略以免三锁打架
+# 包管理器以 npm/package-lock.json 为准；pnpm 锁是野生件，忽略以免多锁打架
 pnpm-lock.yaml
 pnpm-workspace.yaml
 
@@ -58,6 +58,8 @@ b-*.png
 c-*.png
 d-*.png
 stream-*.png
+team-owner-dropdown.png
+teams-page.png
 
 # 用户暂存区（kokoro-platform 等异构草稿）：不入库、不进 tsc/vitest（见 vitest.config / tsconfig exclude）。
 /tmp

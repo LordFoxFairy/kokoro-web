@@ -16,6 +16,7 @@ export type {
   SessionSubagent,
   SessionToolCall,
   ThreadItem,
+  ToolDecision,
 } from "./types"
 export {
   appendUserMessage,
@@ -155,7 +156,17 @@ function applyToolAwaitingApproval(
       (step) => step.kind === "tool" && step.tool.id === event.toolId,
       (step) =>
         step.kind === "tool"
-          ? { ...step, tool: { ...step.tool, status: "awaiting" } }
+          ? {
+              ...step,
+              tool: {
+                ...step.tool,
+                status: "awaiting",
+                description: event.description,
+                allowedDecisions: event.allowedDecisions,
+                awaitingKind: event.awaitingKind,
+                editable: event.editable,
+              },
+            }
           : step,
     )
   }
@@ -169,6 +180,10 @@ function applyToolAwaitingApproval(
       name: event.name,
       args: event.args,
       status: "awaiting",
+      description: event.description,
+      allowedDecisions: event.allowedDecisions,
+      awaitingKind: event.awaitingKind,
+      editable: event.editable,
     },
   })
 }

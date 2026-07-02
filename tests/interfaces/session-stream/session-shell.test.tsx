@@ -42,6 +42,20 @@ const envelope = { sessionId: "ses_01", conversationId: "conv_01" }
 
 let stubCounter = 0
 
+const approvalAwaitingMeta = {
+  description: "需要批准工具调用",
+  allowedDecisions: ["approve", "edit", "reject"] as Array<"approve" | "edit" | "reject">,
+  awaitingKind: "tool_approval" as const,
+  editable: true,
+}
+
+const askUserAwaitingMeta = {
+  description: "需要用户回答",
+  allowedDecisions: ["respond"] as Array<"respond">,
+  awaitingKind: "ask_user" as const,
+  editable: false,
+}
+
 // 同步回复桩：把一条 assistant 终态折进 thread 并立即 settle，
 // 让组件测试无需计时器即可断言渲染结果。每次调用用唯一 id，避免多轮被去重吞掉。
 function instantReply(makeText: (input: string) => string): StartReply {
@@ -1752,6 +1766,7 @@ const awaitingReply: StartReply = ({ initialState, onState }: StartReplyInput) =
     kind: "tool-awaiting-approval",
     eventId: `aw-a-${stubCounter}`,
     seq: 2,
+    ...approvalAwaitingMeta,
     ...base,
   })
   onState(state)
@@ -1788,6 +1803,7 @@ const multiAwaitingReply: StartReply = ({ initialState, onState }: StartReplyInp
       kind: "tool-awaiting-approval",
       eventId: `mw-a-${toolId}`,
       seq: i * 2 + 2,
+      ...approvalAwaitingMeta,
       ...base,
       toolId,
     })
@@ -1844,6 +1860,65 @@ describe("SessionShell HITL multi-tool (same-frame batching)", () => {
     const firstArg = (sendRunControlMock.mock.calls[0] as unknown[])[0]
     const body = (firstArg as { body: { decisions: unknown[] } }).body
     expect(body.decisions).toHaveLength(2)
+  })
+})
+
+const askUserReply: StartReply = ({ initialState, onState }: StartReplyInput) => {
+  stubCounter += 1
+  const runId = `ask-run-${stubCounter}`
+  const base = {
+    ...envelope,
+    runId,
+    segmentId: `ask-seg-${stubCounter}`,
+    toolId: `ask-tool-${stubCounter}`,
+    name: "ask_user",
+    args: { question: "你希望我继续还是停止？" },
+  }
+  const invoked = applySessionEvent(initialState, {
+    kind: "tool-invoked",
+    eventId: `ask-i-${stubCounter}`,
+    seq: 1,
+    ...base,
+  })
+  const state = applySessionEvent(invoked, {
+    kind: "tool-awaiting-approval",
+    eventId: `ask-a-${stubCounter}`,
+    seq: 2,
+    ...askUserAwaitingMeta,
+    ...base,
+  })
+  onState(state)
+  return { close: () => {} }
+}
+
+describe("SessionShell HITL ask_user", () => {
+  beforeEach(() => {
+    sendRunControlMock.mockClear()
+  })
+
+  it("renders a user-answer prompt and sends a respond decision", async () => {
+    render(<SessionShell startReply={askUserReply} />)
+    send("先问我")
+
+    expect(screen.queryByRole("button", { name: "批准" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "拒绝" })).not.toBeInTheDocument()
+
+    const input = screen.getByLabelText("回复 agent")
+    fireEvent.change(input, { target: { value: "继续执行" } })
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "发送回复" }))
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(sendRunControlMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: {
+          kind: "run.resume",
+          decisions: [expect.objectContaining({ type: "respond", message: "继续执行" })],
+        },
+      }),
+    )
   })
 })
 
@@ -1954,7 +2029,7 @@ const approvableReply: StartReply = ({ initialState, onState }: StartReplyInput)
       seq: 1,
       ...base,
     }),
-    { kind: "tool-awaiting-approval", eventId: `ok-a-${n}`, seq: 2, ...base },
+    { kind: "tool-awaiting-approval", eventId: `ok-a-${n}`, seq: 2, ...approvalAwaitingMeta, ...base },
   )
   onState(state)
   approveResume = () => {

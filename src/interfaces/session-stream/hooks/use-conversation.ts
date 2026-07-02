@@ -22,6 +22,7 @@ import { type StartReply } from "@/application/session-stream/reply"
 import {
   appendUserMessage,
   type SessionStreamState,
+  type ToolDecision,
 } from "@/application/session-stream/reducer"
 import type { PermissionMode } from "@/application/session-stream/transport"
 
@@ -81,7 +82,7 @@ type Conversation = {
   sendToolDecision: (
     runId: string,
     toolId: string,
-    decision: "approve" | "reject",
+    decision: ToolDecision,
   ) => Promise<void>
 }
 

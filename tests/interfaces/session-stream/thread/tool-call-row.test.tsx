@@ -16,6 +16,13 @@ function makeTool(overrides: Partial<SessionToolCall> = {}): SessionToolCall {
   }
 }
 
+const approvalMeta = {
+  description: "需要批准工具调用",
+  allowedDecisions: ["approve", "edit", "reject"] as Array<"approve" | "edit" | "reject">,
+  awaitingKind: "tool_approval" as const,
+  editable: true,
+}
+
 describe("ToolCallRow", () => {
   it("carries a running state class while the tool is in flight", () => {
     const { container } = render(
@@ -111,7 +118,7 @@ describe("ToolCallRow", () => {
     const decisions: string[] = []
     render(
       <ToolCallRow
-        tool={makeTool({ status: "awaiting", args: { url: "http://x" } })}
+        tool={makeTool({ status: "awaiting", args: { url: "http://x" }, ...approvalMeta })}
         onApprove={() => { decisions.push("approve") }}
         onReject={() => { decisions.push("reject") }}
       />,
@@ -129,7 +136,7 @@ describe("ToolCallRow", () => {
     const decisions: string[] = []
     render(
       <ToolCallRow
-        tool={makeTool({ status: "awaiting", args: { url: "http://x" } })}
+        tool={makeTool({ status: "awaiting", args: { url: "http://x" }, ...approvalMeta })}
         onApprove={() => { decisions.push("approve") }}
         onReject={() => { decisions.push("reject") }}
       />,
@@ -138,7 +145,25 @@ describe("ToolCallRow", () => {
     expect(decisions).toEqual(["reject"])
   })
 
-
+  it("fires respond with the typed answer for ask_user", () => {
+    const replies: string[] = []
+    render(
+      <ToolCallRow
+        tool={makeTool({
+          status: "awaiting",
+          args: { question: "继续吗" },
+          description: "需要用户回答",
+          allowedDecisions: ["respond"],
+          awaitingKind: "ask_user",
+          editable: false,
+        })}
+        onRespond={(message) => { replies.push(message) }}
+      />,
+    )
+    fireEvent.change(screen.getByLabelText("回复 agent"), { target: { value: "  继续  " } })
+    fireEvent.click(screen.getByText("发送回复"))
+    expect(replies).toEqual(["继续"])
+  })
 
   it("carries the awaiting state class", () => {
     const { container } = render(

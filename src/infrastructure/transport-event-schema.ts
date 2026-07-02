@@ -23,7 +23,7 @@ const eventEnvelopeSchema = z
       "run.failed",
     ]),
     event_id: z.string().min(1),
-    // seq：session 透传 agent 的一等发射序号，是真实发射顺序的唯一排序源。
+    // seq：session 从 transport cursor 派生的渲染顺序号；不是 agent 业务字段，也不是 replay cursor。
     seq: z.number().int().nonnegative(),
     session_id: z.string().min(1),
     conversation_id: z.string().min(1),
@@ -112,6 +112,10 @@ const toolAwaiting_approvalSchema = eventEnvelopeSchema.extend({
       tool_id: z.string().min(1),
       name: z.string().min(1),
       args: z.record(z.unknown()),
+      description: z.string(),
+      allowed_decisions: z.array(z.enum(["approve", "edit", "reject", "respond"])),
+      kind: z.enum(["tool_approval", "ask_user"]),
+      editable: z.boolean(),
     })
     .strict(),
 })

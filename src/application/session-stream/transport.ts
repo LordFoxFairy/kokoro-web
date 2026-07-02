@@ -29,10 +29,10 @@ export type LiveSessionHandle = {
 }
 
 // HITL 决策（出站到 session control 端点；session 注入 run_id 后转发 agent run.resume）。
-// 只含当前审批 UI 实际会发的两型；wire（session/agent）另支持 edit/respond，待 web 有对应 UI 再扩。
 export type ResumeDecisionInput =
   | { type: "approve"; tool_id: string }
   | { type: "reject"; tool_id: string; message: string }
+  | { type: "respond"; tool_id: string; message: string }
 
 // control 请求体：放弃整个 run，或一次性携同帧全部待批工具的决策（agent 按 tool_id 一一对齐）。
 export type RunControlBody =
@@ -143,7 +143,7 @@ export function openSessionStream(args: OpenSessionStreamArgs): LiveSessionHandl
   }
 
   let state = args.initialState
-  const streamUrl = new URL(`/sessions/${args.sessionId}/stream`, args.baseUrl)
+  const streamUrl = new URL(`/sessions/${args.sessionId}/events`, args.baseUrl)
   const source = new EventSource(streamUrl.toString())
 
   const close = () => {
@@ -193,18 +193,19 @@ export function openSessionStream(args: OpenSessionStreamArgs): LiveSessionHandl
   }
 }
 
-function buildRunUrl(input: ConsumeLiveSessionInput, baseUrl: string) {
+function buildMessageRequest(input: ConsumeLiveSessionInput, baseUrl: string) {
   const sessionId = input.sessionId ?? demoSessionId
   const conversationId = input.conversationId ?? demoConversationId
-  const requestUrl = new URL(`/sessions/${sessionId}/runs`, baseUrl)
-  requestUrl.searchParams.set("conversation_id", conversationId)
-  requestUrl.searchParams.set("input", input.input)
-  requestUrl.searchParams.set("execution_style", input.executionStyle ?? "fast")
-  // 权限档位：默认 auto（后端默认全放行）；仅非默认时附带，省得污染 URL。
-  if (input.permissionMode && input.permissionMode !== "auto") {
-    requestUrl.searchParams.set("permission_mode", input.permissionMode)
+  const requestUrl = new URL(`/sessions/${sessionId}/messages`, baseUrl)
+  const body = {
+    content: input.input,
+    conversationId,
+    executionStyle: input.executionStyle ?? "fast",
+    ...(input.permissionMode && input.permissionMode !== "auto"
+      ? { permissionMode: input.permissionMode }
+      : {}),
   }
-  return { requestUrl, sessionId }
+  return { requestUrl, sessionId, body }
 }
 
 // 纯渲染消费者：POST 触发 run，再开 SSE 把 AGUI 事件折进 reducer。
@@ -212,9 +213,13 @@ export async function consumeLiveSession(
   input: ConsumeLiveSessionInput,
 ): Promise<LiveSessionHandle> {
   const baseUrl = input.baseUrl ?? resolveSessionBaseUrl()
-  const { requestUrl, sessionId } = buildRunUrl(input, baseUrl)
+  const { requestUrl, sessionId, body } = buildMessageRequest(input, baseUrl)
 
-  const response = await fetch(requestUrl.toString(), { method: "POST" })
+  const response = await fetch(requestUrl.toString(), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  })
 
   if (!response.ok) {
     throw new Error(`session start failed with status ${response.status}`)

@@ -4,6 +4,7 @@ import type { AgentMode } from "@/application/conversation-store"
 import type {
   SessionSubagent,
   SessionToolCall,
+  ToolDecision,
 } from "@/application/session-stream/reducer"
 import { setDisclosure } from "@/application/session-stream/process-disclosure"
 
@@ -26,7 +27,7 @@ type SegmentProcessProps = {
   // HITL：批准/拒绝本轮某个待批工具（已按 runId 绑定，留 toolId）。Promise 用于把 control POST 失败抛回按钮层。
   onToolDecision?: (
     toolId: string,
-    decision: "approve" | "reject",
+    decision: ToolDecision,
   ) => void | Promise<void>
 }
 
@@ -127,10 +128,15 @@ export function SegmentProcess({
                     key={tool.id}
                     tool={tool}
                     onApprove={
-                      onToolDecision ? () => onToolDecision(tool.id, "approve") : undefined
+                      onToolDecision ? () => onToolDecision(tool.id, { type: "approve" }) : undefined
                     }
                     onReject={
-                      onToolDecision ? () => onToolDecision(tool.id, "reject") : undefined
+                      onToolDecision ? () => onToolDecision(tool.id, { type: "reject" }) : undefined
+                    }
+                    onRespond={
+                      onToolDecision
+                        ? (message) => onToolDecision(tool.id, { type: "respond", message })
+                        : undefined
                     }
                   />
                 ))}

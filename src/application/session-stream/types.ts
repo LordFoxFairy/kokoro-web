@@ -1,4 +1,7 @@
-import type { SessionTodo } from "@/domain/session-stream-event"
+import type {
+  SessionResumeDecision,
+  SessionTodo,
+} from "@/domain/session-stream-event"
 
 export type SessionMessage = {
   id: string
@@ -21,7 +24,16 @@ export type SessionToolCall = {
   rejectReason?: string
   // HITL 人工答复：status=done 但结果是人工填的（非工具产出）；UI 显「已人工答复」标记。
   responded?: boolean
+  description?: string
+  allowedDecisions?: SessionResumeDecision[]
+  awaitingKind?: "tool_approval" | "ask_user"
+  editable?: boolean
 }
+
+export type ToolDecision =
+  | { type: "approve" }
+  | { type: "reject" }
+  | { type: "respond"; message: string }
 
 export type SessionSubagent = {
   id: string

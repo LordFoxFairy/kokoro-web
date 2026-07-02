@@ -5,12 +5,14 @@ export type SessionMessageRole = "assistant" | "user"
 
 export type SessionTodoStatus = "pending" | "in_progress" | "completed"
 
+export type SessionResumeDecision = "approve" | "edit" | "reject" | "respond"
+
 export type SessionTodo = {
   content: string
   status: SessionTodoStatus
 }
 
-// seq：session 透传 agent 的一等发射序号，是真实发射顺序的唯一排序源。
+// seq：session 从 transport cursor 派生的渲染顺序号；不是 agent 业务字段，也不是 replay cursor。
 export type SessionStreamEvent =
   | {
       kind: "thinking-delta"
@@ -67,6 +69,10 @@ export type SessionStreamEvent =
       toolId: string
       name: string
       args: Record<string, unknown>
+      description: string
+      allowedDecisions: SessionResumeDecision[]
+      awaitingKind: "tool_approval" | "ask_user"
+      editable: boolean
     }
   | {
       kind: "tool-returned"

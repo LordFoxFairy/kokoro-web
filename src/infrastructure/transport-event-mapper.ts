@@ -16,7 +16,7 @@ function base(event: SessionTransportEvent, seq: number) {
 export function toSessionStreamEvent(
   event: SessionTransportEvent,
 ): SessionStreamEvent | null {
-  // seq 是唯一排序源（session 透传 agent seq）。
+  // seq 是 session 从 transport cursor 派生的 render order，只用于同一 run 内 UI 交错。
   const seq = event.seq
 
   switch (event.event) {
@@ -84,6 +84,10 @@ export function toSessionStreamEvent(
         toolId: event.payload.tool_id,
         name: event.payload.name,
         args: event.payload.args,
+        description: event.payload.description,
+        allowedDecisions: event.payload.allowed_decisions,
+        awaitingKind: event.payload.kind,
+        editable: event.payload.editable,
       }
     case "tool.returned":
       return {

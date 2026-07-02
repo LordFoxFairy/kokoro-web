@@ -14,6 +14,7 @@ import {
 import {
   findActiveRunId,
   markRunCancelled,
+  type ToolDecision,
 } from "@/application/session-stream/reducer"
 import {
   sendRunControl,
@@ -44,9 +45,9 @@ export function useHitlControl({
   setLiveStore,
   store,
 }: UseHitlControlArgs) {
-  // 同帧多工具决策暂存：runId → (toolId → approve/reject)。凑齐全部 awaiting 才发一条 resume
+  // 同帧多工具决策暂存：runId → (toolId → decision)。凑齐全部 awaiting 才发一条 resume
   // （agent 按 tool_id 一一对齐，缺/多即 fail-loud）；POST 失败保留暂存供重试，不在 render 读写。
-  const stagedRef = useRef<Map<string, Map<string, "approve" | "reject">>>(new Map())
+  const stagedRef = useRef<Map<string, Map<string, ToolDecision>>>(new Map())
 
   const cancelActiveRun = useCallback(async () => {
     if (!store || !activeId || !isStreaming) {
@@ -74,7 +75,7 @@ export function useHitlControl({
   }, [activeId, isStreaming, nowMs, persistedStore, setLiveStore, store])
 
   const sendToolDecision = useCallback(
-    async (runId: string, toolId: string, decision: "approve" | "reject") => {
+    async (runId: string, toolId: string, decision: ToolDecision) => {
       if (!activeId) {
         return
       }
@@ -97,11 +98,16 @@ export function useHitlControl({
         // 仍有同帧工具未决：靠工具行自身的 decided 态给反馈，等齐后统一提交。
         return
       }
-      const decisions = awaitingIds.map((id) =>
-        staged.get(id) === "reject"
-          ? { type: "reject" as const, tool_id: id, message: REJECT_MESSAGE }
-          : { type: "approve" as const, tool_id: id },
-      )
+      const decisions = awaitingIds.map((id) => {
+        const stagedDecision = staged.get(id)
+        if (stagedDecision?.type === "reject") {
+          return { type: "reject" as const, tool_id: id, message: REJECT_MESSAGE }
+        }
+        if (stagedDecision?.type === "respond") {
+          return { type: "respond" as const, tool_id: id, message: stagedDecision.message }
+        }
+        return { type: "approve" as const, tool_id: id }
+      })
       await sendRunControl({
         sessionId: activeId,
         runId,
@@ -109,7 +115,7 @@ export function useHitlControl({
       })
       // 仅 POST 成功后本地收口：被拒工具就地置 rejected（防 reject 回流把它翻成绿勾 done）；
       // 批准的工具不动、待 agent 恢复后正常运行。失败则保留暂存，按钮层恢复可重试。
-      const rejectedIds = awaitingIds.filter((id) => staged.get(id) === "reject")
+      const rejectedIds = awaitingIds.filter((id) => staged.get(id)?.type === "reject")
       if (rejectedIds.length > 0) {
         replyHandleRef.current?.markToolRejected?.(runId, rejectedIds)
       }

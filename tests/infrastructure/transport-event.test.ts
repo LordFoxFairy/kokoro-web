@@ -49,6 +49,45 @@ describe("parseTransportEvent", () => {
     expect(toSessionStreamEvent(transportEvent)?.seq).toBe(42)
   })
 
+  it("maps awaiting approval metadata without colliding with the render kind", () => {
+    const transportEvent = parseTransportEvent({
+      event: "tool.awaiting_approval",
+      event_id: "evt_wait",
+      seq: 13,
+      session_id: "ses_01",
+      conversation_id: "conv_01",
+      run_id: "run_01",
+      timestamp: "2026-05-28T12:00:00.000Z",
+      payload: {
+        segment_id: "seg_01",
+        tool_id: "call_01",
+        name: "ask_user",
+        args: { question: "继续吗" },
+        description: "需要用户回答",
+        allowed_decisions: ["respond"],
+        kind: "ask_user",
+        editable: false,
+      },
+    })
+
+    expect(toSessionStreamEvent(transportEvent)).toEqual({
+      kind: "tool-awaiting-approval",
+      eventId: "evt_wait",
+      seq: 13,
+      sessionId: "ses_01",
+      conversationId: "conv_01",
+      runId: "run_01",
+      segmentId: "seg_01",
+      toolId: "call_01",
+      name: "ask_user",
+      args: { question: "继续吗" },
+      description: "需要用户回答",
+      allowedDecisions: ["respond"],
+      awaitingKind: "ask_user",
+      editable: false,
+    })
+  })
+
   it("accepts a non-'completed' terminal status without dropping the run end (forward-compat)", () => {
     const ev = parseTransportEvent({
       event: "run.completed",

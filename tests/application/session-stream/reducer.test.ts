@@ -41,6 +41,13 @@ function toolSteps(state: SessionStreamState, runId = "run_01") {
     .filter((tool): tool is NonNullable<typeof tool> => tool !== null)
 }
 
+const awaitingMeta = {
+  description: "需要批准工具调用",
+  allowedDecisions: ["approve", "edit", "reject"] as Array<"approve" | "edit" | "reject">,
+  awaitingKind: "tool_approval" as const,
+  editable: true,
+}
+
 function subagentSteps(state: SessionStreamState, runId = "run_01") {
   return stepsOf(state, runId)
     .filter((step) => step.kind === "subagent")
@@ -1227,6 +1234,7 @@ describe("applySessionEvent activity families", () => {
         eventId: "e2",
         seq: 2,
         toolId: "t1",
+        ...awaitingMeta,
         ...base,
       },
     ].reduce(applySessionEvent, createSessionStreamState())
@@ -1247,6 +1255,7 @@ describe("applySessionEvent activity families", () => {
       toolId: "t1",
       name: "fetch_url",
       args: { url: "http://x" },
+      ...awaitingMeta,
     })
     const tools = toolSteps(state)
     expect(tools).toHaveLength(1)
@@ -1270,6 +1279,7 @@ describe("applySessionEvent activity families", () => {
         eventId: "e2",
         seq: 2,
         toolId: "t1",
+        ...awaitingMeta,
         ...base,
       },
       {
@@ -1299,7 +1309,7 @@ describe("applySessionEvent activity families", () => {
     }
     const awaiting = [
       { kind: "tool-invoked" as const, eventId: "e1", seq: 1, toolId: "t1", ...base },
-      { kind: "tool-awaiting-approval" as const, eventId: "e2", seq: 2, toolId: "t1", ...base },
+      { kind: "tool-awaiting-approval" as const, eventId: "e2", seq: 2, toolId: "t1", ...awaitingMeta, ...base },
     ].reduce(applySessionEvent, createSessionStreamState())
 
     const rejected = markToolRejected(awaiting, "run_01", ["t1"])
@@ -1320,9 +1330,9 @@ describe("applySessionEvent activity families", () => {
     // 同帧两个被门控工具：只拒 tB，tA 必须保持 awaiting（部分审批，批准的工具继续运行）。
     const awaiting = [
       { kind: "tool-invoked" as const, eventId: "e1", seq: 1, toolId: "tA", ...base },
-      { kind: "tool-awaiting-approval" as const, eventId: "e2", seq: 2, toolId: "tA", ...base },
+      { kind: "tool-awaiting-approval" as const, eventId: "e2", seq: 2, toolId: "tA", ...awaitingMeta, ...base },
       { kind: "tool-invoked" as const, eventId: "e3", seq: 3, toolId: "tB", ...base },
-      { kind: "tool-awaiting-approval" as const, eventId: "e4", seq: 4, toolId: "tB", ...base },
+      { kind: "tool-awaiting-approval" as const, eventId: "e4", seq: 4, toolId: "tB", ...awaitingMeta, ...base },
     ].reduce(applySessionEvent, createSessionStreamState())
 
     const rejected = markToolRejected(awaiting, "run_01", ["tB"])
@@ -1342,7 +1352,7 @@ describe("applySessionEvent activity families", () => {
     }
     const awaiting = [
       { kind: "tool-invoked" as const, eventId: "e1", seq: 1, toolId: "t1", ...base },
-      { kind: "tool-awaiting-approval" as const, eventId: "e2", seq: 2, toolId: "t1", ...base },
+      { kind: "tool-awaiting-approval" as const, eventId: "e2", seq: 2, toolId: "t1", ...awaitingMeta, ...base },
     ].reduce(applySessionEvent, createSessionStreamState())
     const rejected = markToolRejected(awaiting, "run_01", ["t1"])
 
@@ -1377,7 +1387,7 @@ describe("applySessionEvent activity families", () => {
     // 用户从没点过拒绝（无乐观）。replay/重连也走这条——必须 deterministically 显 rejected。
     const state = [
       { kind: "tool-invoked" as const, eventId: "e1", seq: 1, toolId: "t1", ...base },
-      { kind: "tool-awaiting-approval" as const, eventId: "e2", seq: 2, toolId: "t1", ...base },
+      { kind: "tool-awaiting-approval" as const, eventId: "e2", seq: 2, toolId: "t1", ...awaitingMeta, ...base },
       {
         kind: "tool-returned" as const,
         eventId: "e3",
@@ -1412,7 +1422,7 @@ describe("applySessionEvent activity families", () => {
     // done 态但保留 provenance 标记；replay 安全（结果系人工答复非工具产出）。
     const state = [
       { kind: "tool-invoked" as const, eventId: "e1", seq: 1, toolId: "t1", ...base },
-      { kind: "tool-awaiting-approval" as const, eventId: "e2", seq: 2, toolId: "t1", ...base },
+      { kind: "tool-awaiting-approval" as const, eventId: "e2", seq: 2, toolId: "t1", ...awaitingMeta, ...base },
       {
         kind: "tool-returned" as const,
         eventId: "e3",
@@ -1474,7 +1484,7 @@ describe("applySessionEvent activity families", () => {
     }
     const awaiting = [
       { kind: "tool-invoked" as const, eventId: "e1", seq: 1, toolId: "t1", ...base },
-      { kind: "tool-awaiting-approval" as const, eventId: "e2", seq: 2, toolId: "t1", ...base },
+      { kind: "tool-awaiting-approval" as const, eventId: "e2", seq: 2, toolId: "t1", ...awaitingMeta, ...base },
     ].reduce(applySessionEvent, createSessionStreamState())
     const rejected = markToolRejected(awaiting, "run_01", ["t1"])
 
@@ -1590,4 +1600,3 @@ describe("buildThreadItems grouping", () => {
     )
   })
 })
-

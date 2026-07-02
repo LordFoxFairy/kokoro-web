@@ -3,6 +3,7 @@ import {
   groupSegments,
   type SessionMessage,
   type SessionStep,
+  type ToolDecision,
 } from "@/application/session-stream/reducer"
 
 import { MarkdownMessage } from "./markdown-message"
@@ -22,7 +23,7 @@ type AssistantTurnProps = {
   // HITL：批准/拒绝本轮某个待批工具（已按 runId 绑定，留 toolId）。Promise 用于把 control POST 失败抛回按钮层。
   onToolDecision?: (
     toolId: string,
-    decision: "approve" | "reject",
+    decision: ToolDecision,
   ) => void | Promise<void>
 }
 

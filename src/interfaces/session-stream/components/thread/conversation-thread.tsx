@@ -4,6 +4,7 @@ import type { AgentMode } from "@/application/conversation-store"
 import {
   buildThreadItems,
   type SessionStreamState,
+  type ToolDecision,
 } from "@/application/session-stream/reducer"
 
 import { AssistantTurn } from "./assistant-turn"
@@ -24,7 +25,7 @@ type ConversationThreadProps = {
   onToolDecision?: (
     runId: string,
     toolId: string,
-    decision: "approve" | "reject",
+    decision: ToolDecision,
   ) => void | Promise<void>
 }
 
