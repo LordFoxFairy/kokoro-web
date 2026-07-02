@@ -28,7 +28,7 @@ export function computeActivityVersion(state: SessionStreamState): number {
   return version
 }
 
-// legacy 恢复只回放了 messages：为缺 text 步骤的 assistant 段补合成 text 步骤，保证刷新后答案仍被渲染。
+// 防御性恢复：若持久化快照缺少 text 步骤，按 assistant message 补齐渲染锚点。
 function withRestoredTextSteps(
   steps: SessionStep[],
   messagesById: Record<string, SessionMessage>,

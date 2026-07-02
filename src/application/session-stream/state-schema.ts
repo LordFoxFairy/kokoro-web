@@ -33,10 +33,11 @@ const storedSubagentSchema = z
     id: z.string(),
     name: z.string(),
     description: z.string(),
-    subagentType: z.string().default("subagent"),
-    source: z.enum(["built-in", "config-custom", "runtime-custom"]).default("built-in"),
+    subagentType: z.string(),
+    source: z.enum(["built-in", "config-custom", "runtime-custom"]),
     output: z.string().optional(),
-    status: z.enum(["running", "done"]),
+    status: z.enum(["running", "done", "failed"]),
+    error: z.string().optional(),
   })
   .strict()
 
@@ -75,7 +76,7 @@ const storedStepSchema = z.discriminatedUnion("kind", [
     .strict(),
 ])
 
-// 活动字段用 .default()：缺这些字段的旧版落盘仍可解析，保持向后兼容不判脏。导出供 conversation-store 组合复用。
+// 持久化形状必须与当前 SessionStreamState 完全一致；旧落盘缺字段即判脏重建。
 export const storedSessionStateSchema = z
   .object({
     // 落盘是 string[]，解析时转回内存的去重 Set（save 侧反向序列化，见 serializeSessionState）。
@@ -86,14 +87,13 @@ export const storedSessionStateSchema = z
           id: z.string(),
           role: z.enum(["assistant", "user"]),
           content: z.string(),
-          // 旧版落盘的 message 无 runId：默认补空串（不参与新 turn 分组也不判脏）。
-          runId: z.string().default(""),
+          runId: z.string(),
         })
         .strict(),
     ),
-    todos: z.array(storedTodoSchema).default([]),
-    stepsByRun: z.record(z.string(), z.array(storedStepSchema)).default({}),
-    runStatus: z.enum(["idle", "completed", "failed"]),
+    todos: z.array(storedTodoSchema),
+    stepsByRun: z.record(z.string(), z.array(storedStepSchema)),
+    runStatus: z.enum(["idle", "completed", "cancelled", "timeout", "failed"]),
   })
   // 输入为 unknown（解析任意落盘数据）、输出严格等于 SessionStreamState（漂移在此暴露）。
   .strict() satisfies z.ZodType<SessionStreamState, z.ZodTypeDef, unknown>

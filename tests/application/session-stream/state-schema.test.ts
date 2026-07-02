@@ -66,4 +66,27 @@ describe("parseStoredSessionState — storedStep discriminated union", () => {
       ),
     ).toBeNull()
   })
+
+  it("parses failed subagent steps", () => {
+    const r = parseStoredSessionState(
+      stored([
+        {
+          kind: "subagent",
+          seq: 1,
+          segmentId: "m1",
+          subagent: {
+            id: "s1",
+            name: "research",
+            description: "查资料",
+            subagentType: "researcher",
+            source: "built-in",
+            status: "failed",
+            error: "boom",
+          },
+        },
+      ]),
+    )
+    const step = r?.stepsByRun.run_1?.[0]
+    expect(step?.kind === "subagent" && step.subagent.status).toBe("failed")
+  })
 })

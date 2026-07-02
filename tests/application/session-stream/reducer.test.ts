@@ -599,6 +599,7 @@ describe("appendUserMessage", () => {
         sessionId: "ses_01",
         conversationId: "conv_01",
         runId: "run_02",
+        status: "completed" as const,
       },
     ].reduce(applySessionEvent, withUser)
 
@@ -609,6 +610,23 @@ describe("appendUserMessage", () => {
     expect(afterReply.messages[1]?.content).toBe("好的，我们开始。")
     expect(afterReply.runStatus).toBe("completed")
   })
+
+  it.each(["cancelled", "timeout"] as const)(
+    "preserves run.completed status=%s",
+    (status) => {
+      const state = applySessionEvent(createSessionStreamState(), {
+        kind: "run-completed",
+        eventId: `evt_${status}`,
+        seq: 1,
+        sessionId: "ses_01",
+        conversationId: "conv_01",
+        runId: "run_01",
+        status,
+      })
+
+      expect(state.runStatus).toBe(status)
+    },
+  )
 
   it("resets todos + runStatus on a new user turn but keeps prior run steps", () => {
     let state = applySessionEvent(createSessionStreamState(), {
@@ -679,6 +697,7 @@ describe("parseStoredSessionState", () => {
         sessionId: "ses_01",
         conversationId: "conv_01",
         runId: "run_01",
+        status: "completed" as const,
       },
     ].reduce(applySessionEvent, appendUserMessage(createSessionStreamState(), {
       id: "local_p1",
@@ -842,18 +861,14 @@ describe("parseStoredSessionState", () => {
     ).toEqual(createSessionStreamState())
   })
 
-  it("restores a legacy persisted state without activity/runId fields", () => {
-    // 向后兼容：旧版落盘没有 todos/stepsByRun，且 message 无 runId，必须补默认值而非判脏。
-    const legacy = {
+  it("rejects stale persisted state without activity/runId fields", () => {
+    // 本地落盘必须匹配当前状态结构；缺字段即判脏，不做旧结构迁移。
+    const stale = {
       seenEventIds: ["e1"],
       messages: [{ id: "a1", role: "assistant", content: "hi" }],
       runStatus: "completed",
     }
-    const restored = parseStoredSessionState(legacy)
-    expect(restored).not.toBeNull()
-    expect(restored?.todos).toEqual([])
-    expect(restored?.stepsByRun).toEqual({})
-    expect(restored?.messages[0]?.runId).toBe("")
+    expect(parseStoredSessionState(stale)).toBeNull()
   })
 })
 
@@ -1495,6 +1510,7 @@ describe("applySessionEvent activity families", () => {
       sessionId: "ses_01",
       conversationId: "conv_01",
       runId: "run_01",
+      status: "completed",
     })
     const tools = toolSteps(ended)
     expect(tools[0]?.status).toBe("rejected")

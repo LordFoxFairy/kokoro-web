@@ -50,6 +50,7 @@ export function toSessionStreamEvent(
       return {
         kind: "run-completed",
         ...base(event, seq),
+        status: event.payload.status,
         finalMessageId: event.payload.final_message_id,
       }
     case "run.failed":

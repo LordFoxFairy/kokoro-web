@@ -203,8 +203,7 @@ const runCompletedSchema = eventEnvelopeSchema.extend({
   payload: z
     .object({
       run_id: z.string().min(1),
-      // web 放宽到任意非空终态：新终态绝不 strict-parse 成 null 卡死客户端。
-      status: z.string().min(1),
+      status: z.enum(["completed", "cancelled", "timeout"]),
       final_message_id: z.string().min(1).optional(),
     })
     .strict(),

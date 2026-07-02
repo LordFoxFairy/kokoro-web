@@ -376,7 +376,7 @@ export function applySessionEvent(
       break
     case "run-completed":
       nextState = resolveStaleTools(nextState, event.runId)
-      nextState.runStatus = "completed"
+      nextState.runStatus = event.status
       break
     case "run-failed":
       nextState = resolveStaleTools(nextState, event.runId)

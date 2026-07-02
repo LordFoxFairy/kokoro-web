@@ -193,6 +193,7 @@ export function buildSimulatedReplyEvents(
     eventId: `${ids.runId}-done`,
     seq: nextSeq(),
     ...envelope,
+    status: "completed",
   })
 
   return events

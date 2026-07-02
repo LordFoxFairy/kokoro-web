@@ -64,22 +64,20 @@ describe("conversation-store", () => {
       expect(activeMode(selectConversation(withB, "a"))).toBe("thinking")
     })
 
-    it("defaults mode to fast when parsing legacy stored entries without it", () => {
-      // 为什么重要：旧版落盘无 mode 字段，必须向后兼容补 fast，绝不因新增字段判脏丢会话。
-      const legacy = {
+    it("rejects stored entries missing mode", () => {
+      // 本地落盘必须匹配当前 schema；缺字段说明快照已过期，直接判脏重建。
+      const stale = {
         activeId: "c1",
         conversations: [
           {
             id: "c1",
-            title: "旧会话",
+            title: "过期会话",
             updatedAt: 1,
             thread: serializeSessionState(createSessionStreamState()),
           },
         ],
       }
-      const parsed = parseStoredConversationStore(legacy)
-      expect(parsed).not.toBeNull()
-      expect(parsed && activeMode(parsed)).toBe("fast")
+      expect(parseStoredConversationStore(stale)).toBeNull()
     })
   })
 

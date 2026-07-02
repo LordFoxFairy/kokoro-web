@@ -17,7 +17,7 @@ import { type TransportSession } from "./use-transport-session"
 export type ReattachReply = (args: {
   sessionId: string
   // 刷新前持久化的在途 runId：reattach 据此只在本轮终态收束，不被历史 run 终态提前关流。
-  runId?: string
+  runId: string
   initialState: SessionStreamState
   onState: (snapshot: SessionStreamState) => void
   onSettled: () => void
@@ -73,7 +73,7 @@ export function useSessionReattach({
     // 闭包捕获 pendingConvId 变为非空那一刻的 store（含在途会话与其线程）。
     const base = latest.current.store
     const entry = base?.conversations.find((e) => e.id === pendingConvId)
-    if (!base || !entry) {
+    if (!base || !entry || !entry.pendingRunId) {
       return
     }
     reattachedRef.current = pendingConvId

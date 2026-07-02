@@ -94,7 +94,7 @@ describe("consumeLiveSession", () => {
   it("folds a live AGUI sequence into the reducer and closes on run.completed", async () => {
     const fetchMock = vi
       .fn()
-      .mockResolvedValue(new Response(null, { status: 202 }))
+      .mockResolvedValue(new Response(JSON.stringify({ runId: "run_01" }), { status: 200 }))
     vi.stubGlobal("fetch", fetchMock)
     vi.stubGlobal("EventSource", MockEventSource as unknown as typeof EventSource)
 
@@ -255,7 +255,7 @@ describe("consumeLiveSession", () => {
   it("includes the provided executionStyle in the live run request", async () => {
     const fetchMock = vi
       .fn()
-      .mockResolvedValue(new Response(null, { status: 202 }))
+      .mockResolvedValue(new Response(JSON.stringify({ runId: "run_01" }), { status: 200 }))
     vi.stubGlobal("fetch", fetchMock)
     vi.stubGlobal("EventSource", MockEventSource as unknown as typeof EventSource)
 
@@ -279,7 +279,7 @@ describe("consumeLiveSession", () => {
 
     const defaultFetch = vi
       .fn()
-      .mockResolvedValue(new Response(null, { status: 202 }))
+      .mockResolvedValue(new Response(JSON.stringify({ runId: "run_01" }), { status: 200 }))
     vi.stubGlobal("fetch", defaultFetch)
     const defaultHandle = await consumeLiveSession({
       input: "hi",
@@ -293,7 +293,7 @@ describe("consumeLiveSession", () => {
     })
     defaultHandle.close()
 
-    const autoFetch = vi.fn().mockResolvedValue(new Response(null, { status: 202 }))
+    const autoFetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ runId: "run_01" }), { status: 200 }))
     vi.stubGlobal("fetch", autoFetch)
     const autoHandle = await consumeLiveSession({
       input: "hi",
@@ -309,7 +309,7 @@ describe("consumeLiveSession", () => {
   it("ignores malformed envelopes without crashing the stream", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue(new Response(null, { status: 202 })),
+      vi.fn().mockResolvedValue(new Response(JSON.stringify({ runId: "run_01" }), { status: 200 })),
     )
     vi.stubGlobal("EventSource", MockEventSource as unknown as typeof EventSource)
 
@@ -348,7 +348,7 @@ describe("consumeLiveSession", () => {
   it("keeps the stream convergent when run.created arrives before message events", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue(new Response(null, { status: 202 })),
+      vi.fn().mockResolvedValue(new Response(JSON.stringify({ runId: "run_01" }), { status: 200 })),
     )
     vi.stubGlobal("EventSource", MockEventSource as unknown as typeof EventSource)
 
@@ -394,7 +394,7 @@ describe("consumeLiveSession", () => {
   it("closes the stream on run.failed and surfaces a failed status", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue(new Response(null, { status: 202 })),
+      vi.fn().mockResolvedValue(new Response(JSON.stringify({ runId: "run_01" }), { status: 200 })),
     )
     vi.stubGlobal("EventSource", MockEventSource as unknown as typeof EventSource)
 
@@ -424,7 +424,7 @@ describe("consumeLiveSession", () => {
     // 而不是从空状态重来，否则刷新/换轮会丢历史。
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue(new Response(null, { status: 202 })),
+      vi.fn().mockResolvedValue(new Response(JSON.stringify({ runId: "run_01" }), { status: 200 })),
     )
     vi.stubGlobal("EventSource", MockEventSource as unknown as typeof EventSource)
 
@@ -471,7 +471,7 @@ describe("consumeLiveSession", () => {
     // run.created 须有监听器（有意丢弃而非漏听），且其注册不影响 assistant 轮次折叠；超大正文须完整落入。
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue(new Response(null, { status: 202 })),
+      vi.fn().mockResolvedValue(new Response(JSON.stringify({ runId: "run_01" }), { status: 200 })),
     )
     vi.stubGlobal("EventSource", MockEventSource as unknown as typeof EventSource)
 
@@ -523,7 +523,7 @@ describe("consumeLiveSession", () => {
   it("stays alive on transient transport errors via onerror", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue(new Response(null, { status: 202 })),
+      vi.fn().mockResolvedValue(new Response(JSON.stringify({ runId: "run_01" }), { status: 200 })),
     )
     vi.stubGlobal("EventSource", MockEventSource as unknown as typeof EventSource)
 
@@ -603,7 +603,7 @@ describe("consumeLiveSession", () => {
   it("folds subagent internal text into the subagent output field", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue(new Response(null, { status: 202 })),
+      vi.fn().mockResolvedValue(new Response(JSON.stringify({ runId: "run_01" }), { status: 200 })),
     )
     vi.stubGlobal("EventSource", MockEventSource as unknown as typeof EventSource)
 

@@ -7,6 +7,8 @@ export type SessionTodoStatus = "pending" | "in_progress" | "completed"
 
 export type SessionResumeDecision = "approve" | "edit" | "reject" | "respond"
 
+export type SessionRunCompletedStatus = "completed" | "cancelled" | "timeout"
+
 export type SessionTodo = {
   content: string
   status: SessionTodoStatus
@@ -157,6 +159,7 @@ export type SessionStreamEvent =
       sessionId: string
       conversationId: string
       runId: string
+      status: SessionRunCompletedStatus
       finalMessageId?: string
     }
   | {

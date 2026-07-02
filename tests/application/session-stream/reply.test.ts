@@ -110,7 +110,11 @@ describe("startSessionReply — live→preview 降级决策层", () => {
     vi.useFakeTimers()
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue({ ok: true, status: 200 }),
+      vi
+        .fn()
+        .mockResolvedValue(
+          new Response(JSON.stringify({ runId: "run_01" }), { status: 200 }),
+        ),
     )
 
     const { snapshots, settled, onLive, input } = makeArgs()
@@ -118,6 +122,7 @@ describe("startSessionReply — live→preview 降级决策层", () => {
     await vi.runAllTimersAsync()
 
     expect(onLive).toHaveBeenCalledTimes(1)
+    expect(onLive).toHaveBeenCalledWith("run_01")
     // jsdom 无 EventSource：live 流保持静默不 settle；关键是 preview 没有被误启动。
     expect(settled).toEqual([])
     expect(snapshots).toEqual([])
@@ -166,7 +171,7 @@ describe("startSessionReply — live→preview 降级决策层", () => {
     expect(unhandled).toEqual([])
   })
 
-  it("live 确立后 onLive 抛错：旧 live 句柄被关闭,不与降级双开泄漏", async () => {
+  it("live 确立后 onLive 抛错：已开 live 句柄被关闭,不与降级双开泄漏", async () => {
     // [硬化] consumeLiveSession 已成功(SSE 已开),onLive 回调却抛错:
     // 若直接降级而不关掉已开的 live 句柄,会与 preview 双开并泄漏 EventSource。
     vi.useFakeTimers()

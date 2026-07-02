@@ -189,8 +189,7 @@ const storedEntrySchema = z
     title: z.string(),
     updatedAt: z.number(),
     thread: storedSessionStateSchema,
-    // 旧版落盘无 mode：默认补 fast，保持向后兼容，不因新增字段判脏。
-    mode: z.enum(["fast", "thinking"]).default("fast"),
+    mode: z.enum(["fast", "thinking"]),
     pendingInput: z.string().optional(),
     pendingRunId: z.string().optional(),
   })

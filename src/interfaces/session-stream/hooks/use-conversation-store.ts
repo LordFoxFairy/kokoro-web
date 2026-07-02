@@ -56,10 +56,10 @@ export function useConversationStore(): ConversationStoreApi {
   // 空首屏（尚无会话）时选好的模式：首条消息创建首个会话时承接它。会话存在后模式以会话为准。
   const [pendingMode, setPendingMode] = useState<AgentMode>("fast")
 
-  // 活跃会话是否有在途 live run（用于中断恢复）。
+  // 活跃会话是否有明确的在途 live run（用于中断恢复）。
   const pendingConvId =
     store?.conversations.find((entry) => entry.id === store.activeId)
-      ?.pendingInput
+      ?.pendingRunId
       ? store.activeId
       : null
 

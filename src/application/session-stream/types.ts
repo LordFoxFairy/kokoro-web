@@ -1,5 +1,6 @@
 import type {
   SessionResumeDecision,
+  SessionRunCompletedStatus,
   SessionTodo,
 } from "@/domain/session-stream-event"
 
@@ -67,7 +68,7 @@ export type SessionStreamState = {
   todos: SessionTodo[]
   // 有序步骤：按 runId 归集，每个 run 一条 append-only 的 SessionStep 列表（按 seq 定序）。
   stepsByRun: Record<string, SessionStep[]>
-  runStatus: "idle" | "completed" | "failed"
+  runStatus: "idle" | SessionRunCompletedStatus | "failed"
 }
 
 // 线程渲染项：连续同 runId 的 assistant 消息归并为一个 turn；用户消息单独成项。

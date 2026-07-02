@@ -42,6 +42,28 @@ const envelope = { sessionId: "ses_01", conversationId: "conv_01" }
 
 let stubCounter = 0
 
+function storedThread(input: {
+  seenEventIds?: string[]
+  messages?: Array<{
+    id: string
+    role: "assistant" | "user"
+    content: string
+    runId?: string
+  }>
+  runStatus?: "idle" | "completed" | "cancelled" | "timeout" | "failed"
+}) {
+  return {
+    seenEventIds: input.seenEventIds ?? [],
+    messages: (input.messages ?? []).map((message) => ({
+      ...message,
+      runId: message.runId ?? message.id,
+    })),
+    todos: [],
+    stepsByRun: {},
+    runStatus: input.runStatus ?? "idle",
+  }
+}
+
 const approvalAwaitingMeta = {
   description: "需要批准工具调用",
   allowedDecisions: ["approve", "edit", "reject"] as Array<"approve" | "edit" | "reject">,
@@ -78,6 +100,7 @@ function instantReply(makeText: (input: string) => string): StartReply {
       seq: 1,
       ...envelope,
       runId: `stub-run-${id}`,
+      status: "completed",
     })
     onState(done)
     onSettled?.("preview")
@@ -196,6 +219,7 @@ function failThenSucceed(): {
             seq: 1,
             ...envelope,
             runId: `fts-run-${id}`,
+            status: "completed",
           },
         )
 
@@ -719,15 +743,15 @@ describe("SessionShell persistence", () => {
             id: "c1",
             title: "持久化的问题",
             updatedAt: 1,
-            // 活动字段省略：storedSessionStateSchema 的 .default() 会补齐。
-            thread: {
+            mode: "fast",
+            thread: storedThread({
               seenEventIds: ["evt_done"],
               messages: [
                 { id: "u1", role: "user", content: "持久化的问题" },
                 { id: "a1", role: "assistant", content: "持久化的回答" },
               ],
               runStatus: "completed",
-            },
+            }),
           },
         ],
       }),
@@ -1187,6 +1211,7 @@ describe("SessionShell agent activity", () => {
         seq: 1,
         ...envelope,
         runId: `r-${id}`,
+        status: "completed",
       })
       onState(next)
       onSettled?.("preview")
@@ -1317,6 +1342,7 @@ describe("SessionShell agent activity", () => {
         seq: (seq += 1),
         ...envelope,
         runId,
+        status: "completed",
       })
       onState(next)
       onSettled?.("preview")
@@ -1515,14 +1541,16 @@ describe("SessionShell interrupt recovery", () => {
             title: "未完成的一问",
             updatedAt: 1,
             pendingInput: "未完成的一问",
-            thread: {
+            pendingRunId: "r-re",
+            mode: "fast",
+            thread: storedThread({
               seenEventIds: ["d1"],
               messages: [
                 { id: "u1", role: "user", content: "未完成的一问" },
                 { id: "a1", role: "assistant", content: "已经生成了一半" },
               ],
               runStatus: "idle",
-            },
+            }),
           },
         ],
       }),
@@ -1547,7 +1575,14 @@ describe("SessionShell interrupt recovery", () => {
           role: "assistant",
           content: "续传后补完的完整回答",
         }),
-        { kind: "run-completed", eventId: "re-d", seq: 1, ...envelope, runId: "r-re" },
+        {
+          kind: "run-completed",
+          eventId: "re-d",
+          seq: 1,
+          ...envelope,
+          runId: "r-re",
+          status: "completed",
+        },
       )
       onState(done)
       onSettled()
@@ -1578,11 +1613,12 @@ describe("SessionShell interrupt recovery", () => {
             title: "重连中的一问",
             updatedAt: 1,
             pendingInput: "重连中的一问",
-            thread: {
-              seenEventIds: [],
+            pendingRunId: "r-reconnecting",
+            mode: "fast",
+            thread: storedThread({
               messages: [{ id: "u1", role: "user", content: "重连中的一问" }],
               runStatus: "idle",
-            },
+            }),
           },
         ],
       }),
@@ -1615,11 +1651,11 @@ describe("SessionShell interrupt recovery", () => {
             id: "c1",
             title: "已完成",
             updatedAt: 1,
-            thread: {
-              seenEventIds: [],
+            mode: "fast",
+            thread: storedThread({
               messages: [{ id: "u1", role: "user", content: "已完成" }],
               runStatus: "completed",
-            },
+            }),
           },
         ],
       }),
@@ -1652,11 +1688,12 @@ describe("SessionShell interrupt recovery", () => {
               title: "等不到终态的一问",
               updatedAt: 1,
               pendingInput: "等不到终态的一问",
-              thread: {
-                seenEventIds: [],
+              pendingRunId: "r-timeout",
+              mode: "fast",
+              thread: storedThread({
                 messages: [{ id: "u1", role: "user", content: "等不到终态的一问" }],
                 runStatus: "idle",
-              },
+              }),
             },
           ],
         }),
@@ -2061,6 +2098,7 @@ const approvableReply: StartReply = ({ initialState, onState }: StartReplyInput)
       seq: 5,
       ...envelope,
       runId,
+      status: "completed",
     })
     onState(state)
   }
