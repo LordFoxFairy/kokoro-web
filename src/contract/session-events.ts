@@ -97,6 +97,8 @@ const toolReturnedPayload = z
     result: z.string(),
     // 严格必填 fail-loud：生产端始终发送；缺失即报错，绝不用默认 false 掩盖真失败。
     is_error: z.boolean(),
+    // wire 展示层截断标记：缺席=结果完整，true=已截断（完整结果在后端，canvas 预览 P1 经 artifact_ref 取）。
+    truncated: z.boolean().optional(),
     rejected: z.boolean().optional(),
     reject_reason: z.string().optional(),
     responded: z.boolean().optional(),
