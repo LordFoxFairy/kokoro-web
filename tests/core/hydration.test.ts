@@ -72,7 +72,7 @@ describe("stateFromSnapshot：snapshot 是权威读取模型", () => {
           makePendingPause({
             pause_id: "p2",
             tool_id: "tool_2",
-            tool_name: "ask_user",
+            tool_name: "ask_user_question",
             kind: "ask_user",
             allowed_decisions: ["respond"],
             args: { question: "which?", choices: ["a", "b"] },
