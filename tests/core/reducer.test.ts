@@ -1,0 +1,442 @@
+import { beforeEach, describe, expect, it } from "vitest"
+
+import { parseSessionEvent, type SessionEvent } from "@/contract/session-events"
+import { stateFromSnapshot } from "@/core/hydration"
+import {
+  applySessionEvent,
+  applySessionEvents,
+  appendUserMessage,
+  markRunCancelled,
+  markToolRejected,
+} from "@/core/reducer"
+import { createSessionStreamState, type SessionStreamState } from "@/core/state"
+
+import { awaitingPayload, makeEvent, makeSnapshot, resetFixtureSeq } from "./fixtures"
+
+beforeEach(resetFixtureSeq)
+
+function toolStatusOf(state: SessionStreamState, runId: string, toolId: string) {
+  const steps = state.stepsByRun[runId] ?? []
+  for (const step of steps) {
+    if (step.kind === "tool" && step.tool.id === toolId) {
+      return step.tool.status
+    }
+  }
+  return null
+}
+
+describe("event_id 幂等去重", () => {
+  it("同一 event_id 第二次折叠原样返回同一引用", () => {
+    const event = makeEvent("message.delta", { segment_id: "seg_1", delta: "hi" })
+    const once = applySessionEvent(createSessionStreamState(), event)
+    const twice = applySessionEvent(once, event)
+    expect(twice).toBe(once)
+    expect(once.messages).toHaveLength(1)
+    expect(once.messages[0]?.content).toBe("hi")
+  })
+
+  it("批内重复 event_id 只折叠一次", () => {
+    const event = makeEvent("message.delta", { segment_id: "seg_1", delta: "hi" })
+    const state = applySessionEvents(createSessionStreamState(), [event, event, event])
+    expect(state.messages[0]?.content).toBe("hi")
+  })
+})
+
+describe("replay 收敛", () => {
+  function fullRun(): SessionEvent[] {
+    return [
+      makeEvent("session.created", { title: "topic", owner_id: "local-user" }),
+      makeEvent("run.created", { run_id: "run_1" }),
+      makeEvent("thinking.delta", { segment_id: "seg_1", delta: "plan " }),
+      makeEvent("thinking.delta", { segment_id: "seg_1", delta: "steps" }),
+      makeEvent("tool.invoked", {
+        segment_id: "seg_1",
+        tool_id: "tool_1",
+        name: "search",
+        args: { q: "x" },
+      }),
+      makeEvent("tool.returned", {
+        segment_id: "seg_1",
+        tool_id: "tool_1",
+        name: "search",
+        result: "ok",
+        is_error: false,
+      }),
+      makeEvent("message.delta", { segment_id: "seg_2", delta: "half" }),
+      makeEvent("message.completed", { segment_id: "seg_2", content: "full answer" }),
+      makeEvent("todo.updated", {
+        todos: [{ content: "step", status: "completed" }],
+      }),
+      makeEvent("run.completed", { status: "completed", token_usage: null }),
+    ]
+  }
+
+  it("整批折叠与逐事件折叠等价", () => {
+    const events = fullRun()
+    const batched = applySessionEvents(createSessionStreamState(), events)
+    const oneByOne = events.reduce(applySessionEvent, createSessionStreamState())
+    expect(batched).toEqual(oneByOne)
+  })
+
+  it("重复 replay 同一批事件收敛到相同状态", () => {
+    const events = fullRun()
+    const once = applySessionEvents(createSessionStreamState(), events)
+    const replayed = applySessionEvents(once, events)
+    expect(replayed).toBe(once)
+  })
+
+  it("message.completed 覆盖累计增量，replay 不残留半句", () => {
+    const state = applySessionEvents(createSessionStreamState(), fullRun())
+    const message = state.messages.find((m) => m.id === "seg_2")
+    expect(message?.content).toBe("full answer")
+    expect(state.runStatus).toBe("completed")
+  })
+
+  it("lastSeq 随折叠推进到批内最大 seq（续流水位）", () => {
+    const state = applySessionEvents(createSessionStreamState(), fullRun())
+    expect(state.lastSeq).toBe(10)
+  })
+})
+
+describe("session.created / run.created 投影", () => {
+  it("session.created 投影服务端元数据（标题真源）", () => {
+    const state = applySessionEvent(
+      createSessionStreamState(),
+      makeEvent("session.created", { title: "server title", owner_id: "owner_9" }),
+    )
+    expect(state.meta).toEqual({ title: "server title", ownerId: "owner_9" })
+  })
+
+  it("run.created 解析记账但不投影（run 锚定由 receipt/snapshot 承担）", () => {
+    const state = applySessionEvent(
+      createSessionStreamState(),
+      makeEvent("run.created", { run_id: "run_9" }, { run_id: "run_9" }),
+    )
+    expect(state.activeRunId).toBeNull()
+    expect(state.messages).toHaveLength(0)
+    expect(state.seenEventIds.size).toBe(1)
+  })
+})
+
+describe("乱序 seq 稳定插入", () => {
+  it("迟到的低 seq 步骤插入到正确位置", () => {
+    const state = applySessionEvents(createSessionStreamState(), [
+      makeEvent("message.delta", { segment_id: "seg_2", delta: "answer" }, { seq: 7 }),
+      makeEvent(
+        "tool.invoked",
+        { segment_id: "seg_1", tool_id: "tool_1", name: "search", args: {} },
+        { seq: 5 },
+      ),
+    ])
+    const kinds = (state.stepsByRun["run_1"] ?? []).map((step) => step.kind)
+    expect(kinds).toEqual(["tool", "text"])
+  })
+
+  it("同 seq 保持到达先后（稳定追加）", () => {
+    const state = applySessionEvents(createSessionStreamState(), [
+      makeEvent("thinking.delta", { segment_id: "seg_a", delta: "a" }, { seq: 3, event_id: "e1" }),
+      makeEvent("thinking.delta", { segment_id: "seg_b", delta: "b" }, { seq: 3, event_id: "e2" }),
+    ])
+    const segmentIds = (state.stepsByRun["run_1"] ?? []).map((step) => step.segmentId)
+    expect(segmentIds).toEqual(["seg_a", "seg_b"])
+  })
+})
+
+describe("activeRunId 显式锚定（snapshot 置位、终态清空）", () => {
+  it("snapshot 水合置位、匹配终态清空", () => {
+    let state = stateFromSnapshot(
+      makeSnapshot({ activeRun: { run_id: "run_9", status: "running" }, eventWatermark: 3 }),
+    )
+    expect(state.activeRunId).toBe("run_9")
+    state = applySessionEvent(
+      state,
+      makeEvent("run.completed", { status: "completed" }, { run_id: "run_9" }),
+    )
+    expect(state.activeRunId).toBeNull()
+  })
+
+  it("历史 run 的终态不清空在途锚点", () => {
+    let state = stateFromSnapshot(
+      makeSnapshot({ activeRun: { run_id: "run_new", status: "running" } }),
+    )
+    state = applySessionEvent(
+      state,
+      makeEvent("run.failed", { error_kind: "x", message: "boom" }, { run_id: "run_old" }),
+    )
+    expect(state.activeRunId).toBe("run_new")
+  })
+})
+
+describe("snapshot 水合占位认领", () => {
+  function hydratedWithStreamingPlaceholder(): SessionStreamState {
+    return stateFromSnapshot(
+      makeSnapshot({
+        messages: [
+          {
+            message_id: "msg_user",
+            role: "user",
+            content: "do it",
+            status: "completed",
+            created_at: "2026-07-02T00:00:00Z",
+          },
+          {
+            message_id: "msg_assistant",
+            role: "assistant",
+            content: "partial ",
+            status: "streaming",
+            created_at: "2026-07-02T00:00:01Z",
+            run_id: "run_1",
+          },
+        ],
+        activeRun: { run_id: "run_1", status: "running" },
+        eventWatermark: 5,
+      }),
+    )
+  }
+
+  it("本 run 首个 message.delta 认领在途占位并续写（不长出重复气泡）", () => {
+    const state = applySessionEvent(
+      hydratedWithStreamingPlaceholder(),
+      makeEvent("message.delta", { segment_id: "seg_1", delta: "resumed" }, { seq: 6 }),
+    )
+    const assistants = state.messages.filter((message) => message.role === "assistant")
+    expect(assistants).toHaveLength(1)
+    expect(assistants[0]).toMatchObject({ id: "seg_1", content: "partial resumed" })
+    expect(assistants[0]?.hydratedStreaming).toBeUndefined()
+  })
+
+  it("message.completed 直接覆盖占位内容", () => {
+    const state = applySessionEvent(
+      hydratedWithStreamingPlaceholder(),
+      makeEvent("message.completed", { segment_id: "seg_1", content: "final" }, { seq: 6 }),
+    )
+    const assistants = state.messages.filter((message) => message.role === "assistant")
+    expect(assistants).toHaveLength(1)
+    expect(assistants[0]?.content).toBe("final")
+  })
+})
+
+describe("HITL：rejected 不被降级", () => {
+  it("本地 rejected 后 is_error=false 的 tool.returned 不翻绿勾", () => {
+    let state = applySessionEvents(createSessionStreamState(), [
+      makeEvent("tool.invoked", { segment_id: "seg_1", tool_id: "tool_1", name: "w", args: {} }),
+      makeEvent("tool.awaiting_approval", awaitingPayload("tool_1", ["tool_1"])),
+    ])
+    state = markToolRejected(state, "run_1", ["tool_1"])
+    expect(toolStatusOf(state, "run_1", "tool_1")).toBe("rejected")
+    state = applySessionEvent(
+      state,
+      makeEvent("tool.returned", {
+        segment_id: "seg_1",
+        tool_id: "tool_1",
+        name: "w",
+        result: "user rejected",
+        is_error: false,
+      }),
+    )
+    expect(toolStatusOf(state, "run_1", "tool_1")).toBe("rejected")
+  })
+
+  it.each([
+    [{ rejected: true }, "rejected"],
+    [{ rejected: true, reject_reason: "no" }, "rejected"],
+    [{}, "done"],
+  ] as const)("tool.returned 契约 rejected 字段 %j → %s", (extra, expected) => {
+    const state = applySessionEvents(createSessionStreamState(), [
+      makeEvent("tool.invoked", { segment_id: "seg_1", tool_id: "tool_1", name: "w", args: {} }),
+      makeEvent("tool.returned", {
+        segment_id: "seg_1",
+        tool_id: "tool_1",
+        name: "w",
+        result: "r",
+        is_error: false,
+        ...extra,
+      }),
+    ])
+    expect(toolStatusOf(state, "run_1", "tool_1")).toBe(expected)
+  })
+
+  it("markToolRejected 只翻命中且 awaiting 的工具（同帧部分拒绝）", () => {
+    let state = applySessionEvents(createSessionStreamState(), [
+      makeEvent("tool.invoked", { segment_id: "seg_1", tool_id: "tool_1", name: "a", args: {} }),
+      makeEvent("tool.awaiting_approval", awaitingPayload("tool_1", ["tool_1", "tool_2"])),
+      makeEvent("tool.invoked", { segment_id: "seg_1", tool_id: "tool_2", name: "b", args: {} }),
+      makeEvent(
+        "tool.awaiting_approval",
+        awaitingPayload("tool_2", ["tool_1", "tool_2"], { tool_id: "tool_2", name: "b" }),
+      ),
+    ])
+    state = markToolRejected(state, "run_1", ["tool_2"])
+    expect(toolStatusOf(state, "run_1", "tool_1")).toBe("awaiting")
+    expect(toolStatusOf(state, "run_1", "tool_2")).toBe("rejected")
+  })
+
+  it("awaiting 事件把契约 pending_tool_ids/kind/risk 落进工具（凑帧与分卡判据）", () => {
+    const state = applySessionEvent(
+      createSessionStreamState(),
+      makeEvent(
+        "tool.awaiting_approval",
+        awaitingPayload("tool_1", ["tool_1", "tool_2"], {
+          kind: "ask_user",
+          allowed_decisions: ["respond"],
+          risk: { level: "low", source: "policy", reason: "asks user" },
+        }),
+      ),
+    )
+    const step = (state.stepsByRun["run_1"] ?? [])[0]
+    if (step?.kind !== "tool") {
+      throw new Error("expected tool step")
+    }
+    expect(step.tool.pendingToolIds).toEqual(["tool_1", "tool_2"])
+    expect(step.tool.awaitingKind).toBe("ask_user")
+    expect(step.tool.risk).toEqual({ level: "low", source: "policy", reason: "asks user" })
+  })
+})
+
+describe("终态收口：结构化 status、零 UI 文案", () => {
+  it.each([
+    ["awaiting", "stale-awaiting"],
+    ["running", "stale-running"],
+  ] as const)("run.completed 时 %s 工具 → %s", (openStatus, expected) => {
+    const events: SessionEvent[] = [
+      makeEvent("tool.invoked", { segment_id: "seg_1", tool_id: "tool_1", name: "w", args: {} }),
+    ]
+    if (openStatus === "awaiting") {
+      events.push(makeEvent("tool.awaiting_approval", awaitingPayload("tool_1", ["tool_1"])))
+    }
+    events.push(makeEvent("run.completed", { status: "completed" }))
+    const state = applySessionEvents(createSessionStreamState(), events)
+    expect(toolStatusOf(state, "run_1", "tool_1")).toBe(expected)
+    const step = (state.stepsByRun["run_1"] ?? [])[0]
+    expect(step?.kind === "tool" ? step.tool.errorText : "sentinel").toBeUndefined()
+  })
+
+  it("已落定（done/error/rejected）的工具不被终态收口改写", () => {
+    let state = applySessionEvents(createSessionStreamState(), [
+      makeEvent("tool.invoked", { segment_id: "seg_1", tool_id: "tool_1", name: "w", args: {} }),
+      makeEvent("tool.returned", {
+        segment_id: "seg_1",
+        tool_id: "tool_1",
+        name: "w",
+        result: "boom",
+        is_error: true,
+      }),
+    ])
+    state = applySessionEvent(
+      state,
+      makeEvent("run.failed", { error_kind: "agent", message: "died" }),
+    )
+    expect(toolStatusOf(state, "run_1", "tool_1")).toBe("error")
+    expect(state.runStatus).toBe("failed")
+  })
+
+  it("markRunCancelled 把悬挂工具置结构化 cancelled", () => {
+    let state = applySessionEvents(createSessionStreamState(), [
+      makeEvent("tool.invoked", { segment_id: "seg_1", tool_id: "tool_1", name: "w", args: {} }),
+      makeEvent("tool.awaiting_approval", awaitingPayload("tool_1", ["tool_1"])),
+    ])
+    state = markRunCancelled(state, "run_1")
+    expect(toolStatusOf(state, "run_1", "tool_1")).toBe("cancelled")
+  })
+})
+
+describe("subagent 生命周期", () => {
+  it("started → 增量续写 → finished(failed) 保留错误归属", () => {
+    const state = applySessionEvents(createSessionStreamState(), [
+      makeEvent("subagent.started", {
+        segment_id: "seg_1",
+        subagent_id: "sub_1",
+        name: "researcher",
+        description: "digs",
+        subagent_type: "general",
+        source: "built-in",
+      }),
+      makeEvent("subagent.text.delta", { segment_id: "seg_1", subagent_id: "sub_1", text: "a" }),
+      makeEvent("subagent.text.delta", { segment_id: "seg_1", subagent_id: "sub_1", text: "b" }),
+      makeEvent("subagent.finished", {
+        segment_id: "seg_1",
+        subagent_id: "sub_1",
+        name: "researcher",
+        subagent_type: "general",
+        source: "built-in",
+        failed: true,
+        error: "crashed",
+      }),
+    ])
+    const step = (state.stepsByRun["run_1"] ?? [])[0]
+    expect(step?.kind === "subagent" ? step.subagent : null).toMatchObject({
+      output: "ab",
+      status: "failed",
+      error: "crashed",
+    })
+  })
+})
+
+describe("边界矩阵", () => {
+  it.each([
+    ["空文本增量", { segment_id: "seg_1", delta: "" }],
+    ["空段后续增量", { segment_id: "seg_1", delta: "next" }],
+  ] as const)("%s 不崩溃且保持有序", (_label, payload) => {
+    const state = applySessionEvent(
+      createSessionStreamState(),
+      makeEvent("message.delta", payload),
+    )
+    expect(state.messages).toHaveLength(1)
+  })
+
+  it("无配对 invoked 的 tool.returned 补录结果不丢事件", () => {
+    const state = applySessionEvent(
+      createSessionStreamState(),
+      makeEvent("tool.returned", {
+        segment_id: "seg_1",
+        tool_id: "tool_x",
+        name: "w",
+        result: "late",
+        is_error: false,
+      }),
+    )
+    expect(toolStatusOf(state, "run_1", "tool_x")).toBe("done")
+  })
+
+  it("appendUserMessage 复位 runStatus/todos 且不进 seenEventIds", () => {
+    let state = applySessionEvents(createSessionStreamState(), [
+      makeEvent("todo.updated", { todos: [{ content: "x", status: "pending" }] }),
+      makeEvent("run.failed", { error_kind: "agent", message: "boom" }),
+    ])
+    state = appendUserMessage(state, { id: "usr_1", content: "again" })
+    expect(state.runStatus).toBe("idle")
+    expect(state.todos).toEqual([])
+    expect(state.seenEventIds.has("usr_1")).toBe(false)
+    expect(state.messages.at(-1)).toMatchObject({ role: "user", runId: "usr_1" })
+  })
+})
+
+describe("Schema 崩溃矩阵（契约入站防线）", () => {
+  it.each([
+    ["未知 kind", { kind: "text.delta", payload: { segment_id: "s", delta: "x" } }],
+    ["缺必填 payload 字段", { kind: "message.delta", payload: { delta: "x" } }],
+    ["注入未知字段", { kind: "message.delta", payload: { segment_id: "s", delta: "x", evil: 1 } }],
+    ["seq 非整数", { kind: "message.delta", payload: { segment_id: "s", delta: "x" }, seq: 1.5 }],
+    ["is_error 缺失", {
+      kind: "tool.returned",
+      payload: { segment_id: "s", tool_id: "t", name: "n", result: "r" },
+    }],
+    ["信封缺 run_id", { kind: "run.created", payload: { run_id: "r" }, run_id: undefined }],
+    ["信封带旧 conversation_id", {
+      kind: "message.delta",
+      payload: { segment_id: "s", delta: "x" },
+      conversation_id: "conv",
+    }],
+  ])("%s 被 parseSessionEvent 拒绝", (_label, overrides) => {
+    const base = {
+      kind: "message.delta",
+      payload: { segment_id: "s", delta: "x" },
+      event_id: "e1",
+      seq: 1,
+      session_id: "ses",
+      run_id: "run",
+      timestamp: "2026-07-02T00:00:00Z",
+    }
+    expect(() => parseSessionEvent({ ...base, ...overrides })).toThrow()
+  })
+})

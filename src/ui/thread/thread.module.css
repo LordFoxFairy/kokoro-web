@@ -1,0 +1,1131 @@
+/* 会话线域样式：对话滚动区 / 气泡 / markdown / 过程块 / 工具行 / 子智能体行。 */
+
+/* 活跃态：有消息时主区让位给可滚动的对话线，composer 沉到底部。 */
+.thread {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 1.25rem 1.25rem 0.5rem;
+  /* 始终预留两侧滚动条槽：todo 条展开/收起改变线程高度、令滚动条出现或消失时，
+     居中的对话内容不会左右漂移。 */
+  scrollbar-gutter: stable both-edges;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--brand-wood) 50%, transparent) transparent;
+}
+
+.thread::-webkit-scrollbar {
+  width: 8px;
+}
+
+.thread::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--brand-wood) 50%, transparent);
+}
+
+.thread::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.inner {
+  display: flex;
+  width: min(var(--kk-content-width), 100%);
+  margin: 0 auto;
+  flex-direction: column;
+  /* 扁平文档观感：轮间留宽呼吸，靠间距而非气泡边框分隔上下两轮。 */
+  gap: 1.75rem;
+}
+
+/* 扁平对话布局：assistant 全宽无头像、贴页面流；user 靠右单枚柔暖胶囊。 */
+.userMsg {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+}
+
+/* 用户胶囊：柔暖底、均匀圆角、无尾角、无描边，靠右紧凑。 */
+.userBubble {
+  max-width: 80%;
+  border-radius: 1.1rem;
+  padding: 0.6rem 0.95rem;
+  background: var(--brand-wood-soft);
+  color: color-mix(in srgb, var(--foreground) 88%, var(--brand-wood) 12%);
+}
+
+.userBody {
+  margin: 0;
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* 一轮 = 一条无头像竖脊（spine），全宽贴页面流。脊上是按 seq 排好的有序步骤列表，
+   过程（思考/工具/子智能体）以样式弱化、正文强调，绝不在落定时重排 DOM。 */
+.turn {
+  display: flex;
+  align-items: flex-start;
+}
+
+.turnSpine {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  /* 段间距：同一轮内、各「正文+过程」段之间留中等呼吸（< 轮间距）。 */
+  gap: 0.9rem;
+}
+
+/* 一段信息 = 正文在【上】＋ 它的过程挂在【下面】，竖直堆叠、段内小间距。 */
+.turnSegment {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+/* 气泡入场基类：一次性的淡入（仅首帧），减少动态时不应用（见文件尾媒体查询）。 */
+.bubble {
+  min-width: 0;
+}
+
+/* 答案正文：扁平无气泡，铺满脊宽（markdown 需要横向空间）。
+   min-width:0 保证超宽代码块横向滚动而不撑破列宽。 */
+.turnAnswer {
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+}
+
+/* 重连续传锚点：同一答案盒，仅描边/底色微调暖木，暗示「正在重新接上这一轮」
+   而非「正在新想」；盒模型不变，与普通成形态零跳变。 */
+.turnAnswer[data-anchor="reconnecting"] {
+  border-color: color-mix(in srgb, var(--brand-wood) 45%, var(--border-soft) 55%);
+  background: color-mix(in srgb, var(--brand-wood-soft) 40%, var(--surface) 60%);
+}
+
+.turnAnswer[data-anchor="reconnecting"] .formingLabel {
+  color: color-mix(in srgb, var(--brand-wood) 72%, var(--foreground) 28%);
+  font-weight: 500;
+}
+
+/* 重连状态条：尾段已有正文时（无成形盒可承载），turn 级一行「重连中…」暖木胶囊，
+   置于脊顶，让「正在重新接上这一轮」在有正文时也始终可读。 */
+.turnReconnect {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 0.4rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--brand-wood) 45%, var(--border-soft) 55%);
+  background: color-mix(in srgb, var(--brand-wood-soft) 40%, var(--surface) 60%);
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: color-mix(in srgb, var(--brand-wood) 72%, var(--foreground) 28%);
+}
+
+/* 成形态：占位沿用 answer 同一元素，行内放 label + 脉冲点。
+   故 forming→streaming 是行内内容替换、不跳——首 token 到达不再换元素。 */
+.forming {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.formingLabel {
+  font-size: 0.9rem;
+  color: color-mix(in srgb, var(--foreground) 52%, white 48%);
+}
+
+/* CSS-only 流式脉冲：三点，仅在用户未要求减少动态时律动。 */
+.pulse {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.22rem;
+}
+
+.pulse span {
+  display: block;
+  height: 0.32rem;
+  width: 0.32rem;
+  border-radius: 999px;
+  background: var(--brand-wood);
+  opacity: 0.45;
+}
+
+@keyframes kk-pulse {
+  0%,
+  80%,
+  100% {
+    opacity: 0.3;
+  }
+  40% {
+    opacity: 0.9;
+  }
+}
+
+/* 流式光标：紧跟正在生长的助手正文，就近暗示「正在出字」。
+   内联块、固定尺寸、贴基线——只闪烁不位移，绝不挤动文本布局。 */
+.caret {
+  display: inline-block;
+  width: 0.5ch;
+  height: 1em;
+  margin-left: 0.1ch;
+  vertical-align: text-bottom;
+  border-radius: 1px;
+  background: var(--brand-wood);
+  opacity: 0.7;
+}
+
+@keyframes kk-caret-blink {
+  0%,
+  45% {
+    opacity: 0.7;
+  }
+  50%,
+  95% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 0.7;
+  }
+}
+
+/* 运行中占位：工具结果未到 / 子智能体结论未到时，结果位显示「运行中…」+ 脉冲点，
+   让「在跑、还没回来」可见，统一 loading 语言。 */
+.pending {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+  font-size: 0.8rem;
+  color: color-mix(in srgb, var(--foreground) 50%, white 50%);
+}
+
+/* —— 过程块（思考/工具/子智能体的可折叠披露） —— */
+
+.process {
+  border: 1px solid color-mix(in srgb, var(--border-soft) 85%, transparent);
+  border-radius: 0.7rem;
+  background: color-mix(in srgb, var(--surface-soft) 55%, var(--surface) 45%);
+  font-size: 0.84rem;
+}
+
+/* summary 为 button：抹平浏览器默认按钮外观，铺满宽度、文本左对齐、字体继承。 */
+.processSummary {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 0.4rem;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  padding: 0.4rem 0.6rem;
+  text-align: left;
+  font: inherit;
+  color: color-mix(in srgb, var(--brand-wood) 60%, var(--foreground) 40%);
+  font-weight: 500;
+}
+
+/* 键盘焦点：暖木 inset 环，不被父盒 overflow 裁掉；圆角对齐顶角避免方角焦点框。 */
+.processSummary:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--brand-wood);
+  border-radius: 0.7rem;
+}
+
+.processSpark {
+  width: 0.95rem;
+  height: 0.95rem;
+  flex-shrink: 0;
+  color: var(--brand-wood);
+}
+
+.processTitle {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.processChevron {
+  width: 0.75rem;
+  height: 0.75rem;
+  margin-left: auto;
+  flex-shrink: 0;
+  opacity: 0.65;
+  transition: transform 150ms ease;
+}
+
+.process[data-open="true"] .processChevron {
+  transform: rotate(180deg);
+}
+
+/* 展开/收起高度过渡：grid-rows 0fr↔1fr 是动画 height:auto 的稳妥手法。
+   clip 是 grid 项、纯 overflow:hidden+min-height:0——收起时把 body（含其滚动视口）整体裁到 0。 */
+.processReveal {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 220ms ease;
+}
+
+.process[data-open="true"] .processReveal {
+  grid-template-rows: 1fr;
+}
+
+.processClip {
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* 「思考中」脉冲点：流式时跟在标题后。 */
+.processLive {
+  display: inline-flex;
+  gap: 3px;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.processLive i {
+  width: 4px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--brand-wood);
+  animation: kk-bounce 1s ease-in-out infinite;
+}
+
+.processLive i:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.processLive i:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes kk-bounce {
+  0%,
+  100% {
+    opacity: 0.3;
+    transform: translateY(0);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(-2px);
+  }
+}
+
+/* 展开后的过程主体：思考文本 + 工具/子智能体分组，分隔细线区隔。
+   思考过程可能很长：整块作为单一滚动区封顶，绝不把对话顶上去。
+   底部暖木渐隐是纯 CSS scroll-shadow：滚到底或不溢出时 cover 层盖住 shadow 自动隐藏。 */
+.processBody {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0 0.6rem 0.55rem;
+  max-height: 24rem;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  background:
+    linear-gradient(
+        to top,
+        color-mix(in srgb, var(--surface-soft) 55%, var(--surface) 45%),
+        transparent
+      )
+      center bottom / 100% 1.4rem no-repeat local,
+    radial-gradient(
+        farthest-side at 50% 100%,
+        color-mix(in srgb, var(--brand-wood) 16%, transparent),
+        transparent
+      )
+      center bottom / 100% 0.7rem no-repeat;
+}
+
+/* Fast/Thinking 过程密度差异：Thinking 略松，Fast 略紧。只调内部 gap，不动盒模型。 */
+.process[data-mode="thinking"] .processBody {
+  gap: 0.6rem;
+}
+
+.process[data-mode="fast"] .processBody {
+  gap: 0.32rem;
+}
+
+.processBody > * + * {
+  padding-top: 0.45rem;
+  border-top: 1px solid color-mix(in srgb, var(--border-soft) 60%, transparent);
+}
+
+/* 思考文本：轻、静，像内心独白；随过程主体一起滚动。 */
+.processThinking {
+  margin: 0;
+  color: color-mix(in srgb, var(--foreground) 60%, white 40%);
+  font-size: 0.82rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.actgroup {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+/* 同帧多工具批量审批提示：点明这一步的工具要一起决定，弱化为木色 muted 一行。 */
+.actgroupHint {
+  margin: 0;
+  font-size: 0.82rem;
+  color: color-mix(in srgb, var(--brand-wood) 60%, var(--foreground) 40%);
+}
+
+/* —— 运行态指示 —— */
+
+/* 运行中转圈：CSS-only 暖木环。 */
+.spinner {
+  display: inline-block;
+  width: 0.85rem;
+  height: 0.85rem;
+  border-radius: 999px;
+  border: 2px solid color-mix(in srgb, var(--brand-wood) 28%, transparent);
+  border-top-color: var(--brand-wood);
+  animation: kk-spin 0.7s linear infinite;
+}
+
+@keyframes kk-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.actstate {
+  width: 0.95rem;
+  height: 0.95rem;
+}
+
+.actstateDone {
+  color: var(--brand-wood);
+}
+
+/* 工具失败：警示点。 */
+.actstateError {
+  display: inline-block;
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, #b4584f 80%, transparent);
+}
+
+/* 待批准：静止的琥珀点 + 柔和脉冲，区别于「进行中」转圈，提示需要人来决定。 */
+.actstateAwaiting {
+  display: inline-block;
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 999px;
+  background: #c8923c;
+  animation: kk-accent-pulse 1.6s ease-in-out infinite;
+}
+
+/* 已拒绝/未执行：中性的禁止圈（哑光石板灰），与绿勾 done、红点 error 都显著区分。 */
+.actstateRejected {
+  width: 0.85rem;
+  height: 0.85rem;
+  color: color-mix(in srgb, #8a8f99 80%, var(--foreground) 20%);
+}
+
+@keyframes kk-accent-pulse {
+  0%,
+  100% {
+    border-left-color: color-mix(in srgb, var(--brand-wood) 40%, transparent);
+    opacity: 0.75;
+  }
+  50% {
+    border-left-color: color-mix(in srgb, var(--brand-wood) 95%, transparent);
+    opacity: 1;
+  }
+}
+
+/* —— 工具行 —— */
+
+/* 工具调用：可展开看参数/结果。左侧细竖条做状态强调（运行/完成），
+   color/opacity/边条颜色变化为主，绝不改盒子尺寸——hover/状态切换均无布局抖动。 */
+.tool {
+  position: relative;
+  padding-left: 0.55rem;
+  border-left: 2px solid transparent;
+  font-size: 0.84rem;
+}
+
+.toolSummary {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  cursor: pointer;
+  list-style: none;
+  padding: 0.1rem 0;
+}
+
+/* 无入参/无结果时的静态行头：去掉指针手型与 marker，明确「不可展开」。 */
+.toolSummaryStatic {
+  cursor: default;
+}
+
+.toolSummary::-webkit-details-marker {
+  display: none;
+}
+
+/* 运行中：名称用暖木强调，左侧竖条点亮；脉动只在未要求减少动态时启用。 */
+.tool[data-status="running"] {
+  border-left-color: color-mix(in srgb, var(--brand-wood) 60%, transparent);
+}
+
+.tool[data-status="running"] .toolName {
+  color: var(--brand-wood);
+}
+
+/* 完成：名称略暗、整体降一点不透明度，弱化为已落定的过程项。 */
+.tool[data-status="done"] {
+  border-left-color: color-mix(in srgb, var(--brand-wood) 20%, transparent);
+  opacity: 0.85;
+}
+
+.tool[data-status="done"] .toolName {
+  color: color-mix(in srgb, var(--foreground) 70%, white 30%);
+}
+
+.tool[data-status="error"] {
+  border-left-color: color-mix(in srgb, #b4584f 55%, transparent);
+}
+
+.tool[data-status="error"] .toolName {
+  color: color-mix(in srgb, #b4584f 75%, var(--foreground) 25%);
+}
+
+/* 已拒绝：哑光石板灰边，工具名删除线——明确「未执行」且非错误。 */
+.tool[data-status="rejected"] {
+  border-left-color: color-mix(in srgb, #8a8f99 55%, transparent);
+}
+
+.tool[data-status="rejected"] .toolName {
+  color: color-mix(in srgb, #8a8f99 70%, var(--foreground) 30%);
+  text-decoration: line-through;
+}
+
+/* 终态收口未执行（stale/cancelled）：同样的哑光石板灰边，但不打删除线（非用户驳回）。 */
+.tool[data-status="stale-awaiting"],
+.tool[data-status="stale-running"],
+.tool[data-status="cancelled"] {
+  border-left-color: color-mix(in srgb, #8a8f99 55%, transparent);
+}
+
+.tool[data-status="stale-awaiting"] .toolName,
+.tool[data-status="stale-running"] .toolName,
+.tool[data-status="cancelled"] .toolName {
+  color: color-mix(in srgb, #8a8f99 70%, var(--foreground) 30%);
+}
+
+@keyframes kk-tool-pulse {
+  0%,
+  100% {
+    border-left-color: color-mix(in srgb, var(--brand-wood) 40%, transparent);
+  }
+  50% {
+    border-left-color: color-mix(in srgb, var(--brand-wood) 95%, transparent);
+  }
+}
+
+.toolIcon {
+  width: 0.9rem;
+  height: 0.9rem;
+  flex-shrink: 0;
+  color: var(--brand-wood);
+}
+
+.toolName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.8rem;
+  color: var(--foreground);
+}
+
+.toolState {
+  display: inline-flex;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+/* 行级「可展开」chevron——只有 <details> 行渲染它，静态行没有；展开时翻转。 */
+.toolChevron,
+.subagentChevron {
+  width: 0.7rem;
+  height: 0.7rem;
+  flex-shrink: 0;
+  opacity: 0.5;
+  transition: transform 150ms ease;
+}
+
+.tool[open] .toolChevron,
+.subagent[open] .subagentChevron {
+  transform: rotate(180deg);
+}
+
+.toolDetail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin-top: 0.3rem;
+}
+
+.toolArgs,
+.toolResult {
+  margin: 0;
+  padding: 0.4rem 0.5rem;
+  border-radius: 0.4rem;
+  background: color-mix(in srgb, var(--surface-soft) 72%, transparent);
+  color: color-mix(in srgb, var(--foreground) 76%, white 24%);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 10rem;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.toolResult {
+  border-left: 2px solid color-mix(in srgb, var(--brand-wood) 28%, transparent);
+}
+
+/* 工具失败原因面板（红木色，落定后仍保持展开）。 */
+.toolError {
+  margin: 0;
+  padding: 0.4rem 0.5rem;
+  border-left: 2px solid color-mix(in srgb, #b4584f 45%, transparent);
+  border-radius: 0 0.4rem 0.4rem 0;
+  background: color-mix(in srgb, #b4584f 8%, var(--surface) 92%);
+  color: #7a3a33;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* 拒绝/收口说明面板：哑光石板灰，明确「未执行/无结果」且非错误。 */
+.toolRejectedNote {
+  margin: 0;
+  padding: 0.4rem 0.5rem;
+  border-left: 2px solid color-mix(in srgb, #8a8f99 45%, transparent);
+  border-radius: 0 0.4rem 0.4rem 0;
+  background: color-mix(in srgb, #8a8f99 8%, var(--surface) 92%);
+  color: color-mix(in srgb, #5c616b 85%, var(--foreground) 15%);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+/* respond provenance 标记：done 行内小药丸，暖木色，标明结果系人工答复非工具产出。 */
+.toolResponded {
+  padding: 0.05rem 0.4rem;
+  border-radius: 0.6rem;
+  background: color-mix(in srgb, var(--brand-wood) 12%, var(--surface) 88%);
+  color: color-mix(in srgb, var(--brand-wood) 80%, var(--foreground) 20%);
+  font-size: 0.68rem;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+
+/* —— HITL 工具审批 —— */
+
+.toolApproval {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-top: 0.3rem;
+}
+
+.toolApprovalPrompt {
+  margin: 0;
+  font-size: 0.82rem;
+  color: color-mix(in srgb, var(--brand-wood) 60%, var(--foreground) 40%);
+}
+
+.toolApprovalActions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+/* 契约 risk 摘要（非权限真源）：审批卡上的一行风险说明。 */
+.toolRisk {
+  margin: 0;
+  font-size: 0.76rem;
+  color: color-mix(in srgb, #b4552d 72%, var(--foreground) 28%);
+}
+
+/* ask_user 的 choices 单选组：胶囊按钮，选中即填入回复。 */
+.toolChoices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.toolChoice {
+  border: 1px solid color-mix(in srgb, var(--brand-wood-soft) 60%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, white 88%, var(--surface-soft) 12%);
+  padding: 0.24rem 0.7rem;
+  font-size: 0.78rem;
+  color: var(--foreground);
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+.toolChoice:hover {
+  background: color-mix(in srgb, var(--brand-wood-soft) 40%, white 60%);
+}
+
+.toolChoice[data-selected="true"] {
+  background: var(--brand-wood);
+  border-color: var(--brand-wood);
+  color: #fffdf9;
+}
+
+.toolChoice:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* 问答卡的「停止本轮」次级入口：文字按钮，不与主操作抢视觉。 */
+.toolCancelRun {
+  align-self: flex-start;
+  border: 0;
+  background: none;
+  padding: 0;
+  font-size: 0.76rem;
+  color: color-mix(in srgb, var(--brand-wood) 55%, var(--foreground) 45%);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.toolRespond {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.toolRespondInput {
+  min-width: 0;
+  border: 1px solid color-mix(in srgb, var(--brand-wood-soft) 55%, transparent);
+  border-radius: 0.45rem;
+  background: color-mix(in srgb, white 84%, var(--surface-soft) 16%);
+  padding: 0.36rem 0.5rem;
+  color: var(--foreground);
+  font: inherit;
+  font-size: 0.82rem;
+}
+
+.toolRespondInput:focus-visible {
+  outline: 2px solid var(--brand-wood);
+  outline-offset: 2px;
+}
+
+.toolApprove,
+.toolReject,
+.toolRespondSend {
+  border: 0;
+  border-radius: 999px;
+  padding: 0.3rem 0.85rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+.toolApprove,
+.toolRespondSend {
+  background: var(--brand-wood);
+  color: #fffdf9;
+}
+
+.toolApprove:hover,
+.toolRespondSend:hover {
+  background: var(--brand-wood-hover);
+}
+
+.toolReject {
+  background: color-mix(in srgb, var(--brand-wood-soft) 55%, white 45%);
+  color: color-mix(in srgb, var(--brand-wood) 70%, var(--foreground) 30%);
+}
+
+.toolReject:hover {
+  background: color-mix(in srgb, var(--brand-wood-soft) 80%, white 20%);
+}
+
+.toolApprove:disabled,
+.toolReject:disabled,
+.toolRespondSend:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.toolApprove:focus-visible,
+.toolReject:focus-visible,
+.toolRespondSend:focus-visible {
+  outline: 2px solid var(--brand-wood);
+  outline-offset: 2px;
+}
+
+/* —— 子智能体行 —— */
+
+.subagent {
+  font-size: 0.84rem;
+}
+
+.subagentSummary {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  cursor: pointer;
+  list-style: none;
+  padding: 0.1rem 0;
+}
+
+/* 无结论时的静态行头：去掉指针手型，明确「不可展开」。 */
+.subagentSummaryStatic {
+  cursor: default;
+}
+
+.subagentSummary::-webkit-details-marker {
+  display: none;
+}
+
+.subagentIcon {
+  width: 0.95rem;
+  height: 0.95rem;
+  flex-shrink: 0;
+  color: var(--brand-wood);
+}
+
+.subagentText {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.subagentName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.82rem;
+  color: var(--foreground);
+}
+
+/* 来源胶囊：三种来源各自不同的描边/填充样式，按 data-source 区分。 */
+.subagentChip {
+  flex-shrink: 0;
+  padding: 0.02rem 0.4rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+/* 内置：实心暖木胶囊。 */
+.subagent[data-source="built-in"] .subagentChip {
+  border: 1px solid transparent;
+  background: color-mix(in srgb, var(--brand-wood) 82%, white 18%);
+  color: var(--surface);
+}
+
+/* 配置自定义：暖木描边空心胶囊。 */
+.subagent[data-source="config-custom"] .subagentChip {
+  border: 1px solid color-mix(in srgb, var(--brand-wood) 55%, var(--border-soft) 45%);
+  background: var(--surface);
+  color: color-mix(in srgb, var(--brand-wood) 75%, var(--foreground) 25%);
+}
+
+/* 运行时自定义：虚线描边胶囊，暗示「临时/动态注册」。 */
+.subagent[data-source="runtime-custom"] .subagentChip {
+  border: 1px dashed color-mix(in srgb, var(--brand-wood) 50%, var(--border-soft) 50%);
+  background: color-mix(in srgb, var(--brand-wood-soft) 40%, transparent);
+  color: color-mix(in srgb, var(--brand-wood) 68%, var(--foreground) 32%);
+}
+
+.subagentState {
+  display: inline-flex;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+/* 展开后的嵌套面板：职责 + 结论。结论整段换行、左侧细线区隔，
+   复用工具结果那条暖木左竖条的视觉语言。 */
+.subagentDetail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin-top: 0.3rem;
+}
+
+/* 职责描述：常驻可见的短元信息——换行展示，绝不 ellipsis 截断。 */
+.subagentDesc {
+  margin: 0;
+  padding-left: 1.4rem;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  color: color-mix(in srgb, var(--foreground) 55%, white 45%);
+  white-space: normal;
+  word-break: break-word;
+}
+
+/* 子智能体结论面板：左侧暖木竖条 + 完整换行的 Markdown 正文，封顶内滚。 */
+.subagentResult {
+  margin-left: 1.4rem;
+  padding: 0.35rem 0.55rem;
+  border-left: 2px solid color-mix(in srgb, var(--brand-wood) 28%, transparent);
+  border-radius: 0 0.4rem 0.4rem 0;
+  background: color-mix(in srgb, var(--surface-soft) 60%, transparent);
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: color-mix(in srgb, var(--foreground) 80%, white 20%);
+  max-height: 14rem;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+/* 结论内的 Markdown 整段换行：段落紧凑，绝不 nowrap/ellipsis。 */
+.subagentResult .md {
+  white-space: normal;
+  word-break: break-word;
+}
+
+.subagentResult .md > :first-child {
+  margin-top: 0;
+}
+
+.subagentResult .md > :last-child {
+  margin-bottom: 0;
+}
+
+/* —— 助手 markdown 排版 —— */
+
+.md {
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  word-break: break-word;
+}
+.md > :first-child {
+  margin-top: 0;
+}
+.md > :last-child {
+  margin-bottom: 0;
+}
+.md p {
+  margin: 0 0 0.65em;
+}
+.md h1,
+.md h2,
+.md h3,
+.md h4 {
+  margin: 1em 0 0.5em;
+  line-height: 1.3;
+  font-weight: 600;
+}
+.md h1 {
+  font-size: 1.25rem;
+}
+.md h2 {
+  font-size: 1.15rem;
+}
+.md h3 {
+  font-size: 1.05rem;
+}
+.md h4 {
+  font-size: 1rem;
+}
+.md ul,
+.md ol {
+  margin: 0 0 0.65em;
+  padding-left: 1.4em;
+}
+.md li {
+  margin: 0.2em 0;
+}
+.md li > p {
+  margin: 0;
+}
+.md a {
+  color: var(--brand-wood);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.md a:hover {
+  color: var(--brand-wood-hover);
+}
+.md strong {
+  font-weight: 600;
+}
+.md code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85em;
+  background: var(--brand-wood-soft);
+  padding: 0.12em 0.36em;
+  border-radius: 0.35rem;
+}
+.md pre {
+  margin: 0 0 0.65em;
+  padding: 0.7rem 0.85rem;
+  background: var(--surface-soft);
+  border: 1px solid var(--border-soft);
+  border-radius: 0.6rem;
+  overflow-x: auto;
+}
+.md pre code {
+  background: none;
+  padding: 0;
+  border-radius: 0;
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+.md blockquote {
+  margin: 0 0 0.65em;
+  padding: 0.1em 0.9em;
+  border-left: 3px solid var(--brand-wood-soft);
+  color: color-mix(in srgb, var(--foreground) 70%, white 30%);
+}
+.md hr {
+  border: none;
+  border-top: 1px solid var(--border-soft);
+  margin: 1em 0;
+}
+.md table {
+  border-collapse: collapse;
+  margin: 0 0 0.65em;
+  font-size: 0.9em;
+}
+.md th,
+.md td {
+  border: 1px solid var(--border-soft);
+  padding: 0.35em 0.6em;
+  text-align: left;
+}
+.md th {
+  background: var(--surface-soft);
+  font-weight: 600;
+}
+.md img {
+  max-width: 100%;
+  border-radius: 0.5rem;
+}
+
+/* —— 这轮失败提示 + 重试 —— */
+
+.error {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  align-self: flex-start;
+  max-width: 76%;
+  border: 1px solid color-mix(in srgb, #b4584f 32%, var(--border-soft) 68%);
+  background: color-mix(in srgb, #b4584f 8%, var(--surface) 92%);
+  border-radius: 0.9rem;
+  padding: 0.5rem 0.75rem;
+  color: #7a3a33;
+  font-size: 0.82rem;
+}
+
+/* 重试入口：暖木描边胶囊，固定尺寸；hover/focus 只换底色与阴影，绝不改变盒子大小。 */
+.retry {
+  flex-shrink: 0;
+  border: 1px solid color-mix(in srgb, var(--brand-wood) 55%, var(--border-soft) 45%);
+  border-radius: 999px;
+  background: var(--surface);
+  padding: 0.2rem 0.7rem;
+  color: var(--brand-wood);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.retry:hover,
+.retry:focus-visible {
+  background: color-mix(in srgb, var(--brand-wood-soft) 70%, white 30%);
+  box-shadow: inset 0 0 0 1px var(--brand-wood);
+  outline: none;
+}
+
+/* —— 动效开关 —— */
+
+@keyframes kk-message-enter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes kk-stage-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .thread {
+    animation: kk-stage-in 220ms ease both;
+  }
+
+  .pulse span {
+    animation: kk-pulse 1.2s ease-in-out infinite;
+  }
+
+  .pulse span:nth-child(2) {
+    animation-delay: 0.18s;
+  }
+
+  .pulse span:nth-child(3) {
+    animation-delay: 0.36s;
+  }
+
+  .bubble,
+  .userBubble {
+    animation: kk-message-enter 250ms ease-out;
+  }
+
+  .caret {
+    animation: kk-caret-blink 1.1s steps(1, end) infinite;
+  }
+
+  /* 摘要在 live↔settled 切换（key 翻转 remount）时淡入，柔化文案/脉冲的瞬切。 */
+  .processTitle {
+    animation: kk-message-enter 200ms ease-out;
+  }
+
+  /* 运行中左侧竖条呼吸：仅亮度律动，不位移、不改尺寸。 */
+  .tool[data-status="running"] {
+    animation: kk-tool-pulse 1.6s ease-in-out infinite;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .processLive i {
+    animation: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .thread {
+    padding: 1rem 0.85rem 0.5rem;
+  }
+
+  .userBubble {
+    max-width: 86%;
+  }
+}

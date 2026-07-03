@@ -1,4 +1,4 @@
-import { SessionShell } from "@/interfaces/session-stream/session-shell"
+import { SessionShell } from "@/ui/shell/session-shell"
 
 export default function Home() {
   return <SessionShell />

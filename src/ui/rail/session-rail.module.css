@@ -1,0 +1,458 @@
+/* 侧栏域样式：品牌头 / 搜索 / 导航 / 最近列表 / 账户卡；收起态由 data-collapsed 驱动。 */
+
+.rail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  border-right: 1px solid var(--border-soft);
+  padding: 0.85rem 0.6rem;
+  background: color-mix(in srgb, var(--background) 93%, white 7%);
+  /* 列宽过渡期间裁掉横向溢出，让文字随 rail 收窄被干净裁切而非溢出/换行。 */
+  overflow: hidden;
+}
+
+/* 收起/展开时文字标签淡出淡入，与列宽过渡同步，避免瞬切。
+   收窄时 max-width→0 + opacity→0，文字被裁且不占据居中空间。 */
+.brandText,
+.navLabel,
+.userText {
+  white-space: nowrap;
+  overflow: hidden;
+  transition:
+    opacity 160ms ease,
+    max-width 280ms cubic-bezier(0.22, 1, 0.36, 1);
+  opacity: 1;
+  max-width: 12rem;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.35rem 0.2rem 0.7rem 0.4rem;
+}
+
+.brand {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+/* 头部右侧图标簇：搜索 + 收起并排。 */
+.headActions {
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+  flex-shrink: 0;
+}
+
+.headBtn {
+  display: flex;
+  height: 2rem;
+  width: 2rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 0.6rem;
+  background: transparent;
+  color: rgba(43, 37, 32, 0.55);
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
+}
+
+.headBtn:hover,
+.headBtn[data-active="true"] {
+  background: color-mix(in srgb, var(--brand-wood-soft) 55%, white 45%);
+  color: var(--foreground);
+}
+
+.headBtn:focus-visible {
+  outline: 2px solid var(--brand-wood);
+  outline-offset: 2px;
+}
+
+.icon {
+  width: 1.05rem;
+  height: 1.05rem;
+  flex-shrink: 0;
+}
+
+.brandMark {
+  display: flex;
+  height: 2.1rem;
+  width: 2.1rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.6rem;
+  background: var(--brand-wood);
+  color: #fffdf9;
+  font-size: 0.95rem;
+}
+
+.brandTitle {
+  margin: 0;
+  /* 衬线品牌字标，与首屏标题同一暖色身份。 */
+  font-family: var(--font-serif);
+  font-size: 1.12rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--foreground);
+}
+
+.brandSubtitle {
+  margin: 0;
+  margin-top: 0.05rem;
+  font-family: var(--font-serif);
+  font-size: 0.68rem;
+  letter-spacing: 0.16em;
+  /* 0.65 alpha 在该浅底上达 ~4.7:1，满足 WCAG AA 正文对比度。 */
+  color: rgba(43, 37, 32, 0.65);
+}
+
+/* 搜索过滤框：打开时浮现在头部下方，实时过滤「最近」列表。 */
+.searchBox {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0.1rem 0 0.35rem;
+  padding: 0.4rem 0.55rem;
+  border-radius: 0.7rem;
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+}
+
+.searchBox:focus-within {
+  border-color: var(--brand-wood);
+}
+
+.searchGlyph {
+  width: 0.95rem;
+  height: 0.95rem;
+  flex-shrink: 0;
+  color: rgba(43, 37, 32, 0.5);
+}
+
+.searchInput {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--foreground);
+  font-size: 0.85rem;
+  outline: none;
+}
+
+.searchInput::placeholder {
+  color: rgba(43, 37, 32, 0.42);
+}
+
+/* 隐藏 type=search 的原生清除叉，统一用自绘关闭键。 */
+.searchInput::-webkit-search-cancel-button {
+  appearance: none;
+}
+
+.searchClose {
+  flex-shrink: 0;
+  border: 0;
+  background: transparent;
+  padding: 0 0.15rem;
+  font-size: 1rem;
+  line-height: 1;
+  color: color-mix(in srgb, var(--foreground) 45%, white 55%);
+  cursor: pointer;
+  transition: color 120ms ease;
+}
+
+.searchClose:hover {
+  color: var(--brand-wood-hover);
+}
+
+/* 导航：图标 + 文字行，无边框、透明底，hover 显柔和暖木 pill。 */
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.navItem {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 0.6rem;
+  border: 0;
+  border-radius: 0.7rem;
+  background: transparent;
+  padding: 0.5rem 0.7rem;
+  color: var(--foreground);
+  font-size: 0.9rem;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
+}
+
+.navItem:hover:not(:disabled),
+.navItem[data-active="true"] {
+  background: color-mix(in srgb, var(--brand-wood-soft) 55%, white 45%);
+}
+
+/* 新对话：真实操作，暖木字色 + 更实的 hover。 */
+.navItemAction {
+  color: var(--brand-wood-hover);
+  font-weight: 600;
+}
+
+.navItemAction:hover {
+  background: color-mix(in srgb, var(--brand-wood-soft) 78%, white 22%);
+}
+
+.navItem:focus-visible,
+.userCard:focus-within {
+  outline: 2px solid var(--brand-wood);
+  outline-offset: 2px;
+}
+
+.navLabel {
+  flex: 1;
+  min-width: 0;
+  text-overflow: ellipsis;
+}
+
+/* 快捷键提示：靠右、纤细，仅装饰。 */
+.navShortcut {
+  flex-shrink: 0;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  color: rgba(43, 37, 32, 0.4);
+}
+
+/* 分组标题行：标题 + 右侧排序键（未实现能力入口，disabled 而非隐藏）。 */
+.sectionRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-right: 0.5rem;
+}
+
+.sort {
+  display: flex;
+  height: 1.6rem;
+  width: 1.6rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: rgba(43, 37, 32, 0.4);
+  cursor: default;
+}
+
+.sortIcon {
+  width: 0.95rem;
+  height: 0.95rem;
+  flex-shrink: 0;
+}
+
+/* 分组标题：纤细、克制的「最近」锚，给历史会话一个结构起点。 */
+.section {
+  margin: 0;
+  padding: 0.45rem 0.7rem 0.3rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: rgba(43, 37, 32, 0.5);
+}
+
+/* 搜索无匹配时的柔和空态，不撑动列表节奏。 */
+.empty {
+  margin: 0;
+  padding: 0.4rem 0.7rem;
+  font-size: 0.82rem;
+  color: rgba(43, 37, 32, 0.5);
+}
+
+/* 历史会话列表：填充 search 与 user-card 之间，超出滚动。 */
+.list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  margin: 0.45rem 0 0.4rem;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--brand-wood) 40%, transparent) transparent;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  border-radius: 0.6rem;
+  transition: background-color 120ms ease;
+}
+
+.item:hover,
+.item[data-active="true"] {
+  background: var(--brand-wood-soft);
+}
+
+.itemSelect {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  padding: 0.4rem 0.55rem;
+  font-size: 0.85rem;
+  color: var(--foreground);
+  cursor: pointer;
+}
+
+.itemTitle {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* 删除键只在 hover/active 时浮现，仅改透明度——不改盒尺寸，不引发列表抖动。 */
+.itemDelete {
+  flex-shrink: 0;
+  opacity: 0;
+  border: 0;
+  background: transparent;
+  padding: 0 0.45rem;
+  font-size: 1rem;
+  line-height: 1;
+  color: color-mix(in srgb, var(--foreground) 45%, white 55%);
+  cursor: pointer;
+  transition:
+    opacity 120ms ease,
+    color 120ms ease;
+}
+
+.item:hover .itemDelete,
+.item[data-active="true"] .itemDelete {
+  opacity: 1;
+}
+
+.itemDelete:hover {
+  color: var(--brand-wood-hover);
+}
+
+/* 底部账户：纤细一行，无边框，hover 显柔和 pill。 */
+.userCard {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  border-radius: 999px;
+  padding: 0.45rem 0.6rem;
+  transition: background-color 120ms ease;
+}
+
+.userCard:hover {
+  background: color-mix(in srgb, var(--brand-wood-soft) 50%, white 50%);
+}
+
+.userAvatar {
+  height: 1.85rem;
+  width: 1.85rem;
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--brand-wood-soft) 55%, var(--brand-wood) 45%);
+}
+
+.userName {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.userMeta {
+  margin: 0;
+  margin-top: 0.02rem;
+  font-size: 0.72rem;
+  color: rgba(43, 37, 32, 0.55);
+}
+
+/* —— 收起态：只留可操作的图标列（新对话 + 当前视图）。 —— */
+
+.rail[data-collapsed="true"] {
+  padding: 0.85rem 0.4rem;
+  align-items: center;
+}
+
+.rail[data-collapsed="true"] .list,
+.rail[data-collapsed="true"] .searchBox,
+.rail[data-collapsed="true"] .searchToggle,
+.rail[data-collapsed="true"] .navShortcut {
+  display: none;
+}
+
+.rail[data-collapsed="true"] .head {
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.35rem 0 0.6rem;
+}
+
+.rail[data-collapsed="true"] .brand {
+  flex: none;
+  justify-content: center;
+}
+
+.rail[data-collapsed="true"] .brandText,
+.rail[data-collapsed="true"] .navLabel,
+.rail[data-collapsed="true"] .userText {
+  max-width: 0;
+  opacity: 0;
+}
+
+.rail[data-collapsed="true"] .navItem {
+  width: 2.4rem;
+  margin: 0 auto;
+  justify-content: center;
+  padding: 0.5rem;
+}
+
+/* 收起态清零含隐藏标签的 flex 容器 gap：标签虽 max-width:0 仍占 gap，会把图标顶离居中。 */
+.rail[data-collapsed="true"] .brand,
+.rail[data-collapsed="true"] .navItem {
+  gap: 0;
+}
+
+.rail[data-collapsed="true"] .userCard {
+  justify-content: center;
+  padding: 0.4rem;
+}
+
+/* —— 响应式 —— */
+
+@media (max-width: 960px) {
+  /* 窄屏：rail 堆叠到顶部；收起态仅桌面生效，文字标签恢复可见。 */
+  .rail {
+    border-right: 0;
+    border-bottom: 1px solid var(--border-soft);
+  }
+
+  .rail[data-collapsed="true"] .brandText,
+  .rail[data-collapsed="true"] .navLabel,
+  .rail[data-collapsed="true"] .userText {
+    max-width: 12rem;
+    opacity: 1;
+  }
+}
+
+@media (max-width: 640px) {
+  .rail {
+    padding: 0.85rem;
+  }
+}

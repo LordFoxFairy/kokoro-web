@@ -1,0 +1,119 @@
+/* 计划条样式：钉在输入框上方的可收缩清单。 */
+
+.todobar {
+  width: min(var(--kk-content-width), 100%);
+  margin: 0 auto 0.5rem;
+  border: 1px solid var(--border-soft);
+  border-radius: 0.9rem;
+  background: var(--surface);
+  box-shadow: 0 4px 14px rgba(139, 111, 71, 0.08);
+  overflow: hidden;
+}
+
+.toggle {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.45rem 0.8rem;
+  border: 0;
+  background: var(--surface-soft);
+  cursor: pointer;
+  font-size: 0.82rem;
+  color: color-mix(in srgb, var(--brand-wood) 65%, var(--foreground) 35%);
+}
+
+.title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.titleIcon {
+  width: 0.95rem;
+  height: 0.95rem;
+  flex-shrink: 0;
+  color: var(--brand-wood);
+}
+
+.count {
+  flex-shrink: 0;
+  padding: 0.05rem 0.45rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--brand-wood-soft) 75%, transparent);
+  color: color-mix(in srgb, var(--brand-wood) 72%, var(--foreground) 28%);
+  font-size: 0.7rem;
+}
+
+.chevron {
+  width: 0.8rem;
+  height: 0.8rem;
+  flex-shrink: 0;
+  opacity: 0.7;
+  transition: transform 150ms ease;
+}
+
+.todobar[data-collapsed="false"] .chevron {
+  transform: rotate(180deg);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.32rem;
+  padding: 0.55rem 0.85rem 0.65rem;
+  max-height: 30vh;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+/* todo：状态用细线图标 + 颜色区分。 */
+.todo {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+
+.mark {
+  display: inline-flex;
+  flex-shrink: 0;
+  margin-top: 0.08rem;
+}
+
+.todoGlyph {
+  width: 0.95rem;
+  height: 0.95rem;
+}
+
+.todo[data-status="completed"] {
+  color: color-mix(in srgb, var(--foreground) 42%, white 58%);
+}
+
+.todo[data-status="completed"] .text {
+  text-decoration: line-through;
+}
+
+.todo[data-status="completed"] .todoGlyph {
+  color: color-mix(in srgb, var(--brand-wood) 48%, white 52%);
+}
+
+.todo[data-status="in_progress"] {
+  color: var(--brand-wood);
+  font-weight: 500;
+}
+
+.todo[data-status="in_progress"] .todoGlyph {
+  color: var(--brand-wood);
+}
+
+.todo[data-status="pending"] {
+  color: color-mix(in srgb, var(--foreground) 60%, white 40%);
+}
+
+.todo[data-status="pending"] .todoGlyph {
+  color: color-mix(in srgb, var(--foreground) 38%, white 62%);
+}
