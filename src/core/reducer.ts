@@ -117,17 +117,31 @@ function applyThinkingDelta(draft: Draft, event: EventOf<"thinking.delta">): voi
 }
 
 function applyToolInvoked(draft: Draft, event: EventOf<"tool.invoked">): void {
-  insertOrdered(stepsOf(draft, event.run_id), {
-    kind: "tool",
-    seq: event.seq,
-    segmentId: event.payload.segment_id,
-    tool: {
-      id: event.payload.tool_id,
-      name: event.payload.name,
-      args: event.payload.args,
-      status: "running",
-    },
-  })
+  const steps = stepsOf(draft, event.run_id)
+  const payload = event.payload
+  // 审批后的 invoked 复用既有步（保留 awaiting 的 seq/segment）：一次工具调用恒为一个步，
+  // 即便 agent 的 invoked/returned segment 与 awaiting 漂移（真栈走查抓获的重复渲染）。
+  const updated = updateStep(
+    steps,
+    (step) => step.kind === "tool" && step.tool.id === payload.tool_id,
+    (step) =>
+      step.kind === "tool"
+        ? { ...step, tool: { ...step.tool, args: payload.args, status: "running" } }
+        : step,
+  )
+  if (!updated) {
+    insertOrdered(steps, {
+      kind: "tool",
+      seq: event.seq,
+      segmentId: payload.segment_id,
+      tool: {
+        id: payload.tool_id,
+        name: payload.name,
+        args: payload.args,
+        status: "running",
+      },
+    })
+  }
 }
 
 function applyToolAwaitingApproval(

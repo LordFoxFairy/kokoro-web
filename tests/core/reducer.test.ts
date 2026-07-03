@@ -216,6 +216,22 @@ describe("snapshot 水合占位认领", () => {
   })
 })
 
+describe("工具步按 tool_id 归并（segment 漂移免疫）", () => {
+  it("awaiting→invoked→returned 跨 segment 仍是单步单组（真栈走查回归）", () => {
+    const state = applySessionEvents(createSessionStreamState(), [
+      makeEvent("tool.awaiting_approval", { ...awaitingPayload("tool_1", ["tool_1"]), segment_id: "seg_msg" }),
+      // agent 在 approve 恢复后以 tool_call_id 兜底 segment：与 awaiting 的 segment 漂移。
+      makeEvent("tool.invoked", { segment_id: "tool_1", tool_id: "tool_1", name: "w", args: { a: 1 } }),
+      makeEvent("tool.returned", { segment_id: "tool_1", tool_id: "tool_1", name: "w", result: "ok", is_error: false }),
+    ])
+    const steps = state.stepsByRun["run_1"] ?? []
+    const toolSteps = steps.filter((s) => s.kind === "tool")
+    expect(toolSteps).toHaveLength(1)
+    expect(toolSteps[0]!.segmentId).toBe("seg_msg")
+    expect(toolStatusOf(state, "run_1", "tool_1")).toBe("done")
+  })
+})
+
 describe("HITL：rejected 不被降级", () => {
   it("本地 rejected 后 is_error=false 的 tool.returned 不翻绿勾", () => {
     let state = applySessionEvents(createSessionStreamState(), [
