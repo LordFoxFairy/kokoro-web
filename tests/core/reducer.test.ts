@@ -307,6 +307,55 @@ describe("HITL：rejected 不被降级", () => {
     expect(step.tool.awaitingKind).toBe("ask_user")
     expect(step.tool.risk).toEqual({ level: "low", source: "policy", reason: "asks user" })
   })
+
+  it("result_review 的 awaiting 事件把待审 result 预填进工具步", () => {
+    const state = applySessionEvents(createSessionStreamState(), [
+      makeEvent("tool.invoked", { segment_id: "seg_1", tool_id: "tool_1", name: "w", args: {} }),
+      makeEvent(
+        "tool.awaiting_approval",
+        awaitingPayload("tool_1", ["tool_1"], {
+          kind: "result_review",
+          allowed_decisions: ["approve", "respond", "reject"],
+          result: "raw tool output",
+        }),
+      ),
+    ])
+    const step = (state.stepsByRun["run_1"] ?? [])[0]
+    if (step?.kind !== "tool") {
+      throw new Error("expected tool step")
+    }
+    expect(step.tool.status).toBe("awaiting")
+    expect(step.tool.awaitingKind).toBe("result_review")
+    expect(step.tool.result).toBe("raw tool output")
+  })
+
+  it("result_review 裁决回流：tool.returned 覆盖预填 result 为裁决后内容", () => {
+    const state = applySessionEvents(createSessionStreamState(), [
+      makeEvent(
+        "tool.awaiting_approval",
+        awaitingPayload("tool_1", ["tool_1"], {
+          kind: "result_review",
+          allowed_decisions: ["approve", "respond", "reject"],
+          result: "raw tool output",
+        }),
+      ),
+      makeEvent("tool.returned", {
+        segment_id: "seg_1",
+        tool_id: "tool_1",
+        name: "write_file",
+        result: "human replacement",
+        is_error: false,
+        responded: true,
+      }),
+    ])
+    const step = (state.stepsByRun["run_1"] ?? [])[0]
+    if (step?.kind !== "tool") {
+      throw new Error("expected tool step")
+    }
+    expect(step.tool.status).toBe("done")
+    expect(step.tool.result).toBe("human replacement")
+    expect(step.tool.responded).toBe(true)
+  })
 })
 
 describe("终态收口：结构化 status、零 UI 文案", () => {

@@ -56,6 +56,7 @@ export type SubagentDef = z.infer<typeof subagentDefSchema>
 export const permissionsSchema = z
   .object({
     approval_tools: z.array(z.string().min(1)),
+    review_tools: z.array(z.string().min(1)),
     subagent_create: z.enum(["deny", "ask", "allow"]),
     filesystem: z.enum(["read_only", "workspace_write"]),
   })

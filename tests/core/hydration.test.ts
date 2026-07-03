@@ -129,6 +129,27 @@ describe("stateFromSnapshot：snapshot 是权威读取模型", () => {
     expect(step.tool.inputSchema).toEqual({ type: "object" })
   })
 
+  it("result_review 的 pause 把待审 result 透传进 awaiting 工具步", () => {
+    const state = stateFromSnapshot(
+      makeSnapshot({
+        pendingPauses: [
+          makePendingPause({
+            kind: "result_review",
+            allowed_decisions: ["approve", "respond", "reject"],
+            result: "raw tool output",
+          }),
+        ],
+      }),
+    )
+    const step = (state.stepsByRun["run_1"] ?? [])[0]
+    if (step?.kind !== "tool") {
+      throw new Error("expected tool step")
+    }
+    expect(step.tool.status).toBe("awaiting")
+    expect(step.tool.awaitingKind).toBe("result_review")
+    expect(step.tool.result).toBe("raw tool output")
+  })
+
   it("空快照（无消息无 run）水合为干净空态", () => {
     const state = stateFromSnapshot(makeSnapshot({}))
     expect(state.messages).toEqual([])

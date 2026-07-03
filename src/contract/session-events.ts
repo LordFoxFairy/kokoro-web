@@ -77,13 +77,15 @@ const toolAwaitingApprovalPayload = z
     args: z.record(z.unknown()),
     description: z.string(),
     allowed_decisions: z.array(z.enum(["approve", "edit", "reject", "respond"])),
-    kind: z.enum(["tool_approval", "ask_user"]),
+    kind: z.enum(["tool_approval", "ask_user", "result_review"]),
     // 面向 web 的风险摘要，非权限判断真源。
     risk: riskSchema.optional(),
     editable: z.boolean(),
     input_schema: z.record(z.unknown()).optional(),
     // 同帧完整待批 tool_id 列表；HITL『凑齐才提交』契约依据，web 读契约而非内嵌算法。
     pending_tool_ids: z.array(z.string().min(1)),
+    // 仅 kind=result_review 时存在：待人工审核的已执行结果（payload 列表尾缀 ? = 该 kind 局部可选）。
+    result: z.string().optional(),
   })
   .strict()
 

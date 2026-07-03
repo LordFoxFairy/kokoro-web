@@ -158,6 +158,8 @@ function applyToolAwaitingApproval(
     pendingToolIds: [...payload.pending_tool_ids],
     ...(payload.risk !== undefined ? { risk: payload.risk } : {}),
     ...(payload.input_schema !== undefined ? { inputSchema: payload.input_schema } : {}),
+    // result_review：工具已执行的待审结果预填 result，审核卡只读展示；returned 回流后覆盖为裁决结果。
+    ...(payload.result !== undefined ? { result: payload.result } : {}),
   }
   const updated = updateStep(
     steps,

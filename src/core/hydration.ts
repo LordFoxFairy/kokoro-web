@@ -48,6 +48,8 @@ function toAwaitingSteps(pauses: readonly PendingPause[]): Record<string, Sessio
         pendingToolIds: idsByRun.get(pause.run_id) ?? [],
         ...(pause.risk !== undefined ? { risk: pause.risk } : {}),
         ...(pause.input_schema !== undefined ? { inputSchema: pause.input_schema } : {}),
+        // result_review：待审结果预填 result，刷新后审核卡直接可读可裁决。
+        ...(pause.result !== undefined ? { result: pause.result } : {}),
       },
     })
     stepsByRun[pause.run_id] = steps

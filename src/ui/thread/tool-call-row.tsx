@@ -2,6 +2,7 @@ import type { SessionToolCall, ToolStatus } from "@/core/state"
 import type { ToolDecision } from "@/engine/hitl-staging"
 import { ApprovalCard } from "@/ui/hitl/approval-card"
 import { AskUserCard } from "@/ui/hitl/ask-user-card"
+import { ReviewCard } from "@/ui/hitl/review-card"
 import { ChevronIcon, WrenchIcon } from "@/ui/icons/thread"
 
 import { RunState } from "./run-state"
@@ -30,7 +31,8 @@ const CLOSED_NOTE: Partial<Record<ToolStatus, string>> = {
 
 // 单条工具调用：扳手 + 名称 + 运行态。有入参/结果/错误/待批时是可展开的 <details>，
 // 无任何细节时退化为不可点击的 <div>，避免无意义的死切换。
-// awaiting 时按契约 kind 分流两张 HITL 卡：tool_approval → 审批卡；ask_user → 问答卡。
+// awaiting 时按契约 kind 分流三张 HITL 卡：tool_approval → 审批卡；ask_user → 问答卡；
+// result_review → 结果审核卡。
 export function ToolCallRow({
   tool,
   staged,
@@ -117,6 +119,14 @@ export function ToolCallRow({
               onDecision={onDecision}
               onCancelRun={onCancelRun}
             />
+          ) : tool.awaitingKind === "result_review" ? (
+            <ReviewCard
+              tool={tool}
+              staged={staged}
+              hitlActive={hitlActive}
+              controlError={controlError}
+              onDecision={onDecision}
+            />
           ) : (
             <ApprovalCard
               tool={tool}
@@ -140,7 +150,8 @@ export function ToolCallRow({
           <p className={styles.toolRejectedNote} role="status">
             {closedNote}
           </p>
-        ) : tool.result ? (
+        ) : tool.result && !awaiting ? (
+          // awaiting 时不重复渲染结果：result_review 的待审结果由审核卡只读区独占展示。
           <pre className={styles.toolResult}>{tool.result}</pre>
         ) : running ? (
           <p className={styles.pending}>

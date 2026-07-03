@@ -195,3 +195,54 @@ it("ask_user 待批帧渲染问答卡：问题=description、choices 可选、�
     decisions: [{ type: "respond", tool_id: "tool_1", response: "skill-a" }],
   })
 })
+
+it("result_review 待批帧渲染审核卡：结果只读、三动作齐备、空替换禁用、采纳即 approve", async () => {
+  buildEngine()
+  render(<SessionShell engine={engine} />)
+  fireEvent.change(screen.getByLabelText("对话输入"), { target: { value: "写个文件" } })
+  fireEvent.click(screen.getByLabelText("发送消息"))
+  await act(settle)
+  await act(async () => {
+    client.lastStream().emit([
+      makeEvent("run.created", { run_id: "run_1" }),
+      makeEvent("tool.invoked", {
+        segment_id: "seg_1",
+        tool_id: "tool_1",
+        name: "write_file",
+        args: { path: "/tmp/a" },
+      }),
+      makeEvent(
+        "tool.awaiting_approval",
+        awaitingPayload("tool_1", ["tool_1"], {
+          kind: "result_review",
+          description: "审核 write_file 的执行结果",
+          allowed_decisions: ["approve", "respond", "reject"],
+          result: "wrote 42 bytes to /tmp/a",
+        }),
+      ),
+    ])
+    await settle()
+  })
+
+  // 审核卡：工具名 + 待审结果只读区 + 三动作；不出现审批卡的「批准」。
+  expect(screen.getByText("write_file")).toBeInTheDocument()
+  expect(screen.getByText("wrote 42 bytes to /tmp/a")).toBeInTheDocument()
+  expect(screen.queryByRole("button", { name: "批准" })).not.toBeInTheDocument()
+  expect(screen.getByRole("button", { name: "采纳" })).toBeInTheDocument()
+  expect(screen.getByRole("button", { name: "拒绝" })).toBeInTheDocument()
+
+  // 替换：空文本禁用，输入后可点。
+  const replaceButton = screen.getByRole("button", { name: "替换" })
+  expect(replaceButton).toBeDisabled()
+  fireEvent.change(screen.getByLabelText("替换结果"), { target: { value: "人工替换结果" } })
+  expect(replaceButton).not.toBeDisabled()
+
+  // 点采纳 → 单帧凑齐即发 run.resume，决策为 approve。
+  fireEvent.click(screen.getByRole("button", { name: "采纳" }))
+  await act(settle)
+  expect(client.controlCalls).toHaveLength(1)
+  expect(client.controlCalls[0]?.body).toMatchObject({
+    kind: "run.resume",
+    decisions: [{ type: "approve", tool_id: "tool_1" }],
+  })
+})

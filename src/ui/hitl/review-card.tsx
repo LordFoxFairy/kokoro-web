@@ -1,9 +1,11 @@
+import { useState } from "react"
+
 import type { SessionToolCall } from "@/core/state"
 import type { ToolDecision } from "@/engine/hitl-staging"
 
 import styles from "../thread/thread.module.css"
 
-type ApprovalCardProps = {
+type ReviewCardProps = {
   tool: SessionToolCall
   // 该工具已暂存的决策（引擎 staging 快照）；同帧未凑齐时先「已记录」。
   staged?: ToolDecision
@@ -14,25 +16,26 @@ type ApprovalCardProps = {
   onDecision?: (toolId: string, decision: ToolDecision) => void
 }
 
-// 工具审批卡（kind=tool_approval）：按钮严格来自契约 allowed_decisions ∩ {approve,edit,reject}，
-// respond 永不在审批卡出现（只属于 ask_user 问答卡与 result_review 审核卡）。
-// edit：法源要求 editable=true 且该工具有安全定制编辑 UI 才展示；V1 无任何定制编辑器、
-// 亦禁止通用 JSON textarea，故编辑入口一律不出现（args 由工具行只读展示）。
-export function ApprovalCard({
+// 结果审核卡（kind=result_review）：工具已执行、结果回流模型前停下——
+// 采纳（approve=原结果）/ 替换（respond{response}=人工替换文本，空文本禁用）/ 拒绝（reject=废弃）。
+export function ReviewCard({
   tool,
   staged,
   hitlActive,
   controlError,
   onDecision,
-}: ApprovalCardProps) {
+}: ReviewCardProps) {
+  const [replacement, setReplacement] = useState("")
   const decided = staged !== undefined
   const actionable = hitlActive && onDecision !== undefined
   // 已暂存且未报错即禁用（防连点双发）；POST 失败时放开允许重试。
   const disabled = !actionable || (decided && controlError === null)
   const allowedDecisions = tool.allowedDecisions ?? []
   const canApprove = allowedDecisions.includes("approve")
+  const canRespond = allowedDecisions.includes("respond")
   const canReject = allowedDecisions.includes("reject")
-  const prompt = tool.description || "该工具调用需要你的批准。"
+  const replacementText = replacement.trim()
+  const prompt = tool.description || "工具已执行，结果需要你的审核。"
   const promptText = controlError
     ? "决定发送失败，请重试。"
     : decided || !hitlActive
@@ -40,12 +43,28 @@ export function ApprovalCard({
       : prompt
 
   return (
-    <div className={styles.toolApproval} role="group" aria-label="工具调用待批准">
+    <div className={styles.toolApproval} role="group" aria-label="工具结果待审核">
       <p className={styles.toolApprovalPrompt}>{promptText}</p>
-      {tool.risk !== undefined ? (
-        <p className={styles.toolRisk} data-level={tool.risk.level}>
-          风险 {tool.risk.level} · {tool.risk.source}：{tool.risk.reason}
-        </p>
+      {/* 待审结果只读区：与 returned 结果同一视觉语言（人审的就是它）。 */}
+      <pre className={styles.toolResult}>{tool.result ?? ""}</pre>
+      {canRespond ? (
+        <div className={styles.toolRespond}>
+          <input
+            className={styles.toolRespondInput}
+            aria-label="替换结果"
+            value={replacement}
+            disabled={disabled}
+            onChange={(event) => setReplacement(event.target.value)}
+          />
+          <button
+            type="button"
+            className={styles.toolRespondSend}
+            disabled={disabled || replacementText.length === 0}
+            onClick={() => onDecision?.(tool.id, { type: "respond", message: replacementText })}
+          >
+            替换
+          </button>
+        </div>
       ) : null}
       {actionable && (canApprove || canReject) ? (
         <div className={styles.toolApprovalActions}>
@@ -56,7 +75,7 @@ export function ApprovalCard({
               disabled={disabled}
               onClick={() => onDecision(tool.id, { type: "approve" })}
             >
-              批准
+              采纳
             </button>
           ) : null}
           {canReject ? (
