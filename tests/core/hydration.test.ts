@@ -73,7 +73,7 @@ describe("stateFromSnapshot：snapshot 是权威读取模型", () => {
             pause_id: "p2",
             tool_id: "tool_2",
             tool_name: "ask_user_question",
-            kind: "ask_user",
+            kind: "ask_user_question",
             allowed_decisions: ["respond"],
             args: { question: "which?", choices: ["a", "b"] },
           }),
@@ -92,7 +92,7 @@ describe("stateFromSnapshot：snapshot 是权威读取模型", () => {
     expect(tools[1]).toMatchObject({
       id: "tool_2",
       status: "awaiting",
-      awaitingKind: "ask_user",
+      awaitingKind: "ask_user_question",
       allowedDecisions: ["respond"],
       pendingToolIds: ["tool_1", "tool_2"],
     })

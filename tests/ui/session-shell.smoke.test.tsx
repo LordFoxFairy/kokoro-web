@@ -171,7 +171,7 @@ it("ask_user 待批帧渲染问答卡：问题=description、choices 可选、�
         "tool.awaiting_approval",
         awaitingPayload("tool_1", ["tool_1"], {
           name: "ask_user_question",
-          kind: "ask_user",
+          kind: "ask_user_question",
           description: "选择要导入的 skill",
           allowed_decisions: ["respond"],
           args: { question: "选择要导入的 skill", choices: ["skill-a", "skill-b"] },

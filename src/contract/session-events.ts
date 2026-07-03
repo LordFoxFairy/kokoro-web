@@ -77,7 +77,7 @@ const toolAwaitingApprovalPayload = z
     args: z.record(z.unknown()),
     description: z.string(),
     allowed_decisions: z.array(z.enum(["approve", "edit", "reject", "respond"])),
-    kind: z.enum(["tool_approval", "ask_user", "result_review"]),
+    kind: z.enum(["tool_approval", "ask_user_question", "result_review"]),
     // 面向 web 的风险摘要，非权限判断真源。
     risk: riskSchema.optional(),
     editable: z.boolean(),

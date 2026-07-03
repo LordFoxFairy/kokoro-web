@@ -293,7 +293,7 @@ describe("HITL：rejected 不被降级", () => {
       makeEvent(
         "tool.awaiting_approval",
         awaitingPayload("tool_1", ["tool_1", "tool_2"], {
-          kind: "ask_user",
+          kind: "ask_user_question",
           allowed_decisions: ["respond"],
           risk: { level: "low", source: "policy", reason: "asks user" },
         }),
@@ -304,7 +304,7 @@ describe("HITL：rejected 不被降级", () => {
       throw new Error("expected tool step")
     }
     expect(step.tool.pendingToolIds).toEqual(["tool_1", "tool_2"])
-    expect(step.tool.awaitingKind).toBe("ask_user")
+    expect(step.tool.awaitingKind).toBe("ask_user_question")
     expect(step.tool.risk).toEqual({ level: "low", source: "policy", reason: "asks user" })
   })
 

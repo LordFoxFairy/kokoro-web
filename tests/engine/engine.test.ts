@@ -181,7 +181,7 @@ describe("HITL 凑帧与部分拒绝", () => {
         awaitingPayload("tool_2", ["tool_1", "tool_2"], {
           tool_id: "tool_2",
           name: "b",
-          kind: "ask_user",
+          kind: "ask_user_question",
           allowed_decisions: ["respond"],
         }),
       ),

@@ -51,7 +51,7 @@ export const pendingPauseSchema = z
     tool_id: z.string().min(1),
     segment_id: z.string().min(1),
     tool_name: z.string().min(1),
-    kind: z.enum(["tool_approval", "ask_user", "result_review"]),
+    kind: z.enum(["tool_approval", "ask_user_question", "result_review"]),
     args: z.record(z.unknown()),
     description: z.string(),
     allowed_decisions: z.array(z.enum(["approve", "edit", "reject", "respond"])),

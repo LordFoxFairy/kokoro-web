@@ -110,7 +110,7 @@ export function ToolCallRow({
         {/* V1 args 只读展示（无定制编辑 UI 前不提供任何参数编辑入口）。 */}
         {argsText !== null ? <pre className={styles.toolArgs}>{argsText}</pre> : null}
         {awaiting ? (
-          tool.awaitingKind === "ask_user" ? (
+          tool.awaitingKind === "ask_user_question" ? (
             <AskUserCard
               tool={tool}
               staged={staged}
