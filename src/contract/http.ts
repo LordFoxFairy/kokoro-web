@@ -87,6 +87,7 @@ export const startMessageBodySchema = z
     idempotency_key: z.string().min(1),
     content: z.string().min(1),
     selected_model: z.string().min(1).optional(),
+    entry: z.string().min(1).optional(),
   })
   .strict()
 export type StartMessageBody = z.infer<typeof startMessageBodySchema>
