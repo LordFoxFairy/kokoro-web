@@ -59,7 +59,11 @@ export function ToolCallRow({
   const awaiting = tool.status === "awaiting"
   // rejected：用户驳回了该调用——工具未执行，显禁止圈而非绿勾。
   const rejected = tool.status === "rejected"
-  const closedNote = CLOSED_NOTE[tool.status]
+  // result_review 的收口语义不同：工具已执行，悬着的只是结果审核。
+  const closedNote =
+    tool.status === "stale-awaiting" && tool.awaitingKind === "result_review"
+      ? "运行已结束，该结果未完成审核（工具已执行）。"
+      : CLOSED_NOTE[tool.status]
   // responded：done 态但结果由人工答复（非工具产出）——加 provenance 标记，让回看者一眼可辨。
   const responded = Boolean(tool.responded)
   // 有入参/结果/错误/待批/已拒绝/收口说明才展开；无任何细节的工具保持紧凑静态行。
