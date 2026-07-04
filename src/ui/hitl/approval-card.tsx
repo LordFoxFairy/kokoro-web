@@ -32,8 +32,8 @@ export function ApprovalCard({
   const allowedDecisions = tool.allowedDecisions ?? []
   const canApprove = allowedDecisions.includes("approve")
   const canReject = allowedDecisions.includes("reject")
-  // wire description 是执行侧英文模板（调试语料）：不作展示文案，参数块已完整呈现审批对象。
-  const prompt = "该工具调用需要你的批准，请确认参数。"
+  // description=工具自述（agent 装配侧注入的真实数据；查不到发空串）——有则显示，缺省中文兜底。
+  const prompt = tool.description || "该工具调用需要你的批准，请确认参数。"
   const promptText = controlError
     ? "决定发送失败，请重试。"
     : decided || !hitlActive
