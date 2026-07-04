@@ -36,6 +36,7 @@ export const mcpServerSchema = z
     url: z.string().min(1),
     allowed_tools: z.array(z.string().min(1)),
     timeout_s: z.number().int().optional(),
+    headers: z.record(z.string()).optional(),
   })
   .strict()
 export type McpServer = z.infer<typeof mcpServerSchema>
