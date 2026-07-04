@@ -81,14 +81,6 @@ export const runtimeContextSchema = z
   .object({
     namespace: z.string().min(1),
     session_id: z.string().min(1),
-    site_id: z.string().min(1).optional(),
-    user_id: z.string().min(1).optional(),
-    workspace_id: z.string().min(1).optional(),
-    project_id: z.string().min(1).optional(),
-    recent_messages: z.array(z.record(z.unknown())).optional(),
-    summary: z.string().optional(),
-    memory_scope: z.string().min(1).optional(),
-    feature_flags: z.record(z.unknown()).optional(),
   })
   .strict()
 export type RuntimeContext = z.infer<typeof runtimeContextSchema>
