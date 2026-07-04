@@ -327,6 +327,9 @@ function applyEvent(draft: Draft, event: SessionEvent): void {
     case "tool.invoked":
       applyToolInvoked(draft, event)
       break
+    case "tool.output.delta":
+      // 长执行工具增量：V1 不渲染（终值走 tool.returned）；canvas/终端视图（P1）再消费。
+      break
     case "tool.awaiting_approval":
       applyToolAwaitingApproval(draft, event)
       break

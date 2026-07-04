@@ -8,6 +8,7 @@ export const SESSION_EVENT_NAMES = [
   "message.completed",
   "thinking.delta",
   "tool.invoked",
+  "tool.output.delta",
   "tool.awaiting_approval",
   "tool.returned",
   "todo.updated",

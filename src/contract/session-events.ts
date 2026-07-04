@@ -69,6 +69,16 @@ const toolInvokedPayload = z
   })
   .strict()
 
+const toolOutputDeltaPayload = z
+  .object({
+    segment_id: z.string().min(1),
+    tool_id: z.string().min(1),
+    name: z.string().min(1),
+    // 长执行工具的增量输出（如 execute）；每工具累计上限同 result 护栏，超限静默停发（终值仍走 tool.returned）。
+    delta: z.string(),
+  })
+  .strict()
+
 const toolAwaitingApprovalPayload = z
   .object({
     segment_id: z.string().min(1),
@@ -185,6 +195,7 @@ export const sessionEventSchema = z.discriminatedUnion("kind", [
   envelope.extend({ kind: z.literal("message.completed"), payload: messageCompletedPayload }),
   envelope.extend({ kind: z.literal("thinking.delta"), payload: thinkingDeltaPayload }),
   envelope.extend({ kind: z.literal("tool.invoked"), payload: toolInvokedPayload }),
+  envelope.extend({ kind: z.literal("tool.output.delta"), payload: toolOutputDeltaPayload }),
   envelope.extend({ kind: z.literal("tool.awaiting_approval"), payload: toolAwaitingApprovalPayload }),
   envelope.extend({ kind: z.literal("tool.returned"), payload: toolReturnedPayload }),
   envelope.extend({ kind: z.literal("todo.updated"), payload: todoUpdatedPayload }),
