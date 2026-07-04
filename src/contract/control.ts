@@ -6,9 +6,7 @@ import { z } from "zod"
 export const runInputSchema = z
   .object({
     message_id: z.string().min(1),
-    content: z.string().optional(),
-    content_ref: z.string().min(1).optional(),
-    attachments: z.array(z.record(z.unknown())).optional(),
+    content: z.string().min(1),
   })
   .strict()
 export type RunInput = z.infer<typeof runInputSchema>
