@@ -353,6 +353,9 @@ function applyEvent(draft: Draft, event: SessionEvent): void {
         },
       }))
       break
+    case "subagent.thinking.delta":
+      // 子代理推理增量：V1 不渲染（主 thinking 已有折叠条）；子代理详情视图（P1）再消费。
+      break
     case "subagent.text.delta":
       updateSubagent(draft, event.run_id, event.payload.subagent_id, (step) => ({
         ...step,

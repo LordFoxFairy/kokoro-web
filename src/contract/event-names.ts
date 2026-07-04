@@ -14,6 +14,7 @@ export const SESSION_EVENT_NAMES = [
   "todo.updated",
   "subagent.started",
   "subagent.finished",
+  "subagent.thinking.delta",
   "subagent.text.delta",
   "subagent.text.completed",
   "run.completed",

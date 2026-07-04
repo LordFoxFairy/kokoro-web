@@ -147,6 +147,14 @@ const subagentFinishedPayload = z
   })
   .strict()
 
+const subagentThinkingDeltaPayload = z
+  .object({
+    segment_id: z.string().min(1),
+    subagent_id: z.string().min(1),
+    delta: z.string(),
+  })
+  .strict()
+
 const subagentTextDeltaPayload = z
   .object({
     segment_id: z.string().min(1),
@@ -201,6 +209,7 @@ export const sessionEventSchema = z.discriminatedUnion("kind", [
   envelope.extend({ kind: z.literal("todo.updated"), payload: todoUpdatedPayload }),
   envelope.extend({ kind: z.literal("subagent.started"), payload: subagentStartedPayload }),
   envelope.extend({ kind: z.literal("subagent.finished"), payload: subagentFinishedPayload }),
+  envelope.extend({ kind: z.literal("subagent.thinking.delta"), payload: subagentThinkingDeltaPayload }),
   envelope.extend({ kind: z.literal("subagent.text.delta"), payload: subagentTextDeltaPayload }),
   envelope.extend({ kind: z.literal("subagent.text.completed"), payload: subagentTextCompletedPayload }),
   envelope.extend({ kind: z.literal("run.completed"), payload: runCompletedPayload }),
