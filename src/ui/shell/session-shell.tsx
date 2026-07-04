@@ -75,7 +75,7 @@ type SessionShellProps = {
 export function SessionShell({ engine: injectedEngine }: SessionShellProps = {}) {
   const engine = injectedEngine !== undefined ? injectedEngine : browserEngine()
   const snapshot = useSessionEngine(engine)
-  const { machine, store, thread, pendingMode, staging } = snapshot
+  const { machine, notice, store, thread, pendingMode, staging } = snapshot
 
   // 水合后才渲染主内容：rail 与 composer 立即就位，会话线随后淡入。
   const mounted = useHydrated()
@@ -253,7 +253,7 @@ export function SessionShell({ engine: injectedEngine }: SessionShellProps = {})
           isStreaming={isStreaming}
           canSend={canSend}
           onStop={() => engine?.cancelRun()}
-          transportLabel={presentation.transportLabel}
+          transportLabel={notice ?? presentation.transportLabel}
           modeHint={presentation.modeHint}
           composerRef={composerRef}
           mode={mode}

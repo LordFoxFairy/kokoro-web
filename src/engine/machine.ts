@@ -128,6 +128,8 @@ export function transition(state: MachineState, event: MachineEvent): MachineSta
 
 export type EngineSnapshot = {
   machine: MachineState
+  // 瞬态通知（如插话投递失败）：下一次提交时清空；与相位错误（machine.error）分离。
+  notice: string | null
   store: ConversationStore | null
   // 活跃会话线程：snapshot 水合 + 事件折叠的内存态（不落盘，服务端是真源）。
   thread: SessionStreamState
@@ -141,6 +143,7 @@ const EMPTY_THREAD: SessionStreamState = createSessionStreamState()
 
 export const SERVER_ENGINE_SNAPSHOT: EngineSnapshot = {
   machine: IDLE_MACHINE,
+  notice: null,
   store: null,
   thread: EMPTY_THREAD,
   pendingMode: "fast",
@@ -192,6 +195,7 @@ export function createSessionEngine(deps: EngineDeps): SessionEngine {
   const resumeDecisionIds = new Map<string, string>()
   // 最近一次未获回执的提交：POST 失败重试复用同一 idempotency_key（服务端命中即重放 receipt）。
   let pendingSubmission: { content: string; idempotencyKey: string } | null = null
+  let notice: string | null = null
 
   let handle: EventStreamHandle | null = null
   // 流代际守卫：关流后迟到的回调（旧代际）一律忽略，防止旧流事件折进新会话。
@@ -211,7 +215,7 @@ export function createSessionEngine(deps: EngineDeps): SessionEngine {
     for (const [runId, decisions] of staging) {
       stagingView[runId] = Object.fromEntries(decisions)
     }
-    return { machine, store, thread, pendingMode, staging: stagingView }
+    return { machine, notice, store, thread, pendingMode, staging: stagingView }
   }
 
   function notify(): void {
@@ -422,6 +426,7 @@ export function createSessionEngine(deps: EngineDeps): SessionEngine {
     if (disposed || !trimmed) {
       return
     }
+    notice = null
     if (
       store !== null &&
       (machine.phase === "streaming" ||
@@ -435,7 +440,9 @@ export function createSessionEngine(deps: EngineDeps): SessionEngine {
       deps.client
         .startRun(store.activeId, { idempotency_key: createId("idem"), content: trimmed })
         .catch((error: unknown) => {
-          console.error("steer delivery failed", describeUnknown(error))
+          // 插话投递失败必须可见：瞬态通知（不打断相位），下次提交自动清。
+          notice = `插话发送失败：${describeUnknown(error)}，请重试`
+          notify()
         })
       return
     }

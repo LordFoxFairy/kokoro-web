@@ -606,3 +606,17 @@ describe("运行中插话（steer）", () => {
     expect(client.startCalls).toHaveLength(1)
   })
 })
+
+  it("插话投递失败 → 瞬态 notice 可见；下次提交自动清空", async () => {
+    buildEngine()
+    engine.submit("hello")
+    await settle()
+    const okStart = client.nextStart
+    client.nextStart = () => Promise.reject(new SessionClientError("http", "boom"))
+    engine.submit("插话一")
+    await settle()
+    expect(engine.getSnapshot().notice).toContain("插话发送失败")
+    client.nextStart = okStart
+    engine.submit("插话二")
+    expect(engine.getSnapshot().notice).toBeNull()
+  })
