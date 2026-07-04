@@ -173,7 +173,7 @@ const subagentTextCompletedPayload = z
 
 const runCompletedPayload = z
   .object({
-    status: z.enum(["completed", "cancelled", "timeout"]),
+    status: z.enum(["completed", "cancelled"]),
     // agent 认真算的用量全链路贯通；无用量时为 null。
     token_usage: tokenUsageSchema.nullable().optional(),
   })
