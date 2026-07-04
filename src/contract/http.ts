@@ -124,6 +124,9 @@ export function snapshotPath(sessionId: string): string {
 export function eventsPath(sessionId: string): string {
   return `/sessions/${sessionId}/events`
 }
+export function artifactPath(sessionId: string, artifactId: string): string {
+  return `/sessions/${sessionId}/artifacts/${artifactId}`
+}
 export function controlPath(sessionId: string, runId: string): string {
   return `/sessions/${sessionId}/runs/${runId}/control`
 }

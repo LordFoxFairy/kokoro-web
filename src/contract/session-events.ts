@@ -17,6 +17,15 @@ const tokenUsageSchema = z
   })
   .strict()
 
+const artifactSchema = z
+  .object({
+    artifact_id: z.string().min(1),
+    name: z.string().min(1),
+    mime: z.string().min(1),
+    bytes: z.number().int(),
+  })
+  .strict()
+
 const riskSchema = z
   .object({
     level: z.string().min(1),
@@ -107,13 +116,13 @@ const toolReturnedPayload = z
     result: z.string(),
     // 严格必填 fail-loud：生产端始终发送；缺失即报错，绝不用默认 false 掩盖真失败。
     is_error: z.boolean(),
-    // wire 展示层截断标记：缺席=结果完整，true=已截断（完整结果在后端，canvas 预览 P1 经 artifact_ref 取）。
+    // wire 展示层截断标记：缺席=结果完整，true=已截断（完整结果在后端，预览经 artifact 端点取）。
     truncated: z.boolean().optional(),
     rejected: z.boolean().optional(),
     reject_reason: z.string().optional(),
     responded: z.boolean().optional(),
-    // 大结果落 artifact，SSE 只带引用；P1 生产者。
-    artifact_ref: z.string().min(1).optional(),
+    // 产物引用（id/name/mime/bytes）：字节活在共享产物库，session 端点按 id 出体。
+    artifact: artifactSchema.optional(),
     summary: z.record(z.unknown()).optional(),
   })
   .strict()
@@ -192,6 +201,7 @@ const subagentToolReturnedPayload = z
     is_error: z.boolean(),
     // 同 tool.returned.truncated：缺席=结果完整。
     truncated: z.boolean().optional(),
+    artifact: artifactSchema.optional(),
   })
   .strict()
 
