@@ -197,6 +197,7 @@ function applyToolReturned(draft: Draft, event: EventOf<"tool.returned">): void 
       : "done"
   const resultFields = {
     result: payload.result,
+    ...(payload.artifact !== undefined ? { artifact: payload.artifact } : {}),
     ...(payload.is_error ? { errorText: payload.result } : {}),
     ...(payload.reject_reason !== undefined ? { rejectReason: payload.reject_reason } : {}),
     ...(payload.responded !== undefined ? { responded: payload.responded } : {}),

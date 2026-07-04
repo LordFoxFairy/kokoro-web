@@ -1,3 +1,4 @@
+import { ArtifactCard } from "./artifact-card"
 import type { SessionToolCall, ToolStatus } from "@/core/state"
 import type { ToolDecision } from "@/engine/hitl-staging"
 import { ApprovalCard } from "@/ui/hitl/approval-card"
@@ -34,6 +35,7 @@ const CLOSED_NOTE: Partial<Record<ToolStatus, string>> = {
 // awaiting 时按契约 kind 分流三张 HITL 卡：tool_approval → 审批卡；ask_user → 问答卡；
 // result_review → 结果审核卡。
 export function ToolCallRow({
+  sessionId,
   tool,
   staged,
   hitlActive,
@@ -41,6 +43,7 @@ export function ToolCallRow({
   onDecision,
   onCancelRun,
 }: {
+  sessionId: string | null
   tool: SessionToolCall
   // 该工具已暂存的决策（引擎 staging 快照）；同帧未凑齐时先「已记录」。
   staged?: ToolDecision
@@ -71,6 +74,7 @@ export function ToolCallRow({
   const hasDetail =
     argsText !== null ||
     Boolean(tool.result) ||
+    tool.artifact !== undefined ||
     failed ||
     awaiting ||
     rejected ||
@@ -167,6 +171,9 @@ export function ToolCallRow({
               <span />
             </span>
           </p>
+        ) : null}
+        {tool.artifact !== undefined && sessionId !== null && !awaiting ? (
+          <ArtifactCard sessionId={sessionId} artifact={tool.artifact} />
         ) : null}
       </div>
     </details>

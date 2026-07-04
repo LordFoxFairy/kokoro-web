@@ -33,11 +33,20 @@ export type ToolStatus =
   | "stale-running"
   | "cancelled"
 
+export type ToolArtifact = {
+  artifact_id: string
+  name: string
+  mime: string
+  bytes: number
+}
+
 export type SessionToolCall = {
   id: string
   name: string
   args: Record<string, unknown>
   result?: string
+  // 契约 artifact：产物引用（字节经 session 产物端点按 id 拉取）。
+  artifact?: ToolArtifact
   status: ToolStatus
   // 仅真实工具失败（is_error=true）时携带，与合成收口状态严格分离。
   errorText?: string

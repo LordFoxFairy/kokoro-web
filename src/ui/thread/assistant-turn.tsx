@@ -8,6 +8,7 @@ import { SegmentProcess } from "./segment-process"
 import styles from "./thread.module.css"
 
 type AssistantTurnProps = {
+  sessionId: string | null
   // 这一轮（一个 runId）按 seq 排好的有序步骤：思考/工具/子智能体/文本交错。
   steps: SessionStep[]
   // 文本步骤按 segmentId 取这一段正文；过程先到、正文未到时该段可能暂缺。
@@ -52,6 +53,7 @@ function FormingContent({
 //   正文在【上】＋ 它的过程挂在【下面】（思考/该段工具/子智能体，收成更轻的可折叠次级块）。
 // 只有整轮的尾段在流式时带就近光标（唯一 live 锚点）。
 export function AssistantTurn({
+  sessionId,
   steps,
   messagesById,
   isLive,
@@ -138,6 +140,7 @@ export function AssistantTurn({
                 </div>
               ) : null}
               <SegmentProcess
+                sessionId={sessionId}
                 segmentId={segment.segmentId}
                 thinking={segment.thinking}
                 tools={segment.tools}

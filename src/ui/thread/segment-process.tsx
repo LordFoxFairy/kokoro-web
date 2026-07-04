@@ -45,6 +45,7 @@ function useDisclosure(segmentId: string): boolean | null {
 }
 
 type SegmentProcessProps = {
+  sessionId: string | null
   // 该段全局唯一 id：作为持久化展开意图（manualOpen）的键，跨刷新保留。
   segmentId: string
   // 这一段的过程：思考独白 + 该段用到的工具 + 子智能体。
@@ -83,6 +84,7 @@ function settledSummary(
 // 一段的「过程块」：挂在该段答案气泡【下面】的可折叠次级披露——比气泡更轻（muted）。
 // 流式中（尾段）默认展开方便实时看，落定后收成一行摘要，保持对话干净。全空时不渲染。
 export function SegmentProcess({
+  sessionId,
   segmentId,
   thinking,
   tools,
@@ -160,6 +162,7 @@ export function SegmentProcess({
                 ) : null}
                 {tools.map((tool) => (
                   <ToolCallRow
+                    sessionId={sessionId}
                     key={tool.id}
                     tool={tool}
                     staged={stagedDecisions[tool.id]}

@@ -12,6 +12,8 @@ import styles from "./thread.module.css"
 const NO_DECISIONS: Record<string, ToolDecision> = {}
 
 type ConversationThreadProps = {
+  // 产物端点 URL 构造需要（透传到工具行的产物卡）。
+  sessionId: string | null
   thread: SessionStreamState
   isStreaming: boolean
   // 重连续传态：在途轮的 live 锚点改为「重连中…」，区别于普通「正在思考…」。
@@ -32,6 +34,7 @@ type ConversationThreadProps = {
 }
 
 export function ConversationThread({
+  sessionId,
   thread,
   isStreaming,
   isReconnecting,
@@ -79,6 +82,7 @@ export function ConversationThread({
             <MessageBubble key={item.message.id} message={item.message} />
           ) : (
             <AssistantTurn
+              sessionId={sessionId}
               key={item.runId}
               steps={item.steps}
               messagesById={item.messagesById}
@@ -100,6 +104,7 @@ export function ConversationThread({
 
         {showScaffoldTurn ? (
           <AssistantTurn
+            sessionId={sessionId}
             steps={[]}
             messagesById={{}}
             isLive

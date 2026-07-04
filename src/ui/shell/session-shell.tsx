@@ -211,6 +211,7 @@ export function SessionShell({ engine: injectedEngine }: SessionShellProps = {})
           <div className={styles.stage} aria-hidden />
         ) : hasMessages ? (
           <ConversationThread
+            sessionId={activeId}
             thread={thread}
             isStreaming={isStreaming}
             isReconnecting={isReconnecting}
