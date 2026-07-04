@@ -354,7 +354,7 @@ function applyEvent(draft: Draft, event: SessionEvent): void {
       }))
       break
     case "subagent.thinking.delta":
-      // 子代理推理增量：V1 不渲染（主 thinking 已有折叠条）；子代理详情视图（P1）再消费。
+      // 穷尽 switch 须显式接收；子代理推理增量无消费视图，不参与状态归约。
       break
     case "subagent.text.delta":
       updateSubagent(draft, event.run_id, event.payload.subagent_id, (step) => ({
@@ -370,6 +370,10 @@ function applyEvent(draft: Draft, event: SessionEvent): void {
         ...step,
         subagent: { ...step.subagent, output: event.payload.text },
       }))
+      break
+    case "subagent.tool.invoked":
+    case "subagent.tool.returned":
+      // 穷尽 switch 须显式接收；当前无子代理详情视图消费此通道，不参与状态归约。
       break
     case "run.completed":
     case "run.failed":

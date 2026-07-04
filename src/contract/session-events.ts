@@ -171,6 +171,30 @@ const subagentTextCompletedPayload = z
   })
   .strict()
 
+const subagentToolInvokedPayload = z
+  .object({
+    segment_id: z.string().min(1),
+    subagent_id: z.string().min(1),
+    tool_id: z.string().min(1),
+    name: z.string().min(1),
+    // 子代理内工具过程可见性通道；HITL 审批仍走主通道嵌套帧，无输出增量通道（终值走 returned）。
+    args: z.record(z.unknown()),
+  })
+  .strict()
+
+const subagentToolReturnedPayload = z
+  .object({
+    segment_id: z.string().min(1),
+    subagent_id: z.string().min(1),
+    tool_id: z.string().min(1),
+    name: z.string().min(1),
+    result: z.string(),
+    is_error: z.boolean(),
+    // 同 tool.returned.truncated：缺席=结果完整。
+    truncated: z.boolean().optional(),
+  })
+  .strict()
+
 const runCompletedPayload = z
   .object({
     status: z.enum(["completed", "cancelled"]),
@@ -212,6 +236,8 @@ export const sessionEventSchema = z.discriminatedUnion("kind", [
   envelope.extend({ kind: z.literal("subagent.thinking.delta"), payload: subagentThinkingDeltaPayload }),
   envelope.extend({ kind: z.literal("subagent.text.delta"), payload: subagentTextDeltaPayload }),
   envelope.extend({ kind: z.literal("subagent.text.completed"), payload: subagentTextCompletedPayload }),
+  envelope.extend({ kind: z.literal("subagent.tool.invoked"), payload: subagentToolInvokedPayload }),
+  envelope.extend({ kind: z.literal("subagent.tool.returned"), payload: subagentToolReturnedPayload }),
   envelope.extend({ kind: z.literal("run.completed"), payload: runCompletedPayload }),
   envelope.extend({ kind: z.literal("run.failed"), payload: runFailedPayload }),
 ])
