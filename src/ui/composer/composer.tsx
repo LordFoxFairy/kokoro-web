@@ -97,20 +97,17 @@ export function Composer({
             resizeComposer(event.currentTarget)
           }}
           onKeyDown={onKeyDown}
-          disabled={isStreaming}
         />
 
-        {/* 放大编辑入口：贴在输入框右上角；流式中输入框停用，故一并隐藏。 */}
-        {!isStreaming ? (
-          <button
-            type="button"
-            className={styles.expandToggle}
-            aria-label="放大编辑"
-            onClick={() => setExpanded(true)}
-          >
-            <ExpandIcon className={styles.expandGlyph} />
-          </button>
-        ) : null}
+        {/* 放大编辑入口：贴在输入框右上角。 */}
+        <button
+          type="button"
+          className={styles.expandToggle}
+          aria-label="放大编辑"
+          onClick={() => setExpanded(true)}
+        >
+          <ExpandIcon className={styles.expandGlyph} />
+        </button>
 
         {/* 控件行：附加键在左，模式/语音/发送在右——文本独占上行向上生长。 */}
         <div className={styles.controls}>
@@ -173,7 +170,8 @@ export function Composer({
               <MicIcon className={styles.glyph} />
             </button>
 
-            {isStreaming ? (
+            {/* 流式中输入保持可用（运行中插话）：草稿非空=发送插话，草稿空=停止生成。 */}
+            {isStreaming && !canSend ? (
               <button
                 className={`${styles.send} ${styles.sendStop}`}
                 type="button"
@@ -186,7 +184,7 @@ export function Composer({
               <button
                 className={styles.send}
                 type="submit"
-                aria-label="发送消息"
+                aria-label={isStreaming ? "发送插话" : "发送消息"}
                 disabled={!canSend}
               >
                 <SendIcon className={styles.glyph} />

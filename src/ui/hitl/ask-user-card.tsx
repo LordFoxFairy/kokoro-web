@@ -24,8 +24,9 @@ type AskUserCardProps = {
   onCancelRun?: () => void
 }
 
-// ask_user 问答卡（kind=ask_user）：问题=契约 description，choices 单选 + 自由输入，
-// 提交即 respond{response}；不渲染普通审批按钮组（approve/reject 不属于问答）。
+// ask_user 问答卡（kind=ask_user）：问题=工具入参 args.question（wire 只带数据，
+// 展示文案归 web），choices 单选 + 自由输入，提交即 respond{response}；
+// 不渲染普通审批按钮组（approve/reject 不属于问答）。
 export function AskUserCard({
   tool,
   staged,
@@ -41,7 +42,8 @@ export function AskUserCard({
   const canRespond = (tool.allowedDecisions ?? []).includes("respond")
   const choices = choicesOf(tool.args)
   const responseText = response.trim()
-  const question = tool.description || "Agent 需要你的回复。"
+  const rawQuestion = tool.args["question"]
+  const question = typeof rawQuestion === "string" && rawQuestion ? rawQuestion : "Agent 需要你的回复。"
   const promptText = controlError
     ? "回复发送失败，请重试。"
     : decided || !hitlActive

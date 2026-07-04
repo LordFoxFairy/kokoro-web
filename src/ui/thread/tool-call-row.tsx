@@ -52,7 +52,8 @@ export function ToolCallRow({
   // 问答卡（ask_user）自带的取消 run 入口。
   onCancelRun?: () => void
 }) {
-  const argsText = formatArgs(tool.args)
+  // ask_user 的入参（question/choices）已由问答卡语义化呈现：原始 JSON 只添噪音。
+  const argsText = tool.name === "ask_user_question" ? null : formatArgs(tool.args)
   const running = tool.status === "running"
   const failed = tool.status === "error"
   // awaiting：被门控工具等待用户批准/回答（HITL），展开显示对应卡片。

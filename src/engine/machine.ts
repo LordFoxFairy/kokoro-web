@@ -422,10 +422,27 @@ export function createSessionEngine(deps: EngineDeps): SessionEngine {
     if (disposed || !trimmed) {
       return
     }
+    if (
+      store !== null &&
+      (machine.phase === "streaming" ||
+        machine.phase === "awaiting-hitl" ||
+        machine.phase === "reattaching")
+    ) {
+      // 运行中插话：同端点再 POST（服务端识别活跃 run 转 run.steer）；
+      // 不动状态机、不重开事件流——回执 run_id 即当前 run，无新可锚定物。
+      thread = appendUserMessage(thread, { id: createId("usr"), content: trimmed })
+      notify()
+      deps.client
+        .startRun(store.activeId, { idempotency_key: createId("idem"), content: trimmed })
+        .catch((error: unknown) => {
+          console.error("steer delivery failed", describeUnknown(error))
+        })
+      return
+    }
     const before = machine
     machine = transition(machine, { type: "SUBMIT" })
     if (machine === before) {
-      // 同步双发守卫：非 idle/error 相位的提交直接拒绝。
+      // 同步双发守卫：submitting 相位（回执未归）的提交直接拒绝。
       return
     }
     if (!store) {

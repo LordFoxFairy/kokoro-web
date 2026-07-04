@@ -117,13 +117,14 @@ export function SessionShell({ engine: injectedEngine }: SessionShellProps = {})
 
   const submitDraft = useCallback(() => {
     const content = draft.trim()
-    if (!engine || !content || isStreaming || content.length > MAX_INPUT_LENGTH) {
+    if (!engine || !content || content.length > MAX_INPUT_LENGTH) {
       return
     }
+    // 流式中提交=运行中插话（engine 识别活跃相位走 steer，不打断本轮）。
     engine.submit(content)
     setDraft("")
     focusComposer()
-  }, [draft, engine, isStreaming, focusComposer])
+  }, [draft, engine, focusComposer])
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -174,7 +175,7 @@ export function SessionShell({ engine: injectedEngine }: SessionShellProps = {})
   // 上滑阅读历史时若有新内容到来，浮出「回到最新」入口；贴底跟随时不出现。
   const showJumpToLatest = hasMessages && !isNearBottom
 
-  const canSend = draft.trim().length > 0 && !isStreaming
+  const canSend = draft.trim().length > 0
 
   return (
     <main

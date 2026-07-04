@@ -129,9 +129,21 @@ export const runCancelSchema = z
   .strict()
 export type RunCancel = z.infer<typeof runCancelSchema>
 
+export const runSteerSchema = z
+  .object({
+    kind: z.literal("run.steer"),
+    run_id: z.string().min(1),
+    thread_id: z.string().min(1),
+    message_id: z.string().min(1),
+    content: z.string().min(1),
+  })
+  .strict()
+export type RunSteer = z.infer<typeof runSteerSchema>
+
 export const inboundMessageSchema = z.discriminatedUnion("kind", [
   runRequestSchema,
   runResumeSchema,
   runCancelSchema,
+  runSteerSchema,
 ])
 export type InboundMessage = z.infer<typeof inboundMessageSchema>

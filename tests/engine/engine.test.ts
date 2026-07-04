@@ -576,3 +576,33 @@ describe("模式（纯 UI 偏好，不上 wire）", () => {
     expect(activeEntry().mode).toBe("thinking")
   })
 })
+
+describe("运行中插话（steer）", () => {
+  it("streaming 相位提交：消息即时落地、同端点再 POST、状态机与事件流不被打断", async () => {
+    buildEngine()
+    engine.submit("hello")
+    await settle()
+    expect(engine.getSnapshot().machine.phase).toBe("streaming")
+    const streamsBefore = client.streams.length
+
+    engine.submit("改成国内市场")
+    expect(thread().messages.filter((m) => m.role === "user").map((m) => m.content)).toEqual([
+      "hello",
+      "改成国内市场",
+    ])
+    expect(engine.getSnapshot().machine.phase).toBe("streaming")
+    await settle()
+    expect(client.startCalls).toHaveLength(2)
+    expect(client.startCalls[1]!.body.content).toBe("改成国内市场")
+    expect(client.streams.length).toBe(streamsBefore) // 不重开事件流
+  })
+
+  it("submitting 相位（未获回执）双发仍被拒：不误当插话", async () => {
+    buildEngine()
+    engine.submit("hello")
+    engine.submit("过早的第二条")
+    expect(thread().messages.filter((m) => m.role === "user")).toHaveLength(1)
+    await settle()
+    expect(client.startCalls).toHaveLength(1)
+  })
+})
