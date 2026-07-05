@@ -70,7 +70,7 @@ export const runtimeConfigSchema = z
     skills: z.array(skillMountSchema),
     mcp: z.array(mcpServerSchema),
     subagents: z.array(subagentDefSchema),
-    backend: z.enum(["state", "local_shell", "e2b", "custom"]),
+    backend: z.enum(["state", "local_shell", "docker", "e2b", "custom"]),
     permissions: permissionsSchema,
   })
   .strict()
