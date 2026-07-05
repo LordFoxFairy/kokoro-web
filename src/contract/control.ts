@@ -64,6 +64,7 @@ export type Permissions = z.infer<typeof permissionsSchema>
 
 export const runtimeConfigSchema = z
   .object({
+    agent_type: z.enum(["general"]),
     model: modelConfigSchema,
     system_prompt: z.string().min(1).optional(),
     tools: z.array(z.string().min(1)),
