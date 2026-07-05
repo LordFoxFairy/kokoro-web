@@ -605,6 +605,11 @@ export function createSessionEngine(deps: EngineDeps): SessionEngine {
     if (id === store.activeId) {
       abandonActiveRun()
     }
+    // 服务端软删除 fire-and-forget：本地移除不等网络（失败仅记日志；
+    // 服务端残留由 P1 会话列表服务端化对账——technical/16 入册边界）。
+    void deps.client.deleteSession(id).catch((error: unknown) => {
+      console.error("session soft-delete failed", id, error)
+    })
     activateConversation(removeConversation(store, id, createId("conv"), now()))
   }
 

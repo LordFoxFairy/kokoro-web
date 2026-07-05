@@ -16,6 +16,8 @@ import {
   type SessionSnapshot,
   type StartMessageBody,
   type StartMessageReceipt,
+  deleteSessionReceiptSchema,
+  type DeleteSessionReceipt,
 } from "@/contract/http"
 import { parseSessionEvent, type SessionEvent } from "@/contract/session-events"
 
@@ -51,6 +53,8 @@ export type SessionClient = {
     runId: string,
     body: RunControlBody,
   ) => Promise<RunControlReceipt>
+  // 软删除（technical/16）：服务端打状态位；幂等（不存在/已删除同为 202）。
+  deleteSession: (sessionId: string) => Promise<DeleteSessionReceipt>
   openEvents: (args: OpenEventsArgs) => EventStreamHandle
 }
 
@@ -166,6 +170,20 @@ export function createSessionClient(options: { baseUrl: string }): SessionClient
       postJson(url(controlPath(sessionId, runId)), body, (raw) =>
         runControlReceiptSchema.parse(raw),
       ),
+
+    deleteSession: async (sessionId) => {
+      const target = url(snapshotPath(sessionId))  // DELETE 与 snapshot 同路径（契约）
+      let response: Response
+      try {
+        response = await fetch(target, { method: "DELETE" })
+      } catch (error) {
+        throw new SessionClientError("network", describeUnknown(error))
+      }
+      if (!response.ok) {
+        throw await httpError("DELETE", target, response)
+      }
+      return parseJsonResponse(response, (raw) => deleteSessionReceiptSchema.parse(raw))
+    },
 
     // fetch 流式 SSE（非 EventSource）：首连即可携带 Last-Event-ID 头（契约续流轴 = seq），
     // 断流按最后已见 seq 自动重连；契约拒绝或 HTTP 错误 fail-loud 收口，不静默降级。

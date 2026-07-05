@@ -103,6 +103,7 @@ export function createPreviewClient(options?: { stepMs?: number }): SessionClien
     fetchSnapshot: () => Promise.resolve(null),
 
     sendControl: () => Promise.resolve({ ok: true }),
+    deleteSession: () => Promise.resolve({ status: "deleted" }),
 
     openEvents: ({ sessionId, onEvent }): EventStreamHandle => {
       const session = sessionFor(sessionId)

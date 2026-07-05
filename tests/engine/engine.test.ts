@@ -654,3 +654,17 @@ describe("运行中插话（steer）", () => {
     engine.submit("插话二")
     expect(engine.getSnapshot().notice).toBeNull()
   })
+
+describe("会话软删除（technical/16 SD-W1）", () => {
+  it("deleteConversation：本地立即移除 + 服务端软删除 fire-and-forget", async () => {
+    buildEngine()
+    engine.submit("将要被删除的会话")
+    await settle()
+    const doomed = engine.getSnapshot().store?.activeId
+    if (doomed === undefined || doomed === null) throw new Error("active conversation expected")
+    engine.deleteConversation(doomed)
+    const remaining = engine.getSnapshot().store?.conversations ?? []
+    expect(remaining.some((entry) => entry.id === doomed)).toBe(false)
+    expect(client.deleteCalls).toEqual([doomed])
+  })
+})

@@ -22,6 +22,7 @@ export type FakeClient = SessionClient & {
   startCalls: { sessionId: string; body: StartMessageBody }[]
   controlCalls: { sessionId: string; runId: string; body: RunControlBody }[]
   snapshotCalls: string[]
+  deleteCalls: string[]
   streams: FakeStream[]
   nextStart: (sessionId: string, body: StartMessageBody) => Promise<StartMessageReceipt>
   nextControl: () => Promise<{ ok: true }>
@@ -65,6 +66,11 @@ export function createFakeClient(): FakeClient {
     fetchSnapshot: (sessionId) => {
       client.snapshotCalls.push(sessionId)
       return client.nextSnapshot(sessionId)
+    },
+    deleteCalls: [] as string[],
+    deleteSession: (sessionId: string) => {
+      client.deleteCalls.push(sessionId)
+      return Promise.resolve({ status: "deleted" })
     },
     sendControl: (sessionId, runId, body) => {
       client.controlCalls.push({ sessionId, runId, body })

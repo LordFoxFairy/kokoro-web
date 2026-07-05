@@ -120,6 +120,9 @@ export type RunControlBody = z.infer<typeof runControlBodySchema>
 export const runControlReceiptSchema = z.object({ ok: z.literal(true) }).strict()
 export type RunControlReceipt = z.infer<typeof runControlReceiptSchema>
 
+export const deleteSessionReceiptSchema = z.object({ status: z.string().min(1) }).strict()
+export type DeleteSessionReceipt = z.infer<typeof deleteSessionReceiptSchema>
+
 export const errorResponseSchema = z.object({ error: z.string().min(1) }).strict()
 export type ErrorResponse = z.infer<typeof errorResponseSchema>
 export const SESSION_RUN_ACTIVE = "session_run_active"
