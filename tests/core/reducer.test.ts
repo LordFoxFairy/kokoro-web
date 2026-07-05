@@ -357,6 +357,36 @@ describe("终态收口：结构化 status、零 UI 文案", () => {
   })
 })
 
+describe("message.user 与本地 echo 对齐（SSE/receipt 竞态）", () => {
+  it("事件先于 receipt 到达：吸收未对齐的本地 echo（改 id），不产生双份", () => {
+    // steer 常态：流早已开着，publishLive 先于 HTTP 回执返回。
+    let state = appendUserMessage(createSessionStreamState(), { id: "usr_1", content: "顺便注意编码" })
+    state = applySessionEvent(
+      state,
+      makeEvent("message.user", { message_id: "msg_steer_k1", content: "顺便注意编码" }),
+    )
+    expect(state.messages).toHaveLength(1)
+    expect(state.messages[0]).toMatchObject({ id: "msg_steer_k1", role: "user", content: "顺便注意编码" })
+  })
+
+  it("receipt 先对齐过 id：事件按 id 命中更新，不新建", () => {
+    let state = appendUserMessage(createSessionStreamState(), { id: "usr_1", content: "hi" })
+    state = { ...state, messages: [{ ...state.messages[0]!, id: "msg_u1" }] }
+    state = applySessionEvent(state, makeEvent("message.user", { message_id: "msg_u1", content: "hi" }))
+    expect(state.messages).toHaveLength(1)
+  })
+
+  it("内容不同的本地 echo 不被误吸收（刷新回放新建）", () => {
+    let state = appendUserMessage(createSessionStreamState(), { id: "usr_1", content: "draft still pending" })
+    state = applySessionEvent(
+      state,
+      makeEvent("message.user", { message_id: "msg_old", content: "earlier turn" }),
+    )
+    expect(state.messages).toHaveLength(2)
+    expect(state.messages.map((m) => m.id)).toEqual(["usr_1", "msg_old"])
+  })
+})
+
 describe("subagent 生命周期", () => {
   it("started → 增量续写 → finished(failed) 保留错误归属", () => {
     const state = applySessionEvents(createSessionStreamState(), [

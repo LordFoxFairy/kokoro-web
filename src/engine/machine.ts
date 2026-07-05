@@ -399,8 +399,9 @@ export function createSessionEngine(deps: EngineDeps): SessionEngine {
       })
   }
 
-  // 本地 echo 与事件史对齐：receipt 的 user_message_id 覆盖最后一条本地临时 id（usr_ 前缀），
-  // 随后到达的 message.user 事件按 id 命中更新而非双份。
+  // 本地 echo 与事件史对齐：receipt 的 user_message_id 覆盖最后一条本地临时 id（usr_ 前缀）。
+  // SSE 的 message.user 可能先于 receipt 到达并已吸收/新建同 id 条——此时本地 echo 是多余
+  // 副本，删除而非改名（同 id 双条会撕裂 React key 唯一性）。
   function adoptUserMessageId(serverId: string): void {
     const index = thread.messages.findLastIndex(
       (m) => m.role === "user" && m.id.startsWith("usr_"),
@@ -408,7 +409,11 @@ export function createSessionEngine(deps: EngineDeps): SessionEngine {
     const existing = index >= 0 ? thread.messages[index] : undefined
     if (existing === undefined) return
     const messages = [...thread.messages]
-    messages[index] = { ...existing, id: serverId }
+    if (messages.some((m) => m.id === serverId)) {
+      messages.splice(index, 1)
+    } else {
+      messages[index] = { ...existing, id: serverId }
+    }
     thread = { ...thread, messages }
   }
 

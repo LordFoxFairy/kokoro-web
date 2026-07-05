@@ -618,6 +618,27 @@ describe("运行中插话（steer）", () => {
     await settle()
     expect(client.startCalls).toHaveLength(1)
   })
+
+  it("SSE message.user 先于插话回执到达：吸收本地 echo，无同 id 双份（真栈走查回归）", async () => {
+    buildEngine()
+    engine.submit("hello")
+    await settle()
+    // 挂起回执：publishLive 先于 HTTP 返回是 steer 常态。
+    let release!: (receipt: ReturnType<typeof makeReceipt>) => void
+    client.nextStart = () => new Promise((resolve) => { release = resolve })
+    engine.submit("顺便注意编码")
+    client.lastStream().emit([
+      makeEvent("message.user", { message_id: "msg_steer_k9", content: "顺便注意编码" }),
+    ])
+    release({ run_id: "run_1", user_message_id: "msg_steer_k9", assistant_message_id: "run_1:assistant" })
+    await settle()
+    const ids = thread().messages.map((m) => m.id)
+    expect(new Set(ids).size).toBe(ids.length)
+    expect(thread().messages.filter((m) => m.role === "user").map((m) => m.content)).toEqual([
+      "hello",
+      "顺便注意编码",
+    ])
+  })
 })
 
   it("插话投递失败 → 瞬态 notice 可见；下次提交自动清空", async () => {

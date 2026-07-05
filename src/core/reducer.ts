@@ -303,7 +303,8 @@ function applyEvent(draft: Draft, event: SessionEvent): void {
       // 契约要求解析（event_id/seq 照常记账），不做投影：run 锚定由 receipt/snapshot 承担。
       break
     case "message.user": {
-      // user 消息事件：本地 echo 已被 receipt 对齐为同 id → 命中即更新；刷新回放 → 新建。
+      // user 消息事件三态：id 命中 → 更新；本地 echo 尚未被 receipt 对齐（SSE 跑赢 HTTP
+      // 回执，steer 路径常态）→ 就地吸收改 id；都没有（刷新回放）→ 新建。
       const { messages } = draft.state
       const index = messages.findIndex((m) => m.id === event.payload.message_id)
       if (index >= 0) {
@@ -311,6 +312,14 @@ function applyEvent(draft: Draft, event: SessionEvent): void {
         if (existing !== undefined) {
           messages[index] = { ...existing, content: event.payload.content }
         }
+        break
+      }
+      const echoIndex = messages.findLastIndex(
+        (m) => m.role === "user" && m.id.startsWith("usr_") && m.content === event.payload.content,
+      )
+      const echo = echoIndex >= 0 ? messages[echoIndex] : undefined
+      if (echo !== undefined) {
+        messages[echoIndex] = { ...echo, id: event.payload.message_id, runId: event.run_id }
       } else {
         messages.push({
           id: event.payload.message_id,
