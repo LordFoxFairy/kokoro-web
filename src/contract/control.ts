@@ -73,6 +73,7 @@ export const runtimeConfigSchema = z
     subagents: z.array(subagentDefSchema),
     backend: z.enum(["state", "local_shell", "docker", "e2b", "custom"]),
     permissions: permissionsSchema,
+    swarm_members: z.array(z.string().min(1)).optional(),
   })
   .strict()
 export type RuntimeConfig = z.infer<typeof runtimeConfigSchema>
