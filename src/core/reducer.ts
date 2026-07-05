@@ -285,6 +285,10 @@ function applyRunTerminal(
   }
   draft.state.runStatus =
     event.kind === "run.completed" ? event.payload.status : "failed"
+  draft.state.runError =
+    event.kind === "run.failed"
+      ? { code: event.payload.code, message: event.payload.message }
+      : null
   if (draft.state.activeRunId === event.run_id) {
     draft.state.activeRunId = null
   }
@@ -421,6 +425,7 @@ export function applySessionEvents(
           stepsByRun: { ...state.stepsByRun },
           files: state.files,
           runStatus: state.runStatus,
+          runError: state.runError,
           activeRunId: state.activeRunId,
           lastSeq: state.lastSeq,
           meta: state.meta,
@@ -460,6 +465,7 @@ export function appendUserMessage(
     ],
     todos: [],
     runStatus: "idle",
+    runError: null,
   }
 }
 

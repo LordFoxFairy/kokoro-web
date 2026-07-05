@@ -488,3 +488,23 @@ describe("Schema 崩溃矩阵（契约入站防线）", () => {
   })
 })
 
+
+describe("run.failed 错误三层语义", () => {
+  it("失败码与原文进入状态，供 UI 按码呈现；完成态清空", () => {
+    const s1 = applySessionEvents(createSessionStreamState(), [
+      makeEvent("run.created", { run_id: "run_f" }, { run_id: "run_f", seq: 1 }),
+      makeEvent(
+        "run.failed",
+        { code: "assembly_failed", error_kind: "ValueError", message: "unknown tools" },
+        { run_id: "run_f", seq: 2 },
+      ),
+    ])
+    expect(s1.runStatus).toBe("failed")
+    expect(s1.runError).toEqual({ code: "assembly_failed", message: "unknown tools" })
+    // 新一轮完成后失败态清空（不残留上一轮的失败卡文案）。
+    const s2 = applySessionEvents(s1, [
+      makeEvent("run.completed", { status: "completed", token_usage: null }, { run_id: "run_g", seq: 3 }),
+    ])
+    expect(s2.runError).toBeNull()
+  })
+})

@@ -11,6 +11,7 @@ export type AwaitingKind = EventOf<"tool.awaiting_approval">["payload"]["kind"]
 export type ToolRisk = NonNullable<EventOf<"tool.awaiting_approval">["payload"]["risk"]>
 export type SubagentSource = EventOf<"subagent.started">["payload"]["source"]
 export type RunCompletedStatus = EventOf<"run.completed">["payload"]["status"]
+export type RunErrorCode = EventOf<"run.failed">["payload"]["code"]
 
 export type SessionMessage = {
   id: string
@@ -92,6 +93,8 @@ export type SessionStreamState = {
   todos: SessionTodo[]
   stepsByRun: Record<string, SessionStep[]>
   runStatus: "idle" | RunCompletedStatus | "failed"
+  // 最近一次 run.failed 的契约三层错误（code=按码文案键 / message=兜底原文）；非失败态恒 null。
+  runError: { code: RunErrorCode; message: string } | null
   // 在途 run 显式字段：snapshot 水合置位、匹配终态清空。
   activeRunId: string | null
   // 已折叠到的最大 seq（snapshot 水位起步）：续流时过滤重放，非业务排序 cursor。
@@ -107,6 +110,7 @@ export function createSessionStreamState(): SessionStreamState {
     todos: [],
     stepsByRun: {},
     runStatus: "idle",
+    runError: null,
     activeRunId: null,
     lastSeq: 0,
     meta: null,

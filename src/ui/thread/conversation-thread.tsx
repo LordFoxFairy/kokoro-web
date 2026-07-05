@@ -34,6 +34,23 @@ type ConversationThreadProps = {
   onCancelRun?: () => void
 }
 
+// 失败讲人话：契约失败码 → 用户可行动的文案；未知/内部错误回退通用句（不裸露原文以外的术语）。
+// （静态 i18n 层落地后，本表即错误码文案表的第一批内容。）
+function failureCopy(runError: { code: string; message: string } | null): string {
+  switch (runError?.code) {
+    case "token_budget_exceeded":
+      return "这一轮超出了用量预算，已自动停止。可以精简任务后重试。"
+    case "recursion_limit_exceeded":
+      return "这一轮步骤过多触发了保护熔断。换个更具体的说法再试一次。"
+    case "assembly_failed":
+      return "这个空间的配置有误，本轮无法启动——请联系管理员检查配置。"
+    case "enqueue_failed":
+      return "服务暂时不可用，这一轮没能开始。稍后重试即可。"
+    default:
+      return "这一轮没能完成，稍后再试一次。"
+  }
+}
+
 export function ConversationThread({
   sessionId,
   onOpenFile,
@@ -121,7 +138,7 @@ export function ConversationThread({
 
         {hasFailed ? (
           <div className={styles.error} role="alert">
-            <span>这一轮没能完成，稍后再试一次。</span>
+            <span>{failureCopy(thread.runError)}</span>
             <button className={styles.retry} type="button" onClick={onRetry}>
               重试
             </button>
