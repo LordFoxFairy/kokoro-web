@@ -371,17 +371,6 @@ function applyEvent(draft: Draft, event: SessionEvent): void {
         subagent: { ...step.subagent, output: event.payload.text },
       }))
       break
-    case "artifact.created":
-      // 产物诞生独立事件：按 tool_id 挂回工具步（chip/canvas 数据源）。
-      updateStep(
-        stepsOf(draft, event.run_id),
-        (step) => step.kind === "tool" && step.tool.id === event.payload.tool_id,
-        (step) =>
-          step.kind === "tool"
-            ? { ...step, tool: { ...step.tool, artifact: event.payload.artifact } }
-            : step,
-      )
-      break
     case "subagent.tool.invoked":
     case "subagent.tool.returned":
       // 穷尽 switch 须显式接收；当前无子代理详情视图消费此通道，不参与状态归约。
@@ -417,6 +406,7 @@ export function applySessionEvents(
           messages: [...state.messages],
           todos: state.todos,
           stepsByRun: { ...state.stepsByRun },
+          files: state.files,
           runStatus: state.runStatus,
           activeRunId: state.activeRunId,
           lastSeq: state.lastSeq,

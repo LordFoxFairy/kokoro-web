@@ -8,7 +8,7 @@ import { SegmentProcess } from "./segment-process"
 import styles from "./thread.module.css"
 
 type AssistantTurnProps = {
-  onOpenArtifact?: (artifact: import("@/core/state").ToolArtifact) => void
+  onOpenFile?: (path: string) => void
   sessionId: string | null
   // 这一轮（一个 runId）按 seq 排好的有序步骤：思考/工具/子智能体/文本交错。
   steps: SessionStep[]
@@ -55,7 +55,7 @@ function FormingContent({
 // 只有整轮的尾段在流式时带就近光标（唯一 live 锚点）。
 export function AssistantTurn({
   sessionId,
-  onOpenArtifact,
+  onOpenFile,
   steps,
   messagesById,
   isLive,
@@ -143,7 +143,7 @@ export function AssistantTurn({
               ) : null}
               <SegmentProcess
                 sessionId={sessionId}
-              onOpenArtifact={onOpenArtifact}
+              onOpenFile={onOpenFile}
                 segmentId={segment.segmentId}
                 thinking={segment.thinking}
                 tools={segment.tools}

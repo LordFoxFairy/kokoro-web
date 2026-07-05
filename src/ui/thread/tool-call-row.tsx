@@ -1,4 +1,4 @@
-import { ArtifactChip } from "./artifact-card"
+import { FileChip } from "./artifact-card"
 import type { SessionToolCall, ToolStatus } from "@/core/state"
 import type { ToolDecision } from "@/engine/hitl-staging"
 import { ApprovalCard } from "@/ui/hitl/approval-card"
@@ -37,7 +37,7 @@ const CLOSED_NOTE: Partial<Record<ToolStatus, string>> = {
 export function ToolCallRow({
   sessionId,
   tool,
-  onOpenArtifact,
+  onOpenFile,
   staged,
   hitlActive,
   controlError,
@@ -46,7 +46,7 @@ export function ToolCallRow({
 }: {
   sessionId: string | null
   tool: SessionToolCall
-  onOpenArtifact?: (artifact: NonNullable<SessionToolCall["artifact"]>) => void
+  onOpenFile?: (path: string) => void
   // 该工具已暂存的决策（引擎 staging 快照）；同帧未凑齐时先「已记录」。
   staged?: ToolDecision
   // 本轮仍处 awaiting-hitl 相位才允许发决策；resume 已发出后按钮收口。
@@ -73,10 +73,16 @@ export function ToolCallRow({
   // responded：done 态但结果由人工答复（非工具产出）——加 provenance 标记，让回看者一眼可辨。
   const responded = Boolean(tool.responded)
   // 有入参/结果/错误/待批/已拒绝/收口说明才展开；无任何细节的工具保持紧凑静态行。
+  // 文件类工具的产出路径（工具行本地推断——路径即入口，无需任何产物事件）。
+  const filePath =
+    (tool.name === "write_file" || tool.name === "edit_file") &&
+    typeof tool.args["file_path"] === "string" && tool.args["file_path"]
+      ? (tool.args["file_path"] as string)
+      : null
   const hasDetail =
     argsText !== null ||
     Boolean(tool.result) ||
-    tool.artifact !== undefined ||
+    filePath !== null ||
     failed ||
     awaiting ||
     rejected ||
@@ -174,11 +180,8 @@ export function ToolCallRow({
             </span>
           </p>
         ) : null}
-        {tool.artifact !== undefined && sessionId !== null && !awaiting ? (
-          <ArtifactChip
-            artifact={tool.artifact}
-            onOpen={() => onOpenArtifact?.(tool.artifact!)}
-          />
+        {filePath !== null && sessionId !== null && tool.status === "done" ? (
+          <FileChip path={filePath} onOpen={() => onOpenFile?.(filePath)} />
         ) : null}
       </div>
     </details>

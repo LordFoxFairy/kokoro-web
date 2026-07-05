@@ -4,20 +4,12 @@
 
 import { useEffect, useState } from "react"
 
-import { artifactPath } from "@/contract/http"
-import { sessionBaseUrl } from "@/engine/config"
-import type { ToolArtifact } from "@/core/state"
 import { MarkdownMessage } from "./markdown-message"
 
 import styles from "./artifact-card.module.css"
 
 const TEXT_PREVIEW_MAX_BYTES = 64 * 1024
 const CSV_PREVIEW_MAX_ROWS = 200
-
-export function artifactUrl(sessionId: string, artifact: ToolArtifact): string {
-  const encoded = artifact.artifact_id.split("/").map(encodeURIComponent).join("/")
-  return `${sessionBaseUrl()}${artifactPath(sessionId, "__ID__")}`.replace("__ID__", encoded)
-}
 
 export function formatBytes(count: number): string {
   if (count < 1024) return `${count} B`
@@ -106,34 +98,27 @@ function isTextual(mime: string): boolean {
   return mime.startsWith("text/") || mime === "application/json"
 }
 
-export function PreviewBody({ url, artifact }: { url: string; artifact: ToolArtifact }) {
-  const { mime } = artifact
+export function PreviewBody({ url, mime, name }: { url: string; mime: string; name: string }) {
   if (mime.startsWith("audio/")) return <audio className={styles.media} controls src={url} />
   if (mime.startsWith("video/")) return <video className={styles.media} controls src={url} />
   if (mime.startsWith("image/")) {
     // eslint-disable-next-line @next/next/no-img-element -- 产物字节来自本地 session 端点，无 next/image 优化面
-    return <img className={styles.media} src={url} alt={artifact.name} />
+    return <img className={styles.media} src={url} alt={name} />
   }
   if (mime === "text/html")
-    return <iframe className={styles.frame} sandbox="" src={url} title={artifact.name} />
+    return <iframe className={styles.frame} sandbox="" src={url} title={name} />
   if (mime === "application/pdf")
-    return <iframe className={styles.frame} src={url} title={artifact.name} />
+    return <iframe className={styles.frame} src={url} title={name} />
   if (isTextual(mime)) return <TextualPreview url={url} mime={mime} />
   return <p className={styles.note}>该格式暂不支持内嵌预览，请下载查看。</p>
 }
 
-export function ArtifactChip({
-  artifact,
-  onOpen,
-}: {
-  artifact: ToolArtifact
-  onOpen: () => void
-}) {
-  // 路径即入口（对标 manus/codex）：文件 chip 点击在右侧 canvas 打开预览。
+export function FileChip({ path, onOpen }: { path: string; onOpen: () => void }) {
+  // 路径即入口（manus/codex 心智）：write_file 等工具行的文件名可点，canvas 打开预览。
+  const name = path.split("/").at(-1) ?? path
   return (
     <button type="button" className={styles.chip} onClick={onOpen}>
-      <span className={styles.chipName}>{artifact.name}</span>
-      <span className={styles.chipMeta}>{formatBytes(artifact.bytes)}</span>
+      <span className={styles.chipName}>{name}</span>
     </button>
   )
 }

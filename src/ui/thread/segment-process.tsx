@@ -45,7 +45,7 @@ function useDisclosure(segmentId: string): boolean | null {
 }
 
 type SegmentProcessProps = {
-  onOpenArtifact?: (artifact: import("@/core/state").ToolArtifact) => void
+  onOpenFile?: (path: string) => void
   sessionId: string | null
   // 该段全局唯一 id：作为持久化展开意图（manualOpen）的键，跨刷新保留。
   segmentId: string
@@ -86,7 +86,7 @@ function settledSummary(
 // 流式中（尾段）默认展开方便实时看，落定后收成一行摘要，保持对话干净。全空时不渲染。
 export function SegmentProcess({
   sessionId,
-  onOpenArtifact,
+  onOpenFile,
   segmentId,
   thinking,
   tools,
@@ -165,7 +165,7 @@ export function SegmentProcess({
                 {tools.map((tool) => (
                   <ToolCallRow
                     sessionId={sessionId}
-                    onOpenArtifact={onOpenArtifact}
+                    onOpenFile={onOpenFile}
                     key={tool.id}
                     tool={tool}
                     staged={stagedDecisions[tool.id]}

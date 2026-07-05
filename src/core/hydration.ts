@@ -64,6 +64,7 @@ export function stateFromSnapshot(snapshot: SessionSnapshot): SessionStreamState
     messages: snapshot.messages.map(toMessage),
     todos: [],
     stepsByRun: toAwaitingSteps(pending),
+    files: snapshot.files,
     runStatus: "idle",
     activeRunId: snapshot.active_run?.run_id ?? null,
     // 续流从服务端水位之后开始：snapshot 已折叠的事件不再重放进状态。

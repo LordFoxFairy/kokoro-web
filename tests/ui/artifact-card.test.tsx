@@ -1,34 +1,35 @@
-// 产物 chip 与 canvas 内容体：chip 显示名与大小；PreviewBody 按 MIME 分派（媒体/懒文本/下载兜底）。
+// 文件 chip 与 canvas 内容体：chip=路径即入口；PreviewBody 按 MIME 分派（媒体/懒文本/下载兜底）。
 import { render, screen } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest"
 
 vi.mock("@/engine/config", () => ({ sessionBaseUrl: () => "http://s.local" }))
 
-import { ArtifactChip, PreviewBody, artifactUrl } from "@/ui/thread/artifact-card"
+import { FileChip, PreviewBody } from "@/ui/thread/artifact-card"
+import { fileUrl } from "@/ui/canvas/canvas-panel"
 
-const base = { artifact_id: "run_1/t1-a", name: "a", bytes: 8 }
-
-describe("ArtifactChip / PreviewBody", () => {
-  it("chip：文件名+大小，点击触发 onOpen（canvas 入口）", () => {
+describe("FileChip / PreviewBody / fileUrl", () => {
+  it("chip：显示文件名，点击触发 onOpen（canvas 入口）", () => {
     const onOpen = vi.fn()
-    render(<ArtifactChip artifact={{ ...base, name: "a.wav", mime: "audio/wav" }} onOpen={onOpen} />)
-    screen.getByText("a.wav").click()
+    render(<FileChip path="media/track.wav" onOpen={onOpen} />)
+    screen.getByText("track.wav").click()
     expect(onOpen).toHaveBeenCalledTimes(1)
   })
 
-  it("audio/*：原生播放器，src 指向产物端点（分段编码）", () => {
-    const artifact = { ...base, name: "a.wav", mime: "audio/wav" }
-    const { container } = render(
-      <PreviewBody url={artifactUrl("ses_1", artifact)} artifact={artifact} />,
+  it("fileUrl：files 端点 + 逐段编码", () => {
+    expect(fileUrl("ses_1", "media/我的 文件.wav")).toBe(
+      "http://s.local/sessions/ses_1/files/media/%E6%88%91%E7%9A%84%20%E6%96%87%E4%BB%B6.wav",
     )
-    const audio = container.querySelector("audio")
-    expect(audio).not.toBeNull()
-    expect(audio!.getAttribute("src")).toBe("http://s.local/sessions/ses_1/artifacts/run_1/t1-a")
+  })
+
+  it("audio/*：原生播放器", () => {
+    const { container } = render(
+      <PreviewBody url="http://s.local/f.wav" mime="audio/wav" name="f.wav" />,
+    )
+    expect(container.querySelector("audio")).not.toBeNull()
   })
 
   it("未知类型：下载兜底文案", () => {
-    const artifact = { ...base, name: "x.bin", mime: "application/x-blob" }
-    render(<PreviewBody url="http://s.local/x" artifact={artifact} />)
+    render(<PreviewBody url="http://s.local/x" mime="application/octet-stream" name="x.bin" />)
     expect(screen.getByText(/暂不支持内嵌预览/)).toBeInTheDocument()
   })
 })

@@ -506,22 +506,3 @@ describe("Schema 崩溃矩阵（契约入站防线）", () => {
   })
 })
 
-describe("产物引用折叠", () => {
-  it("artifact.created 按 tool_id 挂回工具步（chip/canvas 数据源）", () => {
-    const state = applySessionEvents(createSessionStreamState(), [
-      makeEvent("tool.invoked", { segment_id: "t1", tool_id: "t1", name: "write_file", args: {} }),
-      makeEvent("tool.returned", {
-        segment_id: "t1", tool_id: "t1", name: "write_file", result: "ok", is_error: false,
-      }),
-      makeEvent("artifact.created", {
-        segment_id: "t1", tool_id: "t1",
-        artifact: { artifact_id: "run_1/t1-a.wav", name: "a.wav", mime: "audio/wav", bytes: 8 },
-      }),
-    ])
-    const runId = Object.keys(state.stepsByRun)[0]!
-    const step = (state.stepsByRun[runId] ?? []).find((s) => s.kind === "tool")
-    expect(step?.kind === "tool" ? step.tool.artifact : undefined).toEqual({
-      artifact_id: "run_1/t1-a.wav", name: "a.wav", mime: "audio/wav", bytes: 8,
-    })
-  })
-})

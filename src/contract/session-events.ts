@@ -17,15 +17,6 @@ const tokenUsageSchema = z
   })
   .strict()
 
-const artifactSchema = z
-  .object({
-    artifact_id: z.string().min(1),
-    name: z.string().min(1),
-    mime: z.string().min(1),
-    bytes: z.number().int(),
-  })
-  .strict()
-
 const riskSchema = z
   .object({
     level: z.string().min(1),
@@ -116,7 +107,7 @@ const toolReturnedPayload = z
     result: z.string(),
     // 严格必填 fail-loud：生产端始终发送；缺失即报错，绝不用默认 false 掩盖真失败。
     is_error: z.boolean(),
-    // wire 展示层截断标记：缺席=结果完整，true=已截断（完整结果在后端，预览经 artifact 端点取）。
+    // wire 展示层截断标记：缺席=结果完整，true=已截断（完整结果在工作区文件，预览经 files 端点取）。
     truncated: z.boolean().optional(),
     rejected: z.boolean().optional(),
     reject_reason: z.string().optional(),
@@ -175,15 +166,6 @@ const subagentTextCompletedPayload = z
     segment_id: z.string().min(1),
     subagent_id: z.string().min(1),
     text: z.string(),
-  })
-  .strict()
-
-const artifactCreatedPayload = z
-  .object({
-    segment_id: z.string().min(1),
-    tool_id: z.string().min(1),
-    // 产物诞生是独立事实（write_file 自动镜像产出）：字节活在共享产物库，session 端点按 id 出体；web 按 tool_id 挂回工具步。
-    artifact: artifactSchema,
   })
   .strict()
 
@@ -252,7 +234,6 @@ export const sessionEventSchema = z.discriminatedUnion("kind", [
   envelope.extend({ kind: z.literal("subagent.thinking.delta"), payload: subagentThinkingDeltaPayload }),
   envelope.extend({ kind: z.literal("subagent.text.delta"), payload: subagentTextDeltaPayload }),
   envelope.extend({ kind: z.literal("subagent.text.completed"), payload: subagentTextCompletedPayload }),
-  envelope.extend({ kind: z.literal("artifact.created"), payload: artifactCreatedPayload }),
   envelope.extend({ kind: z.literal("subagent.tool.invoked"), payload: subagentToolInvokedPayload }),
   envelope.extend({ kind: z.literal("subagent.tool.returned"), payload: subagentToolReturnedPayload }),
   envelope.extend({ kind: z.literal("run.completed"), payload: runCompletedPayload }),

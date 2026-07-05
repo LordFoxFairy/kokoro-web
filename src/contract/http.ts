@@ -67,12 +67,22 @@ export const pendingPauseSchema = z
   .strict()
 export type PendingPause = z.infer<typeof pendingPauseSchema>
 
+export const workspaceFileSchema = z
+  .object({
+    path: z.string().min(1),
+    mime: z.string().min(1),
+    bytes: z.number().int(),
+  })
+  .strict()
+export type WorkspaceFile = z.infer<typeof workspaceFileSchema>
+
 export const sessionSnapshotSchema = z
   .object({
     session: sessionMetaSchema,
     messages: z.array(messageRecordSchema),
     active_run: activeRunSchema.optional(),
     pending_pauses: z.array(pendingPauseSchema),
+    files: z.array(workspaceFileSchema),
     event_watermark: z.number().int(),
   })
   .strict()
@@ -124,8 +134,8 @@ export function snapshotPath(sessionId: string): string {
 export function eventsPath(sessionId: string): string {
   return `/sessions/${sessionId}/events`
 }
-export function artifactPath(sessionId: string, artifactId: string): string {
-  return `/sessions/${sessionId}/artifacts/${artifactId}`
+export function filePath(sessionId: string, path: string): string {
+  return `/sessions/${sessionId}/files/${path}`
 }
 export function controlPath(sessionId: string, runId: string): string {
   return `/sessions/${sessionId}/runs/${runId}/control`

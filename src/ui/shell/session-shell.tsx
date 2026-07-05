@@ -30,7 +30,7 @@ import { ConversationThread } from "@/ui/thread/conversation-thread"
 import { useAutoScroll } from "@/ui/thread/use-auto-scroll"
 import { TodoBar } from "@/ui/todo/todo-bar"
 import { CanvasPanel } from "@/ui/canvas/canvas-panel"
-import type { ToolArtifact } from "@/core/state"
+import type { WorkspaceFileEntry } from "@/core/state"
 
 import styles from "./session-shell.module.css"
 
@@ -84,8 +84,12 @@ export function SessionShell({ engine: injectedEngine }: SessionShellProps = {})
 
   const [railCollapsed, setRailCollapsed] = useState(false)
   const [draft, setDraft] = useState("")
-  // canvas：右侧内容面板（路径即入口，chip 点击打开；同 path 新版本以最新引用重开）。
-  const [canvasArtifact, setCanvasArtifact] = useState<ToolArtifact | null>(null)
+  // canvas：右侧内容面板（路径即入口）；清单里未及刷新的新文件以 MIME 兜底构造。
+  const [canvasFile, setCanvasFile] = useState<WorkspaceFileEntry | null>(null)
+  const openFile = (path: string) => {
+    const known = thread.files.find((f) => f.path === path.replace(/^\//, ""))
+    setCanvasFile(known ?? { path: path.replace(/^\//, ""), mime: "text/plain", bytes: 0 })
+  }
   const composerRef = useRef<HTMLTextAreaElement | null>(null)
 
   // 侧栏可拖拽改宽（两侧自由，均有最小宽度）；收起态用固定窄列，不参与拖拽。
@@ -231,7 +235,7 @@ export function SessionShell({ engine: injectedEngine }: SessionShellProps = {})
               engine?.stageToolDecision(runId, toolId, decision)
             }
             onCancelRun={() => engine?.cancelRun()}
-            onOpenArtifact={setCanvasArtifact}
+            onOpenFile={openFile}
           />
         ) : (
           <div className={styles.hero}>
@@ -267,11 +271,13 @@ export function SessionShell({ engine: injectedEngine }: SessionShellProps = {})
         />
       </section>
 
-      {canvasArtifact !== null && activeId !== null ? (
+      {canvasFile !== null && activeId !== null ? (
         <CanvasPanel
           sessionId={activeId}
-          artifact={canvasArtifact}
-          onClose={() => setCanvasArtifact(null)}
+          file={canvasFile}
+          files={thread.files}
+          onSelect={setCanvasFile}
+          onClose={() => setCanvasFile(null)}
         />
       ) : null}
     </main>
