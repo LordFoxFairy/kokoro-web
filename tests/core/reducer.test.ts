@@ -507,11 +507,14 @@ describe("Schema 崩溃矩阵（契约入站防线）", () => {
 })
 
 describe("产物引用折叠", () => {
-  it("tool.returned 携带 artifact：折叠进工具步（产物卡数据源）", () => {
+  it("artifact.created 按 tool_id 挂回工具步（chip/canvas 数据源）", () => {
     const state = applySessionEvents(createSessionStreamState(), [
-      makeEvent("tool.invoked", { segment_id: "t1", tool_id: "t1", name: "export_artifact", args: {} }),
+      makeEvent("tool.invoked", { segment_id: "t1", tool_id: "t1", name: "write_file", args: {} }),
       makeEvent("tool.returned", {
-        segment_id: "t1", tool_id: "t1", name: "export_artifact", result: "已导出", is_error: false,
+        segment_id: "t1", tool_id: "t1", name: "write_file", result: "ok", is_error: false,
+      }),
+      makeEvent("artifact.created", {
+        segment_id: "t1", tool_id: "t1",
         artifact: { artifact_id: "run_1/t1-a.wav", name: "a.wav", mime: "audio/wav", bytes: 8 },
       }),
     ])

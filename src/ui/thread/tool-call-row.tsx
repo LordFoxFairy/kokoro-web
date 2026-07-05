@@ -1,4 +1,4 @@
-import { ArtifactCard } from "./artifact-card"
+import { ArtifactChip } from "./artifact-card"
 import type { SessionToolCall, ToolStatus } from "@/core/state"
 import type { ToolDecision } from "@/engine/hitl-staging"
 import { ApprovalCard } from "@/ui/hitl/approval-card"
@@ -37,6 +37,7 @@ const CLOSED_NOTE: Partial<Record<ToolStatus, string>> = {
 export function ToolCallRow({
   sessionId,
   tool,
+  onOpenArtifact,
   staged,
   hitlActive,
   controlError,
@@ -45,6 +46,7 @@ export function ToolCallRow({
 }: {
   sessionId: string | null
   tool: SessionToolCall
+  onOpenArtifact?: (artifact: NonNullable<SessionToolCall["artifact"]>) => void
   // 该工具已暂存的决策（引擎 staging 快照）；同帧未凑齐时先「已记录」。
   staged?: ToolDecision
   // 本轮仍处 awaiting-hitl 相位才允许发决策；resume 已发出后按钮收口。
@@ -173,7 +175,10 @@ export function ToolCallRow({
           </p>
         ) : null}
         {tool.artifact !== undefined && sessionId !== null && !awaiting ? (
-          <ArtifactCard sessionId={sessionId} artifact={tool.artifact} />
+          <ArtifactChip
+            artifact={tool.artifact}
+            onOpen={() => onOpenArtifact?.(tool.artifact!)}
+          />
         ) : null}
       </div>
     </details>

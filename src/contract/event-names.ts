@@ -17,6 +17,7 @@ export const SESSION_EVENT_NAMES = [
   "subagent.thinking.delta",
   "subagent.text.delta",
   "subagent.text.completed",
+  "artifact.created",
   "subagent.tool.invoked",
   "subagent.tool.returned",
   "run.completed",

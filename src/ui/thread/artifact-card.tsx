@@ -14,12 +14,12 @@ import styles from "./artifact-card.module.css"
 const TEXT_PREVIEW_MAX_BYTES = 64 * 1024
 const CSV_PREVIEW_MAX_ROWS = 200
 
-function artifactUrl(sessionId: string, artifact: ToolArtifact): string {
+export function artifactUrl(sessionId: string, artifact: ToolArtifact): string {
   const encoded = artifact.artifact_id.split("/").map(encodeURIComponent).join("/")
   return `${sessionBaseUrl()}${artifactPath(sessionId, "__ID__")}`.replace("__ID__", encoded)
 }
 
-function formatBytes(count: number): string {
+export function formatBytes(count: number): string {
   if (count < 1024) return `${count} B`
   if (count < 1024 * 1024) return `${(count / 1024).toFixed(1)} KB`
   return `${(count / (1024 * 1024)).toFixed(1)} MB`
@@ -106,7 +106,7 @@ function isTextual(mime: string): boolean {
   return mime.startsWith("text/") || mime === "application/json"
 }
 
-function PreviewBody({ url, artifact }: { url: string; artifact: ToolArtifact }) {
+export function PreviewBody({ url, artifact }: { url: string; artifact: ToolArtifact }) {
   const { mime } = artifact
   if (mime.startsWith("audio/")) return <audio className={styles.media} controls src={url} />
   if (mime.startsWith("video/")) return <video className={styles.media} controls src={url} />
@@ -122,28 +122,18 @@ function PreviewBody({ url, artifact }: { url: string; artifact: ToolArtifact })
   return <p className={styles.note}>该格式暂不支持内嵌预览，请下载查看。</p>
 }
 
-export function ArtifactCard({ sessionId, artifact }: { sessionId: string; artifact: ToolArtifact }) {
-  // 媒体类默认展开（播放器即入口）；文本类点开才拉字节（懒加载，大文件不拖会话流）。
-  const heavy = isTextual(artifact.mime) || artifact.mime === "text/html" || artifact.mime === "application/pdf"
-  const [open, setOpen] = useState(!heavy)
-  const url = artifactUrl(sessionId, artifact)
+export function ArtifactChip({
+  artifact,
+  onOpen,
+}: {
+  artifact: ToolArtifact
+  onOpen: () => void
+}) {
+  // 路径即入口（对标 manus/codex）：文件 chip 点击在右侧 canvas 打开预览。
   return (
-    <div className={styles.card} role="group" aria-label={`产物 ${artifact.name}`}>
-      <div className={styles.head}>
-        <span className={styles.name}>{artifact.name}</span>
-        <span className={styles.meta}>
-          {artifact.mime} · {formatBytes(artifact.bytes)}
-        </span>
-        {heavy ? (
-          <button type="button" className={styles.action} onClick={() => setOpen((v) => !v)}>
-            {open ? "收起预览" : "预览"}
-          </button>
-        ) : null}
-        <a className={styles.action} href={url} download={artifact.name}>
-          下载
-        </a>
-      </div>
-      {open ? <PreviewBody url={url} artifact={artifact} /> : null}
-    </div>
+    <button type="button" className={styles.chip} onClick={onOpen}>
+      <span className={styles.chipName}>{artifact.name}</span>
+      <span className={styles.chipMeta}>{formatBytes(artifact.bytes)}</span>
+    </button>
   )
 }

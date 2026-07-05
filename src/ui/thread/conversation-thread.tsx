@@ -12,6 +12,7 @@ import styles from "./thread.module.css"
 const NO_DECISIONS: Record<string, ToolDecision> = {}
 
 type ConversationThreadProps = {
+  onOpenArtifact?: (artifact: import("@/core/state").ToolArtifact) => void
   // 产物端点 URL 构造需要（透传到工具行的产物卡）。
   sessionId: string | null
   thread: SessionStreamState
@@ -35,6 +36,7 @@ type ConversationThreadProps = {
 
 export function ConversationThread({
   sessionId,
+  onOpenArtifact,
   thread,
   isStreaming,
   isReconnecting,
@@ -83,6 +85,7 @@ export function ConversationThread({
           ) : (
             <AssistantTurn
               sessionId={sessionId}
+              onOpenArtifact={onOpenArtifact}
               key={item.runId}
               steps={item.steps}
               messagesById={item.messagesById}

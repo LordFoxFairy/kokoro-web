@@ -197,7 +197,6 @@ function applyToolReturned(draft: Draft, event: EventOf<"tool.returned">): void 
       : "done"
   const resultFields = {
     result: payload.result,
-    ...(payload.artifact !== undefined ? { artifact: payload.artifact } : {}),
     ...(payload.is_error ? { errorText: payload.result } : {}),
     ...(payload.reject_reason !== undefined ? { rejectReason: payload.reject_reason } : {}),
     ...(payload.responded !== undefined ? { responded: payload.responded } : {}),
@@ -371,6 +370,17 @@ function applyEvent(draft: Draft, event: SessionEvent): void {
         ...step,
         subagent: { ...step.subagent, output: event.payload.text },
       }))
+      break
+    case "artifact.created":
+      // 产物诞生独立事件：按 tool_id 挂回工具步（chip/canvas 数据源）。
+      updateStep(
+        stepsOf(draft, event.run_id),
+        (step) => step.kind === "tool" && step.tool.id === event.payload.tool_id,
+        (step) =>
+          step.kind === "tool"
+            ? { ...step, tool: { ...step.tool, artifact: event.payload.artifact } }
+            : step,
+      )
       break
     case "subagent.tool.invoked":
     case "subagent.tool.returned":
