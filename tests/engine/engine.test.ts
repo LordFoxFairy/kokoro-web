@@ -541,7 +541,7 @@ describe("失败重试", () => {
     await settle()
     client.lastStream().emit([
       makeEvent("run.created", { run_id: "run_1" }),
-      makeEvent("run.failed", { error_kind: "boom", message: "agent exploded" }),
+      makeEvent("run.failed", { code: "internal_error", error_kind: "boom", message: "agent exploded" }),
     ])
     await settle()
     expect(thread().runStatus).toBe("failed")

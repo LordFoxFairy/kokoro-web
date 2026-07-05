@@ -161,7 +161,7 @@ describe("activeRunId 显式锚定（snapshot 置位、终态清空）", () => {
     )
     state = applySessionEvent(
       state,
-      makeEvent("run.failed", { error_kind: "x", message: "boom" }, { run_id: "run_old" }),
+      makeEvent("run.failed", { code: "internal_error", error_kind: "x", message: "boom" }, { run_id: "run_old" }),
     )
     expect(state.activeRunId).toBe("run_new")
   })
@@ -341,7 +341,7 @@ describe("终态收口：结构化 status、零 UI 文案", () => {
     ])
     state = applySessionEvent(
       state,
-      makeEvent("run.failed", { error_kind: "agent", message: "died" }),
+      makeEvent("run.failed", { code: "internal_error", error_kind: "agent", message: "died" }),
     )
     expect(toolStatusOf(state, "run_1", "tool_1")).toBe("error")
     expect(state.runStatus).toBe("failed")
@@ -448,7 +448,7 @@ describe("边界矩阵", () => {
   it("appendUserMessage 复位 runStatus/todos 且不进 seenEventIds", () => {
     let state = applySessionEvents(createSessionStreamState(), [
       makeEvent("todo.updated", { todos: [{ content: "x", status: "pending" }] }),
-      makeEvent("run.failed", { error_kind: "agent", message: "boom" }),
+      makeEvent("run.failed", { code: "internal_error", error_kind: "agent", message: "boom" }),
     ])
     state = appendUserMessage(state, { id: "usr_1", content: "again" })
     expect(state.runStatus).toBe("idle")
