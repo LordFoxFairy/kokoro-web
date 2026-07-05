@@ -38,6 +38,7 @@ export const subagentDefSchema = z
     description: z.string(),
     system_prompt: z.string().min(1).optional(),
     tools: z.array(z.string().min(1)),
+    skills: z.array(z.string().min(1)),
     model: modelConfigSchema.optional(),
   })
   .strict()
