@@ -319,7 +319,7 @@ describe("snapshot-first 水合与中断恢复", () => {
     expect(client.streams).toHaveLength(0)
   })
 
-  it("快照有历史消息：水合线程 + 服务端标题回填索引，无在途 run 不开流", async () => {
+  it("快照有历史消息：开流全量回放重建线程（snapshot 只供 meta/files）", async () => {
     buildEngine(SEEDED)
     client.nextSnapshot = () =>
       Promise.resolve(
@@ -350,14 +350,23 @@ describe("snapshot-first 水合与中断恢复", () => {
     engine.dispose()
     engine = createSessionEngine({ client, storage, now: () => 1_000 })
     await settle()
-    expect(thread().messages).toHaveLength(2)
-    expect(thread().lastSeq).toBe(7)
+    // 线程不从 snapshot 直投：开流从 0 回放（事件史=唯一完整真源）。
+    expect(thread().messages).toHaveLength(0)
     expect(activeEntry().title).toBe("restored title")
     expect(engine.getSnapshot().machine.phase).toBe("idle")
-    expect(client.streams).toHaveLength(0)
+    expect(client.lastStream()).toMatchObject({ sessionId: "conv_9", lastEventId: 0 })
+    client.lastStream().emit([
+      makeEvent("message.user", { message_id: "msg_u", content: "old ask" }, { run_id: "run_old", seq: 1 }),
+      makeEvent("message.delta", { segment_id: "seg_1", delta: "old answer" }, { run_id: "run_old", seq: 2 }),
+    ])
+    await settle()
+    expect(thread().messages.map((m) => [m.role, m.content])).toEqual([
+      ["user", "old ask"],
+      ["assistant", "old answer"],
+    ])
   })
 
-  it("快照带在途 run：锚定重连并按水位续流（Last-Event-ID=watermark）", async () => {
+  it("快照带在途 run：锚定重连，开流从 0 全量回放", async () => {
     buildEngine(SEEDED)
     client.nextSnapshot = () =>
       Promise.resolve(
@@ -371,7 +380,7 @@ describe("snapshot-first 水合与中断恢复", () => {
     engine = createSessionEngine({ client, storage, now: () => 1_000 })
     await settle()
     expect(engine.getSnapshot().machine).toMatchObject({ phase: "reattaching", runId: "run_9" })
-    expect(client.lastStream()).toMatchObject({ sessionId: "conv_9", lastEventId: 12 })
+    expect(client.lastStream()).toMatchObject({ sessionId: "conv_9", lastEventId: 0 })
 
     // 历史 run 的 replay 终态不收束本轮。
     client.lastStream().emit([
@@ -409,8 +418,12 @@ describe("snapshot-first 水合与中断恢复", () => {
     engine.dispose()
     engine = createSessionEngine({ client, storage, now: () => 1_000 })
     await settle()
-    // 水合直接落 awaiting-hitl：审批卡可点，无需任何流事件先行。
+    // 相位由 snapshot 直落 awaiting-hitl；审批帧内容随回放到达（本地毫秒级）。
     expect(engine.getSnapshot().machine).toMatchObject({ phase: "awaiting-hitl", runId: "run_9" })
+    client.lastStream().emit([
+      makeEvent("tool.awaiting_approval", awaitingPayload("tool_1", ["tool_1"]), { run_id: "run_9", seq: 21 }),
+    ])
+    await settle()
     const step = (thread().stepsByRun["run_9"] ?? [])[0]
     expect(step?.kind === "tool" ? step.tool.status : null).toBe("awaiting")
 

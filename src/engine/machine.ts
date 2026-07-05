@@ -359,6 +359,9 @@ export function createSessionEngine(deps: EngineDeps): SessionEngine {
         }
         thread = stateFromSnapshot(sessionSnapshot)
         syncActiveEntry()
+        // 线程内容=事件史全量回放（水合 lastSeq=0）：历史过程/文本/审批帧全部重建，
+        // 无在途 run 也开流（回放完即挂 live tail）。
+        openStream(sessionId, thread.lastSeq)
         const plan = reattachPlanFromSnapshot(sessionSnapshot)
         if (plan) {
           const before = machine
@@ -368,7 +371,6 @@ export function createSessionEngine(deps: EngineDeps): SessionEngine {
             awaiting: plan.awaiting,
           })
           if (machine !== before) {
-            openStream(sessionId, thread.lastSeq)
             clearReattachTimer()
             if (!plan.awaiting) {
               // 兜底窗口耗尽仍无终态：放弃续传，不永久卡在 streaming。待批帧不设时限。
@@ -397,6 +399,19 @@ export function createSessionEngine(deps: EngineDeps): SessionEngine {
       })
   }
 
+  // 本地 echo 与事件史对齐：receipt 的 user_message_id 覆盖最后一条本地临时 id（usr_ 前缀），
+  // 随后到达的 message.user 事件按 id 命中更新而非双份。
+  function adoptUserMessageId(serverId: string): void {
+    const index = thread.messages.findLastIndex(
+      (m) => m.role === "user" && m.id.startsWith("usr_"),
+    )
+    const existing = index >= 0 ? thread.messages[index] : undefined
+    if (existing === undefined) return
+    const messages = [...thread.messages]
+    messages[index] = { ...existing, id: serverId }
+    thread = { ...thread, messages }
+  }
+
   // POST messages 并处理回执/失败（submit 与 retry 共用的开跑尾段）。
   function beginRun(sessionId: string, content: string, idempotencyKey: string): void {
     pendingSubmission = { content, idempotencyKey }
@@ -408,6 +423,7 @@ export function createSessionEngine(deps: EngineDeps): SessionEngine {
           return
         }
         pendingSubmission = null
+        adoptUserMessageId(receipt.user_message_id)
         machine = transition(machine, { type: "RECEIPT", runId: receipt.run_id })
         openStream(sessionId, thread.lastSeq)
         notify()
@@ -439,6 +455,12 @@ export function createSessionEngine(deps: EngineDeps): SessionEngine {
       notify()
       deps.client
         .startRun(store.activeId, { idempotency_key: createId("idem"), content: trimmed })
+        .then((receipt) => {
+          if (!disposed) {
+            adoptUserMessageId(receipt.user_message_id)
+            notify()
+          }
+        })
         .catch((error: unknown) => {
           // 插话投递失败必须可见：瞬态通知（不打断相位），下次提交自动清。
           notice = `插话发送失败：${describeUnknown(error)}，请重试`

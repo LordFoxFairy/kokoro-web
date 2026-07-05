@@ -167,54 +167,6 @@ describe("activeRunId 显式锚定（snapshot 置位、终态清空）", () => {
   })
 })
 
-describe("snapshot 水合占位认领", () => {
-  function hydratedWithStreamingPlaceholder(): SessionStreamState {
-    return stateFromSnapshot(
-      makeSnapshot({
-        messages: [
-          {
-            message_id: "msg_user",
-            role: "user",
-            content: "do it",
-            status: "completed",
-            created_at: "2026-07-02T00:00:00Z",
-          },
-          {
-            message_id: "msg_assistant",
-            role: "assistant",
-            content: "partial ",
-            status: "streaming",
-            created_at: "2026-07-02T00:00:01Z",
-            run_id: "run_1",
-          },
-        ],
-        activeRun: { run_id: "run_1", status: "running" },
-        eventWatermark: 5,
-      }),
-    )
-  }
-
-  it("本 run 首个 message.delta 认领在途占位并续写（不长出重复气泡）", () => {
-    const state = applySessionEvent(
-      hydratedWithStreamingPlaceholder(),
-      makeEvent("message.delta", { segment_id: "seg_1", delta: "resumed" }, { seq: 6 }),
-    )
-    const assistants = state.messages.filter((message) => message.role === "assistant")
-    expect(assistants).toHaveLength(1)
-    expect(assistants[0]).toMatchObject({ id: "seg_1", content: "partial resumed" })
-    expect(assistants[0]?.hydratedStreaming).toBeUndefined()
-  })
-
-  it("message.completed 直接覆盖占位内容", () => {
-    const state = applySessionEvent(
-      hydratedWithStreamingPlaceholder(),
-      makeEvent("message.completed", { segment_id: "seg_1", content: "final" }, { seq: 6 }),
-    )
-    const assistants = state.messages.filter((message) => message.role === "assistant")
-    expect(assistants).toHaveLength(1)
-    expect(assistants[0]?.content).toBe("final")
-  })
-})
 
 describe("工具步按 tool_id 归并（segment 漂移免疫）", () => {
   it("awaiting→invoked→returned 跨 segment 仍是单步单组（真栈走查回归）", () => {

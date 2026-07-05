@@ -68,21 +68,6 @@ function applyAssistantText(
     }
     return
   }
-  // snapshot 水合的在途占位：本 run 首个后续文本事件认领并续写，改挂到 segmentId 上。
-  const adoptIndex = messages.findIndex(
-    (message) =>
-      message.role === "assistant" && message.runId === event.run_id && message.hydratedStreaming,
-  )
-  if (adoptIndex >= 0) {
-    const adopted = messages[adoptIndex]
-    if (adopted !== undefined) {
-      const content =
-        event.kind === "message.completed" ? incoming : `${adopted.content}${incoming}`
-      messages[adoptIndex] = { id: segmentId, role: "assistant", content, runId: event.run_id }
-      insertOrdered(stepsOf(draft, event.run_id), { kind: "text", seq: event.seq, segmentId })
-      return
-    }
-  }
   messages.push({
     id: segmentId,
     role: "assistant",
@@ -317,6 +302,25 @@ function applyEvent(draft: Draft, event: SessionEvent): void {
     case "run.created":
       // 契约要求解析（event_id/seq 照常记账），不做投影：run 锚定由 receipt/snapshot 承担。
       break
+    case "message.user": {
+      // user 消息事件：本地 echo 已被 receipt 对齐为同 id → 命中即更新；刷新回放 → 新建。
+      const { messages } = draft.state
+      const index = messages.findIndex((m) => m.id === event.payload.message_id)
+      if (index >= 0) {
+        const existing = messages[index]
+        if (existing !== undefined) {
+          messages[index] = { ...existing, content: event.payload.content }
+        }
+      } else {
+        messages.push({
+          id: event.payload.message_id,
+          role: "user",
+          content: event.payload.content,
+          runId: event.run_id,
+        })
+      }
+      break
+    }
     case "message.delta":
     case "message.completed":
       applyAssistantText(draft, event)

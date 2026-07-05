@@ -4,6 +4,7 @@
 export const SESSION_EVENT_NAMES = [
   "session.created",
   "run.created",
+  "message.user",
   "message.delta",
   "message.completed",
   "thinking.delta",

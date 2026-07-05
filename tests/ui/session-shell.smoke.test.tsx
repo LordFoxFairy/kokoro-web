@@ -145,8 +145,18 @@ it("刷新场景：带 pending pause 的 snapshot 水合后审批卡直接可操
   })
   render(<SessionShell engine={engine} />)
   await act(settle)
-
-  // 水合出的历史消息与待批工具直接就位，批准按钮可点。
+  // 线程=事件史全量回放重建（水合后开流从 0）：注入历史事件即重现消息与审批帧。
+  await act(async () => {
+    client.lastStream().emit([
+      makeEvent("message.user", { message_id: "msg_u", content: "帮我写个文件" }, { run_id: "run_9", seq: 1 }),
+      makeEvent(
+        "tool.awaiting_approval",
+        awaitingPayload("tool_1", ["tool_1"], { name: "write_file" }),
+        { run_id: "run_9", seq: 2 },
+      ),
+    ])
+  })
+  await act(settle)
   expect(screen.getAllByText("帮我写个文件").length).toBeGreaterThan(0)
   expect(screen.getByText("write_file")).toBeInTheDocument()
   fireEvent.click(screen.getByRole("button", { name: "批准" }))

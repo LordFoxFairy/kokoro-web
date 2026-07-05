@@ -38,6 +38,13 @@ const runCreatedPayload = z
   })
   .strict()
 
+const messageUserPayload = z
+  .object({
+    message_id: z.string().min(1),
+    content: z.string(),
+  })
+  .strict()
+
 const messageDeltaPayload = z
   .object({
     segment_id: z.string().min(1),
@@ -221,6 +228,7 @@ const envelope = z
 export const sessionEventSchema = z.discriminatedUnion("kind", [
   envelope.extend({ kind: z.literal("session.created"), payload: sessionCreatedPayload }),
   envelope.extend({ kind: z.literal("run.created"), payload: runCreatedPayload }),
+  envelope.extend({ kind: z.literal("message.user"), payload: messageUserPayload }),
   envelope.extend({ kind: z.literal("message.delta"), payload: messageDeltaPayload }),
   envelope.extend({ kind: z.literal("message.completed"), payload: messageCompletedPayload }),
   envelope.extend({ kind: z.literal("thinking.delta"), payload: thinkingDeltaPayload }),
