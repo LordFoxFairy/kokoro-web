@@ -20,15 +20,6 @@ export const modelConfigSchema = z
   .strict()
 export type ModelConfig = z.infer<typeof modelConfigSchema>
 
-export const skillMountSchema = z
-  .object({
-    name: z.string().min(1),
-    path: z.string().min(1),
-    lock: z.string().min(1),
-  })
-  .strict()
-export type SkillMount = z.infer<typeof skillMountSchema>
-
 export const mcpServerSchema = z
   .object({
     name: z.string().min(1),
@@ -45,7 +36,7 @@ export const subagentDefSchema = z
   .object({
     name: z.string().min(1),
     description: z.string(),
-    system_prompt: z.string().min(1),
+    system_prompt: z.string().min(1).optional(),
     tools: z.array(z.string().min(1)),
     model: modelConfigSchema.optional(),
   })
@@ -65,10 +56,11 @@ export type Permissions = z.infer<typeof permissionsSchema>
 export const runtimeConfigSchema = z
   .object({
     agent_type: z.enum(["general"]),
+    entry: z.string().min(1).optional(),
     model: modelConfigSchema,
     system_prompt: z.string().min(1).optional(),
     tools: z.array(z.string().min(1)),
-    skills: z.array(skillMountSchema),
+    skills: z.array(z.string().min(1)),
     mcp: z.array(mcpServerSchema),
     subagents: z.array(subagentDefSchema),
     backend: z.enum(["state", "local_shell", "docker", "e2b", "custom"]),
