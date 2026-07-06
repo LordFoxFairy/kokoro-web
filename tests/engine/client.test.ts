@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 
-import { createSseFrameParser } from "@/engine/client"
+import { createSessionClient, createSseFrameParser } from "@/engine/client"
 
 function collect(chunks: string[]): string[] {
   const frames: string[] = []
@@ -45,5 +45,26 @@ describe("createSseFrameParser：跨 chunk 的 SSE 帧增量解析", () => {
     expect(frames).toEqual([])
     feed("\n\n")
     expect(frames).toEqual(["pending"])
+  })
+})
+
+describe("fetchSnapshot：会话不存在/已软删都优雅缺席（不 fail-loud）", () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  const clientFor = (status: number) => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status })))
+    return createSessionClient({ baseUrl: "http://session.test/" })
+  }
+
+  it("404（从无此会话）→ null，空线程即真态", async () => {
+    await expect(clientFor(404).fetchSnapshot("conv_x")).resolves.toBeNull()
+  })
+
+  it("410 Gone（软删会话）→ null，水合优雅缺席而非硬错屏", async () => {
+    await expect(clientFor(410).fetchSnapshot("conv_x")).resolves.toBeNull()
+  })
+
+  it("其它非 ok（500）仍 fail-loud 抛错", async () => {
+    await expect(clientFor(500).fetchSnapshot("conv_x")).rejects.toThrow()
   })
 })

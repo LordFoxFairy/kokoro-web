@@ -165,6 +165,20 @@ describe("activeRunId 显式锚定（snapshot 置位、终态清空）", () => {
     )
     expect(state.activeRunId).toBe("run_new")
   })
+
+  it("历史 run 的终态不覆写在途 run 的全局 runStatus/runError", () => {
+    let state = stateFromSnapshot(
+      makeSnapshot({ activeRun: { run_id: "run_new", status: "running" } }),
+    )
+    expect(state.runStatus).toBe("idle")
+    state = applySessionEvent(
+      state,
+      makeEvent("run.failed", { code: "internal_error", error_kind: "x", message: "boom" }, { run_id: "run_old" }),
+    )
+    // 在途 run_new 仍在跑，历史 run_old 失败不得把 thread 置 failed（否则 UI 弹历史假失败卡）。
+    expect(state.runStatus).toBe("idle")
+    expect(state.runError).toBeNull()
+  })
 })
 
 
