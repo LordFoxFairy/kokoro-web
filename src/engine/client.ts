@@ -100,12 +100,13 @@ async function postJson<T>(
   url: string,
   body: unknown,
   parse: (raw: unknown) => T,
+  extraHeaders: Record<string, string> = {},
 ): Promise<T> {
   let response: Response
   try {
     response = await fetch(url, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", ...extraHeaders },
       body: JSON.stringify(body),
     })
   } catch (error) {
@@ -140,20 +141,23 @@ export function createSseFrameParser(onData: (data: string) => void): (chunk: st
   }
 }
 
-export function createSessionClient(options: { baseUrl: string }): SessionClient {
+export function createSessionClient(options: { baseUrl: string; token?: string }): SessionClient {
   const url = (path: string): string => new URL(path, options.baseUrl).toString()
+  // 鉴权（M2-P1）：token 存在即全请求携带；缺省=直通模式（session 未配 secret）。
+  const authHeaders: Record<string, string> =
+    options.token === undefined ? {} : { authorization: `Bearer ${options.token}` }
 
   return {
     startRun: (sessionId, body) =>
       postJson(url(messagesPath(sessionId)), body, (raw) =>
-        startMessageReceiptSchema.parse(raw),
+        startMessageReceiptSchema.parse(raw), authHeaders,
       ),
 
     fetchSnapshot: async (sessionId) => {
       const target = url(snapshotPath(sessionId))
       let response: Response
       try {
-        response = await fetch(target, { cache: "no-store" })
+        response = await fetch(target, { cache: "no-store", headers: authHeaders })
       } catch (error) {
         throw new SessionClientError("network", describeUnknown(error))
       }
@@ -168,14 +172,14 @@ export function createSessionClient(options: { baseUrl: string }): SessionClient
 
     sendControl: (sessionId, runId, body) =>
       postJson(url(controlPath(sessionId, runId)), body, (raw) =>
-        runControlReceiptSchema.parse(raw),
+        runControlReceiptSchema.parse(raw), authHeaders,
       ),
 
     deleteSession: async (sessionId) => {
       const target = url(snapshotPath(sessionId))  // DELETE 与 snapshot 同路径（契约）
       let response: Response
       try {
-        response = await fetch(target, { method: "DELETE" })
+        response = await fetch(target, { method: "DELETE", headers: authHeaders })
       } catch (error) {
         throw new SessionClientError("network", describeUnknown(error))
       }
@@ -233,7 +237,7 @@ export function createSessionClient(options: { baseUrl: string }): SessionClient
       })
 
       const connect = async (): Promise<void> => {
-        const headers: Record<string, string> = { accept: "text/event-stream" }
+        const headers: Record<string, string> = { accept: "text/event-stream", ...authHeaders }
         if (cursor !== undefined) {
           headers[LAST_EVENT_ID_HEADER] = String(cursor)
         }

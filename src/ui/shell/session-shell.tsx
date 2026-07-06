@@ -45,7 +45,15 @@ function browserEngine(): SessionEngine | null {
   }
   if (!pageEngine) {
     // 显式 env 开关的开发假流优先；否则走真实 kokoro-session（base URL 缺失即 fail-loud）。
-    const client = previewClientFromEnv() ?? createSessionClient({ baseUrl: sessionBaseUrl() })
+    const storedToken =
+      typeof window === "undefined" ? null : window.localStorage.getItem("kokoro.auth.token")
+    // token 存在即携带（session 配 secret 后必需）；platform 登录体系接入前由部署方注入。
+    const client =
+      previewClientFromEnv() ??
+      createSessionClient({
+        baseUrl: sessionBaseUrl(),
+        ...(storedToken === null ? {} : { token: storedToken }),
+      })
     pageEngine = createSessionEngine({
       client,
       storage: createPersistedStore({
