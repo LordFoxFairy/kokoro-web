@@ -224,6 +224,19 @@ describe("HITL 凑帧与部分拒绝", () => {
     expect(engine.getSnapshot().staging["run_1"]).toBeUndefined()
   })
 
+  it("resume 撞 409 no_pending_pause：清暂存 + snapshot 对账，不卡 awaiting-hitl（审计缺口④）", async () => {
+    await enterAwaitingFrame()
+    const snapshotsBefore = client.snapshotCalls.length
+    client.nextControl = () => Promise.reject(new SessionClientError("http", "no_pending_pause"))
+    engine.stageToolDecision("run_1", "tool_1", { type: "approve" })
+    engine.stageToolDecision("run_1", "tool_2", { type: "respond", message: "ok" })
+    await settle()
+    // 对账：暂存清空、相位离开 awaiting-hitl、按 snapshot 重建（多一次 snapshot 拉取）。
+    expect(engine.getSnapshot().staging["run_1"]).toBeUndefined()
+    expect(engine.getSnapshot().machine.phase).not.toBe("awaiting-hitl")
+    expect(client.snapshotCalls.length).toBeGreaterThan(snapshotsBefore)
+  })
+
   it("resume POST 失败：暂存保留可重试，重试复用同一 decision_id", async () => {
     await enterAwaitingFrame()
     client.nextControl = () => Promise.reject(new SessionClientError("http", "status 502"))

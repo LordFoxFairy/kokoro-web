@@ -177,6 +177,9 @@ function defaultCreateId(prefix: string): string {
   return `${prefix}_${crypto.randomUUID()}`
 }
 
+// control 撞终态的冲突码（session 契约 409/410）：暂停失效信号，触发 snapshot 对账。
+const STALE_CONTROL_ERRORS = new Set(["run_not_active", "no_pending_pause", "session_deleted"])
+
 function describeUnknown(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
@@ -552,8 +555,21 @@ export function createSessionEngine(deps: EngineDeps): SessionEngine {
         if (disposed) {
           return
         }
-        // 暂存保留可重试；仅记录错误，不离开 awaiting-hitl。
-        machine = transition(machine, { type: "CONTROL_FAILED", error: describeUnknown(error) })
+        const detail = describeUnknown(error)
+        // 终态冲突码=这个暂停已经失效（run 已收口/被取消/会话已删）：按 snapshot
+        // 对账重建真态并清暂存，绝不把用户卡死在 awaiting-hitl（审计缺口④）。
+        if (STALE_CONTROL_ERRORS.has(detail) && store) {
+          staging.delete(runId)
+          resumeDecisionIds.delete(runId)
+          closeStream()
+          clearReattachTimer()
+          machine = transition(machine, { type: "RESET" })
+          hydrate(store.activeId)
+          notify()
+          return
+        }
+        // 其余失败（网络抖动等）：暂存保留可重试；仅记录错误，不离开 awaiting-hitl。
+        machine = transition(machine, { type: "CONTROL_FAILED", error: detail })
         notify()
       })
   }
