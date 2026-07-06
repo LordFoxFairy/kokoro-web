@@ -8,6 +8,7 @@ import { useState } from "react"
 import { filePath } from "@/contract/http"
 import { sessionBaseUrl } from "@/engine/config"
 import type { WorkspaceFileEntry } from "@/core/state"
+import { useT } from "@/i18n/context"
 import { PreviewBody, formatBytes } from "@/ui/thread/artifact-card"
 
 import styles from "./canvas-panel.module.css"
@@ -31,20 +32,23 @@ export function CanvasPanel({
   onSelect: (file: WorkspaceFileEntry) => void
   onClose: () => void
 }) {
+  const t = useT()
   const [view, setView] = useState<"preview" | "list">("preview")
   const url = fileUrl(sessionId, file.path)
   const name = file.path.split("/").at(-1) ?? file.path
   return (
-    <aside className={styles.panel} aria-label={`canvas 预览 ${file.path}`}>
+    <aside className={styles.panel} aria-label={t("canvas.previewAria", { path: file.path })}>
       <header className={styles.head}>
         <button
           type="button"
           className={styles.action}
           onClick={() => setView(view === "list" ? "preview" : "list")}
         >
-          {view === "list" ? "预览" : "文件"}
+          {view === "list" ? t("canvas.previewTab") : t("canvas.filesTab")}
         </button>
-        <span className={styles.name}>{view === "list" ? "工作区文件" : file.path}</span>
+        <span className={styles.name}>
+          {view === "list" ? t("canvas.filesHeading") : file.path}
+        </span>
         {view === "preview" ? (
           <span className={styles.meta}>
             {file.mime} · {formatBytes(file.bytes)}
@@ -52,17 +56,17 @@ export function CanvasPanel({
         ) : null}
         {view === "preview" ? (
           <a className={styles.action} href={url} download={name}>
-            下载
+            {t("canvas.download")}
           </a>
         ) : null}
-        <button type="button" className={styles.action} onClick={onClose} aria-label="关闭预览">
-          关闭
+        <button type="button" className={styles.action} onClick={onClose} aria-label={t("canvas.closePreview")}>
+          {t("canvas.close")}
         </button>
       </header>
       <div className={styles.body}>
         {view === "list" ? (
           files.length === 0 ? (
-            <p className={styles.meta}>工作区还没有文件。</p>
+            <p className={styles.meta}>{t("canvas.empty")}</p>
           ) : (
             <ul className={styles.tree}>
               {files.map((entry) => (

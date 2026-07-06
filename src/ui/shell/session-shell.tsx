@@ -19,6 +19,7 @@ import { createSessionClient } from "@/engine/client"
 import { sessionBaseUrl } from "@/engine/config"
 import { createSessionEngine, type SessionEngine } from "@/engine/machine"
 import { useSessionEngine } from "@/engine/use-session-engine"
+import { useT } from "@/i18n/context"
 import { createPersistedStore } from "@/lib/persisted-store"
 import { useHydrated } from "@/lib/use-hydrated"
 
@@ -83,6 +84,7 @@ type SessionShellProps = {
 }
 
 export function SessionShell({ engine: injectedEngine }: SessionShellProps = {}) {
+  const t = useT()
   const engine = injectedEngine !== undefined ? injectedEngine : browserEngine()
   const snapshot = useSessionEngine(engine)
   const { machine, notice, store, thread, pendingMode, staging } = snapshot
@@ -118,6 +120,7 @@ export function SessionShell({ engine: injectedEngine }: SessionShellProps = {})
   const activeId = store?.activeId ?? null
 
   const presentation = modePresentation(
+    t,
     mode,
     hasFailed ? "failed" : machine.phase,
     hasMessages,
@@ -217,7 +220,7 @@ export function SessionShell({ engine: injectedEngine }: SessionShellProps = {})
           className={styles.resizer}
           role="separator"
           aria-orientation="vertical"
-          aria-label="调整侧栏宽度"
+          aria-label={t("shell.resizeAria")}
           onPointerDown={onResizeStart}
         />
       ) : null}
@@ -247,15 +250,15 @@ export function SessionShell({ engine: injectedEngine }: SessionShellProps = {})
           />
         ) : (
           <div className={styles.hero}>
-            <h1 className={styles.headline}>今天想做什么？</h1>
-            <p className={styles.subhead}>不急，先把想法说给我</p>
+            <h1 className={styles.headline}>{t("shell.heading")}</h1>
+            <p className={styles.subhead}>{t("shell.subhead")}</p>
           </div>
         )}
 
         {showJumpToLatest ? (
           <button className={styles.jump} type="button" onClick={scrollToLatest}>
             <span aria-hidden>↓</span>
-            <span>回到最新</span>
+            <span>{t("shell.backToLatest")}</span>
           </button>
         ) : null}
 
@@ -270,7 +273,7 @@ export function SessionShell({ engine: injectedEngine }: SessionShellProps = {})
           isStreaming={isStreaming}
           canSend={canSend}
           onStop={() => engine?.cancelRun()}
-          transportLabel={notice ?? presentation.transportLabel}
+          transportLabel={notice ? t(notice.key, notice.vars) : presentation.transportLabel}
           modeHint={presentation.modeHint}
           composerRef={composerRef}
           mode={mode}

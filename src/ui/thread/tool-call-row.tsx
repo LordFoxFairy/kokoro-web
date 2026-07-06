@@ -1,6 +1,8 @@
 import { FileChip } from "./artifact-card"
 import type { SessionToolCall, ToolStatus } from "@/core/state"
 import type { ToolDecision } from "@/engine/hitl-staging"
+import { useT } from "@/i18n/context"
+import type { MessageKey } from "@/i18n/messages"
 import { ApprovalCard } from "@/ui/hitl/approval-card"
 import { AskUserCard } from "@/ui/hitl/ask-user-card"
 import { ReviewCard } from "@/ui/hitl/review-card"
@@ -23,11 +25,11 @@ function formatArgs(args: Record<string, unknown>): string | null {
   }
 }
 
-// 结构化收口状态 → 人话：文案只活在渲染层，状态层零 UI 文案。
-const CLOSED_NOTE: Partial<Record<ToolStatus, string>> = {
-  "stale-awaiting": "运行已结束，该工具未获批准、未执行。",
-  "stale-running": "运行已结束，该工具没有返回结果。",
-  cancelled: "已停止，该工具没有返回结果。",
+// 结构化收口状态 → 文案 key：文案只活在渲染层，状态层零 UI 文案（i18n 在渲染处取译）。
+const CLOSED_NOTE: Partial<Record<ToolStatus, MessageKey>> = {
+  "stale-awaiting": "thread.staleAwaiting",
+  "stale-running": "thread.staleRunning",
+  cancelled: "thread.cancelledNote",
 }
 
 // 单条工具调用：扳手 + 名称 + 运行态。有入参/结果/错误/待批时是可展开的 <details>，
@@ -57,6 +59,7 @@ export function ToolCallRow({
   // 问答卡（ask_user）自带的取消 run 入口。
   onCancelRun?: () => void
 }) {
+  const t = useT()
   // ask_user 的入参（question/choices）已由问答卡语义化呈现：原始 JSON 只添噪音。
   const argsText = tool.name === "ask_user_question" ? null : formatArgs(tool.args)
   const running = tool.status === "running"
@@ -66,9 +69,9 @@ export function ToolCallRow({
   // rejected：用户驳回了该调用——工具未执行，显禁止圈而非绿勾。
   const rejected = tool.status === "rejected"
   // result_review 的收口语义不同：工具已执行，悬着的只是结果审核。
-  const closedNote =
+  const closedNoteKey: MessageKey | undefined =
     tool.status === "stale-awaiting" && tool.awaitingKind === "result_review"
-      ? "运行已结束，该结果未完成审核（工具已执行）。"
+      ? "thread.reviewPending"
       : CLOSED_NOTE[tool.status]
   // responded：done 态但结果由人工答复（非工具产出）——加 provenance 标记，让回看者一眼可辨。
   const responded = Boolean(tool.responded)
@@ -86,19 +89,19 @@ export function ToolCallRow({
     failed ||
     awaiting ||
     rejected ||
-    closedNote !== undefined
+    closedNoteKey !== undefined
 
   const head = (
     <>
       <WrenchIcon className={styles.toolIcon} />
       <span className={styles.toolName}>{tool.name}</span>
-      {responded ? <span className={styles.toolResponded}>已人工答复</span> : null}
+      {responded ? <span className={styles.toolResponded}>{t("hitl.answered")}</span> : null}
       <span className={styles.toolState} aria-hidden>
         <RunState
           done={tool.status === "done"}
           failed={failed}
           awaiting={awaiting}
-          rejected={rejected || closedNote !== undefined}
+          rejected={rejected || closedNoteKey !== undefined}
         />
       </span>
     </>
@@ -157,22 +160,22 @@ export function ToolCallRow({
         {failed ? (
           <p className={styles.toolError} role="status">
             {/* || 而非 ??：空串错误文本（无消息异常）也回落到兜底文案，绝不渲染空白红条。 */}
-            {tool.errorText || "工具调用失败"}
+            {tool.errorText || t("thread.toolFailed")}
           </p>
         ) : rejected ? (
           <p className={styles.toolRejectedNote} role="status">
-            你已拒绝该工具调用，未执行。
+            {t("thread.rejected")}
           </p>
-        ) : closedNote !== undefined ? (
+        ) : closedNoteKey !== undefined ? (
           <p className={styles.toolRejectedNote} role="status">
-            {closedNote}
+            {t(closedNoteKey)}
           </p>
         ) : tool.result && !awaiting ? (
           // awaiting 时不重复渲染结果：result_review 的待审结果由审核卡只读区独占展示。
           <pre className={styles.toolResult}>{tool.result}</pre>
         ) : running ? (
           <p className={styles.pending}>
-            运行中
+            {t("thread.running")}
             <span className={styles.pulse} aria-hidden>
               <span />
               <span />

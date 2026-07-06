@@ -662,7 +662,7 @@ describe("运行中插话（steer）", () => {
     client.nextStart = () => Promise.reject(new SessionClientError("http", "boom"))
     engine.submit("插话一")
     await settle()
-    expect(engine.getSnapshot().notice).toContain("插话发送失败")
+    expect(engine.getSnapshot().notice?.key).toBe("steer.sendFailed")
     client.nextStart = okStart
     engine.submit("插话二")
     expect(engine.getSnapshot().notice).toBeNull()

@@ -1,26 +1,29 @@
 import type { SessionSubagent } from "@/core/state"
+import { useT } from "@/i18n/context"
+import type { MessageKey } from "@/i18n/messages"
 import { ChevronIcon, RobotIcon } from "@/ui/icons/thread"
 
 import { MarkdownMessage } from "./markdown-message"
 import { RunState } from "./run-state"
 import styles from "./thread.module.css"
 
-const SOURCE_LABEL: Record<SessionSubagent["source"], string> = {
-  "built-in": "内置",
-  "config-custom": "配置自定义",
-  "runtime-custom": "运行时自定义",
+const SOURCE_LABEL: Record<SessionSubagent["source"], MessageKey> = {
+  "built-in": "subagent.builtin",
+  "config-custom": "subagent.configCustom",
+  "runtime-custom": "subagent.runtimeCustom",
 }
 
 // 子智能体头部：机器人图标 + 名称 + 来源胶囊（短标签）+ 运行态。
 // 抽出来让「可展开」与「不可展开」两种形态共用同一行视觉。
 function SubagentHead({ subagent }: { subagent: SessionSubagent }) {
+  const t = useT()
   return (
     <>
       <RobotIcon className={styles.subagentIcon} />
       <span className={styles.subagentText}>
         <span className={styles.subagentName}>{subagent.name}</span>
         <span className={styles.subagentChip}>
-          {SOURCE_LABEL[subagent.source]} · {subagent.subagentType}
+          {t(SOURCE_LABEL[subagent.source])} · {subagent.subagentType}
         </span>
       </span>
       <span className={styles.subagentState} aria-hidden>
@@ -34,6 +37,7 @@ function SubagentHead({ subagent }: { subagent: SessionSubagent }) {
 // 结论用 Markdown 完整换行呈现于左侧细线面板；职责描述常驻行内可见；
 // 无结论时退化为不可展开的简单行（无死切换）。
 export function SubagentRow({ subagent }: { subagent: SessionSubagent }) {
+  const t = useT()
   const running = subagent.status === "running"
   const description = subagent.description ? (
     <p className={styles.subagentDesc}>{subagent.description}</p>
@@ -71,7 +75,7 @@ export function SubagentRow({ subagent }: { subagent: SessionSubagent }) {
             <MarkdownMessage content={subagent.output} />
           ) : (
             <p className={styles.pending}>
-              运行中
+              {t("thread.running")}
               <span className={styles.pulse} aria-hidden>
                 <span />
                 <span />

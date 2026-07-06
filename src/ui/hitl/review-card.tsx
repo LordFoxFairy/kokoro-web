@@ -2,6 +2,7 @@ import { useState } from "react"
 
 import type { SessionToolCall } from "@/core/state"
 import type { ToolDecision } from "@/engine/hitl-staging"
+import { useT } from "@/i18n/context"
 
 import styles from "../thread/thread.module.css"
 
@@ -25,6 +26,7 @@ export function ReviewCard({
   controlError,
   onDecision,
 }: ReviewCardProps) {
+  const t = useT()
   const [replacement, setReplacement] = useState("")
   const decided = staged !== undefined
   const actionable = hitlActive && onDecision !== undefined
@@ -35,15 +37,15 @@ export function ReviewCard({
   const canRespond = allowedDecisions.includes("respond")
   const canReject = allowedDecisions.includes("reject")
   const replacementText = replacement.trim()
-  const prompt = tool.description || "工具已执行，结果需要你的审核。"
+  const prompt = tool.description || t("hitl.reviewHint")
   const promptText = controlError
-    ? "决定发送失败，请重试。"
+    ? t("hitl.decisionFailed")
     : decided || !hitlActive
-      ? "已记录你的决定…"
+      ? t("hitl.decisionRecorded")
       : prompt
 
   return (
-    <div className={styles.toolApproval} role="group" aria-label="工具结果待审核">
+    <div className={styles.toolApproval} role="group" aria-label={t("hitl.reviewTitle")}>
       <p className={styles.toolApprovalPrompt}>{promptText}</p>
       {/* 待审结果只读区：与 returned 结果同一视觉语言（人审的就是它）。 */}
       <pre className={styles.toolResult}>{tool.result ?? ""}</pre>
@@ -51,7 +53,7 @@ export function ReviewCard({
         <div className={styles.toolRespond}>
           <input
             className={styles.toolRespondInput}
-            aria-label="替换结果"
+            aria-label={t("hitl.replaceAria")}
             value={replacement}
             disabled={disabled}
             onChange={(event) => setReplacement(event.target.value)}
@@ -62,7 +64,7 @@ export function ReviewCard({
             disabled={disabled || replacementText.length === 0}
             onClick={() => onDecision?.(tool.id, { type: "respond", message: replacementText })}
           >
-            替换
+            {t("hitl.replace")}
           </button>
         </div>
       ) : null}
@@ -75,7 +77,7 @@ export function ReviewCard({
               disabled={disabled}
               onClick={() => onDecision(tool.id, { type: "approve" })}
             >
-              采纳
+              {t("hitl.adopt")}
             </button>
           ) : null}
           {canReject ? (
@@ -85,7 +87,7 @@ export function ReviewCard({
               disabled={disabled}
               onClick={() => onDecision(tool.id, { type: "reject" })}
             >
-              拒绝
+              {t("hitl.reject")}
             </button>
           ) : null}
         </div>

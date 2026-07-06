@@ -7,6 +7,7 @@ import {
 } from "react"
 import { createPortal } from "react-dom"
 
+import { useT } from "@/i18n/context"
 import { CollapseIcon, SendIcon } from "@/ui/icons/composer"
 
 import styles from "./composer.module.css"
@@ -32,6 +33,7 @@ export function ExpandDialog({
   onSubmit,
   onClose,
 }: ExpandDialogProps) {
+  const t = useT()
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
 
   // 打开时聚焦大编辑框并把光标移到末尾，直接续写。
@@ -76,15 +78,15 @@ export function ExpandDialog({
         className={styles.expand}
         role="dialog"
         aria-modal="true"
-        aria-label="放大编辑"
+        aria-label={t("composer.expandAria")}
         onSubmit={onSubmit}
       >
         <div className={styles.expandHead}>
-          <span className={styles.expandTitle}>放大编辑</span>
+          <span className={styles.expandTitle}>{t("composer.expandAria")}</span>
           <button
             type="button"
             className={styles.expandCollapse}
-            aria-label="收起放大编辑"
+            aria-label={t("expand.collapseAria")}
             onClick={onClose}
           >
             <CollapseIcon className={styles.expandGlyph} />
@@ -94,8 +96,8 @@ export function ExpandDialog({
         <textarea
           ref={inputRef}
           className={styles.expandInput}
-          aria-label="放大编辑输入"
-          placeholder="把想说的告诉我。"
+          aria-label={t("expand.inputAria")}
+          placeholder={t("composer.placeholder")}
           maxLength={maxLength}
           value={draft}
           onChange={(event: ChangeEvent<HTMLTextAreaElement>) => {
@@ -105,8 +107,8 @@ export function ExpandDialog({
         />
 
         <div className={styles.expandFoot}>
-          <span className={styles.expandHint}>⌘ / Ctrl + Enter 发送 · Esc 收起</span>
-          <button className={styles.send} type="submit" aria-label="发送消息" disabled={!canSend}>
+          <span className={styles.expandHint}>{t("expand.hint")}</span>
+          <button className={styles.send} type="submit" aria-label={t("composer.send")} disabled={!canSend}>
             <SendIcon className={styles.glyph} />
           </button>
         </div>

@@ -4,6 +4,8 @@ import type { AgentMode } from "@/core/conversations"
 import { buildThreadItems } from "@/core/projections"
 import type { SessionStreamState } from "@/core/state"
 import type { ToolDecision } from "@/engine/hitl-staging"
+import { useT } from "@/i18n/context"
+import type { MessageKey } from "@/i18n/messages"
 
 import { AssistantTurn } from "./assistant-turn"
 import { MessageBubble } from "./message-bubble"
@@ -34,20 +36,19 @@ type ConversationThreadProps = {
   onCancelRun?: () => void
 }
 
-// 失败讲人话：契约失败码 → 用户可行动的文案；未知/内部错误回退通用句（不裸露原文以外的术语）。
-// （静态 i18n 层落地后，本表即错误码文案表的第一批内容。）
-function failureCopy(runError: { code: string; message: string } | null): string {
+// 失败讲人话：契约失败码 → 文案 key（未知/内部错误回退通用句）。i18n 在渲染处按码取译。
+function failureCopyKey(runError: { code: string; message: string } | null): MessageKey {
   switch (runError?.code) {
     case "token_budget_exceeded":
-      return "这一轮超出了用量预算，已自动停止。可以精简任务后重试。"
+      return "fail.tokenBudget"
     case "recursion_limit_exceeded":
-      return "这一轮步骤过多触发了保护熔断。换个更具体的说法再试一次。"
+      return "fail.recursion"
     case "assembly_failed":
-      return "这个空间的配置有误，本轮无法启动——请联系管理员检查配置。"
+      return "fail.assembly"
     case "enqueue_failed":
-      return "服务暂时不可用，这一轮没能开始。稍后重试即可。"
+      return "fail.enqueue"
     default:
-      return "这一轮没能完成，稍后再试一次。"
+      return "fail.generic"
   }
 }
 
@@ -68,6 +69,7 @@ export function ConversationThread({
   onToolDecision,
   onCancelRun,
 }: ConversationThreadProps) {
+  const t = useT()
   // 把扁平 messages + 有序 steps 折成线程项：用户气泡 / assistant 轮（一个 runId 一轮）。
   const items = buildThreadItems(thread)
   // 流式中：最后一个 assistant 轮是当前在途的那一轮——唯一带「实时」语义的 turn。
@@ -91,7 +93,7 @@ export function ConversationThread({
     <div
       className={styles.thread}
       role="log"
-      aria-label="对话记录"
+      aria-label={t("thread.recordAria")}
       aria-live="polite"
       onScroll={onScroll}
     >
@@ -138,9 +140,9 @@ export function ConversationThread({
 
         {hasFailed ? (
           <div className={styles.error} role="alert">
-            <span>{failureCopy(thread.runError)}</span>
+            <span>{t(failureCopyKey(thread.runError))}</span>
             <button className={styles.retry} type="button" onClick={onRetry}>
-              重试
+              {t("thread.retry")}
             </button>
           </div>
         ) : null}

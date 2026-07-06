@@ -2,6 +2,7 @@ import { useState } from "react"
 
 import type { SessionToolCall } from "@/core/state"
 import type { ToolDecision } from "@/engine/hitl-staging"
+import { useT } from "@/i18n/context"
 
 import styles from "../thread/thread.module.css"
 
@@ -35,6 +36,7 @@ export function AskUserCard({
   onDecision,
   onCancelRun,
 }: AskUserCardProps) {
+  const t = useT()
   const [response, setResponse] = useState("")
   const decided = staged !== undefined
   const actionable = hitlActive && onDecision !== undefined
@@ -43,20 +45,20 @@ export function AskUserCard({
   const choices = choicesOf(tool.args)
   const responseText = response.trim()
   const rawQuestion = tool.args["question"]
-  const question = typeof rawQuestion === "string" && rawQuestion ? rawQuestion : "Agent 需要你的回复。"
+  const question = typeof rawQuestion === "string" && rawQuestion ? rawQuestion : t("hitl.askHint")
   const promptText = controlError
-    ? "回复发送失败，请重试。"
+    ? t("hitl.replyFailed")
     : decided || !hitlActive
-      ? "已记录你的回复…"
+      ? t("hitl.replyRecorded")
       : question
 
   return (
-    <div className={styles.toolApproval} role="group" aria-label="Agent 提问">
+    <div className={styles.toolApproval} role="group" aria-label={t("hitl.askQuestion")}>
       <p className={styles.toolApprovalPrompt}>{promptText}</p>
       {canRespond ? (
         <>
           {choices.length > 0 ? (
-            <div className={styles.toolChoices} role="radiogroup" aria-label="可选回答">
+            <div className={styles.toolChoices} role="radiogroup" aria-label={t("hitl.askOptions")}>
               {choices.map((choice) => (
                 <button
                   key={choice}
@@ -76,7 +78,7 @@ export function AskUserCard({
           <div className={styles.toolRespond}>
             <input
               className={styles.toolRespondInput}
-              aria-label="回复 agent"
+              aria-label={t("hitl.askReply")}
               value={response}
               disabled={disabled}
               onChange={(event) => setResponse(event.target.value)}
@@ -87,7 +89,7 @@ export function AskUserCard({
               disabled={disabled || responseText.length === 0}
               onClick={() => onDecision?.(tool.id, { type: "respond", message: responseText })}
             >
-              发送回复
+              {t("hitl.sendReply")}
             </button>
           </div>
         </>
@@ -98,7 +100,7 @@ export function AskUserCard({
           className={styles.toolCancelRun}
           onClick={onCancelRun}
         >
-          不回答，停止本轮
+          {t("hitl.stopTurn")}
         </button>
       ) : null}
     </div>

@@ -7,6 +7,7 @@ import {
 } from "react"
 
 import type { AgentMode } from "@/core/conversations"
+import { useT } from "@/i18n/context"
 import { ChevronIcon, SparkIcon } from "@/ui/icons/thread"
 import { PlusIcon } from "@/ui/icons/rail"
 import {
@@ -20,7 +21,7 @@ import {
 
 import { ComposerMenu } from "./composer-menu"
 import { ExpandDialog } from "./expand-dialog"
-import { MODE_LABEL, MODE_OPTIONS, isAgentMode } from "./mode-options"
+import { MODE_LABEL, isAgentMode, modeOptions } from "./mode-options"
 import styles from "./composer.module.css"
 
 // 输入上限：textarea maxLength 与提交守卫双重把关。
@@ -64,6 +65,7 @@ export function Composer({
   onModeChange,
   modeLocked,
 }: ComposerProps) {
+  const t = useT()
   const modeLabel = MODE_LABEL[mode]
   const ModeIcon = mode === "thinking" ? SparkIcon : ZapIcon
 
@@ -83,12 +85,12 @@ export function Composer({
 
   return (
     <div className={styles.wrap}>
-      <form className={styles.composer} aria-label="消息编辑区" onSubmit={onSubmit}>
+      <form className={styles.composer} aria-label={t("composer.editArea")} onSubmit={onSubmit}>
         <textarea
           ref={composerRef}
           className={styles.input}
-          aria-label="对话输入"
-          placeholder="把想说的告诉我。"
+          aria-label={t("composer.inputAria")}
+          placeholder={t("composer.placeholder")}
           rows={1}
           maxLength={MAX_INPUT_LENGTH}
           value={draft}
@@ -103,7 +105,7 @@ export function Composer({
         <button
           type="button"
           className={styles.expandToggle}
-          aria-label="放大编辑"
+          aria-label={t("composer.expandAria")}
           onClick={() => setExpanded(true)}
         >
           <ExpandIcon className={styles.expandGlyph} />
@@ -116,8 +118,8 @@ export function Composer({
             <button
               type="button"
               className={styles.add}
-              aria-label="附加内容"
-              title="附件功能即将支持"
+              aria-label={t("composer.attachAria")}
+              title={t("composer.attachSoon")}
               disabled
             >
               <PlusIcon className={styles.glyph} />
@@ -130,8 +132,8 @@ export function Composer({
                 type="button"
                 className={`${styles.mode} ${styles.modeLocked}`}
                 disabled
-                aria-label={`回应模式：${modeLabel}（本轮已锁定）`}
-                title="模式选定后本轮不可切换；新对话可重新选择"
+                aria-label={t("composer.modeLocked", { mode: modeLabel })}
+                title={t("composer.modeLockedTitle")}
               >
                 <ModeIcon className={styles.modeGlyph} />
                 <span>{modeLabel}</span>
@@ -140,7 +142,7 @@ export function Composer({
             ) : (
               <ComposerMenu
                 triggerClassName={styles.mode}
-                triggerLabel="切换模式"
+                triggerLabel={t("composer.modeSwitch")}
                 trigger={
                   <>
                     <ModeIcon className={styles.modeGlyph} />
@@ -148,7 +150,7 @@ export function Composer({
                     <ChevronIcon className={styles.chevron} />
                   </>
                 }
-                options={MODE_OPTIONS}
+                options={modeOptions(t)}
                 selectedKey={mode}
                 onSelect={(key) => {
                   if (isAgentMode(key)) {
@@ -163,8 +165,8 @@ export function Composer({
             <button
               className={styles.mic}
               type="button"
-              aria-label="语音输入"
-              title="语音输入即将支持"
+              aria-label={t("composer.voiceAria")}
+              title={t("composer.voiceSoon")}
               disabled
             >
               <MicIcon className={styles.glyph} />
@@ -175,7 +177,7 @@ export function Composer({
               <button
                 className={`${styles.send} ${styles.sendStop}`}
                 type="button"
-                aria-label="停止生成"
+                aria-label={t("composer.stop")}
                 onClick={onStop}
               >
                 <StopIcon className={styles.glyph} />
@@ -184,7 +186,7 @@ export function Composer({
               <button
                 className={styles.send}
                 type="submit"
-                aria-label={isStreaming ? "发送插话" : "发送消息"}
+                aria-label={isStreaming ? t("composer.sendSteer") : t("composer.send")}
                 disabled={!canSend}
               >
                 <SendIcon className={styles.glyph} />

@@ -1,6 +1,9 @@
 // 显式会话状态机 + 引擎：snapshot-first 水合 / 流句柄 / in-flight 守卫 / runId 锚定收束单点持有。
 
 import type { SessionEventKind } from "@/contract/session-events"
+import type { MessageKey } from "@/i18n/messages"
+
+export type NoticeSpec = { key: MessageKey; vars?: Readonly<Record<string, string | number>> }
 import {
   addConversation,
   conversationTitle,
@@ -129,7 +132,8 @@ export function transition(state: MachineState, event: MachineEvent): MachineSta
 export type EngineSnapshot = {
   machine: MachineState
   // 瞬态通知（如插话投递失败）：下一次提交时清空；与相位错误（machine.error）分离。
-  notice: string | null
+  // 引擎发 i18n key + 参数（不落具体文案）；UI 层 t() 解析——与 run.failed code 同模式。
+  notice: NoticeSpec | null
   store: ConversationStore | null
   // 活跃会话线程：snapshot 水合 + 事件折叠的内存态（不落盘，服务端是真源）。
   thread: SessionStreamState
@@ -198,7 +202,7 @@ export function createSessionEngine(deps: EngineDeps): SessionEngine {
   const resumeDecisionIds = new Map<string, string>()
   // 最近一次未获回执的提交：POST 失败重试复用同一 idempotency_key（服务端命中即重放 receipt）。
   let pendingSubmission: { content: string; idempotencyKey: string } | null = null
-  let notice: string | null = null
+  let notice: NoticeSpec | null = null
 
   let handle: EventStreamHandle | null = null
   // 流代际守卫：关流后迟到的回调（旧代际）一律忽略，防止旧流事件折进新会话。
@@ -471,7 +475,7 @@ export function createSessionEngine(deps: EngineDeps): SessionEngine {
         })
         .catch((error: unknown) => {
           // 插话投递失败必须可见：瞬态通知（不打断相位），下次提交自动清。
-          notice = `插话发送失败：${describeUnknown(error)}，请重试`
+          notice = { key: "steer.sendFailed", vars: { detail: describeUnknown(error) } }
           notify()
         })
       return

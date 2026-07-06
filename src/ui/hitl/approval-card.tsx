@@ -1,5 +1,6 @@
 import type { SessionToolCall } from "@/core/state"
 import type { ToolDecision } from "@/engine/hitl-staging"
+import { useT } from "@/i18n/context"
 
 import styles from "../thread/thread.module.css"
 
@@ -25,6 +26,7 @@ export function ApprovalCard({
   controlError,
   onDecision,
 }: ApprovalCardProps) {
+  const t = useT()
   const decided = staged !== undefined
   const actionable = hitlActive && onDecision !== undefined
   // 已暂存且未报错即禁用（防连点双发）；POST 失败时放开允许重试。
@@ -33,19 +35,23 @@ export function ApprovalCard({
   const canApprove = allowedDecisions.includes("approve")
   const canReject = allowedDecisions.includes("reject")
   // description=工具自述（agent 装配侧注入的真实数据；查不到发空串）——有则显示，缺省中文兜底。
-  const prompt = tool.description || "该工具调用需要你的批准，请确认参数。"
+  const prompt = tool.description || t("hitl.approvalHint")
   const promptText = controlError
-    ? "决定发送失败，请重试。"
+    ? t("hitl.decisionFailed")
     : decided || !hitlActive
-      ? "已记录你的决定…"
+      ? t("hitl.decisionRecorded")
       : prompt
 
   return (
-    <div className={styles.toolApproval} role="group" aria-label="工具调用待批准">
+    <div className={styles.toolApproval} role="group" aria-label={t("hitl.approvalTitle")}>
       <p className={styles.toolApprovalPrompt}>{promptText}</p>
       {tool.risk !== undefined ? (
         <p className={styles.toolRisk} data-level={tool.risk.level}>
-          风险 {tool.risk.level} · {tool.risk.source}：{tool.risk.reason}
+          {t("hitl.riskLine", {
+            level: tool.risk.level,
+            source: tool.risk.source,
+            reason: tool.risk.reason,
+          })}
         </p>
       ) : null}
       {actionable && (canApprove || canReject) ? (
@@ -57,7 +63,7 @@ export function ApprovalCard({
               disabled={disabled}
               onClick={() => onDecision(tool.id, { type: "approve" })}
             >
-              批准
+              {t("hitl.approve")}
             </button>
           ) : null}
           {canReject ? (
@@ -67,7 +73,7 @@ export function ApprovalCard({
               disabled={disabled}
               onClick={() => onDecision(tool.id, { type: "reject" })}
             >
-              拒绝
+              {t("hitl.reject")}
             </button>
           ) : null}
         </div>

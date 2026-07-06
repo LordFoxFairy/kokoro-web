@@ -4,6 +4,8 @@ import { z } from "zod"
 import type { AgentMode } from "@/core/conversations"
 import type { SessionSubagent, SessionToolCall } from "@/core/state"
 import type { ToolDecision } from "@/engine/hitl-staging"
+import { useT } from "@/i18n/context"
+import type { MessageKey } from "@/i18n/messages"
 import { createPersistedStore } from "@/lib/persisted-store"
 import { ChevronIcon, SparkIcon } from "@/ui/icons/thread"
 
@@ -68,17 +70,22 @@ type SegmentProcessProps = {
 
 // 落定摘要：「思考过程 · N 工具(K 失败) · M 子智能体」，省略为零的维度。
 // 失败数作为「工具」的从属括注（非并列维度），让子集关系一眼可辨、不被误读为相加。
+type Translate = (key: MessageKey, vars?: Readonly<Record<string, string | number>>) => string
+
 function settledSummary(
+  t: Translate,
   verb: string,
   tools: number,
   subs: number,
   failed: number,
 ): string {
-  const parts = [`${verb}过程`]
+  const parts = [t("thread.processTitle", { verb })]
   if (tools > 0) {
-    parts.push(failed > 0 ? `${tools} 个工具（${failed} 失败）` : `${tools} 个工具`)
+    parts.push(
+      failed > 0 ? t("thread.toolCountFailed", { tools, failed }) : t("thread.toolCount", { tools }),
+    )
   }
-  if (subs > 0) parts.push(`${subs} 个子智能体`)
+  if (subs > 0) parts.push(t("thread.subCount", { subs }))
   return parts.join(" · ")
 }
 
@@ -99,6 +106,7 @@ export function SegmentProcess({
   onToolDecision,
   onCancelRun,
 }: SegmentProcessProps) {
+  const t = useT()
   // 默认展开态跟随 live 信号：尾段流式时摊开实时看，落定即收成一行摘要。
   // 一旦用户手动切换（manualOpen 落定），就以用户意图为准、不再随 live 变化对抗用户。
   // 用受控 div+button（非原生 details）以便给展开/收起做高度过渡；状态机不靠 remount。
@@ -114,11 +122,11 @@ export function SegmentProcess({
     return null
   }
 
-  const verb = mode === "fast" ? "处理" : "思考"
+  const verb = mode === "fast" ? t("thread.verbFast") : t("thread.verbThink")
   const failedTools = tools.filter((tool) => tool.status === "error").length
   const summary = live
-    ? `${verb}中…`
-    : settledSummary(verb, tools.length, subagents.length, failedTools)
+    ? t("thread.verbActive", { verb })
+    : settledSummary(t, verb, tools.length, subagents.length, failedTools)
 
   return (
     <div className={styles.process} data-mode={mode} data-open={open}>
@@ -135,7 +143,7 @@ export function SegmentProcess({
           {summary}
         </span>
         {live ? (
-          <span className={styles.processLive} aria-label={`${verb}中`}>
+          <span className={styles.processLive} aria-label={t("thread.verbActiveShort", { verb })}>
             <i />
             <i />
             <i />
@@ -154,12 +162,12 @@ export function SegmentProcess({
             {thinking ? <p className={styles.processThinking}>{thinking}</p> : null}
 
             {tools.length > 0 ? (
-              <div className={styles.actgroup} aria-label="工具调用">
+              <div className={styles.actgroup} aria-label={t("thread.toolCall")}>
                 {/* 同帧多工具同属一次暂停（契约 pending_tool_ids），须一起决定后一并提交：
                     >1 时点明，免用户决了一个见没动静而困惑。 */}
                 {awaitingCount > 1 ? (
                   <p className={styles.actgroupHint} role="status">
-                    这一步有 {awaitingCount} 个工具待你审批，全部决定后一并提交、并行执行。
+                    {t("thread.awaitingBatch", { count: awaitingCount })}
                   </p>
                 ) : null}
                 {tools.map((tool) => (
@@ -179,7 +187,7 @@ export function SegmentProcess({
             ) : null}
 
             {subagents.length > 0 ? (
-              <div className={styles.actgroup} aria-label="子智能体">
+              <div className={styles.actgroup} aria-label={t("thread.subagent")}>
                 {subagents.map((subagent) => (
                   <SubagentRow key={subagent.id} subagent={subagent} />
                 ))}

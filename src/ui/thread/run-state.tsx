@@ -1,3 +1,4 @@
+import { useT } from "@/i18n/context"
 import { BanCircleIcon, CheckCircleIcon } from "@/ui/icons/thread"
 
 import styles from "./thread.module.css"
@@ -14,6 +15,7 @@ export function RunState({
   awaiting?: boolean
   rejected?: boolean
 }) {
+  const t = useT()
   if (failed) {
     return <span className={`${styles.actstate} ${styles.actstateError}`} />
   }
@@ -26,7 +28,7 @@ export function RunState({
     return (
       <span
         className={`${styles.actstate} ${styles.actstateAwaiting}`}
-        aria-label="等待批准"
+        aria-label={t("hitl.awaitingApproval")}
       />
     )
   }

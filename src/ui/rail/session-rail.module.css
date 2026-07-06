@@ -456,3 +456,24 @@
     padding: 0.85rem;
   }
 }
+
+.langSwitch {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+}
+.langBtn {
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--rail-muted, #9a9a9a);
+  cursor: pointer;
+  line-height: 1.4;
+}
+.langBtn[data-active="true"] {
+  color: var(--rail-fg, #2a2a2a);
+  border-color: var(--rail-border, #e0e0e0);
+  background: var(--rail-hover, #f2f2f2);
+}

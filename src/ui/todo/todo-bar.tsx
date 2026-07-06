@@ -1,5 +1,6 @@
 import { useState } from "react"
 
+import { useT } from "@/i18n/context"
 import type { SessionTodo } from "@/core/state"
 import {
   CheckCircleIcon,
@@ -29,6 +30,7 @@ function todoIcon(status: SessionTodo["status"]) {
 // 计划条：钉在输入框上方的可收缩清单。常驻可查、不随对话滚走。
 // 无 todo 时不渲染（不在输入框上方留空壳）。
 export function TodoBar({ todos }: TodoBarProps) {
+  const t = useT()
   const [collapsed, setCollapsed] = useState(false)
 
   if (todos.length === 0) {
@@ -40,7 +42,7 @@ export function TodoBar({ todos }: TodoBarProps) {
   return (
     <section
       className={styles.todobar}
-      aria-label="计划"
+      aria-label={t("todo.plan")}
       data-collapsed={collapsed ? "true" : "false"}
     >
       <button
@@ -51,7 +53,7 @@ export function TodoBar({ todos }: TodoBarProps) {
       >
         <span className={styles.title}>
           <ChecklistIcon className={styles.titleIcon} />
-          <span>计划</span>
+          <span>{t("todo.plan")}</span>
           <span className={styles.count}>
             {doneCount}/{todos.length}
           </span>
@@ -60,7 +62,7 @@ export function TodoBar({ todos }: TodoBarProps) {
       </button>
 
       {collapsed ? null : (
-        <div className={styles.list} role="list" aria-label="计划">
+        <div className={styles.list} role="list" aria-label={t("todo.plan")}>
           {todos.map((todo, index) => (
             <div
               key={`${index}-${todo.content}`}

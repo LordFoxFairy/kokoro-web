@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 
+import { useLocale, useT } from "@/i18n/context"
 import { ChatsIcon, PanelIcon, PlusIcon, SearchIcon, SlidersIcon } from "@/ui/icons/rail"
 
 import { filterConversations, type ConversationSummary } from "./rail-search"
@@ -15,9 +16,6 @@ type SessionRailProps = {
   onDeleteConversation: (id: string) => void
 }
 
-// 空标题（尚无用户消息）的占位文案由渲染层决定：状态层只存空串。
-export const UNTITLED_CONVERSATION = "新对话"
-
 export function SessionRail({
   collapsed,
   onToggleCollapse,
@@ -27,6 +25,7 @@ export function SessionRail({
   onSelectConversation,
   onDeleteConversation,
 }: SessionRailProps) {
+  const t = useT()
   const [searchOpen, setSearchOpen] = useState(false)
   const [query, setQuery] = useState("")
   const searchInputRef = useRef<HTMLInputElement>(null)
@@ -47,7 +46,7 @@ export function SessionRail({
   const hasConversations = conversations.length > 0
 
   return (
-    <aside className={styles.rail} aria-label="会话导航" data-collapsed={collapsed}>
+    <aside className={styles.rail} aria-label={t("rail.railAria")} data-collapsed={collapsed}>
       <div className={styles.head}>
         <div className={styles.brand}>
           <div className={styles.brandMark} aria-hidden>
@@ -65,7 +64,7 @@ export function SessionRail({
             className={`${styles.headBtn} ${styles.searchToggle}`}
             type="button"
             onClick={() => (searchOpen ? closeSearch() : setSearchOpen(true))}
-            aria-label="搜索会话"
+            aria-label={t("rail.searchAria")}
             aria-expanded={searchOpen}
             aria-pressed={searchOpen}
             data-active={searchOpen ? "true" : "false"}
@@ -76,7 +75,7 @@ export function SessionRail({
             className={styles.headBtn}
             type="button"
             onClick={onToggleCollapse}
-            aria-label={collapsed ? "展开侧栏" : "收起侧栏"}
+            aria-label={collapsed ? t("rail.expandAria") : t("rail.collapseAria")}
             aria-expanded={!collapsed}
           >
             <PanelIcon className={styles.icon} />
@@ -92,8 +91,8 @@ export function SessionRail({
             className={styles.searchInput}
             type="search"
             value={query}
-            placeholder="搜索最近会话…"
-            aria-label="搜索最近会话"
+            placeholder={t("rail.searchPlaceholder")}
+            aria-label={t("rail.searchInputAria")}
             onChange={(event) => setQuery(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === "Escape") {
@@ -104,7 +103,7 @@ export function SessionRail({
           <button
             className={styles.searchClose}
             type="button"
-            aria-label="关闭搜索"
+            aria-label={t("rail.searchClose")}
             onClick={closeSearch}
           >
             ×
@@ -112,7 +111,7 @@ export function SessionRail({
         </div>
       ) : null}
 
-      <nav className={styles.nav} aria-label="主导航">
+      <nav className={styles.nav} aria-label={t("rail.navAria")}>
         {/* 新对话：带 ⇧⌘O 快捷键（SessionShell 已接入键盘）。 */}
         <button
           className={`${styles.navItem} ${styles.navItemAction}`}
@@ -120,37 +119,37 @@ export function SessionRail({
           onClick={onNewChat}
         >
           <PlusIcon className={styles.icon} />
-          <span className={styles.navLabel}>新对话</span>
+          <span className={styles.navLabel}>{t("rail.newChat")}</span>
           <span className={styles.navShortcut} aria-hidden>
-            ⇧⌘O
+            {t("rail.newChatShortcut")}
           </span>
         </button>
 
         {/* 对话：当前所在视图——非动作，仅作高亮指示（kokoro 即聊天本身）。 */}
         <div className={styles.navItem} data-active="true" aria-current="page">
           <ChatsIcon className={styles.icon} />
-          <span className={styles.navLabel}>对话</span>
+          <span className={styles.navLabel}>{t("rail.navChat")}</span>
         </div>
       </nav>
 
       {hasConversations ? (
-        <nav className={styles.list} aria-label="最近会话">
+        <nav className={styles.list} aria-label={t("rail.recentAria")}>
           <div className={styles.sectionRow}>
-            <p className={styles.section}>最近</p>
+            <p className={styles.section}>{t("rail.recent")}</p>
             {/* 未实现能力入口保持 disabled 而非隐藏：不假装可点，也不消失误导。 */}
             <button
               className={styles.sort}
               type="button"
               disabled
-              title="会话排序即将支持"
-              aria-label="会话排序"
+              title={t("rail.sortSoon")}
+              aria-label={t("rail.sortAria")}
             >
               <SlidersIcon className={styles.sortIcon} />
             </button>
           </div>
           {filtered.length > 0 ? (
             filtered.map((conversation) => {
-              const title = conversation.title || UNTITLED_CONVERSATION
+              const title = conversation.title || t("rail.newChat")
               return (
                 <div
                   key={conversation.id}
@@ -168,7 +167,7 @@ export function SessionRail({
                   <button
                     className={styles.itemDelete}
                     type="button"
-                    aria-label={`删除会话 ${title}`}
+                    aria-label={t("rail.deleteChat", { title })}
                     onClick={() => onDeleteConversation(conversation.id)}
                   >
                     ×
@@ -177,7 +176,7 @@ export function SessionRail({
               )
             })
           ) : (
-            <p className={styles.empty}>没有匹配的会话</p>
+            <p className={styles.empty}>{t("rail.emptyResult")}</p>
           )}
         </nav>
       ) : null}
@@ -185,10 +184,38 @@ export function SessionRail({
       <div className={styles.userCard}>
         <div className={styles.userAvatar} aria-hidden />
         <div className={styles.userText}>
-          <p className={styles.userName}>当前用户</p>
-          <p className={styles.userMeta}>本地会话</p>
+          <p className={styles.userName}>{t("rail.userName")}</p>
+          <p className={styles.userMeta}>{t("rail.userScope")}</p>
         </div>
+        <LangSwitch />
       </div>
     </aside>
+  )
+}
+
+// 语言切换器（M3-P4）：zh/en 即时切换 + localStorage 持久化（useLocale 内处理）。
+function LangSwitch() {
+  const { locale, setLocale, t } = useLocale()
+  return (
+    <div className={styles.langSwitch} role="group" aria-label={t("lang.switchAria")}>
+      <button
+        type="button"
+        className={styles.langBtn}
+        data-active={locale === "zh"}
+        aria-pressed={locale === "zh"}
+        onClick={() => setLocale("zh")}
+      >
+        {t("lang.zh")}
+      </button>
+      <button
+        type="button"
+        className={styles.langBtn}
+        data-active={locale === "en"}
+        aria-pressed={locale === "en"}
+        onClick={() => setLocale("en")}
+      >
+        {t("lang.en")}
+      </button>
+    </div>
   )
 }

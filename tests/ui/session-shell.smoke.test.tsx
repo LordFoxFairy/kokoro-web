@@ -7,6 +7,7 @@ import { afterEach, beforeEach, expect, it } from "vitest"
 
 import { addConversation, type ConversationStore } from "@/core/conversations"
 import { createSessionEngine, type SessionEngine } from "@/engine/machine"
+import { LocaleProvider } from "@/i18n/context"
 import { SessionShell } from "@/ui/shell/session-shell"
 
 import {
@@ -35,6 +36,9 @@ function buildEngine(initial: ConversationStore | null = null) {
 beforeEach(() => {
   resetFixtureSeq()
   window.localStorage.clear()
+  // 锁定中文源语言：jsdom navigator 默认 en-US 会让 LocaleProvider 协商到 en，
+  // 而本文件断言中文文案。显式置 zh 偏好，走查/真栈另测语言切换。
+  window.localStorage.setItem("kokoro.locale", "zh")
 })
 
 afterEach(() => {
@@ -44,7 +48,11 @@ afterEach(() => {
 
 it("主路径：发送 → 流式 → HITL 批准 → 完成收束", async () => {
   buildEngine()
-  render(<SessionShell engine={engine} />)
+  render(
+    <LocaleProvider>
+      <SessionShell engine={engine} />
+    </LocaleProvider>,
+  )
 
   // 空首屏 hero 与就绪状态行。
   expect(screen.getByText("今天想做什么？")).toBeInTheDocument()
@@ -143,7 +151,11 @@ it("刷新场景：带 pending pause 的 snapshot 水合后审批卡直接可操
     storage: createMemoryStorage<ConversationStore>(addConversation(null, "conv_9", 500)),
     now: () => 1_000,
   })
-  render(<SessionShell engine={engine} />)
+  render(
+    <LocaleProvider>
+      <SessionShell engine={engine} />
+    </LocaleProvider>,
+  )
   await act(settle)
   // 线程=事件史全量回放重建（水合后开流从 0）：注入历史事件即重现消息与审批帧。
   await act(async () => {
@@ -171,7 +183,11 @@ it("刷新场景：带 pending pause 的 snapshot 水合后审批卡直接可操
 
 it("ask_user 待批帧渲染问答卡：问题=description、choices 可选、提交即 respond", async () => {
   buildEngine()
-  render(<SessionShell engine={engine} />)
+  render(
+    <LocaleProvider>
+      <SessionShell engine={engine} />
+    </LocaleProvider>,
+  )
   fireEvent.change(screen.getByLabelText("对话输入"), { target: { value: "选个方案" } })
   fireEvent.click(screen.getByLabelText("发送消息"))
   await act(settle)
@@ -209,7 +225,11 @@ it("ask_user 待批帧渲染问答卡：问题=description、choices 可选、�
 
 it("result_review 待批帧渲染审核卡：结果只读、三动作齐备、空替换禁用、采纳即 approve", async () => {
   buildEngine()
-  render(<SessionShell engine={engine} />)
+  render(
+    <LocaleProvider>
+      <SessionShell engine={engine} />
+    </LocaleProvider>,
+  )
   fireEvent.change(screen.getByLabelText("对话输入"), { target: { value: "写个文件" } })
   fireEvent.click(screen.getByLabelText("发送消息"))
   await act(settle)

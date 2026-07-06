@@ -4,6 +4,8 @@
 
 import { useEffect, useState } from "react"
 
+import { useT } from "@/i18n/context"
+
 import { MarkdownMessage } from "./markdown-message"
 
 import styles from "./artifact-card.module.css"
@@ -65,9 +67,10 @@ function CsvTable({ text }: { text: string }) {
 }
 
 function TextualPreview({ url, mime }: { url: string; mime: string }) {
+  const t = useT()
   const preview = useTextPreview(url, true)
-  if (preview.kind === "loading") return <p className={styles.note}>加载预览…</p>
-  if (preview.kind === "failed") return <p className={styles.note}>无法预览，请下载查看。</p>
+  if (preview.kind === "loading") return <p className={styles.note}>{t("artifact.loadingPreview")}</p>
+  if (preview.kind === "failed") return <p className={styles.note}>{t("artifact.cannotPreview")}</p>
   const body =
     mime === "text/markdown" ? (
       <MarkdownMessage content={preview.text} />
@@ -81,7 +84,7 @@ function TextualPreview({ url, mime }: { url: string; mime: string }) {
   return (
     <>
       {body}
-      {preview.truncated ? <p className={styles.note}>预览已截断（前 64KB），完整内容请下载。</p> : null}
+      {preview.truncated ? <p className={styles.note}>{t("artifact.truncated")}</p> : null}
     </>
   )
 }
@@ -99,6 +102,7 @@ function isTextual(mime: string): boolean {
 }
 
 export function PreviewBody({ url, mime, name }: { url: string; mime: string; name: string }) {
+  const t = useT()
   if (mime.startsWith("audio/")) return <audio className={styles.media} controls src={url} />
   if (mime.startsWith("video/")) return <video className={styles.media} controls src={url} />
   if (mime.startsWith("image/")) {
@@ -110,7 +114,7 @@ export function PreviewBody({ url, mime, name }: { url: string; mime: string; na
   if (mime === "application/pdf")
     return <iframe className={styles.frame} src={url} title={name} />
   if (isTextual(mime)) return <TextualPreview url={url} mime={mime} />
-  return <p className={styles.note}>该格式暂不支持内嵌预览，请下载查看。</p>
+  return <p className={styles.note}>{t("artifact.unsupported")}</p>
 }
 
 export function FileChip({ path, onOpen }: { path: string; onOpen: () => void }) {

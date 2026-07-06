@@ -2,6 +2,7 @@ import type { AgentMode } from "@/core/conversations"
 import { groupSegments } from "@/core/projections"
 import type { SessionMessage, SessionStep } from "@/core/state"
 import type { ToolDecision } from "@/engine/hitl-staging"
+import { useT } from "@/i18n/context"
 
 import { MarkdownMessage } from "./markdown-message"
 import { SegmentProcess } from "./segment-process"
@@ -38,9 +39,10 @@ function FormingContent({
   label: string
   reconnecting: boolean
 }) {
+  const t = useT()
   return (
     <span className={styles.forming}>
-      <span className={styles.formingLabel}>{reconnecting ? "重连中…" : label}</span>
+      <span className={styles.formingLabel}>{reconnecting ? t("thread.reconnecting") : label}</span>
       <span className={styles.pulse} aria-hidden>
         <span />
         <span />
@@ -67,11 +69,12 @@ export function AssistantTurn({
   onToolDecision,
   onCancelRun,
 }: AssistantTurnProps) {
+  const t = useT()
   const segments = groupSegments(steps)
   const tailId = segments.at(-1)?.segmentId
   const tailMessage = tailId ? messagesById[tailId] : undefined
   const tailHasText = Boolean(tailMessage) && (tailMessage?.content.length ?? 0) > 0
-  const formingLabel = mode === "fast" ? "正在整理回答" : "正在思考"
+  const formingLabel = mode === "fast" ? t("thread.formingAnswer") : t("thread.formingThinking")
   // 提交后首个 step/token 未到：这一轮还没有任何 segment，但仍在途——给一个成形脚手架
   // （单条「正在…」），绝不让在途轮塌成空帧。落定/非流式则不渲染脚手架。
   const showScaffold = isLive && segments.length === 0
@@ -84,7 +87,7 @@ export function AssistantTurn({
       <div className={styles.turnSpine}>
         {showReconnectStrip ? (
           <div className={styles.turnReconnect} data-anchor="reconnecting">
-            重连中…
+            {t("thread.reconnecting")}
             {/* 脉冲三点：与无正文路径的成形盒动态线索一致，让「正在重连」可读。 */}
             <span className={styles.pulse} aria-hidden>
               <span />
