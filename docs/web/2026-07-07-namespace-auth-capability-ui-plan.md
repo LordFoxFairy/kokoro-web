@@ -26,8 +26,8 @@ GA / agent only sees namespace.
 
 ```text
 root docs/
-  kokoro-handbook/        长期跨仓规则和稳定决策
-  superpowers/specs/      跨仓方案稿和技术设计
+  kokoro-handbook/        正式跨仓技术方案、长期规则和稳定决策
+  superpowers/specs/      打磨期草案、方案对比和历史入口
 
 kokoro-web/docs/
   README.md               web 子仓文档索引
@@ -45,6 +45,7 @@ web 子仓可以有 docs，但只记录 web 拥有的接口面、页面面和验
 
 ```text
 用户打开 web
+  -> web 解析当前 site 并选择对应皮肤、文案、能力入口
   -> 看到 task-first 主页，可以直接输入任务或选择能力入口
   -> 登录或邮箱注册
   -> web 获取 session 可验的 token
@@ -55,7 +56,23 @@ web 子仓可以有 docs，但只记录 web 拥有的接口面、页面面和验
 
 web 不直接碰 Mongo、对象存储、agent checkpoint 或 capability registry。所有真实数据通过 session/http API 投影进入 UI。
 
-## 4. Web 产品入口层
+## 4. Site-driven Web 产品入口层
+
+一个 site 对应一套皮肤和产品入口。site 决定“这个站长什么样、怎么转化、露出哪些能力”，但不改变底层 GA/session 运行时。
+
+```text
+SiteContext
+  -> SiteSkin
+  -> SiteContent
+  -> FeatureGates
+  -> Homepage / Auth / App shell
+```
+
+边界：
+
+- site 可以决定 theme、logo、文案、SEO、导航、能力入口、登录/注册入口策略。
+- site 不决定 GA 的 checkpoint、memory、sandbox、workspace 隔离。
+- web 消费 site config 来渲染产品面；session 仍从 token/auth 解析 namespace；GA 仍只消费 namespace。
 
 当前 `src/app/page.tsx` 直接渲染 `SessionShell`。下一步要把产品入口层整理出来：
 
@@ -90,14 +107,18 @@ web 不直接碰 Mongo、对象存储、agent checkpoint 或 capability registry
 
 ### 4.2 可换皮契约
 
-后续会频繁换皮，所以要把 presentation 和功能接线拆开：
+后续会频繁换皮，而且是按 site 换，所以要把 presentation 和功能接线拆开：
 
 ```text
-theme tokens
-  color / type / radius / shadow / density / motion
+site context adapter
+  siteId / siteKey / locale / appKey / surface / feature flags
 
-homepage content config
-  headline / task examples / capability chips / workflow cards
+site skin
+  color / type / radius / shadow / density / motion
+  brand assets / layout preset / navigation
+
+site content
+  homepage headline / task examples / capability chips / workflow cards / SEO copy
 
 feature adapters
   auth token / session client / canvas file fetch
@@ -105,8 +126,10 @@ feature adapters
 
 规则：
 
+- 先允许静态 fixture / env / host 映射，后续接 kokoro-site resolve。
 - 视觉组件只吃 props，不直接调用 session API。
 - auth/session/canvas adapter 放在功能层，换皮不动它。
+- Feature gates 只控制入口可见性和默认 UI，不绕过 session/platform 权限。
 - CSS Modules 或现有样式组织继续随组件走，不新增重型 UI 框架。
 - 首页风格先走“任务输入优先 + 克制高端 AI workspace”方向，避免大段解释和过重卡片堆叠。
 - 外部参考只抽象交互模式，不复制文案、路径、类名、组件结构或来源标识。
@@ -213,6 +236,15 @@ web 只拿鉴权后的 file endpoint。文件 key、namespace 拼接和对象存
 
 ### WP-Web-1: 主页与可换皮壳
 
+- 增加 site context adapter：
+  - 第一版可从静态 config / env / host 映射拿到 site key。
+  - 后续替换为 kokoro-site resolve，不改页面组件。
+- 定义 `SiteSkin`：
+  - theme tokens、brand assets、layout preset、navigation。
+- 定义 `SiteContent`：
+  - homepage copy、task examples、capability chips、workflow cards、SEO metadata。
+- 定义 `FeatureGates`：
+  - 首页能力入口可见性、默认入口、waitlist/disabled 状态。
 - 将 `/` 从直接 SessionShell 调整为 public homepage。
 - 将 SessionShell 挪到 `/app` 或等价受保护入口。
 - 新增首页 task input、任务范例 chips、能力入口、workflow preview。
@@ -225,6 +257,8 @@ web 只拿鉴权后的 file endpoint。文件 key、namespace 拼接和对象存
 - 已登录态有继续使用或新建任务入口。
 - 未登录输入任务后，登录/注册完成可继续进入会话入口。
 - 换一套 theme tokens 或 homepage content config 不需要改 auth/session/canvas 业务代码。
+- 换一个 site config 可以改变皮肤、导航、能力入口和 SEO 文案。
+- siteId 不进入 GA 契约，也不被当作 namespace。
 
 ### WP-Web-2: 登录/邮箱注册入口
 
