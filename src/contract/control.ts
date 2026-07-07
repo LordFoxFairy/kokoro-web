@@ -16,6 +16,7 @@ export const modelConfigSchema = z
     provider: z.string().min(1),
     name: z.string().min(1),
     effort: z.string().min(1).optional(),
+    thinking: z.boolean().optional(),
   })
   .strict()
 export type ModelConfig = z.infer<typeof modelConfigSchema>

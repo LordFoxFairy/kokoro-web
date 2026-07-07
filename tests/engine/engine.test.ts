@@ -69,7 +69,7 @@ describe("提交链路", () => {
     expect(client.startCalls).toHaveLength(1)
     expect(client.startCalls[0]).toEqual({
       sessionId: "conv_1",
-      body: { idempotency_key: "idem_3", content: "hello agent" },
+      body: { idempotency_key: "idem_3", content: "hello agent", thinking: false },
     })
     expect(engine.getSnapshot().machine).toMatchObject({ phase: "streaming", runId: "run_1" })
     // 新会话无水位：从 0 续（等价全量）。
@@ -584,22 +584,27 @@ describe("失败重试", () => {
   })
 })
 
-describe("模式（纯 UI 偏好，不上 wire）", () => {
-  it("空首屏选模式落 pendingMode，首会话承接并随开聊锁定", async () => {
+describe("模式驱动 wire（thinking）", () => {
+  it("空首屏选 thinking：落 pendingMode、首会话承接、thinking=true 随 POST 上 wire、开聊锁定", async () => {
     buildEngine()
     engine.setMode("thinking")
     expect(engine.getSnapshot().pendingMode).toBe("thinking")
     engine.submit("go")
     await settle()
     expect(activeEntry().mode).toBe("thinking")
-    // POST 体只有 idempotency_key/content：模式不进 wire。
-    expect(Object.keys(client.startCalls[0]?.body ?? {}).sort()).toEqual([
-      "content",
-      "idempotency_key",
-    ])
+    // 模式进 wire：thinking 档 → thinking=true（后端各 provider 翻成原生推理开关）。
+    expect(client.startCalls[0]?.body.thinking).toBe(true)
     // 已开聊锁定：切换被忽略。
     engine.setMode("fast")
     expect(activeEntry().mode).toBe("thinking")
+  })
+
+  it("fast 会话 submit：thinking=false 显式上 wire（后端关推理）", async () => {
+    buildEngine()
+    engine.submit("go")
+    await settle()
+    expect(activeEntry().mode).toBe("fast")
+    expect(client.startCalls[0]?.body.thinking).toBe(false)
   })
 })
 

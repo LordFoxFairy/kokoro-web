@@ -98,6 +98,7 @@ export const startMessageBodySchema = z
     content: z.string().min(1),
     selected_model: z.string().min(1).optional(),
     entry: z.string().min(1).optional(),
+    thinking: z.boolean().optional(),
   })
   .strict()
 export type StartMessageBody = z.infer<typeof startMessageBodySchema>

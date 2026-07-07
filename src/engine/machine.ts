@@ -5,6 +5,7 @@ import type { MessageKey } from "@/i18n/messages"
 
 export type NoticeSpec = { key: MessageKey; vars?: Readonly<Record<string, string | number>> }
 import {
+  activeMode,
   addConversation,
   conversationTitle,
   removeConversation,
@@ -427,8 +428,14 @@ export function createSessionEngine(deps: EngineDeps): SessionEngine {
   // POST messages 并处理回执/失败（submit 与 retry 共用的开跑尾段）。
   function beginRun(sessionId: string, content: string, idempotencyKey: string): void {
     pendingSubmission = { content, idempotencyKey }
+    // 模式意图上 wire：thinking 档=true（后端各 provider 翻成原生推理开关），fast=false 显式关。
+    const mode = store ? activeMode(store) : pendingMode
     deps.client
-      .startRun(sessionId, { idempotency_key: idempotencyKey, content })
+      .startRun(sessionId, {
+        idempotency_key: idempotencyKey,
+        content,
+        thinking: mode === "thinking",
+      })
       .then((receipt) => {
         // 回执落地前用户已重置/切换：丢弃迟到回执，不复活旧轮。
         if (disposed || machine.phase !== "submitting" || store?.activeId !== sessionId) {
@@ -466,7 +473,11 @@ export function createSessionEngine(deps: EngineDeps): SessionEngine {
       thread = appendUserMessage(thread, { id: createId("usr"), content: trimmed })
       notify()
       deps.client
-        .startRun(store.activeId, { idempotency_key: createId("idem"), content: trimmed })
+        .startRun(store.activeId, {
+          idempotency_key: createId("idem"),
+          content: trimmed,
+          thinking: activeMode(store) === "thinking",
+        })
         .then((receipt) => {
           if (!disposed) {
             adoptUserMessageId(receipt.user_message_id)
