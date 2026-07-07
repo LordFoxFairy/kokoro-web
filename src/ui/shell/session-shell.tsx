@@ -149,6 +149,10 @@ export function SessionShell({ engine: injectedEngine }: SessionShellProps = {})
   useEffect(() => {
     setDraft(readDraft(draftKey))
   }, [draftKey])
+  // 切会话即关 canvas：产物按会话隔离，旧会话的文件不该悬在新会话上（否则串文件/撞 404）。
+  useEffect(() => {
+    setCanvasFile(null)
+  }, [activeId])
   const updateDraft = useCallback(
     (value: string) => {
       setDraft(value)
