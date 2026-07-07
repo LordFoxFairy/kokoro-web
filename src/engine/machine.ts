@@ -327,9 +327,30 @@ export function createSessionEngine(deps: EngineDeps): SessionEngine {
       resumeDecisionIds.delete(settledRunId)
       closeStream()
       clearReattachTimer()
+      // 活工作区（Manus 心智）：run 收尾即重读工作区文件清单，任何工具建的文件都进文件树，免手动刷新。
+      if (store) {
+        syncWorkspaceFiles(store.activeId)
+      }
     }
     syncActiveEntry()
     notify()
+  }
+
+  // run 收尾后重同步文件面：只吸收 snapshot.files（线程已由事件流实时构好，不重建），
+  // 读的是工作区真相 → 覆盖 write_file/execute 等一切建文件的工具，非只认某个工具事件。
+  function syncWorkspaceFiles(sessionId: string): void {
+    deps.client
+      .fetchSnapshot(sessionId)
+      .then((sessionSnapshot) => {
+        if (disposed || store?.activeId !== sessionId || sessionSnapshot === null) {
+          return
+        }
+        thread = { ...thread, files: sessionSnapshot.files }
+        notify()
+      })
+      .catch(() => {
+        // 文件面同步失败不动主线程：下次 run 收尾/刷新/切会话再对齐。
+      })
   }
 
   // 在途 run 的统一放弃路径：本地立即收口（结构化 cancelled），取消 POST 尽力而为。
