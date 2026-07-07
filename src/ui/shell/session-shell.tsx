@@ -20,6 +20,8 @@ import { sessionBaseUrl } from "@/engine/config"
 import { createSessionEngine, type SessionEngine } from "@/engine/machine"
 import { useSessionEngine } from "@/engine/use-session-engine"
 import { useT } from "@/i18n/context"
+import { z } from "zod"
+
 import { createPersistedStore } from "@/lib/persisted-store"
 import { useHydrated } from "@/lib/use-hydrated"
 
@@ -36,6 +38,29 @@ import type { WorkspaceFileEntry } from "@/core/state"
 import styles from "./session-shell.module.css"
 
 const STORAGE_KEY = "kokoro.web.conversations"
+
+// 未发送草稿按会话持久化：切会话/刷新都保留（in-memory useState 会丢）。空串=无草稿。
+// 与会话 store 分键：逐键改动不惊动引擎、也不跨 tab 抢占（草稿是本地正在编辑态）。
+const DRAFT_PENDING_KEY = "__pending__"
+const draftStore = createPersistedStore({
+  key: "kokoro.web.drafts",
+  schema: z.record(z.string(), z.string()),
+})
+
+function readDraft(key: string): string {
+  return draftStore.read()?.[key] ?? ""
+}
+
+function writeDraft(key: string, value: string): void {
+  const all = draftStore.read() ?? {}
+  if (value === "") {
+    if (!(key in all)) return
+    const { [key]: _drop, ...rest } = all
+    draftStore.write(rest)
+  } else {
+    draftStore.write({ ...all, [key]: value })
+  }
+}
 
 // 页面级单例：整页共享一个引擎实例（含流句柄与重连计时器），仅浏览器创建，SSR 为 null。
 let pageEngine: SessionEngine | null = null
@@ -119,6 +144,19 @@ export function SessionShell({ engine: injectedEngine }: SessionShellProps = {})
     : []
   const activeId = store?.activeId ?? null
 
+  // 草稿按当前会话加载：切会话/刷新（activeId 变或首挂）即从持久化取回，不再清空丢字。
+  const draftKey = activeId ?? DRAFT_PENDING_KEY
+  useEffect(() => {
+    setDraft(readDraft(draftKey))
+  }, [draftKey])
+  const updateDraft = useCallback(
+    (value: string) => {
+      setDraft(value)
+      writeDraft(draftKey, value)
+    },
+    [draftKey],
+  )
+
   const presentation = modePresentation(
     t,
     mode,
@@ -142,8 +180,9 @@ export function SessionShell({ engine: injectedEngine }: SessionShellProps = {})
     // 流式中提交=运行中插话（engine 识别活跃相位走 steer，不打断本轮）。
     engine.submit(content)
     setDraft("")
+    writeDraft(draftKey, "")
     focusComposer()
-  }, [draft, engine, focusComposer])
+  }, [draft, draftKey, engine, focusComposer])
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -159,15 +198,15 @@ export function SessionShell({ engine: injectedEngine }: SessionShellProps = {})
   }
 
   const startNewChat = useCallback(() => {
+    // 不清 draft：newConversation 换 activeId 后，上面的 effect 会加载新会话自己的草稿。
     engine?.newConversation()
-    setDraft("")
     focusComposer()
   }, [engine, focusComposer])
 
   const selectConversation = useCallback(
     (id: string) => {
+      // 不清 draft：切 activeId 后 effect 加载目标会话草稿（切走的草稿已随 updateDraft 落盘保留）。
       engine?.selectConversation(id)
-      setDraft("")
       focusComposer()
     },
     [engine, focusComposer],
@@ -267,7 +306,7 @@ export function SessionShell({ engine: injectedEngine }: SessionShellProps = {})
 
         <Composer
           draft={draft}
-          onDraftChange={setDraft}
+          onDraftChange={updateDraft}
           onKeyDown={handleKeyDown}
           onSubmit={handleSubmit}
           isStreaming={isStreaming}

@@ -214,6 +214,8 @@ export function createSessionEngine(deps: EngineDeps): SessionEngine {
   let flushScheduled = false
   let reattachTimer: ReturnType<typeof setTimeout> | null = null
   let disposed = false
+  // 多 tab 实时同步：订阅会话 store 的跨 tab 变更（persisted-store 的 storage 事件）。
+  let unsubscribeStore: (() => void) | null = null
 
   const listeners = new Set<() => void>()
   let snapshot: EngineSnapshot = buildSnapshot()
@@ -673,8 +675,41 @@ export function createSessionEngine(deps: EngineDeps): SessionEngine {
     disposed = true
     closeStream()
     clearReattachTimer()
+    unsubscribeStore?.()
     listeners.clear()
   }
+
+  // 另一 tab 写会话 store（新建/删除/改名/切换）→ 本 tab 吸收列表变化。
+  function onExternalStore(): void {
+    if (disposed) {
+      return
+    }
+    const external = deps.storage.read()
+    // persisted-store 缓存稳定引用：与当前相等即无外部变更（含本 tab 自写后的重入），跳过。
+    if (external === store) {
+      return
+    }
+    const myActive = store?.activeId ?? null
+    if (
+      external !== null &&
+      myActive !== null &&
+      external.conversations.some((entry) => entry.id === myActive)
+    ) {
+      // 本 tab 激活会话仍在：只吸收列表，保留本 tab 激活视图与在途线程，不重水合、不打断流。
+      store = { ...external, activeId: myActive }
+      notify()
+      return
+    }
+    // 本 tab 无激活或激活会话被别处删了：跟随外部激活并重水合（无激活则回空线程）。
+    store = external
+    if (external?.activeId) {
+      hydrate(external.activeId)
+    } else {
+      thread = createSessionStreamState()
+    }
+    notify()
+  }
+  unsubscribeStore = deps.storage.subscribe(onExternalStore)
 
   // 启动即水合：活跃会话从服务端 snapshot 恢复消息/在途 run/暂停点。
   if (store) {
