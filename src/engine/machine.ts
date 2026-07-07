@@ -210,6 +210,8 @@ export function createSessionEngine(deps: EngineDeps): SessionEngine {
   let streamGeneration = 0
   // 水合代际守卫：切会话后迟到的 snapshot 一律丢弃。
   let hydrateGeneration = 0
+  // 文件同步代际守卫：同会话连续 run 收尾的乱序 snapshot 回来，只认最新一次。
+  let filesSyncGeneration = 0
   let buffer: SessionEvent[] = []
   let flushScheduled = false
   let reattachTimer: ReturnType<typeof setTimeout> | null = null
@@ -317,8 +319,9 @@ export function createSessionEngine(deps: EngineDeps): SessionEngine {
       }
     }
 
-    if (machine.phase === "awaiting-hitl") {
-      // 进入待批帧即撤兜底计时：用户决策不设时限，不能被 TIMEOUT 收口成 idle。
+    if (machine.phase === "awaiting-hitl" || machine.phase === "streaming") {
+      // 待批帧：用户决策不设时限；streaming：reattach 已收到 live 事件即证明 run 活着。
+      // 两者都撤 90s 兜底——否则长 run（>90s 工具执行）会被 TIMEOUT 误切流，UI 与真态撕裂。
       clearReattachTimer()
     }
     if (settledRunId !== null) {
@@ -339,10 +342,17 @@ export function createSessionEngine(deps: EngineDeps): SessionEngine {
   // run 收尾后重同步文件面：只吸收 snapshot.files（线程已由事件流实时构好，不重建），
   // 读的是工作区真相 → 覆盖 write_file/execute 等一切建文件的工具，非只认某个工具事件。
   function syncWorkspaceFiles(sessionId: string): void {
+    filesSyncGeneration += 1
+    const generation = filesSyncGeneration
     deps.client
       .fetchSnapshot(sessionId)
       .then((sessionSnapshot) => {
-        if (disposed || store?.activeId !== sessionId || sessionSnapshot === null) {
+        if (
+          disposed ||
+          generation !== filesSyncGeneration ||
+          store?.activeId !== sessionId ||
+          sessionSnapshot === null
+        ) {
           return
         }
         thread = { ...thread, files: sessionSnapshot.files }
@@ -495,19 +505,26 @@ export function createSessionEngine(deps: EngineDeps): SessionEngine {
       // 不动状态机、不重开事件流——回执 run_id 即当前 run，无新可锚定物。
       thread = appendUserMessage(thread, { id: createId("usr"), content: trimmed })
       notify()
+      // 回执/失败必须锚回发起时的会话：POST 在途时切走 → 迟到回调不得落在别的会话线程上
+      // （否则 adopt 会改/删 T 的乐观气泡、notice 串到 T）。与 beginRun 回执守卫对齐。
+      const steerSessionId = store.activeId
       deps.client
-        .startRun(store.activeId, {
+        .startRun(steerSessionId, {
           idempotency_key: createId("idem"),
           content: trimmed,
           thinking: activeMode(store) === "thinking",
         })
         .then((receipt) => {
-          if (!disposed) {
-            adoptUserMessageId(receipt.user_message_id)
-            notify()
+          if (disposed || store?.activeId !== steerSessionId) {
+            return
           }
+          adoptUserMessageId(receipt.user_message_id)
+          notify()
         })
         .catch((error: unknown) => {
+          if (disposed || store?.activeId !== steerSessionId) {
+            return
+          }
           // 插话投递失败必须可见：瞬态通知（不打断相位），下次提交自动清。
           notice = { key: "steer.sendFailed", vars: { detail: describeUnknown(error) } }
           notify()
@@ -722,11 +739,18 @@ export function createSessionEngine(deps: EngineDeps): SessionEngine {
       return
     }
     // 本 tab 无激活或激活会话被别处删了：跟随外部激活并重水合（无激活则回空线程）。
+    // 必须先收束在途 run（与 activateConversation 一致）：否则本 tab 正流式时被删，
+    // machine 卡在旧 streaming 相位、runId 指向已删 run，hydrate 的 REATTACH 被守卫拒、不自愈。
+    closeStream()
+    clearReattachTimer()
+    machine = transition(machine, { type: "RESET" })
+    staging.clear()
+    resumeDecisionIds.clear()
+    pendingSubmission = null
+    thread = createSessionStreamState()
     store = external
     if (external?.activeId) {
       hydrate(external.activeId)
-    } else {
-      thread = createSessionStreamState()
     }
     notify()
   }
