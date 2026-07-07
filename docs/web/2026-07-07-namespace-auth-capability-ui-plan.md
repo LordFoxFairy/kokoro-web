@@ -1,4 +1,4 @@
-# kokoro-web namespace、auth 与 capability UI 接入方案
+# kokoro-web 主页、auth、namespace 与 capability UI 接入方案
 
 状态：web 子仓方案稿
 日期：2026-07-07
@@ -45,7 +45,8 @@ web 子仓可以有 docs，但只记录 web 拥有的接口面、页面面和验
 
 ```text
 用户打开 web
-  -> 登录或注册
+  -> 看到 task-first 主页，可以直接输入任务或选择能力入口
+  -> 登录或邮箱注册
   -> web 获取 session 可验的 token
   -> web 带 Bearer token 调 kokoro-session
   -> session 决定 namespace 并发起 run
@@ -54,9 +55,84 @@ web 子仓可以有 docs，但只记录 web 拥有的接口面、页面面和验
 
 web 不直接碰 Mongo、对象存储、agent checkpoint 或 capability registry。所有真实数据通过 session/http API 投影进入 UI。
 
-## 4. 时序图
+## 4. Web 产品入口层
 
-### 4.1 登录与 token 管道
+当前 `src/app/page.tsx` 直接渲染 `SessionShell`。下一步要把产品入口层整理出来：
+
+```text
+/             public homepage
+/login        sign in
+/signup       email registration
+/app          authenticated SessionShell
+/settings     authenticated user settings
+```
+
+如果实现时暂时不新增所有路由，也要保持同样的组件边界：public home、auth surface、app shell、settings 不能揉成一个大页面。
+
+### 4.1 首页结构
+
+首页不是纯营销页。第一屏必须是产品入口，用户能马上把任务交给 Kokoro。
+
+建议组件：
+
+- `HeroTaskEntry`
+  任务输入框、任务范例 chips、登录/邮箱注册/继续使用 CTA。
+- `CapabilityStrip`
+  Research、Slides、Code、Design、Data、Automation 等能力入口。
+- `WorkflowPreview`
+  prompt -> agent plan -> files/artifacts 的静态产品预览。
+- `ArtifactProof`
+  展示 Kokoro 会产出可预览、可下载、可标记 final 的文件。
+- `TrustAndControl`
+  HITL、可审阅、可取消、可恢复、文件归属。
+
+未登录用户在首页输入的 pending task 要能暂存。登录或注册完成后，继续进入 `/app` 的会话入口。
+
+### 4.2 可换皮契约
+
+后续会频繁换皮，所以要把 presentation 和功能接线拆开：
+
+```text
+theme tokens
+  color / type / radius / shadow / density / motion
+
+homepage content config
+  headline / task examples / capability chips / workflow cards
+
+feature adapters
+  auth token / session client / canvas file fetch
+```
+
+规则：
+
+- 视觉组件只吃 props，不直接调用 session API。
+- auth/session/canvas adapter 放在功能层，换皮不动它。
+- CSS Modules 或现有样式组织继续随组件走，不新增重型 UI 框架。
+- 首页风格先走“任务输入优先 + 克制高端 AI workspace”方向，避免大段解释和过重卡片堆叠。
+- 外部参考只抽象交互模式，不复制文案、路径、类名、组件结构或来源标识。
+
+## 5. 时序图
+
+### 5.1 首页到登录/邮箱注册
+
+```mermaid
+sequenceDiagram
+  actor U as User
+  participant H as Homepage
+  participant A as Auth UI
+  participant Store as Token Store
+  participant App as SessionShell
+
+  U->>H: open web
+  H-->>U: task input + capability chips + CTA
+  U->>H: enter task
+  H->>A: require auth
+  U->>A: sign in / email sign up
+  A->>Store: save kokoro.auth.token
+  A->>App: continue with pending task
+```
+
+### 5.2 登录与 token 管道
 
 ```mermaid
 sequenceDiagram
@@ -78,7 +154,7 @@ sequenceDiagram
 
 web 只保存和发送 token。namespace 的最终解释权在 session，GA 只消费 session 传给它的 `context.namespace`。
 
-### 4.2 发消息到流式渲染
+### 5.3 发消息到流式渲染
 
 ```mermaid
 sequenceDiagram
@@ -100,7 +176,7 @@ sequenceDiagram
 
 所有入站数据先过 `src/contract/*` Zod schema，再进入 reducer。解析失败进入类型化错误态，不允许污染 thread。
 
-### 4.3 文件与最终产物展示
+### 5.4 文件与最终产物展示
 
 ```mermaid
 sequenceDiagram
@@ -121,7 +197,7 @@ sequenceDiagram
 
 web 只拿鉴权后的 file endpoint。文件 key、namespace 拼接和对象存储归档都不属于 web。
 
-## 5. web 侧工作包
+## 6. web 侧工作包
 
 ### WP-Web-0: 文档和边界
 
@@ -135,9 +211,28 @@ web 只拿鉴权后的 file endpoint。文件 key、namespace 拼接和对象存
 - `git status --ignored --short docs tmp` 能看出旧草稿仍被忽略。
 - `git ls-files docs` 只包含正式 web 文档。
 
-### WP-Web-1: 登录/注册入口
+### WP-Web-1: 主页与可换皮壳
 
-- 新增登录/注册视图或弹层。
+- 将 `/` 从直接 SessionShell 调整为 public homepage。
+- 将 SessionShell 挪到 `/app` 或等价受保护入口。
+- 新增首页 task input、任务范例 chips、能力入口、workflow preview。
+- 建立 theme tokens 与 homepage content config。
+- 视觉组件只通过 props/action 调用功能层，不直接拿 session engine。
+
+验收：
+
+- 未登录态首页有任务输入、能力入口、登录和邮箱注册 CTA。
+- 已登录态有继续使用或新建任务入口。
+- 未登录输入任务后，登录/注册完成可继续进入会话入口。
+- 换一套 theme tokens 或 homepage content config 不需要改 auth/session/canvas 业务代码。
+
+### WP-Web-2: 登录/邮箱注册入口
+
+- 新增登录与邮箱注册页面或弹层。
+- email-first 表单。
+- 注册覆盖 email、验证码/链接态占位、继续任务态。
+- 登录覆盖 email、密码/验证码态占位、忘记/重发态占位。
+- loading、error、success、disabled 状态齐全。
 - web auth facade 调用户服务确认用户。
 - facade 签发 session 可验 token。
 - 前端统一写入 `kokoro.auth.token`，复用现有 `createSessionClient({ token })` 管道。
@@ -147,8 +242,9 @@ web 只拿鉴权后的 file endpoint。文件 key、namespace 拼接和对象存
 - 未登录时不能发起真实 session run。
 - 登录后所有 session HTTP/SSE/file 请求带 Bearer token。
 - 切账号后重新创建 client，旧 token 不继续污染新会话。
+- 退出后 token 清空，受保护入口回登录。
 
-### WP-Web-2: namespace 语义守护
+### WP-Web-3: namespace 语义守护
 
 - 前端不展示或拼装业务化 namespace。
 - 不在 control body 中新增 `ownerId`、`userId`、`workspaceId`。
@@ -159,7 +255,7 @@ web 只拿鉴权后的 file endpoint。文件 key、namespace 拼接和对象存
 - 代码搜索不存在 `user:<` 这类 namespace 拼接。
 - web contract 仍只消费已有 `RuntimeContext.namespace`。
 
-### WP-Web-3: capability 与 settings UI
+### WP-Web-4: capability 与 settings UI
 
 - Settings 展示账号、token 状态、能力开关入口。
 - Capability UI 只展示 session/platform 投影后的 enabled/available/read-only 状态。
@@ -171,7 +267,7 @@ web 只拿鉴权后的 file endpoint。文件 key、namespace 拼接和对象存
 - UI 操作调用 session/platform API，失败时显示可恢复错误。
 - 外部参考材料只保留在 `tmp/`，不进入正式文档或代码。
 
-### WP-Web-4: 最终产物分区
+### WP-Web-5: 最终产物分区
 
 - thread/canvas 除普通 workspace files 外，增加 final artifacts 分区。
 - 支持用户 promote/demote final artifact。
@@ -182,7 +278,7 @@ web 只拿鉴权后的 file endpoint。文件 key、namespace 拼接和对象存
 - snapshot 同时有 files/artifacts 时 UI 不混淆。
 - promote/demote 后重新拉 snapshot 可还原状态。
 
-## 6. 验证顺序
+## 7. 验证顺序
 
 ```text
 docs gate
