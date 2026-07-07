@@ -1,6 +1,6 @@
 // 文件 chip 与 canvas 内容体：chip=路径即入口；PreviewBody 按 MIME 分派（媒体/懒文本/下载兜底）。
-import { render, screen } from "@testing-library/react"
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { render, screen, waitFor } from "@testing-library/react"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 vi.mock("@/engine/config", () => ({ sessionBaseUrl: () => "http://s.local" }))
 
@@ -11,6 +11,10 @@ import { fileUrl } from "@/ui/canvas/canvas-panel"
 describe("FileChip / PreviewBody / fileUrl", () => {
   beforeEach(() => {
     window.localStorage.setItem("kokoro.locale", "zh")
+  })
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    window.localStorage.removeItem("kokoro.auth.token")
   })
 
   it("chip：显示文件名，点击触发 onOpen（canvas 入口）", () => {
@@ -26,12 +30,23 @@ describe("FileChip / PreviewBody / fileUrl", () => {
     )
   })
 
-  it("audio/*：原生播放器", () => {
+  it("audio/*：鉴权拉取字节 → blob src 原生播放器（带 Bearer，避 401）", async () => {
+    window.localStorage.setItem("kokoro.auth.token", "tok123")
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue({ ok: true, blob: async () => new Blob(["x"], { type: "audio/wav" }) })
+    vi.stubGlobal("fetch", fetchMock)
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:mock")
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {})
     const { container } = render(
       <PreviewBody url="http://s.local/f.wav" mime="audio/wav" name="f.wav" />,
       { wrapper: LocaleProvider },
     )
-    expect(container.querySelector("audio")).not.toBeNull()
+    await waitFor(() => expect(container.querySelector("audio")).not.toBeNull())
+    expect(container.querySelector("audio")?.getAttribute("src")).toBe("blob:mock")
+    // 鉴权头随 files 抓取上 wire（生产鉴权开启后必需）。
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect((init.headers as Record<string, string>).authorization).toBe("Bearer tok123")
   })
 
   it("未知类型：下载兜底文案", () => {

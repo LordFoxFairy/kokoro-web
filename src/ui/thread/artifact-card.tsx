@@ -4,6 +4,7 @@
 
 import { useEffect, useState } from "react"
 
+import { fileFetch, useFileBlob } from "@/engine/file-fetch"
 import { useT } from "@/i18n/context"
 
 import { MarkdownMessage } from "./markdown-message"
@@ -26,7 +27,7 @@ function useTextPreview(url: string, enabled: boolean): TextPreview {
   useEffect(() => {
     if (!enabled) return
     let cancelled = false
-    void fetch(url)
+    void fileFetch(url)
       .then(async (res) => {
         if (!res.ok) throw new Error(String(res.status))
         const buffer = await res.arrayBuffer()
@@ -101,19 +102,38 @@ function isTextual(mime: string): boolean {
   return mime.startsWith("text/") || mime === "application/json"
 }
 
-export function PreviewBody({ url, mime, name }: { url: string; mime: string; name: string }) {
+function isMedia(mime: string): boolean {
+  return (
+    mime.startsWith("audio/") ||
+    mime.startsWith("video/") ||
+    mime.startsWith("image/") ||
+    mime === "text/html" ||
+    mime === "application/pdf"
+  )
+}
+
+// 媒体/iframe：src 带不了 Authorization，故鉴权 fetch 成 object URL 再喂 src（鉴权开启后避 401）。
+function MediaPreview({ url, mime, name }: { url: string; mime: string; name: string }) {
   const t = useT()
-  if (mime.startsWith("audio/")) return <audio className={styles.media} controls src={url} />
-  if (mime.startsWith("video/")) return <video className={styles.media} controls src={url} />
+  const blob = useFileBlob(url, true)
+  if (blob.kind === "loading") return <p className={styles.note}>{t("artifact.loadingPreview")}</p>
+  if (blob.kind === "failed") return <p className={styles.note}>{t("artifact.cannotPreview")}</p>
+  const src = blob.objectUrl
+  if (mime.startsWith("audio/")) return <audio className={styles.media} controls src={src} />
+  if (mime.startsWith("video/")) return <video className={styles.media} controls src={src} />
   if (mime.startsWith("image/")) {
-    // eslint-disable-next-line @next/next/no-img-element -- 产物字节来自本地 session 端点，无 next/image 优化面
-    return <img className={styles.media} src={url} alt={name} />
+    // eslint-disable-next-line @next/next/no-img-element -- 产物字节=本地 session 端点鉴权拉取的 blob，无 next/image 面
+    return <img className={styles.media} src={src} alt={name} />
   }
   if (mime === "text/html")
-    return <iframe className={styles.frame} sandbox="" src={url} title={name} />
-  if (mime === "application/pdf")
-    return <iframe className={styles.frame} src={url} title={name} />
+    return <iframe className={styles.frame} sandbox="" src={src} title={name} />
+  return <iframe className={styles.frame} src={src} title={name} />
+}
+
+export function PreviewBody({ url, mime, name }: { url: string; mime: string; name: string }) {
+  const t = useT()
   if (isTextual(mime)) return <TextualPreview url={url} mime={mime} />
+  if (isMedia(mime)) return <MediaPreview url={url} mime={mime} name={name} />
   return <p className={styles.note}>{t("artifact.unsupported")}</p>
 }
 

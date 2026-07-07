@@ -7,6 +7,7 @@ import { useState } from "react"
 
 import { filePath } from "@/contract/http"
 import { sessionBaseUrl } from "@/engine/config"
+import { fileFetch } from "@/engine/file-fetch"
 import type { WorkspaceFileEntry } from "@/core/state"
 import { useT } from "@/i18n/context"
 import { PreviewBody, formatBytes } from "@/ui/thread/artifact-card"
@@ -16,6 +17,18 @@ import styles from "./canvas-panel.module.css"
 export function fileUrl(sessionId: string, path: string): string {
   const encoded = path.split("/").map(encodeURIComponent).join("/")
   return `${sessionBaseUrl()}${filePath(sessionId, "__P__")}`.replace("__P__", encoded)
+}
+
+// 下载走鉴权 fetch → blob（<a href> 直连 files 端点鉴权开启后 401）。
+async function downloadFile(url: string, name: string): Promise<void> {
+  const res = await fileFetch(url)
+  if (!res.ok) return
+  const objectUrl = URL.createObjectURL(await res.blob())
+  const anchor = document.createElement("a")
+  anchor.href = objectUrl
+  anchor.download = name
+  anchor.click()
+  URL.revokeObjectURL(objectUrl)
 }
 
 export function CanvasPanel({
@@ -55,9 +68,9 @@ export function CanvasPanel({
           </span>
         ) : null}
         {view === "preview" ? (
-          <a className={styles.action} href={url} download={name}>
+          <button type="button" className={styles.action} onClick={() => void downloadFile(url, name)}>
             {t("canvas.download")}
-          </a>
+          </button>
         ) : null}
         <button type="button" className={styles.action} onClick={onClose} aria-label={t("canvas.closePreview")}>
           {t("canvas.close")}
