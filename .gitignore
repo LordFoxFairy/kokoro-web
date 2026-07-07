@@ -8,7 +8,10 @@ out/
 # production
 build/
 coverage/
-/docs/
+/docs/*
+!/docs/README.md
+!/docs/web/
+!/docs/web/**
 
 # local env files
 .env*
