@@ -99,7 +99,7 @@ export const messageCreateParamsSchema = z
     model: z.string().min(1).optional(),
     agent: z.string().min(1).optional(),
     thinking: z.boolean().optional(),
-    skills: z.array(z.string().min(1)).optional(),
+    pinned_skills: z.array(z.string().min(1)).optional(),
     mcp_servers: z.array(z.string().min(1)).optional(),
   })
   .strict()

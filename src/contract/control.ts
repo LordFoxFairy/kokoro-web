@@ -21,6 +21,15 @@ export const modelConfigSchema = z
   .strict()
 export type ModelConfig = z.infer<typeof modelConfigSchema>
 
+export const skillGrantSchema = z
+  .object({
+    name: z.string().min(1),
+    content_hash: z.string().min(1),
+    description: z.string().min(1),
+  })
+  .strict()
+export type SkillGrant = z.infer<typeof skillGrantSchema>
+
 export const permissionsSchema = z
   .object({
     approval_tools: z.array(z.string().min(1)),
@@ -37,7 +46,7 @@ export const runtimeConfigSchema = z
     agent: z.string().min(1).optional(),
     model: modelConfigSchema,
     tools: z.array(z.string().min(1)),
-    skills: z.array(z.string().min(1)),
+    skills: z.array(skillGrantSchema),
     mcp_servers: z.array(z.string().min(1)),
     subagents: z.array(z.string().min(1)),
     backend: z.enum(["state", "local_shell", "docker", "e2b", "custom"]),
