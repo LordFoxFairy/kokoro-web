@@ -76,6 +76,19 @@ export const workspaceFileSchema = z
   .strict()
 export type WorkspaceFile = z.infer<typeof workspaceFileSchema>
 
+export const deliverySchema = z
+  .object({
+    content_hash: z.string().min(1),
+    path: z.string().min(1),
+    title: z.string().min(1),
+    mime: z.string().min(1),
+    size: z.number().int(),
+    run_id: z.string().min(1),
+    created_at: z.string().min(1),
+  })
+  .strict()
+export type Delivery = z.infer<typeof deliverySchema>
+
 export const sessionSnapshotSchema = z
   .object({
     session: sessionMetaSchema,
@@ -83,6 +96,7 @@ export const sessionSnapshotSchema = z
     active_run: activeRunSchema.optional(),
     pending_pauses: z.array(pendingPauseSchema),
     files: z.array(workspaceFileSchema),
+    deliveries: z.array(deliverySchema),
     event_watermark: z.number().int(),
   })
   .strict()
@@ -142,6 +156,9 @@ export function eventsPath(sessionId: string): string {
 }
 export function filePath(sessionId: string, path: string): string {
   return `/sessions/${sessionId}/files/${path}`
+}
+export function deliveryPath(sessionId: string, contentHash: string): string {
+  return `/sessions/${sessionId}/deliveries/${contentHash}`
 }
 export function controlPath(sessionId: string, runId: string): string {
   return `/sessions/${sessionId}/runs/${runId}/control`

@@ -12,6 +12,7 @@ export const SESSION_EVENT_NAMES = [
   "tool.output.delta",
   "tool.awaiting_approval",
   "tool.returned",
+  "delivery.created",
   "todo.updated",
   "subagent.started",
   "subagent.finished",

@@ -123,6 +123,18 @@ const toolReturnedPayload = z
   })
   .strict()
 
+const deliveryCreatedPayload = z
+  .object({
+    path: z.string().min(1),
+    title: z.string().min(1),
+    mime: z.string().min(1),
+    size: z.number().int(),
+    // 成果冻结键：deliveries/<namespace>/<content_hash> 内容寻址,永不漂移；由 deliver 工具归档时计算,emitter 在 tool.returned 后追发本事件。
+    content_hash: z.string().min(1),
+    note: z.string().optional(),
+  })
+  .strict()
+
 const todoUpdatedPayload = z
   .object({
     todos: z.array(todoSchema),
@@ -238,6 +250,7 @@ export const sessionEventSchema = z.discriminatedUnion("kind", [
   envelope.extend({ kind: z.literal("tool.output.delta"), payload: toolOutputDeltaPayload }),
   envelope.extend({ kind: z.literal("tool.awaiting_approval"), payload: toolAwaitingApprovalPayload }),
   envelope.extend({ kind: z.literal("tool.returned"), payload: toolReturnedPayload }),
+  envelope.extend({ kind: z.literal("delivery.created"), payload: deliveryCreatedPayload }),
   envelope.extend({ kind: z.literal("todo.updated"), payload: todoUpdatedPayload }),
   envelope.extend({ kind: z.literal("subagent.started"), payload: subagentStartedPayload }),
   envelope.extend({ kind: z.literal("subagent.finished"), payload: subagentFinishedPayload }),
