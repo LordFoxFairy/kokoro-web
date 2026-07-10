@@ -141,4 +141,10 @@ export const en: Partial<Record<MessageKey, string>> = {
   "lang.switchAria": "Interface language",
   "lang.zh": "中文",
   "lang.en": "English",
+  "auth.title": "Sign in to Kokoro",
+  "auth.subtitle": "Enter your email to get started (dev sign-in; email verification comes later).",
+  "auth.emailPlaceholder": "you@example.com",
+  "auth.submit": "Sign in",
+  "auth.invalidEmail": "Please enter a valid email",
+  "auth.unavailable": "Sign-in service is unavailable, try again later",
 }

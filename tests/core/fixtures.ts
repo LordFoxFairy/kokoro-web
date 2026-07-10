@@ -77,6 +77,7 @@ export function makeSnapshot(input: SnapshotInput = {}): SessionSnapshot {
     ...(input.activeRun !== undefined ? { active_run: input.activeRun } : {}),
     pending_pauses: input.pendingPauses ?? [],
     files: [],
+    deliveries: [],
     event_watermark: input.eventWatermark ?? 0,
   })
 }

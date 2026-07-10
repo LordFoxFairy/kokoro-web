@@ -149,6 +149,13 @@ export const zh = {
   "lang.switchAria": "界面语言",
   "lang.zh": "中文",
   "lang.en": "English",
+  // 登录闸（P2 签发链 web 端）
+  "auth.title": "登录 Kokoro",
+  "auth.subtitle": "输入邮箱开始使用（开发档直登,邮件验证后续开启）。",
+  "auth.emailPlaceholder": "you@example.com",
+  "auth.submit": "登录",
+  "auth.invalidEmail": "请输入合法邮箱",
+  "auth.unavailable": "登录服务暂不可用,稍后再试",
 } as const
 
 export type MessageKey = keyof typeof zh

@@ -397,6 +397,9 @@ function applyEvent(draft: Draft, event: SessionEvent): void {
     case "subagent.tool.returned":
       // 穷尽 switch 须显式接收；当前无子代理详情视图消费此通道，不参与状态归约。
       break
+    case "delivery.created":
+      // 成果事件显式接收；成果卡/成果区归约随块D-ux 落（下载面已由 snapshot.deliveries+端点承接）。
+      break
     case "run.completed":
     case "run.failed":
       applyRunTerminal(draft, event)
