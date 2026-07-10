@@ -66,8 +66,8 @@ describe("提交链路", () => {
     expect(thread().messages).toMatchObject([{ role: "user", content: "hello agent" }])
     await settle()
 
-    expect(client.startCalls).toHaveLength(1)
-    expect(client.startCalls[0]).toEqual({
+    expect(client.createCalls).toHaveLength(1)
+    expect(client.createCalls[0]).toEqual({
       sessionId: "conv_1",
       body: { idempotency_key: "idem_3", content: "hello agent", thinking: false },
     })
@@ -111,7 +111,7 @@ describe("提交链路", () => {
     engine.submit("first")
     engine.submit("second")
     await settle()
-    expect(client.startCalls).toHaveLength(1)
+    expect(client.createCalls).toHaveLength(1)
     expect(thread().messages).toHaveLength(1)
   })
 
@@ -119,13 +119,13 @@ describe("提交链路", () => {
     buildEngine()
     engine.submit(input)
     await settle()
-    expect(client.startCalls).toHaveLength(0)
+    expect(client.createCalls).toHaveLength(0)
     expect(engine.getSnapshot().machine.phase).toBe("idle")
   })
 
   it("POST 失败进错误态，无本地假回复（零静默降级）", async () => {
     buildEngine()
-    client.nextStart = () => Promise.reject(new SessionClientError("http", "status 500"))
+    client.nextCreate = () => Promise.reject(new SessionClientError("http", "status 500"))
     engine.submit("hello")
     await settle()
     expect(engine.getSnapshot().machine).toMatchObject({ phase: "error", error: "status 500" })
@@ -135,7 +135,7 @@ describe("提交链路", () => {
 
   it("活跃 run 409（session_run_active）显式进错误态", async () => {
     buildEngine()
-    client.nextStart = () =>
+    client.nextCreate = () =>
       Promise.reject(new SessionClientError("http", "session_run_active"))
     engine.submit("hello")
     await settle()
@@ -147,10 +147,10 @@ describe("提交链路", () => {
 
   it("错误态可重新提交（错误即清）", async () => {
     buildEngine()
-    client.nextStart = () => Promise.reject(new SessionClientError("network", "down"))
+    client.nextCreate = () => Promise.reject(new SessionClientError("network", "down"))
     engine.submit("hello")
     await settle()
-    client.nextStart = () => Promise.resolve(makeReceipt("run_retry"))
+    client.nextCreate = () => Promise.resolve(makeReceipt("run_retry"))
     engine.submit("hello again")
     await settle()
     expect(engine.getSnapshot().machine).toMatchObject({ phase: "streaming", runId: "run_retry" })
@@ -531,18 +531,18 @@ describe("snapshot-first 水合与中断恢复", () => {
 describe("失败重试", () => {
   it("POST 失败后 retry：复用同一 idempotency_key（服务端命中即重放 receipt）", async () => {
     buildEngine()
-    client.nextStart = () => Promise.reject(new SessionClientError("http", "status 500"))
+    client.nextCreate = () => Promise.reject(new SessionClientError("http", "status 500"))
     engine.submit("hello")
     await settle()
     expect(engine.getSnapshot().machine.phase).toBe("error")
 
-    client.nextStart = () => Promise.resolve(makeReceipt("run_retry"))
+    client.nextCreate = () => Promise.resolve(makeReceipt("run_retry"))
     engine.retry()
     await settle()
-    expect(client.startCalls).toHaveLength(2)
-    expect(client.startCalls[1]?.body.content).toBe("hello")
-    expect(client.startCalls[1]?.body.idempotency_key).toBe(
-      client.startCalls[0]?.body.idempotency_key,
+    expect(client.createCalls).toHaveLength(2)
+    expect(client.createCalls[1]?.body.content).toBe("hello")
+    expect(client.createCalls[1]?.body.idempotency_key).toBe(
+      client.createCalls[0]?.body.idempotency_key,
     )
     expect(thread().messages).toHaveLength(1)
     expect(engine.getSnapshot().machine).toMatchObject({ phase: "streaming", runId: "run_retry" })
@@ -563,10 +563,10 @@ describe("失败重试", () => {
     engine.retry()
     expect(thread().runStatus).toBe("idle")
     await settle()
-    expect(client.startCalls).toHaveLength(2)
-    expect(client.startCalls[1]?.body.content).toBe("job")
-    expect(client.startCalls[1]?.body.idempotency_key).not.toBe(
-      client.startCalls[0]?.body.idempotency_key,
+    expect(client.createCalls).toHaveLength(2)
+    expect(client.createCalls[1]?.body.content).toBe("job")
+    expect(client.createCalls[1]?.body.idempotency_key).not.toBe(
+      client.createCalls[0]?.body.idempotency_key,
     )
   })
 
@@ -577,10 +577,10 @@ describe("失败重试", () => {
     buildEngine()
     arrange(engine)
     await settle()
-    const callsBefore = client.startCalls.length
+    const callsBefore = client.createCalls.length
     engine.retry()
     await settle()
-    expect(client.startCalls.length).toBe(callsBefore)
+    expect(client.createCalls.length).toBe(callsBefore)
   })
 })
 
@@ -593,7 +593,7 @@ describe("模式驱动 wire（thinking）", () => {
     await settle()
     expect(activeEntry().mode).toBe("thinking")
     // 模式进 wire：thinking 档 → thinking=true（后端各 provider 翻成原生推理开关）。
-    expect(client.startCalls[0]?.body.thinking).toBe(true)
+    expect(client.createCalls[0]?.body.thinking).toBe(true)
     // 已开聊锁定：切换被忽略。
     engine.setMode("fast")
     expect(activeEntry().mode).toBe("thinking")
@@ -604,7 +604,7 @@ describe("模式驱动 wire（thinking）", () => {
     engine.submit("go")
     await settle()
     expect(activeEntry().mode).toBe("fast")
-    expect(client.startCalls[0]?.body.thinking).toBe(false)
+    expect(client.createCalls[0]?.body.thinking).toBe(false)
   })
 })
 
@@ -623,8 +623,8 @@ describe("运行中插话（steer）", () => {
     ])
     expect(engine.getSnapshot().machine.phase).toBe("streaming")
     await settle()
-    expect(client.startCalls).toHaveLength(2)
-    expect(client.startCalls[1]!.body.content).toBe("改成国内市场")
+    expect(client.createCalls).toHaveLength(2)
+    expect(client.createCalls[1]!.body.content).toBe("改成国内市场")
     expect(client.streams.length).toBe(streamsBefore) // 不重开事件流
   })
 
@@ -634,7 +634,7 @@ describe("运行中插话（steer）", () => {
     engine.submit("过早的第二条")
     expect(thread().messages.filter((m) => m.role === "user")).toHaveLength(1)
     await settle()
-    expect(client.startCalls).toHaveLength(1)
+    expect(client.createCalls).toHaveLength(1)
   })
 
   it("SSE message.user 先于插话回执到达：吸收本地 echo，无同 id 双份（真栈走查回归）", async () => {
@@ -643,7 +643,7 @@ describe("运行中插话（steer）", () => {
     await settle()
     // 挂起回执：publishLive 先于 HTTP 返回是 steer 常态。
     let release!: (receipt: ReturnType<typeof makeReceipt>) => void
-    client.nextStart = () => new Promise((resolve) => { release = resolve })
+    client.nextCreate = () => new Promise((resolve) => { release = resolve })
     engine.submit("顺便注意编码")
     client.lastStream().emit([
       makeEvent("message.user", { message_id: "msg_steer_k9", content: "顺便注意编码" }),
@@ -663,12 +663,12 @@ describe("运行中插话（steer）", () => {
     buildEngine()
     engine.submit("hello")
     await settle()
-    const okStart = client.nextStart
-    client.nextStart = () => Promise.reject(new SessionClientError("http", "boom"))
+    const okStart = client.nextCreate
+    client.nextCreate = () => Promise.reject(new SessionClientError("http", "boom"))
     engine.submit("插话一")
     await settle()
     expect(engine.getSnapshot().notice?.key).toBe("steer.sendFailed")
-    client.nextStart = okStart
+    client.nextCreate = okStart
     engine.submit("插话二")
     expect(engine.getSnapshot().notice).toBeNull()
   })

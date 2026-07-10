@@ -21,30 +21,6 @@ export const modelConfigSchema = z
   .strict()
 export type ModelConfig = z.infer<typeof modelConfigSchema>
 
-export const mcpServerSchema = z
-  .object({
-    name: z.string().min(1),
-    transport: z.enum(["http", "streamable_http"]),
-    url: z.string().min(1),
-    allowed_tools: z.array(z.string().min(1)),
-    timeout_s: z.number().int().optional(),
-    headers: z.record(z.string()).optional(),
-  })
-  .strict()
-export type McpServer = z.infer<typeof mcpServerSchema>
-
-export const subagentDefSchema = z
-  .object({
-    name: z.string().min(1),
-    description: z.string(),
-    system_prompt: z.string().min(1).optional(),
-    tools: z.array(z.string().min(1)),
-    skills: z.array(z.string().min(1)),
-    model: modelConfigSchema.optional(),
-  })
-  .strict()
-export type SubagentDef = z.infer<typeof subagentDefSchema>
-
 export const permissionsSchema = z
   .object({
     approval_tools: z.array(z.string().min(1)),
@@ -58,16 +34,14 @@ export type Permissions = z.infer<typeof permissionsSchema>
 export const runtimeConfigSchema = z
   .object({
     agent_type: z.enum(["general"]),
-    entry: z.string().min(1).optional(),
+    agent: z.string().min(1).optional(),
     model: modelConfigSchema,
-    system_prompt: z.string().min(1).optional(),
     tools: z.array(z.string().min(1)),
     skills: z.array(z.string().min(1)),
-    mcp: z.array(mcpServerSchema),
-    subagents: z.array(subagentDefSchema),
+    mcp_servers: z.array(z.string().min(1)),
+    subagents: z.array(z.string().min(1)),
     backend: z.enum(["state", "local_shell", "docker", "e2b", "custom"]),
     permissions: permissionsSchema,
-    swarm_members: z.array(z.string().min(1)).optional(),
   })
   .strict()
 export type RuntimeConfig = z.infer<typeof runtimeConfigSchema>

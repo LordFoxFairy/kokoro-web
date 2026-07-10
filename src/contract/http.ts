@@ -92,25 +92,27 @@ export function parseSessionSnapshot(input: unknown): SessionSnapshot {
   return sessionSnapshotSchema.parse(input)
 }
 
-export const startMessageBodySchema = z
+export const messageCreateParamsSchema = z
   .object({
     idempotency_key: z.string().min(1),
     content: z.string().min(1),
-    selected_model: z.string().min(1).optional(),
-    entry: z.string().min(1).optional(),
+    model: z.string().min(1).optional(),
+    agent: z.string().min(1).optional(),
     thinking: z.boolean().optional(),
+    skills: z.array(z.string().min(1)).optional(),
+    mcp_servers: z.array(z.string().min(1)).optional(),
   })
   .strict()
-export type StartMessageBody = z.infer<typeof startMessageBodySchema>
+export type MessageCreateParams = z.infer<typeof messageCreateParamsSchema>
 
-export const startMessageReceiptSchema = z
+export const messageCreateReceiptSchema = z
   .object({
     run_id: z.string().min(1),
     user_message_id: z.string().min(1),
     assistant_message_id: z.string().min(1),
   })
   .strict()
-export type StartMessageReceipt = z.infer<typeof startMessageReceiptSchema>
+export type MessageCreateReceipt = z.infer<typeof messageCreateReceiptSchema>
 
 export const runControlBodySchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("run.cancel"), decision_id: z.string().min(1) }).strict(),

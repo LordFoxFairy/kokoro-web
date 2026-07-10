@@ -464,7 +464,7 @@ export function createSessionEngine(deps: EngineDeps): SessionEngine {
     // 模式意图上 wire：thinking 档=true（后端各 provider 翻成原生推理开关），fast=false 显式关。
     const mode = store ? activeMode(store) : pendingMode
     deps.client
-      .startRun(sessionId, {
+      .createMessage(sessionId, {
         idempotency_key: idempotencyKey,
         content,
         thinking: mode === "thinking",
@@ -509,7 +509,7 @@ export function createSessionEngine(deps: EngineDeps): SessionEngine {
       // （否则 adopt 会改/删 T 的乐观气泡、notice 串到 T）。与 beginRun 回执守卫对齐。
       const steerSessionId = store.activeId
       deps.client
-        .startRun(steerSessionId, {
+        .createMessage(steerSessionId, {
           idempotency_key: createId("idem"),
           content: trimmed,
           thinking: activeMode(store) === "thinking",

@@ -10,12 +10,12 @@ import {
   parseSessionSnapshot,
   runControlReceiptSchema,
   snapshotPath,
-  startMessageReceiptSchema,
+  messageCreateReceiptSchema,
   type RunControlBody,
   type RunControlReceipt,
   type SessionSnapshot,
-  type StartMessageBody,
-  type StartMessageReceipt,
+  type MessageCreateParams,
+  type MessageCreateReceipt,
   deleteSessionReceiptSchema,
   type DeleteSessionReceipt,
 } from "@/contract/http"
@@ -45,7 +45,7 @@ export type OpenEventsArgs = {
 }
 
 export type SessionClient = {
-  startRun: (sessionId: string, body: StartMessageBody) => Promise<StartMessageReceipt>
+  createMessage: (sessionId: string, body: MessageCreateParams) => Promise<MessageCreateReceipt>
   // 服务端不存在该会话（404）返回 null（本地新会话的合法答案）；其余失败照常上抛。
   fetchSnapshot: (sessionId: string) => Promise<SessionSnapshot | null>
   sendControl: (
@@ -148,9 +148,9 @@ export function createSessionClient(options: { baseUrl: string; token?: string }
     options.token === undefined ? {} : { authorization: `Bearer ${options.token}` }
 
   return {
-    startRun: (sessionId, body) =>
+    createMessage: (sessionId, body) =>
       postJson(url(messagesPath(sessionId)), body, (raw) =>
-        startMessageReceiptSchema.parse(raw), authHeaders,
+        messageCreateReceiptSchema.parse(raw), authHeaders,
       ),
 
     fetchSnapshot: async (sessionId) => {

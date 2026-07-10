@@ -66,7 +66,7 @@ it("主路径：发送 → 流式 → HITL 批准 → 完成收束", async () =>
   expect(screen.getAllByText("帮我写个文件").length).toBeGreaterThan(0)
   expect(screen.getByLabelText("对话输入")).toHaveValue("")
   await act(settle)
-  expect(client.startCalls).toHaveLength(1)
+  expect(client.createCalls).toHaveLength(1)
   // 流式中输入保持可用（运行中插话）；草稿为空时右键位是停止。
   expect(screen.getByLabelText("对话输入")).toBeEnabled()
   expect(screen.getByLabelText("停止生成")).toBeInTheDocument()

@@ -3,8 +3,8 @@
 import type {
   RunControlBody,
   SessionSnapshot,
-  StartMessageBody,
-  StartMessageReceipt,
+  MessageCreateParams,
+  MessageCreateReceipt,
 } from "@/contract/http"
 import type { SessionEvent } from "@/contract/session-events"
 import type { OpenEventsArgs, SessionClient, SessionClientError } from "@/engine/client"
@@ -19,19 +19,19 @@ export type FakeStream = {
 }
 
 export type FakeClient = SessionClient & {
-  startCalls: { sessionId: string; body: StartMessageBody }[]
+  createCalls: { sessionId: string; body: MessageCreateParams }[]
   controlCalls: { sessionId: string; runId: string; body: RunControlBody }[]
   snapshotCalls: string[]
   deleteCalls: string[]
   streams: FakeStream[]
-  nextStart: (sessionId: string, body: StartMessageBody) => Promise<StartMessageReceipt>
+  nextCreate: (sessionId: string, body: MessageCreateParams) => Promise<MessageCreateReceipt>
   nextControl: () => Promise<{ ok: true }>
   // 默认 null（服务端无此会话）；测试可按会话编程 snapshot。
   nextSnapshot: (sessionId: string) => Promise<SessionSnapshot | null>
   lastStream: () => FakeStream
 }
 
-export function makeReceipt(runId: string): StartMessageReceipt {
+export function makeReceipt(runId: string): MessageCreateReceipt {
   return {
     run_id: runId,
     user_message_id: `${runId}:user`,
@@ -42,11 +42,11 @@ export function makeReceipt(runId: string): StartMessageReceipt {
 export function createFakeClient(): FakeClient {
   let runCounter = 0
   const client: FakeClient = {
-    startCalls: [],
+    createCalls: [],
     controlCalls: [],
     snapshotCalls: [],
     streams: [],
-    nextStart: () => {
+    nextCreate: () => {
       runCounter += 1
       return Promise.resolve(makeReceipt(`run_${runCounter}`))
     },
@@ -59,9 +59,9 @@ export function createFakeClient(): FakeClient {
       }
       return stream
     },
-    startRun: (sessionId, body) => {
-      client.startCalls.push({ sessionId, body })
-      return client.nextStart(sessionId, body)
+    createMessage: (sessionId, body) => {
+      client.createCalls.push({ sessionId, body })
+      return client.nextCreate(sessionId, body)
     },
     fetchSnapshot: (sessionId) => {
       client.snapshotCalls.push(sessionId)

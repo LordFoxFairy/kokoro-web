@@ -101,7 +101,7 @@ describe("并发与跨-tab 回归（866965c）", () => {
     await reachStreaming() // conv_1 streaming
     // 让 steer 的 POST 挂起，可控失败。
     let rejectSteer: (error: unknown) => void = () => {}
-    client.nextStart = () =>
+    client.nextCreate = () =>
       new Promise((_resolve, reject) => {
         rejectSteer = reject
       })
@@ -118,7 +118,7 @@ describe("并发与跨-tab 回归（866965c）", () => {
     buildEngine()
     await reachStreaming()
     let rejectSteer: (error: unknown) => void = () => {}
-    client.nextStart = () =>
+    client.nextCreate = () =>
       new Promise((_resolve, reject) => {
         rejectSteer = reject
       })

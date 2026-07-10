@@ -88,7 +88,7 @@ export function createPreviewClient(options?: { stepMs?: number }): SessionClien
   }
 
   return {
-    startRun: (sessionId, body) => {
+    createMessage: (sessionId, body) => {
       runCounter += 1
       const runId = `run_preview_${runCounter}`
       enqueueRun(sessionId, runId, body.content)
