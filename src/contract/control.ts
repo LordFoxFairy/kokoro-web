@@ -67,11 +67,13 @@ const approveDecisionSchema = z.object({ type: z.literal("approve"), tool_id: z.
 const editDecisionSchema = z.object({ type: z.literal("edit"), tool_id: z.string().min(1), args: z.record(z.unknown()) }).strict()
 const rejectDecisionSchema = z.object({ type: z.literal("reject"), tool_id: z.string().min(1), reason: z.string().optional() }).strict()
 const respondDecisionSchema = z.object({ type: z.literal("respond"), tool_id: z.string().min(1), response: z.string().min(1) }).strict()
+const submitDecisionSchema = z.object({ type: z.literal("submit"), request_id: z.string().min(1), value: z.record(z.unknown()) }).strict()
 export const resumeDecisionSchema = z.discriminatedUnion("type", [
   approveDecisionSchema,
   editDecisionSchema,
   rejectDecisionSchema,
   respondDecisionSchema,
+  submitDecisionSchema,
 ])
 export type ResumeDecision = z.infer<typeof resumeDecisionSchema>
 export type ResumeDecisionType = ResumeDecision["type"]
