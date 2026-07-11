@@ -4,10 +4,12 @@ import type { ResumeDecision } from "@/contract/control"
 import type { SessionStep } from "@/core/state"
 
 // UI 侧决策输入（edit 暂无 UI 入口，契约层保留）。
+// submit：kind=input 动态表单的结构化提交（契约 SubmitDecision，request_id=发起工具 tool_id）。
 export type ToolDecision =
   | { type: "approve" }
   | { type: "reject" }
   | { type: "respond"; message: string }
+  | { type: "submit"; value: Record<string, unknown> }
 
 export type StagedDecisions = ReadonlyMap<string, ToolDecision>
 
@@ -49,8 +51,11 @@ export function buildResumeDecisions(
       decisions.push({ type: "approve", tool_id: toolId })
     } else if (decision.type === "reject") {
       decisions.push({ type: "reject", tool_id: toolId })
-    } else {
+    } else if (decision.type === "respond") {
       decisions.push({ type: "respond", tool_id: toolId, response: decision.message })
+    } else {
+      // 契约 SubmitDecision：锚字段是 request_id（同一暂停帧内即发起工具的 tool_id）。
+      decisions.push({ type: "submit", request_id: toolId, value: decision.value })
     }
   }
   return decisions

@@ -80,6 +80,14 @@ describe("buildResumeDecisions：凑齐才提交", () => {
     expect(rejectedToolIds(frame, ["tool_1", "tool_2", "tool_3"])).toEqual(["tool_2"])
   })
 
+  it("submit 决策映射为契约 SubmitDecision（锚字段 request_id=tool_id）", () => {
+    const frame = staged([["tool_1", { type: "submit", value: { otp: "123456" } }]])
+    expect(buildResumeDecisions(frame, ["tool_1"])).toEqual([
+      { type: "submit", request_id: "tool_1", value: { otp: "123456" } },
+    ])
+    expect(rejectedToolIds(frame, ["tool_1"])).toEqual([])
+  })
+
   it("stageDecision 不可变：改写决策产生新 Map 且可覆盖", () => {
     const first = stageDecision(new Map(), "tool_1", { type: "approve" })
     const second = stageDecision(first, "tool_1", { type: "reject" })

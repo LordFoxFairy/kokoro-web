@@ -5,6 +5,7 @@ import { useT } from "@/i18n/context"
 import type { MessageKey } from "@/i18n/messages"
 import { ApprovalCard } from "@/ui/hitl/approval-card"
 import { AskUserCard } from "@/ui/hitl/ask-user-card"
+import { InputCard } from "@/ui/hitl/input-card"
 import { ReviewCard } from "@/ui/hitl/review-card"
 import { ChevronIcon, WrenchIcon } from "@/ui/icons/thread"
 
@@ -53,8 +54,8 @@ const CLOSED_NOTE: Partial<Record<ToolStatus, MessageKey>> = {
 
 // 单条工具调用：扳手 + 名称 + 运行态。有入参/结果/错误/待批时是可展开的 <details>，
 // 无任何细节时退化为不可点击的 <div>，避免无意义的死切换。
-// awaiting 时按契约 kind 分流三张 HITL 卡：tool_approval → 审批卡；ask_user → 问答卡；
-// result_review → 结果审核卡。
+// awaiting 时按契约 kind 分流四张 HITL 卡：tool_approval → 审批卡；ask_user → 问答卡；
+// result_review → 结果审核卡；input → 动态表单输入卡。
 export function ToolCallRow({
   sessionId,
   tool,
@@ -83,9 +84,14 @@ export function ToolCallRow({
 }) {
   const t = useT()
   // ask_user 的入参（question/choices）已由问答卡语义化呈现：原始 JSON 只添噪音。
-  const argsText = tool.name === "ask_user_question" ? null : formatArgs(tool.args)
-  // 胶囊头的一行简要参数（ask_user 同样跳过——语义卡已呈现）。
-  const argHint = tool.name === "ask_user_question" ? null : formatArgHint(tool.args)
+  // kind=input 待批期间同理（message/validation_error 由输入卡呈现）；恢复执行后 args
+  // 被 invoked 刷新为真实入参，照常展示。
+  const semanticArgsCard =
+    tool.name === "ask_user_question" ||
+    (tool.status === "awaiting" && tool.awaitingKind === "input")
+  const argsText = semanticArgsCard ? null : formatArgs(tool.args)
+  // 胶囊头的一行简要参数（语义卡同样跳过——卡已呈现）。
+  const argHint = semanticArgsCard ? null : formatArgHint(tool.args)
   const running = tool.status === "running"
   const failed = tool.status === "error"
   // awaiting：被门控工具等待用户批准/回答（HITL），展开显示对应卡片。
@@ -180,6 +186,14 @@ export function ToolCallRow({
             />
           ) : tool.awaitingKind === "result_review" ? (
             <ReviewCard
+              tool={tool}
+              staged={staged}
+              hitlActive={hitlActive}
+              controlError={controlError}
+              onDecision={onDecision}
+            />
+          ) : tool.awaitingKind === "input" ? (
+            <InputCard
               tool={tool}
               staged={staged}
               hitlActive={hitlActive}

@@ -259,6 +259,40 @@ describe("HITL：rejected 不被降级", () => {
     expect(toolStatusOf(state, "run_1", "tool_2")).toBe("rejected")
   })
 
+  it("kind=input 校验失败重问：重发 awaiting 刷新 args（validation_error 上卡、schema 保持）", () => {
+    const schema = {
+      type: "object",
+      properties: { otp: { type: "string" } },
+      required: ["otp"],
+    }
+    const base = {
+      kind: "input" as const,
+      allowed_decisions: ["submit", "reject"] as ("submit" | "reject")[],
+      input_schema: schema,
+    }
+    const state = applySessionEvents(createSessionStreamState(), [
+      makeEvent(
+        "tool.awaiting_approval",
+        awaitingPayload("tool_1", ["tool_1"], { ...base, args: { message: "需要验证码" } }),
+      ),
+      makeEvent(
+        "tool.awaiting_approval",
+        awaitingPayload("tool_1", ["tool_1"], {
+          ...base,
+          args: { message: "需要验证码", validation_error: "'otp' is a required property" },
+        }),
+      ),
+    ])
+    const step = (state.stepsByRun["run_1"] ?? [])[0]
+    if (step?.kind !== "tool") {
+      throw new Error("expected tool step")
+    }
+    expect(step.tool.status).toBe("awaiting")
+    expect(step.tool.args["validation_error"]).toBe("'otp' is a required property")
+    expect(step.tool.inputSchema).toEqual(schema)
+    expect(step.tool.awaitingKind).toBe("input")
+  })
+
   it("awaiting 事件把契约 pending_tool_ids/kind/risk 落进工具（凑帧与分卡判据）", () => {
     const state = applySessionEvent(
       createSessionStreamState(),

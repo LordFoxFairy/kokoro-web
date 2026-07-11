@@ -151,7 +151,8 @@ function applyToolAwaitingApproval(
     (step) => step.kind === "tool" && step.tool.id === payload.tool_id,
     (step) =>
       step.kind === "tool"
-        ? { ...step, tool: { ...step.tool, status: "awaiting", ...meta } }
+        ? // args 一并刷新：kind=input 校验失败重问时 validation_error 随 args 重发（同 tool_id）。
+          { ...step, tool: { ...step.tool, args: payload.args, status: "awaiting", ...meta } }
         : step,
   )
   if (!updated) {

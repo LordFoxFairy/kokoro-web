@@ -828,6 +828,82 @@
   outline-offset: 2px;
 }
 
+/* —— kind=input 动态表单（与审批卡同族） —— */
+
+.toolInputFields {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+/* 字段标签列：标题 + 控件纵排；boolean 开关行横排。 */
+.toolInputLabel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.76rem;
+  color: color-mix(in srgb, var(--brand-wood) 55%, var(--foreground) 45%);
+}
+
+.toolInputLabel[data-invalid="true"] {
+  color: color-mix(in srgb, var(--k-error) 72%, var(--foreground) 28%);
+}
+
+.toolInputLabel[data-invalid="true"] .toolRespondInput {
+  border-color: color-mix(in srgb, var(--k-error) 70%, transparent);
+}
+
+.toolInputSwitchRow {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.toolInputSwitch {
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  accent-color: var(--brand-wood);
+  cursor: pointer;
+}
+
+.toolInputSwitch:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+/* 兜底 JSON 编辑器：与输入框同族的等宽多行区。 */
+.toolInputJson {
+  min-height: 6rem;
+  resize: vertical;
+  border: 1px solid color-mix(in srgb, var(--brand-wood-soft) 55%, transparent);
+  border-radius: 0.45rem;
+  background: color-mix(in srgb, white 84%, var(--surface-soft) 16%);
+  padding: 0.36rem 0.5rem;
+  color: var(--foreground);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.toolInputJson:focus-visible {
+  outline: 2px solid var(--brand-wood);
+  outline-offset: 2px;
+}
+
+.toolInputJsonHint {
+  margin: 0;
+  font-size: 0.76rem;
+  color: color-mix(in srgb, var(--brand-wood) 55%, var(--foreground) 45%);
+}
+
+/* 拦截/重问错误行：与 risk 行同色系（错误语义）。 */
+.toolInputError {
+  margin: 0;
+  font-size: 0.76rem;
+  color: color-mix(in srgb, var(--k-error) 72%, var(--foreground) 28%);
+}
+
 /* —— 子智能体行 —— */
 
 .subagent {
