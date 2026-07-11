@@ -26,6 +26,7 @@ export const skillGrantSchema = z
     name: z.string().min(1),
     content_hash: z.string().min(1),
     description: z.string().min(1),
+    scope: z.string().min(1),
   })
   .strict()
 export type SkillGrant = z.infer<typeof skillGrantSchema>
