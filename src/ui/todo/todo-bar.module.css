@@ -55,6 +55,19 @@
   transition: transform 150ms ease;
 }
 
+/* 进度条：钉在头部下沿的一条细轨，填充随完成比推进——一眼读出整体进度。 */
+.progress {
+  height: 2px;
+  background: color-mix(in srgb, var(--k-brand-soft) 70%, transparent);
+}
+
+.progressFill {
+  height: 100%;
+  background: color-mix(in srgb, var(--k-brand) 70%, transparent);
+  border-radius: 0 999px 999px 0;
+  transition: width 0.2s ease-out;
+}
+
 .todobar[data-collapsed="false"] .chevron {
   transform: rotate(180deg);
 }

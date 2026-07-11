@@ -411,7 +411,7 @@
   width: 0.7rem;
   height: 0.7rem;
   border-radius: 999px;
-  background: color-mix(in srgb, #b4584f 80%, transparent);
+  background: color-mix(in srgb, var(--k-error) 80%, transparent);
 }
 
 /* 待批准：静止的琥珀点 + 柔和脉冲，区别于「进行中」转圈，提示需要人来决定。 */
@@ -420,7 +420,7 @@
   width: 0.7rem;
   height: 0.7rem;
   border-radius: 999px;
-  background: #c8923c;
+  background: var(--k-warning);
   animation: kk-accent-pulse 1.6s ease-in-out infinite;
 }
 
@@ -428,7 +428,7 @@
 .actstateRejected {
   width: 0.85rem;
   height: 0.85rem;
-  color: color-mix(in srgb, #8a8f99 80%, var(--foreground) 20%);
+  color: color-mix(in srgb, var(--k-neutral) 80%, var(--foreground) 20%);
 }
 
 @keyframes kk-accent-pulse {
@@ -443,98 +443,140 @@
   }
 }
 
-/* —— 工具行 —— */
+/* —— 工具行（胶囊 pill）—— */
 
-/* 工具调用：可展开看参数/结果。左侧细竖条做状态强调（运行/完成），
-   color/opacity/边条颜色变化为主，绝不改盒子尺寸——hover/状态切换均无布局抖动。 */
+/* 工具调用行：summary 头是一枚状态化胶囊，detail 展开区在其下全宽铺开。
+   .tool 本身只做纵向容器，胶囊靠内容自适应宽度（fit-content）不占满整行。 */
 .tool {
-  position: relative;
-  padding-left: 0.55rem;
-  border-left: 2px solid transparent;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
   font-size: 0.84rem;
 }
 
+/* 工具胶囊：图标 + 名称 + 简要参数 + 状态 + chevron 一行收在圆角药丸里。
+   状态切换只改边色/底色/前景，尺寸恒定——hover/落定绝不抖动布局。 */
 .toolSummary {
-  display: flex;
+  position: relative;
+  display: inline-flex;
   align-items: center;
-  gap: 0.45rem;
+  gap: 0.4rem;
+  max-width: 100%;
+  border: 1px solid var(--k-border);
+  border-radius: 999px;
+  background: var(--k-bg-elevated);
+  padding: 0.24rem 0.7rem;
   cursor: pointer;
   list-style: none;
-  padding: 0.1rem 0;
+  overflow: hidden;
+  transition:
+    background-color 0.16s ease-out,
+    border-color 0.16s ease-out;
 }
 
-/* 无入参/无结果时的静态行头：去掉指针手型与 marker，明确「不可展开」。 */
+.toolSummary:hover {
+  background: var(--k-bg-hover);
+}
+
+/* 无入参/无结果时的静态胶囊：去掉指针手型与 hover，明确「不可展开」。 */
 .toolSummaryStatic {
   cursor: default;
+}
+
+.toolSummaryStatic:hover {
+  background: var(--k-bg-elevated);
 }
 
 .toolSummary::-webkit-details-marker {
   display: none;
 }
 
-/* 运行中：名称用暖木强调，左侧竖条点亮；脉动只在未要求减少动态时启用。 */
-.tool[data-status="running"] {
-  border-left-color: color-mix(in srgb, var(--brand-wood) 60%, transparent);
+.toolSummary:focus-visible {
+  outline: none;
+  border-color: var(--k-brand);
+  box-shadow: 0 0 0 2px var(--k-brand-ring);
 }
 
+/* 运行中：中性胶囊 + 名称暖木强调；一层克制的微光沿胶囊扫过（见 ::after）。 */
 .tool[data-status="running"] .toolName {
   color: var(--brand-wood);
 }
 
-/* 完成：名称略暗、整体降一点不透明度，弱化为已落定的过程项。 */
+/* 微光层：仅运行中出现的低透明品牌光斜扫，纯 CSS，减少动态时静默。 */
+.tool[data-status="running"] .toolSummary::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    100deg,
+    transparent 20%,
+    color-mix(in srgb, var(--k-brand) 16%, transparent) 50%,
+    transparent 80%
+  );
+  transform: translateX(-100%);
+}
+
+/* 完成：安静的中性态——名称淡、整体略降透明，弱化为已落定过程项（成功不抢眼）。 */
 .tool[data-status="done"] {
-  border-left-color: color-mix(in srgb, var(--brand-wood) 20%, transparent);
-  opacity: 0.85;
+  opacity: 0.9;
 }
 
 .tool[data-status="done"] .toolName {
-  color: color-mix(in srgb, var(--foreground) 70%, white 30%);
+  color: var(--k-text-secondary);
 }
 
-.tool[data-status="error"] {
-  border-left-color: color-mix(in srgb, #b4584f 55%, transparent);
+/* 失败：error 描边 + 浅红木底，名称转 error 前景。 */
+.tool[data-status="error"] .toolSummary {
+  border-color: var(--k-error-border);
+  background: var(--k-error-bg);
 }
 
 .tool[data-status="error"] .toolName {
-  color: color-mix(in srgb, #b4584f 75%, var(--foreground) 25%);
+  color: color-mix(in srgb, var(--k-error) 75%, var(--foreground) 25%);
 }
 
-/* 已拒绝：哑光石板灰边，工具名删除线——明确「未执行」且非错误。 */
-.tool[data-status="rejected"] {
-  border-left-color: color-mix(in srgb, #8a8f99 55%, transparent);
+/* 待批准：warning 描边 + 浅琥珀底，提示需要人来决定。 */
+.tool[data-status="awaiting"] .toolSummary {
+  border-color: var(--k-warning-border);
+  background: var(--k-warning-bg);
+}
+
+/* 已拒绝：中性描边，工具名删除线——明确「未执行」且非错误。 */
+.tool[data-status="rejected"] .toolSummary {
+  border-color: var(--k-neutral-border);
 }
 
 .tool[data-status="rejected"] .toolName {
-  color: color-mix(in srgb, #8a8f99 70%, var(--foreground) 30%);
+  color: color-mix(in srgb, var(--k-neutral) 70%, var(--foreground) 30%);
   text-decoration: line-through;
 }
 
-/* 终态收口未执行（stale/cancelled）：同样的哑光石板灰边，但不打删除线（非用户驳回）。 */
-.tool[data-status="stale-awaiting"],
-.tool[data-status="stale-running"],
-.tool[data-status="cancelled"] {
-  border-left-color: color-mix(in srgb, #8a8f99 55%, transparent);
+/* 终态收口未执行（stale/cancelled）：中性描边，不打删除线（非用户驳回）。 */
+.tool[data-status="stale-awaiting"] .toolSummary,
+.tool[data-status="stale-running"] .toolSummary,
+.tool[data-status="cancelled"] .toolSummary {
+  border-color: var(--k-neutral-border);
 }
 
 .tool[data-status="stale-awaiting"] .toolName,
 .tool[data-status="stale-running"] .toolName,
 .tool[data-status="cancelled"] .toolName {
-  color: color-mix(in srgb, #8a8f99 70%, var(--foreground) 30%);
+  color: color-mix(in srgb, var(--k-neutral) 70%, var(--foreground) 30%);
 }
 
-@keyframes kk-tool-pulse {
-  0%,
-  100% {
-    border-left-color: color-mix(in srgb, var(--brand-wood) 40%, transparent);
+@keyframes kk-tool-sheen {
+  0% {
+    transform: translateX(-100%);
   }
-  50% {
-    border-left-color: color-mix(in srgb, var(--brand-wood) 95%, transparent);
+  100% {
+    transform: translateX(100%);
   }
 }
 
 .toolIcon {
-  width: 0.9rem;
-  height: 0.9rem;
+  width: 0.85rem;
+  height: 0.85rem;
   flex-shrink: 0;
   color: var(--brand-wood);
 }
@@ -549,10 +591,20 @@
   color: var(--foreground);
 }
 
+/* 简要参数：紧跟名称的一行弱化摘要（如文件名/首个入参），超宽省略。 */
+.toolArgHint {
+  min-width: 0;
+  flex-shrink: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.74rem;
+  color: var(--k-text-tertiary);
+}
+
 .toolState {
   display: inline-flex;
   flex-shrink: 0;
-  margin-left: auto;
 }
 
 /* 行级「可展开」chevron——只有 <details> 行渲染它，静态行没有；展开时翻转。 */
@@ -602,10 +654,10 @@
 .toolError {
   margin: 0;
   padding: 0.4rem 0.5rem;
-  border-left: 2px solid color-mix(in srgb, #b4584f 45%, transparent);
+  border-left: 2px solid color-mix(in srgb, var(--k-error) 45%, transparent);
   border-radius: 0 0.4rem 0.4rem 0;
-  background: color-mix(in srgb, #b4584f 8%, var(--surface) 92%);
-  color: #7a3a33;
+  background: color-mix(in srgb, var(--k-error) 8%, var(--surface) 92%);
+  color: var(--k-error-strong);
   font-size: 0.78rem;
   line-height: 1.45;
   white-space: pre-wrap;
@@ -616,10 +668,10 @@
 .toolRejectedNote {
   margin: 0;
   padding: 0.4rem 0.5rem;
-  border-left: 2px solid color-mix(in srgb, #8a8f99 45%, transparent);
+  border-left: 2px solid color-mix(in srgb, var(--k-neutral) 45%, transparent);
   border-radius: 0 0.4rem 0.4rem 0;
-  background: color-mix(in srgb, #8a8f99 8%, var(--surface) 92%);
-  color: color-mix(in srgb, #5c616b 85%, var(--foreground) 15%);
+  background: color-mix(in srgb, var(--k-neutral) 8%, var(--surface) 92%);
+  color: color-mix(in srgb, var(--k-neutral-strong) 85%, var(--foreground) 15%);
   font-size: 0.78rem;
   line-height: 1.45;
 }
@@ -659,7 +711,7 @@
 .toolRisk {
   margin: 0;
   font-size: 0.76rem;
-  color: color-mix(in srgb, #b4552d 72%, var(--foreground) 28%);
+  color: color-mix(in srgb, var(--k-error) 72%, var(--foreground) 28%);
 }
 
 /* ask_user 的 choices 单选组：胶囊按钮，选中即填入回复。 */
@@ -687,7 +739,7 @@
 .toolChoice[data-selected="true"] {
   background: var(--brand-wood);
   border-color: var(--brand-wood);
-  color: #fffdf9;
+  color: var(--k-brand-on);
 }
 
 .toolChoice:disabled {
@@ -745,7 +797,7 @@
 .toolApprove,
 .toolRespondSend {
   background: var(--brand-wood);
-  color: #fffdf9;
+  color: var(--k-brand-on);
 }
 
 .toolApprove:hover,
@@ -1027,11 +1079,11 @@
   gap: 0.6rem;
   align-self: flex-start;
   max-width: 76%;
-  border: 1px solid color-mix(in srgb, #b4584f 32%, var(--border-soft) 68%);
-  background: color-mix(in srgb, #b4584f 8%, var(--surface) 92%);
+  border: 1px solid color-mix(in srgb, var(--k-error) 32%, var(--border-soft) 68%);
+  background: color-mix(in srgb, var(--k-error) 8%, var(--surface) 92%);
   border-radius: 0.9rem;
   padding: 0.5rem 0.75rem;
-  color: #7a3a33;
+  color: var(--k-error-strong);
   font-size: 0.82rem;
 }
 
@@ -1108,9 +1160,9 @@
     animation: kk-message-enter 200ms ease-out;
   }
 
-  /* 运行中左侧竖条呼吸：仅亮度律动，不位移、不改尺寸。 */
-  .tool[data-status="running"] {
-    animation: kk-tool-pulse 1.6s ease-in-out infinite;
+  /* 运行中胶囊微光：品牌光斜扫一遍又一遍，克制低透明，不改尺寸不位移布局。 */
+  .tool[data-status="running"] .toolSummary::after {
+    animation: kk-tool-sheen 1.8s ease-in-out infinite;
   }
 }
 

@@ -61,6 +61,19 @@ export function TodoBar({ todos }: TodoBarProps) {
         <ChevronIcon className={styles.chevron} />
       </button>
 
+      <div
+        className={styles.progress}
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={todos.length}
+        aria-valuenow={doneCount}
+      >
+        <div
+          className={styles.progressFill}
+          style={{ width: `${(doneCount / todos.length) * 100}%` }}
+        />
+      </div>
+
       {collapsed ? null : (
         <div className={styles.list} role="list" aria-label={t("todo.plan")}>
           {todos.map((todo, index) => (

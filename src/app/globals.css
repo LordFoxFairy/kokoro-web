@@ -1,20 +1,91 @@
 /* 全局仅两件事：tailwind preflight（reset）+ 设计 token。组件样式随组件走（CSS Module）。 */
 @import "tailwindcss";
 
+/* —— 语义 design token（--k-*）——
+   单一色值真源：组件只引用语义变量，绝不新写裸色值。四组语义：
+   text（四级）/ bg（base·container·elevated·hover）/ border（default·strong）/
+   brand（+hover·soft·on·ring）/ status（success·warning·error·neutral，各带前景·bg·border）。
+   暖色纸感身份靠两枚原色 ink/paper 派生：文本用 ink 半透明叠在纸上，随底色透气。 */
 :root {
-  --background: #fbfaf8;
-  --foreground: #2b2520;
-  --surface: #ffffff;
-  --surface-soft: #fbf6ec;
-  --border-soft: #ebe0cf;
-  --brand-wood: #8b6f47;
-  --brand-wood-hover: #7b5f39;
-  --brand-wood-soft: #f3ead6;
+  /* 原色：暖墨 ink（近黑暖棕）+ 暖纸 paper（米白），全体系由此派生。 */
+  --k-ink: #2b2520;
+  --k-paper: #fbfaf8;
+
+  /* 文本四级：ink 逐级淡出，半透明让文字吸收底层纸色，维持暖色层次。 */
+  --k-text: var(--k-ink);
+  --k-text-secondary: rgba(43, 37, 32, 0.7);
+  --k-text-tertiary: rgba(43, 37, 32, 0.54);
+  --k-text-muted: rgba(43, 37, 32, 0.4);
+  /* 品牌色/深色底上的反白文字（暖白，非纯白）。 */
+  --k-text-on-brand: #fffdf9;
+
+  /* 背景四层：base 页底 → container 卡面 → elevated 抬升暖底 → hover 交互态。 */
+  --k-bg-base: var(--k-paper);
+  --k-bg-container: #ffffff;
+  --k-bg-elevated: #fbf6ec;
+  --k-bg-hover: color-mix(in srgb, var(--k-brand) 8%, var(--k-bg-container));
+
+  /* 描边：default 柔木线 + strong 品牌加权（焦点/强调边界）。 */
+  --k-border: #ebe0cf;
+  --k-border-strong: color-mix(in srgb, var(--k-brand) 42%, var(--k-border));
+
+  /* 品牌：暖木主色 + hover 深化 + soft 浅底 + on 反白 + ring 焦点环。 */
+  --k-brand: #8b6f47;
+  --k-brand-hover: #7b5f39;
+  --k-brand-soft: #f3ead6;
+  --k-brand-on: var(--k-text-on-brand);
+  --k-brand-ring: color-mix(in srgb, var(--k-brand) 55%, transparent);
+
+  /* 状态三梯度：每态给前景（文字/图标/强调）· bg（浅色填充）· border（描边）。
+     色相贴暖纸：success 暖鼠尾草绿、warning 琥珀、error 红木、neutral 石板灰。 */
+  --k-success: #5b7f5a;
+  --k-success-bg: color-mix(in srgb, var(--k-success) 10%, var(--k-bg-container));
+  --k-success-border: color-mix(in srgb, var(--k-success) 42%, transparent);
+
+  --k-warning: #c8923c;
+  --k-warning-bg: color-mix(in srgb, var(--k-warning) 12%, var(--k-bg-container));
+  --k-warning-border: color-mix(in srgb, var(--k-warning) 45%, transparent);
+
+  --k-error: #b4584f;
+  --k-error-strong: #7a3a33;
+  --k-error-bg: color-mix(in srgb, var(--k-error) 8%, var(--k-bg-container));
+  --k-error-border: color-mix(in srgb, var(--k-error) 40%, transparent);
+
+  --k-neutral: #8a8f99;
+  --k-neutral-strong: #5c616b;
+  --k-neutral-bg: color-mix(in srgb, var(--k-neutral) 8%, var(--k-bg-container));
+  --k-neutral-border: color-mix(in srgb, var(--k-neutral) 40%, transparent);
+
+  /* —— 旧变量别名：历史组件继续引用这些名字，统一转发到 --k-*，
+     令全仓走同一真源、零逐文件改写风险。新代码一律用 --k-*。 —— */
+  --background: var(--k-bg-base);
+  --foreground: var(--k-text);
+  --surface: var(--k-bg-container);
+  --surface-soft: var(--k-bg-elevated);
+  --border-soft: var(--k-border);
+  --border: var(--k-border);
+  --muted: var(--k-text-tertiary);
+  --accent: var(--k-brand);
+  --brand-wood: var(--k-brand);
+  --brand-wood-hover: var(--k-brand-hover);
+  --brand-wood-soft: var(--k-brand-soft);
+
   /* 统一内容列宽：对话线、输入框、首屏共用一栏，保证消息与聊天框对齐。 */
   --kk-content-width: 48rem;
   /* 衬线栈（系统字体，无需加载）：承载品牌/首屏标题的「米木纸感」暖色身份。 */
   --font-serif: "Songti SC", "Source Han Serif SC", "Noto Serif CJK SC", Georgia,
     "Times New Roman", serif;
+}
+
+/* —— 暗色结构占位 ——
+   仅登记语义槽位与 TODO，不臆造具体色值（暖色纸感的暗色版需换色相而非反色，
+   待专项设计确定后再填。留空使暗色暂时回落到亮色 token，不炸不错）。 */
+.dark {
+  /* TODO(web-dark): 暖色暗底需重定 ink 与 paper 及 status 色相，勿简单反转亮色值。
+     ink 与 paper：暗底暖墨与暖炭纸；
+     text、bg、border 三组：依新原色派生；
+     brand 组：暗底品牌需提亮保对比；
+     success、warning、error、neutral：暗底降饱和、升明度。 */
 }
 
 * {

@@ -11,6 +11,25 @@ import { ChevronIcon, WrenchIcon } from "@/ui/icons/thread"
 import { RunState } from "./run-state"
 import styles from "./thread.module.css"
 
+// 胶囊内的一行简要参数：优先取文件路径的 basename，否则取首个基元值，压到单行短摘要。
+// 纯给「一眼看出这次调用在动什么」，不求完整——完整入参在展开区。
+function formatArgHint(args: Record<string, unknown>): string | null {
+  const path = args["file_path"]
+  if (typeof path === "string" && path.length > 0) {
+    const parts = path.split("/")
+    return parts[parts.length - 1] || path
+  }
+  for (const value of Object.values(args)) {
+    if (typeof value === "string" && value.length > 0) {
+      return value.length > 48 ? `${value.slice(0, 47)}…` : value
+    }
+    if (typeof value === "number" || typeof value === "boolean") {
+      return String(value)
+    }
+  }
+  return null
+}
+
 // 工具参数压成紧凑 JSON 预览；空参数返回 null（不渲染参数块）。
 function formatArgs(args: Record<string, unknown>): string | null {
   const keys = Object.keys(args)
@@ -62,6 +81,8 @@ export function ToolCallRow({
   const t = useT()
   // ask_user 的入参（question/choices）已由问答卡语义化呈现：原始 JSON 只添噪音。
   const argsText = tool.name === "ask_user_question" ? null : formatArgs(tool.args)
+  // 胶囊头的一行简要参数（ask_user 同样跳过——语义卡已呈现）。
+  const argHint = tool.name === "ask_user_question" ? null : formatArgHint(tool.args)
   const running = tool.status === "running"
   const failed = tool.status === "error"
   // awaiting：被门控工具等待用户批准/回答（HITL），展开显示对应卡片。
@@ -95,6 +116,7 @@ export function ToolCallRow({
     <>
       <WrenchIcon className={styles.toolIcon} />
       <span className={styles.toolName}>{tool.name}</span>
+      {argHint !== null ? <span className={styles.toolArgHint}>{argHint}</span> : null}
       {responded ? <span className={styles.toolResponded}>{t("hitl.answered")}</span> : null}
       <span className={styles.toolState} aria-hidden>
         <RunState
