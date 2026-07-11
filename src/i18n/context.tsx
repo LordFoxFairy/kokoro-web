@@ -4,7 +4,8 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react"
 
-import { LOCALE_STORAGE_KEY, type Locale, type MessageKey } from "./messages"
+import { DEFAULT_LOCALE, LOCALE_STORAGE_KEY, type Locale, type MessageKey } from "./messages"
+import { useHydrated } from "@/lib/use-hydrated"
 import { negotiateLocale, resolveMessage } from "./resolve"
 
 type TranslateFn = (key: MessageKey, vars?: Readonly<Record<string, string | number>>) => string
@@ -18,22 +19,24 @@ type LocaleContextValue = {
 const LocaleContext = createContext<LocaleContextValue | null>(null)
 
 export function LocaleProvider({ children }: { children: React.ReactNode }) {
-  // SSR 与首帧保持默认（协商在 mount 后进行，避免注水不一致）。
-  const [locale, setLocaleState] = useState<Locale>("zh")
+  // SSR 与水合首帧保持默认，挂载后按持久化偏好/浏览器语言协商（避免注水不一致）——
+  // hydrated 探针驱动的键控派生，替代 effect 同步 setState。
+  const hydrated = useHydrated()
+  // 用户在本次挂载内的显式切换：优先于协商结果。
+  const [override, setOverride] = useState<Locale | null>(null)
+  const negotiated = hydrated
+    ? negotiateLocale(window.localStorage.getItem(LOCALE_STORAGE_KEY), navigator.languages)
+    : DEFAULT_LOCALE
+  const locale = override ?? negotiated
 
+  // 外部系统同步：<html lang> 跟随生效语言（含协商与显式切换）。
   useEffect(() => {
-    const stored =
-      typeof window === "undefined" ? null : window.localStorage.getItem(LOCALE_STORAGE_KEY)
-    const langs = typeof navigator === "undefined" ? [] : navigator.languages
-    const negotiated = negotiateLocale(stored, langs)
-    setLocaleState(negotiated)
-    if (typeof document !== "undefined") document.documentElement.lang = negotiated
-  }, [])
+    document.documentElement.lang = locale
+  }, [locale])
 
   const setLocale = useCallback((next: Locale) => {
-    setLocaleState(next)
+    setOverride(next)
     if (typeof window !== "undefined") window.localStorage.setItem(LOCALE_STORAGE_KEY, next)
-    if (typeof document !== "undefined") document.documentElement.lang = next
   }, [])
 
   const value = useMemo<LocaleContextValue>(

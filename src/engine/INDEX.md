@@ -25,8 +25,9 @@
 - `reattach.ts`：`reattachPlanFromSnapshot`（在途 run 权威判据；有 pending 暂停直接落
   awaiting-hitl 不设时限）、`REATTACH_TIMEOUT_MS`（90s 兜底）。
 - `config.ts`：`sessionBaseUrl()`——NEXT_PUBLIC_SESSION_BASE_URL 唯一读取点，缺失 fail-loud。
-- `file-fetch.ts`（client 组件）：`fileFetch`/`useFileBlob`——files 端点要 Bearer 而
-  `<img>` src 带不了头，故 fetch→blob→object URL（卸载即 revoke）。
+- `file-fetch.ts`（client 组件）：`fileFetch`/`useFileBlob`——files/deliveries 端点要 Bearer
+  而 `<img>` src 带不了头，故 fetch→blob→object URL（结果被替换/卸载即 revoke；
+  loading 为键控派生，无 effect 同步 setState）。
 - `use-session-engine.ts`（client 组件）：`useSessionEngine(engine|null)`——全仓唯一
   React 接缝（useSyncExternalStore）。
 
@@ -39,6 +40,7 @@
 ## 运行时约束
 
 - 三重代际守卫（stream/hydrate/filesSync）：关流/切会话后迟到回调一律丢弃。
+- run 收尾对账吸收 snapshot.files 与 snapshot.deliveries（成果整表替换，contentHash 同形）。
 - 事件微任务窗口批量折叠一次（replay 洪峰不逐事件快照）。
 - resume 的 decision_id 与提交 idempotency_key 复用语义是幂等前提，重试不得换新 id。
 - control 撞 STALE 冲突码（run_not_active/no_pending_pause/session_deleted）→ 清暂存 +

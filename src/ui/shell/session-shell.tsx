@@ -10,6 +10,7 @@ import {
   useEffect,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react"
 
 import { activeMode, sortedConversations } from "@/core/conversations"
@@ -33,7 +34,19 @@ import { ConversationThread } from "@/ui/thread/conversation-thread"
 import { useAutoScroll } from "@/ui/thread/use-auto-scroll"
 import { TodoBar } from "@/ui/todo/todo-bar"
 import { CanvasPanel } from "@/ui/canvas/canvas-panel"
-import type { WorkspaceFileEntry } from "@/core/state"
+import {
+  canvasSlot,
+  closeCanvas,
+  openCanvas,
+  readCanvasState,
+  reopenCanvas,
+  resolveCanvasContent,
+  serverCanvasState,
+  subscribeCanvas,
+  toggleCanvasFullscreen,
+} from "@/ui/canvas/canvas-store"
+import { useCanvasResize } from "@/ui/canvas/use-canvas-resize"
+import type { SessionDelivery, SessionToolCall } from "@/core/state"
 
 import styles from "./session-shell.module.css"
 
@@ -118,17 +131,16 @@ export function SessionShell({ engine: injectedEngine }: SessionShellProps = {})
   const mounted = useHydrated()
 
   const [railCollapsed, setRailCollapsed] = useState(false)
-  const [draft, setDraft] = useState("")
-  // canvas：右侧内容面板（路径即入口）；清单里未及刷新的新文件以 MIME 兜底构造。
-  const [canvasFile, setCanvasFile] = useState<WorkspaceFileEntry | null>(null)
-  const openFile = (path: string) => {
-    const known = thread.files.find((f) => f.path === path.replace(/^\//, ""))
-    setCanvasFile(known ?? { path: path.replace(/^\//, ""), mime: "text/plain", bytes: 0 })
-  }
   const composerRef = useRef<HTMLTextAreaElement | null>(null)
 
   // 侧栏可拖拽改宽（两侧自由，均有最小宽度）；收起态用固定窄列，不参与拖拽。
   const { width: railWidth, isResizing, shellRef, onResizeStart } = useRailResize()
+  // canvas 第三栏拖拽改宽：与 rail 共用 shell 容器几何。
+  const {
+    width: canvasWidth,
+    isResizing: isCanvasResizing,
+    onResizeStart: onCanvasResizeStart,
+  } = useCanvasResize(shellRef)
 
   const isStreaming = machine.phase !== "idle" && machine.phase !== "error"
   const isReconnecting = machine.phase === "reattaching"
@@ -144,21 +156,57 @@ export function SessionShell({ engine: injectedEngine }: SessionShellProps = {})
     : []
   const activeId = store?.activeId ?? null
 
-  // 草稿按当前会话加载：切会话/刷新（activeId 变或首挂）即从持久化取回，不再清空丢字。
+  // 草稿按当前会话取值：正在编辑的键命中用内存值，否则读持久化（切会话/刷新即取回，不丢字）。
+  // 键控派生（非 effect 同步 setState）：mounted 门控保证 SSR/水合首帧一致（服务端无 localStorage）。
   const draftKey = activeId ?? DRAFT_PENDING_KEY
-  useEffect(() => {
-    setDraft(readDraft(draftKey))
-  }, [draftKey])
-  // 切会话即关 canvas：产物按会话隔离，旧会话的文件不该悬在新会话上（否则串文件/撞 404）。
-  useEffect(() => {
-    setCanvasFile(null)
-  }, [activeId])
+  const [draftEdit, setDraftEdit] = useState<{ key: string; value: string } | null>(null)
+  const draft = !mounted
+    ? ""
+    : draftEdit !== null && draftEdit.key === draftKey
+      ? draftEdit.value
+      : readDraft(draftKey)
   const updateDraft = useCallback(
     (value: string) => {
-      setDraft(value)
+      setDraftEdit({ key: draftKey, value })
       writeDraft(draftKey, value)
     },
     [draftKey],
+  )
+
+  // canvas 工作区：事件总线 store 按会话键各存一槽（内容+开合+全屏），切会话即读回各自的槽——
+  // 产物天然按会话隔离，无需 effect 清理；「closed」只由用户手动关闭记账。
+  const canvasState = useSyncExternalStore(subscribeCanvas, readCanvasState, serverCanvasState)
+  const slot = canvasSlot(canvasState, activeId)
+  const resolvedCanvas =
+    mounted && activeId !== null && slot.open && slot.content !== null
+      ? resolveCanvasContent(slot.content, thread)
+      : null
+  const canvasOpen = resolvedCanvas !== null && activeId !== null
+  const canReopenCanvas = mounted && activeId !== null && !slot.open && slot.content !== null
+
+  const openFile = useCallback(
+    (path: string) => {
+      if (activeId !== null) {
+        openCanvas(activeId, { kind: "file", path: path.replace(/^\//, "") })
+      }
+    },
+    [activeId],
+  )
+  const openDelivery = useCallback(
+    (delivery: SessionDelivery) => {
+      if (activeId !== null) {
+        openCanvas(activeId, { kind: "delivery", contentHash: delivery.contentHash })
+      }
+    },
+    [activeId],
+  )
+  const openTool = useCallback(
+    (runId: string, tool: SessionToolCall) => {
+      if (activeId !== null) {
+        openCanvas(activeId, { kind: "tool", runId, toolId: tool.id, snapshot: tool })
+      }
+    },
+    [activeId],
   )
 
   const presentation = modePresentation(
@@ -183,7 +231,7 @@ export function SessionShell({ engine: injectedEngine }: SessionShellProps = {})
     }
     // 流式中提交=运行中插话（engine 识别活跃相位走 steer，不打断本轮）。
     engine.submit(content)
-    setDraft("")
+    setDraftEdit({ key: draftKey, value: "" })
     writeDraft(draftKey, "")
     focusComposer()
   }, [draft, draftKey, engine, focusComposer])
@@ -244,8 +292,14 @@ export function SessionShell({ engine: injectedEngine }: SessionShellProps = {})
       ref={shellRef}
       className={styles.shell}
       data-rail-collapsed={railCollapsed ? "true" : "false"}
-      data-resizing={isResizing ? "true" : undefined}
-      style={{ "--kk-rail-width": `${railWidth}px` } as CSSProperties}
+      data-canvas-open={canvasOpen ? "true" : undefined}
+      data-resizing={isResizing || isCanvasResizing ? "true" : undefined}
+      style={
+        {
+          "--kk-rail-width": `${railWidth}px`,
+          "--kk-canvas-width": `${canvasWidth}px`,
+        } as CSSProperties
+      }
     >
       <SessionRail
         collapsed={railCollapsed}
@@ -290,6 +344,8 @@ export function SessionShell({ engine: injectedEngine }: SessionShellProps = {})
             }
             onCancelRun={() => engine?.cancelRun()}
             onOpenFile={openFile}
+            onOpenDelivery={openDelivery}
+            onOpenTool={openTool}
           />
         ) : (
           <div className={styles.hero}>
@@ -323,16 +379,49 @@ export function SessionShell({ engine: injectedEngine }: SessionShellProps = {})
           onModeChange={(next) => engine?.setMode(next)}
           modeLocked={modeLocked}
         />
+
+        {/* 重开入口：槽里还有内容但被手动关过——一键回到上次看的产物。 */}
+        {canReopenCanvas ? (
+          <button
+            type="button"
+            className={styles.canvasReopen}
+            onClick={() => {
+              if (activeId !== null) {
+                reopenCanvas(activeId)
+              }
+            }}
+          >
+            {t("canvas.reopen")}
+          </button>
+        ) : null}
       </section>
 
-      {canvasFile !== null && activeId !== null ? (
-        <CanvasPanel
-          sessionId={activeId}
-          file={canvasFile}
-          files={thread.files}
-          onSelect={setCanvasFile}
-          onClose={() => setCanvasFile(null)}
-        />
+      {resolvedCanvas !== null && activeId !== null ? (
+        <>
+          {/* 拖拽分隔条：调整 main/canvas 宽度；全屏态无列可拖。 */}
+          {!slot.fullscreen ? (
+            <div
+              className={styles.canvasResizer}
+              role="separator"
+              aria-orientation="vertical"
+              aria-label={t("canvas.resizeAria")}
+              onPointerDown={onCanvasResizeStart}
+            />
+          ) : null}
+          <CanvasPanel
+            sessionId={activeId}
+            content={resolvedCanvas}
+            files={thread.files}
+            deliveries={thread.deliveries}
+            fullscreen={slot.fullscreen}
+            onSelectFile={(file) => openCanvas(activeId, { kind: "file", path: file.path })}
+            onSelectDelivery={(delivery) =>
+              openCanvas(activeId, { kind: "delivery", contentHash: delivery.contentHash })
+            }
+            onToggleFullscreen={() => toggleCanvasFullscreen(activeId)}
+            onClose={() => closeCanvas(activeId)}
+          />
+        </>
       ) : null}
     </main>
   )

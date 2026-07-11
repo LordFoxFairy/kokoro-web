@@ -2,12 +2,13 @@ import type { RefObject, UIEvent } from "react"
 
 import type { AgentMode } from "@/core/conversations"
 import { buildThreadItems } from "@/core/projections"
-import type { SessionStreamState } from "@/core/state"
+import type { SessionDelivery, SessionStreamState, SessionToolCall } from "@/core/state"
 import type { ToolDecision } from "@/engine/hitl-staging"
 import { useT } from "@/i18n/context"
 import type { MessageKey } from "@/i18n/messages"
 
 import { AssistantTurn } from "./assistant-turn"
+import { DeliverySection } from "./delivery-card"
 import { MessageBubble } from "./message-bubble"
 import styles from "./thread.module.css"
 
@@ -15,6 +16,9 @@ const NO_DECISIONS: Record<string, ToolDecision> = {}
 
 type ConversationThreadProps = {
   onOpenFile?: (path: string) => void
+  // 成果卡点击 → canvas 打开冻结预览；工具 pill 点击 → canvas 打开参数/结果详情。
+  onOpenDelivery?: (delivery: SessionDelivery) => void
+  onOpenTool?: (runId: string, tool: SessionToolCall) => void
   // 产物端点 URL 构造需要（透传到工具行的产物卡）。
   sessionId: string | null
   thread: SessionStreamState
@@ -55,6 +59,8 @@ function failureCopyKey(runError: { code: string; message: string } | null): Mes
 export function ConversationThread({
   sessionId,
   onOpenFile,
+  onOpenDelivery,
+  onOpenTool,
   thread,
   isStreaming,
   isReconnecting,
@@ -105,6 +111,9 @@ export function ConversationThread({
             <AssistantTurn
               sessionId={sessionId}
               onOpenFile={onOpenFile}
+              onOpenTool={
+                onOpenTool ? (tool) => onOpenTool(item.runId, tool) : undefined
+              }
               key={item.runId}
               steps={item.steps}
               messagesById={item.messagesById}
@@ -135,6 +144,15 @@ export function ConversationThread({
             stagedDecisions={NO_DECISIONS}
             hitlActive={false}
             controlError={null}
+          />
+        ) : null}
+
+        {/* 成果区：会话流尾部聚合本会话全部成果（终态一目了然，不用翻消息流）。 */}
+        {onOpenDelivery ? (
+          <DeliverySection
+            sessionId={sessionId}
+            deliveries={thread.deliveries}
+            onOpen={onOpenDelivery}
           />
         ) : null}
 

@@ -84,6 +84,17 @@ export function DotCircleIcon({ className }: IconProps) {
   )
 }
 
+// 成果（delivery）：文件页 + 完成小勾——冻结结论的「拿走什么」标记。
+export function DeliveryIcon({ className }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M13.5 3.5H7a1.5 1.5 0 0 0-1.5 1.5v14A1.5 1.5 0 0 0 7 20.5h10a1.5 1.5 0 0 0 1.5-1.5V8.5l-5-5Z" />
+      <path d="M13.5 3.5v5h5" />
+      <path d="M9.2 14.6l1.9 1.9 3.7-4" />
+    </svg>
+  )
+}
+
 // 计划条标题：勾选清单。
 export function ChecklistIcon({ className }: IconProps) {
   return (

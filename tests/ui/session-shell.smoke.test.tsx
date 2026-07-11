@@ -2,12 +2,16 @@
 // （行为规格在 core/engine 层。）
 
 import { act } from "react"
-import { cleanup, fireEvent, render, screen } from "@testing-library/react"
-import { afterEach, beforeEach, expect, it } from "vitest"
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react"
+import { afterEach, beforeEach, expect, it, vi } from "vitest"
+
+// canvas 面板构造下载 URL 需要 base URL（本文件不发真实请求，仅 URL 拼接）。
+vi.mock("@/engine/config", () => ({ sessionBaseUrl: () => "http://s.local" }))
 
 import { addConversation, type ConversationStore } from "@/core/conversations"
 import { createSessionEngine, type SessionEngine } from "@/engine/machine"
 import { LocaleProvider } from "@/i18n/context"
+import { resetCanvasStore } from "@/ui/canvas/canvas-store"
 import { SessionShell } from "@/ui/shell/session-shell"
 
 import {
@@ -35,6 +39,7 @@ function buildEngine(initial: ConversationStore | null = null) {
 
 beforeEach(() => {
   resetFixtureSeq()
+  resetCanvasStore()
   window.localStorage.clear()
   // 锁定中文源语言：jsdom navigator 默认 en-US 会让 LocaleProvider 协商到 en，
   // 而本文件断言中文文案。显式置 zh 偏好，走查/真栈另测语言切换。
@@ -179,6 +184,91 @@ it("刷新场景：带 pending pause 的 snapshot 水合后审批卡直接可操
     runId: "run_9",
     body: { kind: "run.resume", decisions: [{ type: "approve", tool_id: "tool_1" }] },
   })
+})
+
+it("成果链路：delivery.created → 尾部成果卡 → canvas 打开 → 手动关后可重开", async () => {
+  buildEngine()
+  render(
+    <LocaleProvider>
+      <SessionShell engine={engine} />
+    </LocaleProvider>,
+  )
+  fireEvent.change(screen.getByLabelText("对话输入"), { target: { value: "交付成果" } })
+  fireEvent.click(screen.getByLabelText("发送消息"))
+  await act(settle)
+  await act(async () => {
+    client.lastStream().emit([
+      makeEvent("run.created", { run_id: "run_1" }),
+      makeEvent("message.completed", { segment_id: "seg_1", content: "成果已交付。" }),
+      makeEvent("delivery.created", {
+        path: "out/report.bin",
+        title: "调研报告",
+        mime: "application/octet-stream",
+        size: 4096,
+        content_hash: "hash_a",
+      }),
+      makeEvent("run.completed", { status: "completed" }),
+    ])
+    await settle()
+  })
+
+  // 会话流尾部成果区：图标卡（标题/大小），点击在 canvas 打开。
+  expect(screen.getByLabelText("成果")).toBeInTheDocument()
+  fireEvent.click(screen.getByRole("button", { name: "打开成果 调研报告" }))
+  const panel = screen.getByLabelText("canvas 详情 调研报告")
+  expect(panel).toBeInTheDocument()
+  // 非文本成果给下载态（冻结副本仍可下载，不做内嵌预览）。
+  expect(screen.getByText(/暂不支持内嵌预览/)).toBeInTheDocument()
+
+  // 全屏一键切换（aria-pressed 表达当前态）。
+  fireEvent.click(screen.getByRole("button", { name: "全屏" }))
+  expect(screen.getByRole("button", { name: "退出全屏" })).toBeInTheDocument()
+
+  // 手动关闭记 closed：面板退场，出现「打开工作区」重开入口；点击即恢复上次内容。
+  fireEvent.click(screen.getByLabelText("关闭预览"))
+  expect(screen.queryByLabelText("canvas 详情 调研报告")).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole("button", { name: "打开工作区" }))
+  expect(screen.getByLabelText("canvas 详情 调研报告")).toBeInTheDocument()
+})
+
+it("工具 pill 点击升级为 canvas 详情：参数与结果在面板呈现", async () => {
+  buildEngine()
+  render(
+    <LocaleProvider>
+      <SessionShell engine={engine} />
+    </LocaleProvider>,
+  )
+  fireEvent.change(screen.getByLabelText("对话输入"), { target: { value: "跑个工具" } })
+  fireEvent.click(screen.getByLabelText("发送消息"))
+  await act(settle)
+  await act(async () => {
+    client.lastStream().emit([
+      makeEvent("run.created", { run_id: "run_1" }),
+      makeEvent("tool.invoked", {
+        segment_id: "seg_1",
+        tool_id: "tool_1",
+        name: "write_file",
+        args: { file_path: "/tmp/a.md" },
+      }),
+      makeEvent("tool.returned", {
+        segment_id: "seg_1",
+        tool_id: "tool_1",
+        name: "write_file",
+        result: "wrote 42 bytes",
+        is_error: false,
+      }),
+      makeEvent("run.completed", { status: "completed" }),
+    ])
+    await settle()
+  })
+
+  // pill 点击 → canvas 打开工具详情（参数 + 结果）；内联 <details> 保留（降级），故限定面板内断言。
+  fireEvent.click(screen.getByText("write_file"))
+  const panel = screen.getByLabelText("canvas 详情 write_file")
+  expect(panel).toBeInTheDocument()
+  expect(within(panel).getByText("参数")).toBeInTheDocument()
+  expect(within(panel).getByText("结果")).toBeInTheDocument()
+  expect(within(panel).getByText("wrote 42 bytes")).toBeInTheDocument()
 })
 
 it("ask_user 待批帧渲染问答卡：问题=description、choices 可选、提交即 respond", async () => {

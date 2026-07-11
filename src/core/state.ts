@@ -84,9 +84,23 @@ export type WorkspaceFileEntry = {
   bytes: number
 }
 
+// 成果（delivery）：冻结结论，content_hash 内容寻址，永不漂移——与可变的工作区文件语义分开。
+export type SessionDelivery = {
+  contentHash: string
+  path: string
+  title: string
+  mime: string
+  size: number
+  // ISO 时间：live 事件取信封 timestamp，snapshot 水合取 created_at。
+  createdAt: string
+  note?: string
+}
+
 export type SessionStreamState = {
   // 工作区文件清单（snapshot 水合；终态后重拉刷新）。
   files: WorkspaceFileEntry[]
+  // 成果清单（delivery.created 累积 + snapshot.deliveries 水合；contentHash 幂等）。
+  deliveries: SessionDelivery[]
   // 内存去重 Set：event_id 幂等（本页生命周期内；权威历史由 snapshot 水位截断）。
   seenEventIds: Set<string>
   messages: SessionMessage[]
@@ -105,6 +119,7 @@ export type SessionStreamState = {
 export function createSessionStreamState(): SessionStreamState {
   return {
     files: [],
+    deliveries: [],
     seenEventIds: new Set(),
     messages: [],
     todos: [],

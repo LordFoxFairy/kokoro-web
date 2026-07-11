@@ -1,0 +1,94 @@
+/* 成果区（会话流尾部）：冻结结论的强调卡——完成徽感来自 success 色微染。
+   全色走 --k-* 语义 token，零裸色值。 */
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin-top: 0.5rem;
+}
+
+.heading {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: var(--k-text-secondary);
+}
+
+.cards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.card {
+  display: flex;
+  align-items: stretch;
+  border: 1px solid var(--k-success-border);
+  border-radius: 12px;
+  background: var(--k-success-bg);
+  overflow: hidden;
+}
+
+.open {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.6rem 0.75rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+}
+
+.open:hover {
+  background: var(--k-bg-hover);
+}
+
+.icon {
+  width: 1.25rem;
+  height: 1.25rem;
+  flex: none;
+  color: var(--k-success);
+}
+
+.body {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.title {
+  overflow: hidden;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--k-text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.meta {
+  font-size: 0.72rem;
+  color: var(--k-text-tertiary);
+}
+
+.download {
+  flex: none;
+  padding: 0 0.85rem;
+  border: none;
+  border-left: 1px solid var(--k-success-border);
+  background: none;
+  color: var(--k-brand);
+  font-size: 0.75rem;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.download:hover {
+  color: var(--k-brand-hover);
+  background: var(--k-bg-hover);
+}

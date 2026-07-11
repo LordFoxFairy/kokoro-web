@@ -8,10 +8,11 @@ web 的领域核心：会话线程状态、事件折叠 reducer、渲染投影�
 ## 公开 API
 
 - `state.ts`：`SessionStreamState`（messages/todos/stepsByRun/runStatus/runError/
-  activeRunId/lastSeq/files/meta + seenEventIds 内存去重集）、`createSessionStreamState`、
+  activeRunId/lastSeq/files/deliveries/meta + seenEventIds 内存去重集）、`createSessionStreamState`、
   `SessionStep`（thinking/tool/subagent/text 按 seq 有序，非按 kind 归桶）、
   `SessionToolCall`/`ToolStatus`（含结构化终态 stale-*/cancelled，零 UI 文案）、
-  `SessionMessage`/`SessionSubagent` 及契约派生类型别名。
+  `SessionMessage`/`SessionSubagent`/`SessionDelivery`（成果=冻结结论，contentHash 内容寻址）
+  及契约派生类型别名。
 - `reducer.ts`
   - `applySessionEvents(state, events)`：批量折叠——event_id 幂等去重、整批一次顶层快照、
     可变草稿逐事件折叠（修 replay O(n²)）；全部重复时原样返回入参（引用相等表达幂等）。
@@ -20,8 +21,9 @@ web 的领域核心：会话线程状态、事件折叠 reducer、渲染投影�
     `markToolRejected`（拒绝乐观置位，防回流翻绿勾）、`markRunCancelled`（停止本地收口）。
 - `projections.ts`：`buildThreadItems`（连续同 runId assistant 归并为 turn；纯派生，
   渲染层唯一读取模型）、`groupSegments`/`Segment`（turn 内按 segmentId 聚合过程）。
-- `hydration.ts`：`stateFromSnapshot`——只取 meta/files/activeRunId；线程内容由事件史
-  全量回放重建（唯一完整真源），水合 lastSeq=0。
+- `hydration.ts`：`stateFromSnapshot`——只取 meta/files/deliveries/activeRunId；线程内容由
+  事件史全量回放重建（唯一完整真源），水合 lastSeq=0。`deliveryFromSnapshot`——
+  snapshot delivery 的 snake→camel 投影（engine run 收尾对账复用）。
 - `conversations.ts`：`ConversationStore` 列表索引纯操作（add/touch/select/remove/
   setActiveMode/sortedConversations/conversationTitle）；`AgentMode`（纯 UI 偏好，不上 wire）。
 - `persistence.ts`：`parseStoredConversationStore`——落盘 zod schema，只存 UI 偏好与
@@ -50,3 +52,4 @@ web 的领域核心：会话线程状态、事件折叠 reducer、渲染投影�
 
 - message.user 三态吸收（id 命中更新 / 本地 echo 就地改 id / 新建）：SSE 常跑赢 HTTP 回执。
 - tool.returned 不得把已 rejected 的工具降级为 done（拒绝文案 is_error=false 回流）。
+- delivery.created 以 contentHash 幂等（非 event_id）：snapshot 水合后回放同一成果事件不重复入账。

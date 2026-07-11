@@ -1,6 +1,6 @@
 import type { AgentMode } from "@/core/conversations"
 import { groupSegments } from "@/core/projections"
-import type { SessionMessage, SessionStep } from "@/core/state"
+import type { SessionMessage, SessionStep, SessionToolCall } from "@/core/state"
 import type { ToolDecision } from "@/engine/hitl-staging"
 import { useT } from "@/i18n/context"
 
@@ -10,6 +10,8 @@ import styles from "./thread.module.css"
 
 type AssistantTurnProps = {
   onOpenFile?: (path: string) => void
+  // 工具 pill 点击 → canvas 详情（runId 已在上游绑定）。
+  onOpenTool?: (tool: SessionToolCall) => void
   sessionId: string | null
   // 这一轮（一个 runId）按 seq 排好的有序步骤：思考/工具/子智能体/文本交错。
   steps: SessionStep[]
@@ -58,6 +60,7 @@ function FormingContent({
 export function AssistantTurn({
   sessionId,
   onOpenFile,
+  onOpenTool,
   steps,
   messagesById,
   isLive,
@@ -146,7 +149,8 @@ export function AssistantTurn({
               ) : null}
               <SegmentProcess
                 sessionId={sessionId}
-              onOpenFile={onOpenFile}
+                onOpenFile={onOpenFile}
+                onOpenTool={onOpenTool}
                 segmentId={segment.segmentId}
                 thinking={segment.thinking}
                 tools={segment.tools}

@@ -61,6 +61,8 @@ type SnapshotInput = {
   messages?: SessionSnapshot["messages"]
   activeRun?: SessionSnapshot["active_run"]
   pendingPauses?: SessionSnapshot["pending_pauses"]
+  files?: SessionSnapshot["files"]
+  deliveries?: SessionSnapshot["deliveries"]
   eventWatermark?: number
 }
 
@@ -76,10 +78,25 @@ export function makeSnapshot(input: SnapshotInput = {}): SessionSnapshot {
     messages: input.messages ?? [],
     ...(input.activeRun !== undefined ? { active_run: input.activeRun } : {}),
     pending_pauses: input.pendingPauses ?? [],
-    files: [],
-    deliveries: [],
+    files: input.files ?? [],
+    deliveries: input.deliveries ?? [],
     event_watermark: input.eventWatermark ?? 0,
   })
+}
+
+export function makeSnapshotDelivery(
+  overrides: Partial<SessionSnapshot["deliveries"][number]> = {},
+): SessionSnapshot["deliveries"][number] {
+  return {
+    content_hash: "hash_1",
+    path: "out/report.md",
+    title: "调研报告",
+    mime: "text/markdown",
+    size: 2048,
+    run_id: "run_1",
+    created_at: "2026-07-02T00:00:02Z",
+    ...overrides,
+  }
 }
 
 export function makePendingPause(

@@ -22,29 +22,42 @@ type BlobState =
   | { kind: "ready"; objectUrl: string; bytes: number }
   | { kind: "failed" }
 
-// 鉴权 fetch → object URL（组件卸载/换 url 即 revoke，不泄漏）。enabled=false 时不拉。
+// loading 是键控派生的稳定常量：url 未落定（首拉/换 url 在途）恒回落到它，
+// 免去 effect 内同步 setState 复位（react-hooks/set-state-in-effect）。
+const LOADING: BlobState = { kind: "loading" }
+
+// 鉴权 fetch → object URL（旧 URL 在结果被替换/卸载时 revoke，不泄漏）。enabled=false 时不拉。
 export function useFileBlob(url: string, enabled: boolean): BlobState {
-  const [state, setState] = useState<BlobState>({ kind: "loading" })
+  // 落定结果连同其 url 一起存：当前 url 不匹配即视为 loading（派生，无 effect 同步复位）。
+  const [settled, setSettled] = useState<{ url: string; state: BlobState } | null>(null)
+
   useEffect(() => {
     if (!enabled) return
     let cancelled = false
-    let created: string | null = null
-    setState({ kind: "loading" })
     void fileFetch(url)
       .then(async (res) => {
         if (!res.ok) throw new Error(String(res.status))
         const blob = await res.blob()
         if (cancelled) return
-        created = URL.createObjectURL(blob)
-        setState({ kind: "ready", objectUrl: created, bytes: blob.size })
+        setSettled({
+          url,
+          state: { kind: "ready", objectUrl: URL.createObjectURL(blob), bytes: blob.size },
+        })
       })
       .catch(() => {
-        if (!cancelled) setState({ kind: "failed" })
+        if (!cancelled) setSettled({ url, state: { kind: "failed" } })
       })
     return () => {
       cancelled = true
-      if (created !== null) URL.revokeObjectURL(created)
     }
   }, [url, enabled])
-  return state
+
+  // revoke 与结果生命周期同轨：结果被替换或组件卸载时释放旧 object URL。
+  useEffect(() => {
+    if (settled?.state.kind !== "ready") return
+    const { objectUrl } = settled.state
+    return () => URL.revokeObjectURL(objectUrl)
+  }, [settled])
+
+  return settled !== null && settled.url === url ? settled.state : LOADING
 }

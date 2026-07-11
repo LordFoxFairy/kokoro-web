@@ -397,9 +397,26 @@ function applyEvent(draft: Draft, event: SessionEvent): void {
     case "subagent.tool.returned":
       // 穷尽 switch 须显式接收；当前无子代理详情视图消费此通道，不参与状态归约。
       break
-    case "delivery.created":
-      // 成果事件显式接收；成果卡/成果区归约随块D-ux 落（下载面已由 snapshot.deliveries+端点承接）。
+    case "delivery.created": {
+      // 成果累积：contentHash 内容寻址幂等（重放/乱序重复投递只入账一次）。
+      const payload = event.payload
+      if (draft.state.deliveries.some((d) => d.contentHash === payload.content_hash)) {
+        break
+      }
+      draft.state.deliveries = [
+        ...draft.state.deliveries,
+        {
+          contentHash: payload.content_hash,
+          path: payload.path,
+          title: payload.title,
+          mime: payload.mime,
+          size: payload.size,
+          createdAt: event.timestamp,
+          ...(payload.note !== undefined ? { note: payload.note } : {}),
+        },
+      ]
       break
+    }
     case "run.completed":
     case "run.failed":
       applyRunTerminal(draft, event)
@@ -432,6 +449,7 @@ export function applySessionEvents(
           todos: state.todos,
           stepsByRun: { ...state.stepsByRun },
           files: state.files,
+          deliveries: state.deliveries,
           runStatus: state.runStatus,
           runError: state.runError,
           activeRunId: state.activeRunId,

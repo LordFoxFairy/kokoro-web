@@ -25,6 +25,15 @@
   grid-template-columns: 3.5rem minmax(0, 1fr);
 }
 
+/* canvas 开启：第三栏入列（宽度由拖拽分隔条驱动，JS 写 --kk-canvas-width）。 */
+.shell[data-canvas-open="true"] {
+  grid-template-columns: var(--kk-rail-width, 15.5rem) minmax(0, 1fr) var(--kk-canvas-width, 30rem);
+}
+
+.shell[data-canvas-open="true"][data-rail-collapsed="true"] {
+  grid-template-columns: 3.5rem minmax(0, 1fr) var(--kk-canvas-width, 30rem);
+}
+
 /* 拖拽分隔条：钉在 rail/main 边界，平时隐形，悬停/拖拽透出一条暖木线。 */
 .resizer {
   position: absolute;
@@ -56,6 +65,63 @@
 .resizer:active::after {
   width: 2px;
   background: color-mix(in srgb, var(--brand-wood) 55%, transparent);
+}
+
+/* canvas 拖拽分隔条：钉在 main/canvas 边界（从右缘量取），观感与左侧分隔条一致。 */
+.canvasResizer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: var(--kk-canvas-width, 30rem);
+  z-index: 20;
+  width: 0.7rem;
+  transform: translateX(50%);
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.canvasResizer::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  transform: translateX(-50%);
+  background: transparent;
+  transition:
+    background-color 120ms ease,
+    width 120ms ease;
+}
+
+.canvasResizer:hover::after,
+.canvasResizer:active::after {
+  width: 2px;
+  background: color-mix(in srgb, var(--brand-wood) 55%, transparent);
+}
+
+/* canvas 重开入口：主区右上角的小胶囊（槽里有内容但被手动关过时出现）。 */
+.canvasReopen {
+  position: absolute;
+  top: 0.9rem;
+  right: 0.9rem;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid color-mix(in srgb, var(--brand-wood) 45%, var(--border-soft) 55%);
+  border-radius: 999px;
+  background: var(--surface);
+  padding: 0.3rem 0.75rem;
+  color: var(--brand-wood);
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+.canvasReopen:hover,
+.canvasReopen:focus-visible {
+  background: color-mix(in srgb, var(--brand-wood-soft) 70%, var(--surface) 30%);
+  outline: none;
 }
 
 .main {
@@ -174,11 +240,19 @@
 /* —— 响应式 —— */
 
 @media (max-width: 960px) {
-  /* 窄屏：rail 堆叠到顶部，主区填满剩余高度并内部滚动；折叠仅桌面生效。 */
+  /* 窄屏：rail 堆叠到顶部，主区填满剩余高度并内部滚动；折叠仅桌面生效。
+     canvas 无第三栏可住（面板自身在窄屏转为覆盖态），列模板同样收敛单列。 */
   .shell,
-  .shell[data-rail-collapsed="true"] {
+  .shell[data-rail-collapsed="true"],
+  .shell[data-canvas-open="true"],
+  .shell[data-canvas-open="true"][data-rail-collapsed="true"] {
     grid-template-columns: 1fr;
     grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  /* 窄屏没有第三栏边界可拖：隐藏 canvas 分隔条。 */
+  .canvasResizer {
+    display: none;
   }
 
   .hero {

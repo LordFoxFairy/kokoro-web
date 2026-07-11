@@ -48,6 +48,8 @@ function useDisclosure(segmentId: string): boolean | null {
 
 type SegmentProcessProps = {
   onOpenFile?: (path: string) => void
+  // 工具 pill 点击 → canvas 详情（保留内联展开作降级）。
+  onOpenTool?: (tool: SessionToolCall) => void
   sessionId: string | null
   // 该段全局唯一 id：作为持久化展开意图（manualOpen）的键，跨刷新保留。
   segmentId: string
@@ -94,6 +96,7 @@ function settledSummary(
 export function SegmentProcess({
   sessionId,
   onOpenFile,
+  onOpenTool,
   segmentId,
   thinking,
   tools,
@@ -174,6 +177,7 @@ export function SegmentProcess({
                   <ToolCallRow
                     sessionId={sessionId}
                     onOpenFile={onOpenFile}
+                    onOpenDetail={onOpenTool ? () => onOpenTool(tool) : undefined}
                     key={tool.id}
                     tool={tool}
                     staged={stagedDecisions[tool.id]}

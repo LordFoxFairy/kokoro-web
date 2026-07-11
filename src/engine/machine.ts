@@ -15,7 +15,7 @@ import {
   type AgentMode,
   type ConversationStore,
 } from "@/core/conversations"
-import { stateFromSnapshot } from "@/core/hydration"
+import { deliveryFromSnapshot, stateFromSnapshot } from "@/core/hydration"
 import {
   applySessionEvents,
   appendUserMessage,
@@ -339,8 +339,8 @@ export function createSessionEngine(deps: EngineDeps): SessionEngine {
     notify()
   }
 
-  // run 收尾后重同步文件面：只吸收 snapshot.files（线程已由事件流实时构好，不重建），
-  // 读的是工作区真相 → 覆盖 write_file/execute 等一切建文件的工具，非只认某个工具事件。
+  // run 收尾后重同步文件/成果面：只吸收 snapshot.files 与 snapshot.deliveries（线程已由
+  // 事件流实时构好，不重建），读的是工作区真相 → 覆盖一切建文件/deliver 的工具，非只认某个工具事件。
   function syncWorkspaceFiles(sessionId: string): void {
     filesSyncGeneration += 1
     const generation = filesSyncGeneration
@@ -355,7 +355,12 @@ export function createSessionEngine(deps: EngineDeps): SessionEngine {
         ) {
           return
         }
-        thread = { ...thread, files: sessionSnapshot.files }
+        thread = {
+          ...thread,
+          files: sessionSnapshot.files,
+          // 成果=内容寻址的服务端读模型：整表替换即对账（live 事件先行入账的条目同 hash 同形）。
+          deliveries: sessionSnapshot.deliveries.map(deliveryFromSnapshot),
+        }
         notify()
       })
       .catch(() => {

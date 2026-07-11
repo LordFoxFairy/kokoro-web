@@ -11,7 +11,13 @@ import {
 } from "@/core/reducer"
 import { createSessionStreamState, type SessionStreamState } from "@/core/state"
 
-import { awaitingPayload, makeEvent, makeSnapshot, resetFixtureSeq } from "./fixtures"
+import {
+  awaitingPayload,
+  makeEvent,
+  makeSnapshot,
+  makeSnapshotDelivery,
+  resetFixtureSeq,
+} from "./fixtures"
 
 beforeEach(resetFixtureSeq)
 
@@ -430,6 +436,97 @@ describe("subagent 生命周期", () => {
       status: "failed",
       error: "crashed",
     })
+  })
+})
+
+describe("delivery.created 归约（成果累积）", () => {
+  it("append：payload 字段映射 + createdAt 取信封 timestamp + note 透传", () => {
+    const state = applySessionEvent(
+      createSessionStreamState(),
+      makeEvent(
+        "delivery.created",
+        {
+          path: "out/report.md",
+          title: "调研报告",
+          mime: "text/markdown",
+          size: 2048,
+          content_hash: "hash_a",
+          note: "第二轮成果",
+        },
+        { timestamp: "2026-07-09T08:00:00Z" },
+      ),
+    )
+    expect(state.deliveries).toEqual([
+      {
+        contentHash: "hash_a",
+        path: "out/report.md",
+        title: "调研报告",
+        mime: "text/markdown",
+        size: 2048,
+        createdAt: "2026-07-09T08:00:00Z",
+        note: "第二轮成果",
+      },
+    ])
+  })
+
+  it("contentHash 幂等：同 hash 不同 event_id 只入账一次；不同 hash 依序累积", () => {
+    const base = {
+      path: "out/report.md",
+      title: "调研报告",
+      mime: "text/markdown",
+      size: 2048,
+    }
+    const state = applySessionEvents(createSessionStreamState(), [
+      makeEvent("delivery.created", { ...base, content_hash: "hash_a" }),
+      makeEvent("delivery.created", { ...base, content_hash: "hash_a" }),
+      makeEvent("delivery.created", { ...base, title: "终稿", content_hash: "hash_b" }),
+    ])
+    expect(state.deliveries.map((d) => d.contentHash)).toEqual(["hash_a", "hash_b"])
+    expect(state.deliveries[1]?.title).toBe("终稿")
+  })
+
+  it("copy-on-write：折叠不改入参 state 的 deliveries 引用与内容", () => {
+    const before = applySessionEvent(
+      createSessionStreamState(),
+      makeEvent("delivery.created", {
+        path: "out/a.md",
+        title: "A",
+        mime: "text/markdown",
+        size: 1,
+        content_hash: "hash_a",
+      }),
+    )
+    const beforeDeliveries = before.deliveries
+    const after = applySessionEvent(
+      before,
+      makeEvent("delivery.created", {
+        path: "out/b.md",
+        title: "B",
+        mime: "text/markdown",
+        size: 2,
+        content_hash: "hash_b",
+      }),
+    )
+    expect(before.deliveries).toBe(beforeDeliveries)
+    expect(before.deliveries).toHaveLength(1)
+    expect(after.deliveries).toHaveLength(2)
+  })
+
+  it("snapshot 水合的成果与重放事件同 hash：不重复入账", () => {
+    const hydrated = stateFromSnapshot(
+      makeSnapshot({ deliveries: [makeSnapshotDelivery({ content_hash: "hash_a" })] }),
+    )
+    const state = applySessionEvent(
+      hydrated,
+      makeEvent("delivery.created", {
+        path: "out/report.md",
+        title: "调研报告",
+        mime: "text/markdown",
+        size: 2048,
+        content_hash: "hash_a",
+      }),
+    )
+    expect(state.deliveries).toHaveLength(1)
   })
 })
 

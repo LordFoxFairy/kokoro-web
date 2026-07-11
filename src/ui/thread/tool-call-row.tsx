@@ -59,6 +59,7 @@ export function ToolCallRow({
   sessionId,
   tool,
   onOpenFile,
+  onOpenDetail,
   staged,
   hitlActive,
   controlError,
@@ -68,6 +69,8 @@ export function ToolCallRow({
   sessionId: string | null
   tool: SessionToolCall
   onOpenFile?: (path: string) => void
+  // pill 点击升级：在 canvas 打开参数/结果详情；未提供时保留内联展开（降级）。
+  onOpenDetail?: () => void
   // 该工具已暂存的决策（引擎 staging 快照）；同帧未凑齐时先「已记录」。
   staged?: ToolDecision
   // 本轮仍处 awaiting-hitl 相位才允许发决策；resume 已发出后按钮收口。
@@ -137,6 +140,10 @@ export function ToolCallRow({
     )
   }
 
+  // pill 点击升级为 canvas 详情：awaiting 除外（HITL 卡必须留在会话流内联可操作）。
+  // 未提供 onOpenDetail（无会话/装配缺位）时保留原生 <details> 内联展开作降级。
+  const openInCanvas = onOpenDetail !== undefined && !awaiting
+
   return (
     <details
       className={styles.tool}
@@ -144,7 +151,17 @@ export function ToolCallRow({
       open={running || failed || awaiting || rejected}
     >
       {/* chevron 作为统一的「可展开」提示——只有可展开行才有，静态行没有，让两者一眼可辨。 */}
-      <summary className={styles.toolSummary}>
+      <summary
+        className={styles.toolSummary}
+        onClick={
+          openInCanvas
+            ? (event) => {
+                event.preventDefault()
+                onOpenDetail()
+              }
+            : undefined
+        }
+      >
         {head}
         <ChevronIcon className={styles.toolChevron} />
       </summary>

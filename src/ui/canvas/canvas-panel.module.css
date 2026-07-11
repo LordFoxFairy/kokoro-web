@@ -1,37 +1,101 @@
+/* Canvas 工作区面板：第三栏（宽度由 shell 的 --kk-canvas-width 驱动）+ 全屏覆盖态。
+   全色走 --k-* 语义 token，零裸色值。 */
+
 .panel {
-  width: min(44%, 640px);
-  min-width: 320px;
-  border-left: 1px solid var(--border, #e5ddd0);
-  background: var(--surface, #fffdf9);
   display: flex;
+  min-width: 0;
+  min-height: 0;
   flex-direction: column;
+  border-left: 1px solid var(--k-border);
+  background: var(--k-bg-container);
 }
+
+/* 全屏：覆盖 shell 全域（shell 是 position:relative 的网格容器）。 */
+.panel[data-fullscreen="true"] {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  border-left: none;
+}
+
 .head {
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 12px 14px;
-  border-bottom: 1px solid var(--border, #e5ddd0);
+  border-bottom: 1px solid var(--k-border);
 }
-.name { font-weight: 600; }
-.meta { color: var(--muted, #8a8073); font-size: 12px; }
-.action {
-  margin-left: auto;
+
+.name {
+  overflow: hidden;
+  min-width: 0;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--k-text);
+}
+
+.meta {
+  color: var(--k-text-tertiary);
   font-size: 12px;
-  color: var(--accent, #8a6d3b);
+  white-space: nowrap;
+}
+
+.actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.action {
+  font-size: 12px;
+  color: var(--k-brand);
   background: none;
   border: none;
   cursor: pointer;
   text-decoration: underline;
+  white-space: nowrap;
 }
-.action + .action { margin-left: 8px; }
-.body { padding: 12px 14px; overflow: auto; flex: 1; }
 
-.tree { list-style: none; margin: 0; padding: 0; }
+.action:hover {
+  color: var(--k-brand-hover);
+}
+
+.body {
+  padding: 12px 14px;
+  overflow: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+/* —— 文件/成果清单 —— */
+
+.listing {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.groupHeading {
+  margin: 6px 0 2px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--k-text-secondary);
+}
+
+.tree {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
 .treeItem {
   display: flex;
   width: 100%;
   justify-content: space-between;
+  align-items: center;
   gap: 12px;
   padding: 6px 8px;
   background: none;
@@ -40,5 +104,83 @@
   cursor: pointer;
   font-size: 13px;
   text-align: left;
+  color: var(--k-text);
 }
-.treeItem:hover { background: rgba(0, 0, 0, 0.04); }
+
+.treeItem:hover {
+  background: var(--k-bg-hover);
+}
+
+.treeName {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.treeIcon {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  color: var(--k-success);
+}
+
+/* —— 成果预览 —— */
+
+.deliveryBody {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.deliveryNote {
+  margin: 0;
+  padding: 8px 10px;
+  border-left: 3px solid var(--k-brand);
+  border-radius: 4px;
+  background: var(--k-brand-soft);
+  color: var(--k-text-secondary);
+  font-size: 13px;
+}
+
+/* —— 工具详情 —— */
+
+.toolBody {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.toolBlock {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--k-border);
+  border-radius: 8px;
+  background: var(--k-bg-elevated);
+  color: var(--k-text-secondary);
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 50vh;
+  overflow: auto;
+}
+
+.toolBlock[data-error="true"] {
+  border-color: var(--k-error-border);
+  background: var(--k-error-bg);
+  color: var(--k-error-strong);
+}
+
+/* 窄屏：无第三栏可住，面板转为覆盖态铺满 shell。 */
+@media (max-width: 960px) {
+  .panel {
+    position: absolute;
+    inset: 0;
+    z-index: 40;
+    border-left: none;
+  }
+}
