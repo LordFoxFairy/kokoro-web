@@ -47,21 +47,26 @@ function HeartMark() {
 
 export function LoginGate({ children }: { children: ReactNode }) {
   const t = useT()
-  const [state, setState] = useState<GateState>("checking")
+  // 已有 token 走惰性初始化直接放行(SSR 无 window 时保持 checking,水合后客户端重算)——
+  // 避免 effect 内同步 setState(react-hooks 门禁)。
+  const [state, setState] = useState<GateState>(() =>
+    typeof window !== "undefined" && window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY) !== null
+      ? "pass"
+      : "checking",
+  )
   const [email, setEmail] = useState("")
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY) !== null) {
-      setState("pass")
+    if (state !== "checking") {
       return
     }
     // 探一次登录路由:503 auth_not_configured=未接 platform 的预览档,放行走原行为。
     void fetch("/api/auth/login", { method: "POST", body: "{}" })
       .then((res) => setState(res.status === 503 ? "pass" : "need_login"))
       .catch(() => setState("pass"))
-  }, [])
+  }, [state])
 
   if (state === "pass") {
     return <>{children}</>
