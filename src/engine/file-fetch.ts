@@ -1,20 +1,13 @@
 "use client"
 
-// 工作区文件抓取：鉴权开启后 files 端点要 Bearer；<img>/<iframe> 的 src 带不了头，
-// 故一律 fetch（带 token）→ blob → object URL 供预览/下载，避免裸 URL 撞 401。
+// 工作区文件抓取：files/deliveries 走同源 `/api/session` 代理，鉴权由 httpOnly 信封 cookie
+// 同源自动携带（前端不持 token）。<img>/<iframe> 的 src 虽同源能带 cookie，但需读 bytes 做
+// 预览/下载，故一律 fetch → blob → object URL。
 
 import { useEffect, useState } from "react"
 
-const AUTH_TOKEN_KEY = "kokoro.auth.token"
-
-function authHeaders(): Record<string, string> {
-  if (typeof window === "undefined") return {}
-  const token = window.localStorage.getItem(AUTH_TOKEN_KEY)
-  return token === null ? {} : { authorization: `Bearer ${token}` }
-}
-
 export function fileFetch(url: string): Promise<Response> {
-  return fetch(url, { cache: "no-store", headers: authHeaders() })
+  return fetch(url, { cache: "no-store" })
 }
 
 type BlobState =

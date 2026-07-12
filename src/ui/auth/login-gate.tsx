@@ -1,22 +1,23 @@
 "use client"
 
-// 登录闸（P2）：无 token 时挡在会话壳之前;登录成功把 token 写进既有注入点
-// (localStorage kokoro.auth.token,engine 构造时读取)后整页重载,零改动引擎。
-// 部署未接 platform(登录路由 503 auth_not_configured)时自动放行——保留纯前端预览档。
+// 登录闸（AUTH-P0）：无有效会话时挡在会话壳之前。改探服务端 `/api/auth/session-state`
+// （httpOnly 信封浏览器读不到，须服务端裁决）：authenticated/preview 放行，anonymous 挡门。
+// 登录走 magic-link——提交邮箱只发 `/api/auth/magic-link/request`（BFF 设 nonce cookie + 交 user），
+// 真正换取会话在邮件链接的 `/api/auth/callback` 完成（密封 cookie + 303）。前端不再持 token。
+// 部署未接 platform（session-state=preview）时自动放行——保留纯前端预览档。
 // 视觉：与壳同语言的暖色纸感门面（米白纸底 + pastel 光晕 + 品牌心），antd 组件经
-// ConfigProvider 对齐到品牌 token（暖木主色/柔木描边），不再是缺省蓝白卡。
+// ConfigProvider 对齐到品牌 token。
 
 import { useEffect, useState, type ReactNode } from "react"
 
 import { Alert, Button, ConfigProvider, Input, type ThemeConfig } from "antd"
 
 import { useT } from "@/i18n/context"
+import type { MessageKey } from "@/i18n/messages"
 
 import styles from "./login-gate.module.css"
 
-export const AUTH_TOKEN_STORAGE_KEY = "kokoro.auth.token"
-
-type GateState = "checking" | "need_login" | "pass"
+type GateState = "checking" | "need_login" | "sent" | "pass"
 
 // 暖色纸感 antd 主题：主色暖木、描边柔木、卡面暖白、圆角柔化——与壳 token 同源取值。
 // antd 主题算法需要实色 hex，无法直吃 CSS 变量，故此处与 globals.css 的 --k-* 取值保持一致。
@@ -45,26 +46,43 @@ function HeartMark() {
   )
 }
 
+// 首帧就知道回调是否失败（?auth=link_unavailable），据此在登录卡上给重发提示。
+function initialLinkError(): boolean {
+  if (typeof window === "undefined") {
+    return false
+  }
+  return new URLSearchParams(window.location.search).get("auth") === "link_unavailable"
+}
+
+const stateResponseSchema = (raw: unknown): "authenticated" | "preview" | "anonymous" => {
+  if (typeof raw === "object" && raw !== null && "state" in raw) {
+    const state = (raw as { state: unknown }).state
+    if (state === "authenticated" || state === "preview") {
+      return state
+    }
+  }
+  return "anonymous"
+}
+
 export function LoginGate({ children }: { children: ReactNode }) {
   const t = useT()
-  // 已有 token 走惰性初始化直接放行(SSR 无 window 时保持 checking,水合后客户端重算)——
-  // 避免 effect 内同步 setState(react-hooks 门禁)。
-  const [state, setState] = useState<GateState>(() =>
-    typeof window !== "undefined" && window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY) !== null
-      ? "pass"
-      : "checking",
-  )
+  const [state, setState] = useState<GateState>("checking")
   const [email, setEmail] = useState("")
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<MessageKey | null>(() =>
+    initialLinkError() ? "auth.linkUnavailable" : null,
+  )
+  const [devLink, setDevLink] = useState<string | null>(null)
 
   useEffect(() => {
     if (state !== "checking") {
       return
     }
-    // 探一次登录路由:503 auth_not_configured=未接 platform 的预览档,放行走原行为。
-    void fetch("/api/auth/login", { method: "POST", body: "{}" })
-      .then((res) => setState(res.status === 503 ? "pass" : "need_login"))
+    // 服务端裁决会话态：有效信封=authenticated（放行）；未接 platform=preview（放行走预览）；
+    // 否则 anonymous（挡门）。探针失败=放行（沿旧预览档 fail-open 语义）。
+    void fetch("/api/auth/session-state", { cache: "no-store" })
+      .then(async (res) => (res.ok ? stateResponseSchema(await res.json()) : "anonymous"))
+      .then((resolved) => setState(resolved === "anonymous" ? "need_login" : "pass"))
       .catch(() => setState("pass"))
   }, [state])
 
@@ -79,59 +97,103 @@ export function LoginGate({ children }: { children: ReactNode }) {
     setBusy(true)
     setError(null)
     try {
-      const res = await fetch("/api/auth/login", {
+      const res = await fetch("/api/auth/magic-link/request", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ email }),
       })
       if (!res.ok) {
-        setError(res.status === 400 ? t("auth.invalidEmail") : t("auth.unavailable"))
+        if (res.status === 400) {
+          setError("auth.invalidEmail")
+        } else if (res.status === 429) {
+          setError("auth.rateLimited")
+        } else {
+          setError("auth.unavailable")
+        }
         return
       }
-      const body = (await res.json()) as { token: string }
-      window.localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, body.token)
-      window.location.reload()
+      const body = (await res.json()) as { dev_link?: string }
+      setDevLink(typeof body.dev_link === "string" ? body.dev_link : null)
+      setState("sent")
+    } catch {
+      setError("auth.unavailable")
     } finally {
       setBusy(false)
     }
   }
 
-  return (
-    <ConfigProvider theme={AUTH_THEME}>
-      <div className={styles.screen}>
-        <div className={styles.card} data-testid="login-gate">
-          <span className={styles.brand} aria-hidden>
-            <HeartMark />
-          </span>
-          <h1 className={styles.title}>{t("auth.title")}</h1>
-          <p className={styles.subtitle}>{t("auth.subtitle")}</p>
-          <div className={styles.field}>
-            <Input
-              size="large"
-              placeholder={t("auth.emailPlaceholder")}
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              onPressEnter={() => void submit()}
-              disabled={busy}
-              data-testid="login-email"
-            />
-          </div>
-          {error === null ? null : (
-            <Alert className={styles.alert} type="error" message={error} showIcon />
-          )}
+  const card =
+    state === "sent" ? (
+      <div className={styles.card} data-testid="login-sent">
+        <span className={styles.brand} aria-hidden>
+          <HeartMark />
+        </span>
+        <h1 className={styles.title}>{t("auth.sentTitle")}</h1>
+        <p className={styles.subtitle}>{t("auth.sentBody")}</p>
+        {devLink === null ? null : (
           <Button
             className={styles.submit}
             type="primary"
             size="large"
             block
-            loading={busy}
-            onClick={() => void submit()}
-            data-testid="login-submit"
+            href={devLink}
+            data-testid="dev-link"
           >
-            {t("auth.submit")}
+            {t("auth.devLink")}
           </Button>
-        </div>
+        )}
+        <Button
+          className={styles.submit}
+          type="link"
+          size="large"
+          block
+          onClick={() => {
+            setState("need_login")
+            setDevLink(null)
+          }}
+          data-testid="login-restart"
+        >
+          {t("auth.resend")}
+        </Button>
       </div>
+    ) : (
+      <div className={styles.card} data-testid="login-gate">
+        <span className={styles.brand} aria-hidden>
+          <HeartMark />
+        </span>
+        <h1 className={styles.title}>{t("auth.title")}</h1>
+        <p className={styles.subtitle}>{t("auth.subtitle")}</p>
+        <div className={styles.field}>
+          <Input
+            size="large"
+            placeholder={t("auth.emailPlaceholder")}
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            onPressEnter={() => void submit()}
+            disabled={busy}
+            data-testid="login-email"
+          />
+        </div>
+        {error === null ? null : (
+          <Alert className={styles.alert} type="error" message={t(error)} showIcon />
+        )}
+        <Button
+          className={styles.submit}
+          type="primary"
+          size="large"
+          block
+          loading={busy}
+          onClick={() => void submit()}
+          data-testid="login-submit"
+        >
+          {t("auth.submit")}
+        </Button>
+      </div>
+    )
+
+  return (
+    <ConfigProvider theme={AUTH_THEME}>
+      <div className={styles.screen}>{card}</div>
     </ConfigProvider>
   )
 }

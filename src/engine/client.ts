@@ -96,17 +96,12 @@ async function parseJsonResponse<T>(response: Response, parse: (raw: unknown) =>
   }
 }
 
-async function postJson<T>(
-  url: string,
-  body: unknown,
-  parse: (raw: unknown) => T,
-  extraHeaders: Record<string, string> = {},
-): Promise<T> {
+async function postJson<T>(url: string, body: unknown, parse: (raw: unknown) => T): Promise<T> {
   let response: Response
   try {
     response = await fetch(url, {
       method: "POST",
-      headers: { "content-type": "application/json", ...extraHeaders },
+      headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
     })
   } catch (error) {
@@ -141,23 +136,23 @@ export function createSseFrameParser(onData: (data: string) => void): (chunk: st
   }
 }
 
-export function createSessionClient(options: { baseUrl: string; token?: string }): SessionClient {
-  const url = (path: string): string => new URL(path, options.baseUrl).toString()
-  // 鉴权（M2-P1）：token 存在即全请求携带；缺省=直通模式（session 未配 secret）。
-  const authHeaders: Record<string, string> =
-    options.token === undefined ? {} : { authorization: `Bearer ${options.token}` }
+export function createSessionClient(options: { baseUrl: string }): SessionClient {
+  // 契约路径以 `/` 打头，故 base+path 直接拼接（非 new URL——那会丢掉 `/api/session` 前缀）。
+  // baseUrl 可为绝对源（`http://host`）或同源相对前缀（`/api/session`）。
+  const base = options.baseUrl.replace(/\/+$/, "")
+  const url = (path: string): string => `${base}${path}`
+  // 鉴权（AUTH-P0）：同源 BFF 代理注入 Bearer；浏览器不持 token，靠 httpOnly 信封 cookie
+  // 同源自动携带，客户端不加任何 Authorization 头。
 
   return {
     createMessage: (sessionId, body) =>
-      postJson(url(messagesPath(sessionId)), body, (raw) =>
-        messageCreateReceiptSchema.parse(raw), authHeaders,
-      ),
+      postJson(url(messagesPath(sessionId)), body, (raw) => messageCreateReceiptSchema.parse(raw)),
 
     fetchSnapshot: async (sessionId) => {
       const target = url(snapshotPath(sessionId))
       let response: Response
       try {
-        response = await fetch(target, { cache: "no-store", headers: authHeaders })
+        response = await fetch(target, { cache: "no-store" })
       } catch (error) {
         throw new SessionClientError("network", describeUnknown(error))
       }
@@ -174,15 +169,13 @@ export function createSessionClient(options: { baseUrl: string; token?: string }
     },
 
     sendControl: (sessionId, runId, body) =>
-      postJson(url(controlPath(sessionId, runId)), body, (raw) =>
-        runControlReceiptSchema.parse(raw), authHeaders,
-      ),
+      postJson(url(controlPath(sessionId, runId)), body, (raw) => runControlReceiptSchema.parse(raw)),
 
     deleteSession: async (sessionId) => {
       const target = url(snapshotPath(sessionId))  // DELETE 与 snapshot 同路径（契约）
       let response: Response
       try {
-        response = await fetch(target, { method: "DELETE", headers: authHeaders })
+        response = await fetch(target, { method: "DELETE" })
       } catch (error) {
         throw new SessionClientError("network", describeUnknown(error))
       }
@@ -240,7 +233,7 @@ export function createSessionClient(options: { baseUrl: string; token?: string }
       })
 
       const connect = async (): Promise<void> => {
-        const headers: Record<string, string> = { accept: "text/event-stream", ...authHeaders }
+        const headers: Record<string, string> = { accept: "text/event-stream" }
         if (cursor !== undefined) {
           headers[LAST_EVENT_ID_HEADER] = String(cursor)
         }

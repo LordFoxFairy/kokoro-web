@@ -1,8 +1,8 @@
-// session base URL 唯一读取点：只认显式 env，缺失即 fail-loud（无端口嗅探、无 demo 兜底）。
+// session 客户端 base：同源 BFF 代理前缀（AUTH-P0）。浏览器不再直连 kokoro-session，
+// 真实地址留在服务端 `/api/session` 代理里；鉴权由 httpOnly 信封 cookie 同源自动携带，
+// 前端不持 bearer。相对前缀经 client 的 baseUrl+path 拼接消费（非 new URL）。
+export const SESSION_PROXY_BASE = "/api/session"
+
 export function sessionBaseUrl(): string {
-  const value = process.env.NEXT_PUBLIC_SESSION_BASE_URL
-  if (!value) {
-    throw new Error("NEXT_PUBLIC_SESSION_BASE_URL is not set")
-  }
-  return value
+  return SESSION_PROXY_BASE
 }

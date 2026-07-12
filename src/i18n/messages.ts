@@ -169,13 +169,19 @@ export const zh = {
   "lang.switchAria": "界面语言",
   "lang.zh": "中文",
   "lang.en": "English",
-  // 登录闸（P2 签发链 web 端）
+  // 登录闸（AUTH-P0：magic-link 签发链 web 端）
   "auth.title": "登录 Kokoro",
-  "auth.subtitle": "输入邮箱开始使用（开发档直登,邮件验证后续开启）。",
+  "auth.subtitle": "输入邮箱,我们发一封登录链接邮件给你。",
   "auth.emailPlaceholder": "you@example.com",
-  "auth.submit": "登录",
+  "auth.submit": "发送登录链接",
   "auth.invalidEmail": "请输入合法邮箱",
   "auth.unavailable": "登录服务暂不可用,稍后再试",
+  "auth.rateLimited": "请求过于频繁,请稍后再试",
+  "auth.linkUnavailable": "登录链接无效或已过期,请重新发送",
+  "auth.sentTitle": "查收邮件",
+  "auth.sentBody": "登录链接已发送,请在邮件中点击完成登录。",
+  "auth.devLink": "开发模式:直接打开登录链接",
+  "auth.resend": "换个邮箱重新发送",
 } as const
 
 export type MessageKey = keyof typeof zh

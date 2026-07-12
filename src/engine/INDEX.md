@@ -16,18 +16,21 @@
     selectConversation / newConversation / deleteConversation / setMode / dispose。
   - `EngineSnapshot`、`SERVER_ENGINE_SNAPSHOT`（SSR 首帧一致性）、`NoticeSpec`
     （瞬态通知发 i18n key 不落文案）。
-- `client.ts`：`createSessionClient({baseUrl, token?}) → SessionClient`——全部入站过
+- `client.ts`：`createSessionClient({baseUrl}) → SessionClient`——全部入站过
   contract zod，失败以 `SessionClientError`（network/http/parse）上抛零静默降级；
+  baseUrl+path 直接拼接（非 new URL，保住 `/api/session` 前缀）；AUTH-P0 起客户端不持
+  token，鉴权由同源 BFF 代理注入 Bearer、httpOnly 信封 cookie 同源自动携带；
   `openEvents` 用 fetch 流式 SSE（非 EventSource，首连即可带 Last-Event-ID=seq），断流按
   最后 seq 定时重连；`fetchSnapshot` 404/410 返 null（空线程即真态）；`createSseFrameParser`。
 - `hitl-staging.ts`：`stageDecision`/`buildResumeDecisions`（按契约 pending_tool_ids
   凑齐同帧才产出，未凑齐 null）/`rejectedToolIds`/`pendingToolIdsOf`；`ToolDecision`。
 - `reattach.ts`：`reattachPlanFromSnapshot`（在途 run 权威判据；有 pending 暂停直接落
   awaiting-hitl 不设时限）、`REATTACH_TIMEOUT_MS`（90s 兜底）。
-- `config.ts`：`sessionBaseUrl()`——NEXT_PUBLIC_SESSION_BASE_URL 唯一读取点，缺失 fail-loud。
-- `file-fetch.ts`（client 组件）：`fileFetch`/`useFileBlob`——files/deliveries 端点要 Bearer
-  而 `<img>` src 带不了头，故 fetch→blob→object URL（结果被替换/卸载即 revoke；
-  loading 为键控派生，无 effect 同步 setState）。
+- `config.ts`：`sessionBaseUrl()`——同源 BFF 代理前缀 `/api/session`（AUTH-P0）；浏览器不再
+  直连 kokoro-session，真实地址留服务端代理，`SESSION_PROXY_BASE` 常量。
+- `file-fetch.ts`（client 组件）：`fileFetch`/`useFileBlob`——files/deliveries 走同源
+  `/api/session` 代理，鉴权由 httpOnly 信封 cookie 自动携带（前端不持 token）；仍 fetch→blob
+  →object URL 供预览/下载（结果被替换/卸载即 revoke；loading 为键控派生，无 effect 同步 setState）。
 - `use-session-engine.ts`（client 组件）：`useSessionEngine(engine|null)`——全仓唯一
   React 接缝（useSyncExternalStore）。
 
