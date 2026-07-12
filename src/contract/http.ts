@@ -89,6 +89,23 @@ export const deliverySchema = z
   .strict()
 export type Delivery = z.infer<typeof deliverySchema>
 
+export const sessionListItemSchema = z
+  .object({
+    session_id: z.string().min(1),
+    title: z.string().min(1),
+    updated_at: z.string().min(1),
+  })
+  .strict()
+export type SessionListItem = z.infer<typeof sessionListItemSchema>
+
+export const sessionListSchema = z
+  .object({
+    sessions: z.array(sessionListItemSchema),
+    next_cursor: z.string().min(1).optional(),
+  })
+  .strict()
+export type SessionList = z.infer<typeof sessionListSchema>
+
 export const sessionSnapshotSchema = z
   .object({
     session: sessionMetaSchema,
