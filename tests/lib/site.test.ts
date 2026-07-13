@@ -37,8 +37,8 @@ describe("resolveSite", () => {
     vi.stubGlobal("fetch", fetchMock)
 
     const site = await resolveSite("brand-a.com")
-    expect(site.siteId).toBe("site-default")
-    expect(site.brand).toEqual(DEFAULT_BRAND)
+    expect(site?.siteId).toBe("site-default")
+    expect(site?.brand).toEqual(DEFAULT_BRAND)
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
@@ -47,7 +47,7 @@ describe("resolveSite", () => {
     vi.stubGlobal("fetch", fetchMock)
 
     const site = await resolveSite(null)
-    expect(site.siteId).toBe("site-default")
+    expect(site?.siteId).toBe("site-default")
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
@@ -83,9 +83,45 @@ describe("resolveSite", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
 
     const site = await resolveSite("unbound.com")
-    expect(site.siteId).toBe("site-default")
-    expect(site.brand).toEqual(DEFAULT_BRAND)
+    expect(site).not.toBeNull()
+    expect(site?.siteId).toBe("site-default")
+    expect(site?.brand).toEqual(DEFAULT_BRAND)
     expect(warn).toHaveBeenCalled()
+  })
+
+  it("does not cache a failed resolution — retries the site service on the next call", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response("not found", { status: 404 }))
+    vi.stubGlobal("fetch", fetchMock)
+    vi.spyOn(console, "warn").mockImplementation(() => {})
+
+    await resolveSite("flaky.com")
+    await resolveSite("flaky.com")
+    // 失败不写缓存：两次都真发请求（site 服务抖动即时恢复，不被 30s 旧值粘住）。
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it("strict mode: fail-closed to null on unresolved host (no default-brand fallback)", async () => {
+    process.env.KOKORO_SITE_STRICT = "1"
+    const fetchMock = vi.fn().mockResolvedValue(new Response("not found", { status: 404 }))
+    vi.stubGlobal("fetch", fetchMock)
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+
+    const site = await resolveSite("unbound.com")
+    expect(site).toBeNull()
+    expect(warn).toHaveBeenCalled()
+    delete process.env.KOKORO_SITE_STRICT
+  })
+
+  it("strict mode: still resolves normally when the site service resolves the host", async () => {
+    process.env.KOKORO_SITE_STRICT = "true"
+    const fetchMock = vi.fn().mockResolvedValue(
+      resolveResponse("site-brandco", { name: "Brand Co", logoUrl: null, themeColor: null }),
+    )
+    vi.stubGlobal("fetch", fetchMock)
+
+    const site = await resolveSite("brandco.com")
+    expect(site).toEqual({ siteId: "site-brandco", brand: { name: "Brand Co", logoUrl: null, themeColor: null } })
+    delete process.env.KOKORO_SITE_STRICT
   })
 })
 
@@ -104,5 +140,15 @@ describe("resolveSiteId", () => {
     delete process.env.KOKORO_SITE_BASE_URL
 
     expect(await resolveSiteId("brandco.com", "site-fallback")).toBe("site-fallback")
+  })
+
+  it("returns the provided fallback site_id under strict fail-closed (auth binds own site, not cross-tenant brand)", async () => {
+    process.env.KOKORO_SITE_STRICT = "1"
+    const fetchMock = vi.fn().mockResolvedValue(new Response("not found", { status: 404 }))
+    vi.stubGlobal("fetch", fetchMock)
+    vi.spyOn(console, "warn").mockImplementation(() => {})
+
+    expect(await resolveSiteId("unbound.com", "site-fallback")).toBe("site-fallback")
+    delete process.env.KOKORO_SITE_STRICT
   })
 })
