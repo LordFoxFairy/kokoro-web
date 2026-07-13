@@ -16,6 +16,7 @@ function renderRail(overrides?: Partial<Parameters<typeof SessionRail>[0]>) {
     <LocaleProvider>
       <SessionRail
         collapsed={false}
+        mobileOpen={false}
         onToggleCollapse={() => {}}
         onNewChat={() => {}}
         conversations={conversations}

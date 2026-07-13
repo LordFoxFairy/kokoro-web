@@ -39,6 +39,7 @@ export const zh = {
   "rail.renameCancel": "取消重命名",
   // shell 外壳
   "shell.resizeAria": "调整侧栏宽度",
+  "shell.openNav": "打开会话导航",
   "shell.heading": "今天想做什么？",
   "shell.subhead": "不急，先把想法说给我",
   "shell.backToLatest": "回到最新",

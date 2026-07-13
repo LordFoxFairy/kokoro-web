@@ -287,6 +287,15 @@
   }
 }
 
+/* —— 移动端 rail 抽屉（WEB-MOBILE）：桌面态汉堡与背幕不存在，仅 ≤768px 现身。 —— */
+.mobileNavToggle {
+  display: none;
+}
+
+.mobileNavBackdrop {
+  display: none;
+}
+
 /* —— 响应式 —— */
 
 @media (max-width: 960px) {
@@ -307,6 +316,59 @@
 
   .hero {
     padding-top: 2rem;
+  }
+}
+
+/* ≤768px 手机档：rail 脱离网格转抽屉，主区独占单栏单行（覆盖 ≤960 的堆叠行）。 */
+@media (max-width: 768px) {
+  .shell,
+  .shell[data-rail-collapsed="true"],
+  .shell[data-canvas-open="true"],
+  .shell[data-canvas-open="true"][data-rail-collapsed="true"] {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  /* 汉堡：固定左上角，浮于主区，磨砂暖底。 */
+  .mobileNavToggle {
+    display: inline-flex;
+    position: fixed;
+    top: 0.6rem;
+    left: 0.6rem;
+    z-index: 46;
+    align-items: center;
+    justify-content: center;
+    width: 2.4rem;
+    height: 2.4rem;
+    border: 1px solid var(--k-border);
+    border-radius: 0.7rem;
+    background: color-mix(in srgb, var(--surface) 86%, transparent);
+    backdrop-filter: blur(6px);
+    color: var(--foreground);
+    font-size: 1.15rem;
+    line-height: 1;
+    cursor: pointer;
+  }
+
+  /* 背幕：铺满、半透，点击关抽屉；层级在抽屉之下、内容之上。 */
+  .mobileNavBackdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 48;
+    background: color-mix(in srgb, var(--foreground) 34%, transparent);
+  }
+
+  /* 会话头部为汉堡让位，标题不被遮。 */
+  .mainHeader {
+    padding-left: 3.1rem;
+  }
+
+  /* 拖拽分隔条与 canvas 重开键在窄屏无意义，隐去。 */
+  .resizer,
+  .canvasResizer,
+  .canvasReopen {
+    display: none;
   }
 }
 

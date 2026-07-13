@@ -215,6 +215,8 @@ export function SessionShell({ engine: injectedEngine, brandName }: SessionShell
   const mounted = useHydrated()
 
   const [railCollapsed, setRailCollapsed] = useState(false)
+  // 移动端 rail 抽屉开合（WEB-MOBILE，仅 ≤768px 生效）：汉堡开、选中/背幕/新对话即关。
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const [skillsOpen, setSkillsOpen] = useState(false)
   const [mcpOpen, setMcpOpen] = useState(false)
   const [billingOpen, setBillingOpen] = useState(false)
@@ -530,6 +532,7 @@ export function SessionShell({ engine: injectedEngine, brandName }: SessionShell
       className={styles.shell}
       data-rail-collapsed={railCollapsed ? "true" : "false"}
       data-canvas-open={canvasOpen ? "true" : undefined}
+      data-mobile-nav-open={mobileNavOpen ? "true" : undefined}
       data-resizing={isResizing || isCanvasResizing ? "true" : undefined}
       style={
         {
@@ -538,15 +541,39 @@ export function SessionShell({ engine: injectedEngine, brandName }: SessionShell
         } as CSSProperties
       }
     >
+      {/* 移动端汉堡：仅 ≤768px 显示，开启 rail 抽屉（桌面态由 CSS 隐藏）。 */}
+      <button
+        type="button"
+        className={styles.mobileNavToggle}
+        aria-label={t("shell.openNav")}
+        onClick={() => setMobileNavOpen(true)}
+      >
+        <span aria-hidden>☰</span>
+      </button>
+      {/* 抽屉背幕：仅移动端且抽屉开启时铺满，点击即关。 */}
+      {mobileNavOpen ? (
+        <div
+          className={styles.mobileNavBackdrop}
+          role="presentation"
+          onClick={() => setMobileNavOpen(false)}
+        />
+      ) : null}
       <SessionRail
         collapsed={railCollapsed}
+        mobileOpen={mobileNavOpen}
         onToggleCollapse={() => setRailCollapsed((value) => !value)}
-        onNewChat={startNewChat}
+        onNewChat={() => {
+          startNewChat()
+          setMobileNavOpen(false)
+        }}
         brandName={brandName}
         conversations={conversations}
         activeId={activeId}
         awaitingIds={awaitingIds}
-        onSelectConversation={selectConversation}
+        onSelectConversation={(id) => {
+          selectConversation(id)
+          setMobileNavOpen(false)
+        }}
         onDeleteConversation={deleteConversation}
         onRenameConversation={renameConversation}
         onOpenSkills={() => setSkillsOpen(true)}

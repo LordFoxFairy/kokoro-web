@@ -32,6 +32,7 @@ export const en: Partial<Record<MessageKey, string>> = {
   "rail.renameCancel": "Cancel rename",
   // shell
   "shell.resizeAria": "Resize sidebar",
+  "shell.openNav": "Open chat navigation",
   "shell.heading": "What would you like to do today?",
   "shell.subhead": "No rush — just tell me your idea",
   "shell.backToLatest": "Back to latest",

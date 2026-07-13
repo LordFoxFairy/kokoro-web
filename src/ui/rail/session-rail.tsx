@@ -9,6 +9,8 @@ import styles from "./session-rail.module.css"
 
 type SessionRailProps = {
   collapsed: boolean
+  // 移动端抽屉开合（WEB-MOBILE，仅 ≤768px 生效）：true=滑入，桌面态忽略。
+  mobileOpen: boolean
   onToggleCollapse: () => void
   onNewChat: () => void
   // 服务端按 host 解析的站点品牌名（SITE-REAL）；缺省回退硬编码 Kokoro。
@@ -35,6 +37,7 @@ type SessionRailProps = {
 
 export function SessionRail({
   collapsed,
+  mobileOpen,
   onToggleCollapse,
   onNewChat,
   brandName,
@@ -105,7 +108,12 @@ export function SessionRail({
   const hasConversations = conversations.length > 0
 
   return (
-    <aside className={styles.rail} aria-label={t("rail.railAria")} data-collapsed={collapsed}>
+    <aside
+      className={styles.rail}
+      aria-label={t("rail.railAria")}
+      data-collapsed={collapsed}
+      data-mobile-open={mobileOpen ? "true" : undefined}
+    >
       <div className={styles.head}>
         <div className={styles.brand}>
           <div className={styles.brandMark} aria-hidden>
