@@ -9,10 +9,13 @@ import {
   messagesPath,
   parseSessionSnapshot,
   runControlReceiptSchema,
+  sessionListSchema,
+  sessionsPath,
   snapshotPath,
   messageCreateReceiptSchema,
   type RunControlBody,
   type RunControlReceipt,
+  type SessionList,
   type SessionSnapshot,
   type MessageCreateParams,
   type MessageCreateReceipt,
@@ -45,6 +48,8 @@ export type OpenEventsArgs = {
 }
 
 export type SessionClient = {
+  // 会话清单（SESS-LIST）：owner 隔离、updated_at desc、软删不出；复合游标分页（cursor 缺省=首页）。
+  listSessions: (cursor?: string) => Promise<SessionList>
   createMessage: (sessionId: string, body: MessageCreateParams) => Promise<MessageCreateReceipt>
   // 服务端不存在该会话（404）返回 null（本地新会话的合法答案）；其余失败照常上抛。
   fetchSnapshot: (sessionId: string) => Promise<SessionSnapshot | null>
@@ -145,6 +150,21 @@ export function createSessionClient(options: { baseUrl: string }): SessionClient
   // 同源自动携带，客户端不加任何 Authorization 头。
 
   return {
+    listSessions: async (cursor) => {
+      const query = cursor !== undefined ? `?cursor=${encodeURIComponent(cursor)}` : ""
+      const target = url(`${sessionsPath()}${query}`)
+      let response: Response
+      try {
+        response = await fetch(target, { cache: "no-store" })
+      } catch (error) {
+        throw new SessionClientError("network", describeUnknown(error))
+      }
+      if (!response.ok) {
+        throw await httpError("GET", target, response)
+      }
+      return parseJsonResponse(response, (raw) => sessionListSchema.parse(raw))
+    },
+
     createMessage: (sessionId, body) =>
       postJson(url(messagesPath(sessionId)), body, (raw) => messageCreateReceiptSchema.parse(raw)),
 

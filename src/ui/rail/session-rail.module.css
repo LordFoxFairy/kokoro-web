@@ -477,3 +477,19 @@
   border-color: var(--rail-border, #e0e0e0);
   background: var(--rail-hover, #f2f2f2);
 }
+
+/* 滚动翻页入口（SESS-LIST）：列表底部，暖木文字键。 */
+.loadMore {
+  width: calc(100% - 1.4rem);
+  margin: 0.4rem 0.7rem 0.2rem;
+  padding: 0.4rem;
+  font-size: 0.8rem;
+  color: var(--k-brand);
+  border: 1px solid var(--k-border);
+  border-radius: 8px;
+  background: transparent;
+}
+
+.loadMore:hover {
+  background: var(--k-bg-hover);
+}

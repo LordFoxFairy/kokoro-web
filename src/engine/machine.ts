@@ -164,6 +164,8 @@ export type SessionEngine = {
   cancelRun: () => void
   stageToolDecision: (runId: string, toolId: string, decision: ToolDecision) => void
   selectConversation: (id: string) => void
+  // 打开服务端清单里的会话（本地索引未见则先纳入缓存再水合）。
+  openConversation: (id: string) => void
   newConversation: () => void
   deleteConversation: (id: string) => void
   setMode: (mode: AgentMode) => void
@@ -662,6 +664,26 @@ export function createSessionEngine(deps: EngineDeps): SessionEngine {
     activateConversation(selectConversationOp(store, id))
   }
 
+  // 打开服务端清单里的会话（SESS-LIST）：本地索引已有即普通切换；未见则先纳入本地缓存
+  // （active/mode 编排用）再按 snapshot 水合。清单本体由服务端权威，本地索引只是访问缓存。
+  function openConversation(id: string): void {
+    if (disposed) {
+      return
+    }
+    if (store && store.activeId === id) {
+      return
+    }
+    if (store && store.conversations.some((entry) => entry.id === id)) {
+      activateConversation(selectConversationOp(store, id))
+      return
+    }
+    const entry = { id, title: "", updatedAt: now(), mode: "fast" as AgentMode }
+    const next: ConversationStore = store
+      ? { activeId: id, conversations: [entry, ...store.conversations] }
+      : { activeId: id, conversations: [entry] }
+    activateConversation(next)
+  }
+
   function newConversation(): void {
     if (disposed) {
       return
@@ -792,6 +814,7 @@ export function createSessionEngine(deps: EngineDeps): SessionEngine {
     cancelRun,
     stageToolDecision,
     selectConversation,
+    openConversation,
     newConversation,
     deleteConversation,
     setMode,

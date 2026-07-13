@@ -686,3 +686,31 @@ describe("会话软删除（technical/16 SD-W1）", () => {
     expect(client.deleteCalls).toEqual([doomed])
   })
 })
+
+describe("openConversation：打开服务端清单会话（SESS-LIST）", () => {
+  it("本地索引未见的 id：纳入缓存 + 置为活跃 + 按 snapshot 水合", async () => {
+    buildEngine()
+    engine.openConversation("ses_server_1")
+    await settle()
+    const store = engine.getSnapshot().store
+    expect(store?.activeId).toBe("ses_server_1")
+    expect(store?.conversations.some((entry) => entry.id === "ses_server_1")).toBe(true)
+    // 采纳后按 snapshot 水合：向服务端取该会话快照。
+    expect(client.snapshotCalls).toContain("ses_server_1")
+  })
+
+  it("已在本地索引的 id：普通切换，不重复追加条目", async () => {
+    buildEngine()
+    engine.submit("first")
+    await settle()
+    const firstId = engine.getSnapshot().store?.activeId
+    if (!firstId) throw new Error("expected active id")
+    engine.openConversation("ses_other")
+    await settle()
+    engine.openConversation(firstId)
+    await settle()
+    const store = engine.getSnapshot().store
+    expect(store?.activeId).toBe(firstId)
+    expect(store?.conversations.filter((entry) => entry.id === firstId)).toHaveLength(1)
+  })
+})

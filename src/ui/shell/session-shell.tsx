@@ -13,7 +13,7 @@ import {
   useSyncExternalStore,
 } from "react"
 
-import { activeMode, sortedConversations } from "@/core/conversations"
+import { activeMode, conversationTitle } from "@/core/conversations"
 import { storedConversationStoreSchema } from "@/core/persistence"
 import { previewClientFromEnv } from "@/dev/preview-transport"
 import { createSessionClient } from "@/engine/client"
@@ -32,7 +32,9 @@ import { BillingPanel } from "@/ui/billing/billing-panel"
 import { Composer, MAX_INPUT_LENGTH } from "@/ui/composer/composer"
 import { modePresentation } from "@/ui/composer/mode-options"
 import { SessionRail } from "@/ui/rail/session-rail"
+import { useSessionList } from "@/ui/rail/use-session-list"
 import { SkillsPanel } from "@/ui/skills/skills-panel"
+import type { SessionClient } from "@/engine/client"
 import { useRailResize } from "@/ui/rail/use-rail-resize"
 import { ConversationThread } from "@/ui/thread/conversation-thread"
 import { useAutoScroll } from "@/ui/thread/use-auto-scroll"
@@ -114,6 +116,16 @@ function browserBillingClient(): BillingClient {
     pageBillingClient = createBillingClient()
   }
   return pageBillingClient
+}
+
+// 会话清单读客户端（SESS-LIST）：与引擎同源选择（preview 假流优先，否则 `/api/session` BFF）。
+// 单例稳定引用，供 useSessionList 的取数 effect 依赖不抖动。
+let pageListClient: Pick<SessionClient, "listSessions"> | null = null
+function browserListClient(): Pick<SessionClient, "listSessions"> {
+  if (!pageListClient) {
+    pageListClient = previewClientFromEnv() ?? createSessionClient({ baseUrl: sessionBaseUrl() })
+  }
+  return pageListClient
 }
 
 // 页面级单例：整页共享一个引擎实例（含流句柄与重连计时器），仅浏览器创建，SSR 为 null。
@@ -201,10 +213,30 @@ export function SessionShell({ engine: injectedEngine }: SessionShellProps = {})
   const mode = store ? activeMode(store) : pendingMode
   // 已开聊即锁定：线程有消息（本地追加或 snapshot 水合）后模式不可再切换。
   const modeLocked = thread.messages.length > 0
-  const conversations = store
-    ? sortedConversations(store).map((entry) => ({ id: entry.id, title: entry.title }))
-    : []
   const activeId = store?.activeId ?? null
+
+  // 会话清单服务端水合（SESS-LIST）：列表本体来自 session GET /sessions（换浏览器同列表），
+  // localStorage 不再作清单真源。新建/切换/删除/开跑收尾后触发 refresh 重取首页。
+  const [listRefresh, setListRefresh] = useState(0)
+  const sessionList = useSessionList(browserListClient(), listRefresh)
+  // 当前活跃会话若尚未在服务端清单出现（新建未落库 / 列表未及刷新）：合成一条置顶项，不让它从侧栏消失。
+  const activeInList = activeId !== null && sessionList.entries.some((entry) => entry.id === activeId)
+  const conversations =
+    activeId !== null && !activeInList
+      ? [
+          { id: activeId, title: thread.meta?.title ?? conversationTitle(thread.messages) },
+          ...sessionList.entries.map((entry) => ({ id: entry.id, title: entry.title })),
+        ]
+      : sessionList.entries.map((entry) => ({ id: entry.id, title: entry.title }))
+
+  // run 收尾（streaming→idle 落沿）即刷新清单：首条消息落库后新会话进服务端列表，标题也随之更新。
+  const wasStreamingRef = useRef(false)
+  useEffect(() => {
+    if (wasStreamingRef.current && !isStreaming) {
+      setListRefresh((n) => n + 1)
+    }
+    wasStreamingRef.current = isStreaming
+  }, [isStreaming])
 
   // 草稿按当前会话取值：正在编辑的键命中用内存值，否则读持久化（切会话/刷新即取回，不丢字）。
   // 键控派生（非 effect 同步 setState）：mounted 门控保证 SSR/水合首帧一致（服务端无 localStorage）。
@@ -308,10 +340,20 @@ export function SessionShell({ engine: injectedEngine }: SessionShellProps = {})
   const selectConversation = useCallback(
     (id: string) => {
       // 不清 draft：切 activeId 后 effect 加载目标会话草稿（切走的草稿已随 updateDraft 落盘保留）。
-      engine?.selectConversation(id)
+      // openConversation：服务端清单项本地索引未见时先纳入缓存再水合（SESS-LIST）。
+      engine?.openConversation(id)
       focusComposer()
     },
     [engine, focusComposer],
+  )
+
+  const deleteConversation = useCallback(
+    (id: string) => {
+      engine?.deleteConversation(id)
+      // 软删后重取清单：服务端软删项即刻不出（本地乐观移除由引擎处理）。
+      setListRefresh((n) => n + 1)
+    },
+    [engine],
   )
 
   // 新对话快捷键 ⇧⌘O（侧栏展示该提示，故全局接入键盘使其真实可用）。
@@ -358,9 +400,13 @@ export function SessionShell({ engine: injectedEngine }: SessionShellProps = {})
         conversations={conversations}
         activeId={activeId}
         onSelectConversation={selectConversation}
-        onDeleteConversation={(id) => engine?.deleteConversation(id)}
+        onDeleteConversation={deleteConversation}
         onOpenSkills={() => setSkillsOpen(true)}
         onOpenBilling={() => setBillingOpen(true)}
+        listLoading={sessionList.loading}
+        listError={sessionList.error}
+        hasMore={sessionList.hasMore}
+        onLoadMore={sessionList.loadMore}
       />
 
       {/* 拖拽分隔条：调整 rail/main 宽度（两侧自由、各有最小宽度）；收起态不可拖。 */}

@@ -88,6 +88,9 @@ export function createPreviewClient(options?: { stepMs?: number }): SessionClien
   }
 
   return {
+    // 假流会话只活在内存：清单恒为空（会话列表服务端化在真 BFF 档才有内容）。
+    listSessions: () => Promise.resolve({ sessions: [] }),
+
     createMessage: (sessionId, body) => {
       runCounter += 1
       const runId = `run_preview_${runCounter}`

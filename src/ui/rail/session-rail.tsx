@@ -16,6 +16,11 @@ type SessionRailProps = {
   onDeleteConversation: (id: string) => void
   onOpenSkills: () => void
   onOpenBilling: () => void
+  // 清单服务端水合态（SESS-LIST）：加载/错误态与滚动翻页入口。
+  listLoading: boolean
+  listError: boolean
+  hasMore: boolean
+  onLoadMore: () => void
 }
 
 export function SessionRail({
@@ -28,6 +33,10 @@ export function SessionRail({
   onDeleteConversation,
   onOpenSkills,
   onOpenBilling,
+  listLoading,
+  listError,
+  hasMore,
+  onLoadMore,
 }: SessionRailProps) {
   const t = useT()
   const [searchOpen, setSearchOpen] = useState(false)
@@ -148,7 +157,7 @@ export function SessionRail({
         </button>
       </nav>
 
-      {hasConversations ? (
+      {hasConversations || listLoading || listError ? (
         <nav className={styles.list} aria-label={t("rail.recentAria")}>
           <div className={styles.sectionRow}>
             <p className={styles.section}>{t("rail.recent")}</p>
@@ -163,34 +172,46 @@ export function SessionRail({
               <SlidersIcon className={styles.sortIcon} />
             </button>
           </div>
-          {filtered.length > 0 ? (
-            filtered.map((conversation) => {
-              const title = conversation.title || t("rail.newChat")
-              return (
-                <div
-                  key={conversation.id}
-                  className={styles.item}
-                  data-active={conversation.id === activeId ? "true" : "false"}
-                >
-                  <button
-                    className={styles.itemSelect}
-                    type="button"
-                    onClick={() => onSelectConversation(conversation.id)}
-                    aria-current={conversation.id === activeId ? "true" : undefined}
+          {listError && !hasConversations ? (
+            <p className={styles.empty}>{t("rail.listError")}</p>
+          ) : listLoading && !hasConversations ? (
+            <p className={styles.empty}>{t("rail.listLoading")}</p>
+          ) : filtered.length > 0 ? (
+            <>
+              {filtered.map((conversation) => {
+                const title = conversation.title || t("rail.newChat")
+                return (
+                  <div
+                    key={conversation.id}
+                    className={styles.item}
+                    data-active={conversation.id === activeId ? "true" : "false"}
                   >
-                    <span className={styles.itemTitle}>{title}</span>
-                  </button>
-                  <button
-                    className={styles.itemDelete}
-                    type="button"
-                    aria-label={t("rail.deleteChat", { title })}
-                    onClick={() => onDeleteConversation(conversation.id)}
-                  >
-                    ×
-                  </button>
-                </div>
-              )
-            })
+                    <button
+                      className={styles.itemSelect}
+                      type="button"
+                      onClick={() => onSelectConversation(conversation.id)}
+                      aria-current={conversation.id === activeId ? "true" : undefined}
+                    >
+                      <span className={styles.itemTitle}>{title}</span>
+                    </button>
+                    <button
+                      className={styles.itemDelete}
+                      type="button"
+                      aria-label={t("rail.deleteChat", { title })}
+                      onClick={() => onDeleteConversation(conversation.id)}
+                    >
+                      ×
+                    </button>
+                  </div>
+                )
+              })}
+              {/* 滚动到底翻页（SESS-LIST 复合游标）：搜索过滤时不出翻页（仅过滤已载入项）。 */}
+              {hasMore && query === "" ? (
+                <button className={styles.loadMore} type="button" onClick={onLoadMore}>
+                  {t("rail.loadMore")}
+                </button>
+              ) : null}
+            </>
           ) : (
             <p className={styles.empty}>{t("rail.emptyResult")}</p>
           )}
