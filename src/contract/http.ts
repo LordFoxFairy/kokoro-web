@@ -106,6 +106,33 @@ export const sessionListSchema = z
   .strict()
 export type SessionList = z.infer<typeof sessionListSchema>
 
+export const billingSummarySchema = z
+  .object({
+    balance_micros: z.string().min(1),
+    held_micros: z.string().min(1),
+  })
+  .strict()
+export type BillingSummary = z.infer<typeof billingSummarySchema>
+
+export const billingLedgerEntrySchema = z
+  .object({
+    entry_id: z.string().min(1),
+    delta_micros: z.string().min(1),
+    reason: z.string().min(1),
+    created_at: z.number().int(),
+    run_id: z.string().min(1).nullable().optional(),
+  })
+  .strict()
+export type BillingLedgerEntry = z.infer<typeof billingLedgerEntrySchema>
+
+export const billingLedgerSchema = z
+  .object({
+    entries: z.array(billingLedgerEntrySchema),
+    next_cursor: z.string().min(1).optional(),
+  })
+  .strict()
+export type BillingLedger = z.infer<typeof billingLedgerSchema>
+
 export const sessionSnapshotSchema = z
   .object({
     session: sessionMetaSchema,
@@ -154,6 +181,9 @@ export type RunControlBody = z.infer<typeof runControlBodySchema>
 export const runControlReceiptSchema = z.object({ ok: z.literal(true) }).strict()
 export type RunControlReceipt = z.infer<typeof runControlReceiptSchema>
 
+export const controlReceiptViewSchema = z.object({ decision_id: z.string().min(1), status: z.enum(["pending", "persisted", "applied", "failed"]) }).strict()
+export type ControlReceiptView = z.infer<typeof controlReceiptViewSchema>
+
 export const deleteSessionReceiptSchema = z.object({ status: z.string().min(1) }).strict()
 export type DeleteSessionReceipt = z.infer<typeof deleteSessionReceiptSchema>
 
@@ -179,4 +209,16 @@ export function deliveryPath(sessionId: string, contentHash: string): string {
 }
 export function controlPath(sessionId: string, runId: string): string {
   return `/sessions/${sessionId}/runs/${runId}/control`
+}
+export function controlReceiptPath(sessionId: string, runId: string, decisionId: string): string {
+  return `/sessions/${sessionId}/runs/${runId}/control/${decisionId}`
+}
+export function sessionsPath(): string {
+  return `/sessions`
+}
+export function billingSummaryPath(): string {
+  return `/billing/summary`
+}
+export function billingLedgerPath(): string {
+  return `/billing/ledger`
 }

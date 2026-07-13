@@ -31,6 +31,16 @@ export const skillGrantSchema = z
   .strict()
 export type SkillGrant = z.infer<typeof skillGrantSchema>
 
+export const mcpGrantSchema = z
+  .object({
+    scope: z.string().min(1),
+    name: z.string().min(1),
+    revision: z.number().int(),
+    config_hash: z.string().min(1),
+  })
+  .strict()
+export type McpGrant = z.infer<typeof mcpGrantSchema>
+
 export const permissionsSchema = z
   .object({
     approval_tools: z.array(z.string().min(1)),
@@ -48,7 +58,7 @@ export const runtimeConfigSchema = z
     model: modelConfigSchema,
     tools: z.array(z.string().min(1)),
     skills: z.array(skillGrantSchema),
-    mcp_servers: z.array(z.string().min(1)),
+    mcp_servers: z.array(mcpGrantSchema),
     subagents: z.array(z.string().min(1)),
     backend: z.enum(["state", "local_shell", "docker", "e2b", "custom"]),
     permissions: permissionsSchema,
@@ -97,6 +107,7 @@ export const runResumeSchema = z
     kind: z.literal("run.resume"),
     run_id: z.string().min(1),
     thread_id: z.string().min(1),
+    decision_id: z.string().min(1),
     decisions: z.array(resumeDecisionSchema).min(1),
   })
   .strict()
@@ -107,6 +118,7 @@ export const runCancelSchema = z
     kind: z.literal("run.cancel"),
     run_id: z.string().min(1),
     thread_id: z.string().min(1),
+    decision_id: z.string().min(1),
   })
   .strict()
 export type RunCancel = z.infer<typeof runCancelSchema>
