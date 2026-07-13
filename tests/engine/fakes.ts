@@ -60,6 +60,7 @@ export function createFakeClient(): FakeClient {
       return stream
     },
     listSessions: () => Promise.resolve({ sessions: [] }),
+    listModels: () => Promise.resolve({ models: [] }),
     createMessage: (sessionId, body) => {
       client.createCalls.push({ sessionId, body })
       return client.nextCreate(sessionId, body)

@@ -106,6 +106,22 @@ export const sessionListSchema = z
   .strict()
 export type SessionList = z.infer<typeof sessionListSchema>
 
+export const modelCandidateSchema = z
+  .object({
+    provider: z.string().min(1),
+    name: z.string().min(1),
+    is_default: z.boolean(),
+  })
+  .strict()
+export type ModelCandidate = z.infer<typeof modelCandidateSchema>
+
+export const modelCandidateListSchema = z
+  .object({
+    models: z.array(modelCandidateSchema),
+  })
+  .strict()
+export type ModelCandidateList = z.infer<typeof modelCandidateListSchema>
+
 export const billingSummarySchema = z
   .object({
     balance_micros: z.string().min(1),
@@ -221,4 +237,7 @@ export function billingSummaryPath(): string {
 }
 export function billingLedgerPath(): string {
   return `/billing/ledger`
+}
+export function modelCandidatesPath(): string {
+  return `/models`
 }

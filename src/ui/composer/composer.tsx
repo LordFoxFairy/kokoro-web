@@ -7,6 +7,7 @@ import {
 } from "react"
 
 import type { AgentMode } from "@/core/conversations"
+import type { ModelCandidate } from "@/contract/http"
 import { useT } from "@/i18n/context"
 import { ChevronIcon, SparkIcon } from "@/ui/icons/thread"
 import { PlusIcon } from "@/ui/icons/rail"
@@ -51,6 +52,17 @@ type ComposerProps = {
   // 固定技能（WEB-SKILLS）：随消息上 wire 为 pinned_skills；chip 可就地取消固定。
   pinnedSkills: readonly string[]
   onUnpinSkill: (name: string) => void
+  // 模型候选（MODEL-UX）：空则不渲染选择器；selectedModel=null 时高亮缺省项。
+  // 选择随首条消息定死（modelLocked=已开聊）：锁定态只读展示当前模型。
+  models: readonly ModelCandidate[]
+  selectedModel: string | null
+  onModelChange: (selector: string) => void
+  modelLocked: boolean
+}
+
+// wire 选择子：与 session resolveRuntime 的 "provider:name" 规约一致。
+function modelSelector(model: ModelCandidate): string {
+  return `${model.provider}:${model.name}`
 }
 
 export function Composer({
@@ -69,10 +81,19 @@ export function Composer({
   modeLocked,
   pinnedSkills,
   onUnpinSkill,
+  models,
+  selectedModel,
+  onModelChange,
+  modelLocked,
 }: ComposerProps) {
   const t = useT()
   const modeLabel = MODE_LABEL[mode]
   const ModeIcon = mode === "thinking" ? SparkIcon : ZapIcon
+
+  // 当前选中模型：selectedModel 命中候选则用之，否则回落缺省项（is_default）。空候选=不渲染选择器。
+  const defaultModel = models.find((m) => m.is_default) ?? models[0]
+  const currentSelector = selectedModel ?? (defaultModel ? modelSelector(defaultModel) : undefined)
+  const currentModel = models.find((m) => modelSelector(m) === currentSelector) ?? defaultModel
 
   // 放大编辑：把同一份草稿摊进一个大编辑面板，方便长文撰写/修改。
   const [expanded, setExpanded] = useState(false)
@@ -149,6 +170,37 @@ export function Composer({
           </div>
 
           <div className={styles.cluster}>
+            {/* 模型选择器（MODEL-UX）：候选来自 platform 单源；首条消息后锁定为只读展示。空候选=不渲染。 */}
+            {models.length > 0 && currentModel ? (
+              modelLocked ? (
+                <button
+                  type="button"
+                  className={`${styles.mode} ${styles.modeLocked}`}
+                  disabled
+                  aria-label={t("composer.modelLocked", { model: currentModel.name })}
+                  title={t("composer.modelLockedTitle")}
+                >
+                  <span>{currentModel.name}</span>
+                  <LockIcon className={styles.lock} />
+                </button>
+              ) : (
+                <ComposerMenu
+                  triggerClassName={styles.mode}
+                  triggerLabel={t("composer.modelSwitch")}
+                  trigger={
+                    <>
+                      <span>{currentModel.name}</span>
+                      <ChevronIcon className={styles.chevron} />
+                    </>
+                  }
+                  options={models.map((m) => ({ key: modelSelector(m), label: m.name }))}
+                  selectedKey={currentSelector}
+                  onSelect={onModelChange}
+                  align="end"
+                />
+              )
+            ) : null}
+
             {modeLocked ? (
               <button
                 type="button"

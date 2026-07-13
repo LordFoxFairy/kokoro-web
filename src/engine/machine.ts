@@ -171,6 +171,8 @@ export type SessionEngine = {
   setMode: (mode: AgentMode) => void
   // 输入框固定技能（UI 偏好）：随每次开跑/插话上 wire 为 messageCreate.pinned_skills。
   setPinnedSkills: (names: readonly string[]) => void
+  // 选中模型（MODEL-UX）：首条消息上 wire 为 messageCreate.model（null=用 profile 缺省，不上 wire）。
+  setModel: (model: string | null) => void
   dispose: () => void
 }
 
@@ -210,6 +212,8 @@ export function createSessionEngine(deps: EngineDeps): SessionEngine {
   let notice: NoticeSpec | null = null
   // 固定技能（UI 偏好，shell 持久化后经 setPinnedSkills 注入）：非空即随 messageCreate 上 wire。
   let pinnedSkills: string[] = []
+  // 选中模型（MODEL-UX，shell 注入）：非 null 即随首条 messageCreate 上 wire 为 model（首条锁语义在 UI 层）。
+  let selectedModel: string | null = null
 
   let handle: EventStreamHandle | null = null
   // 流代际守卫：关流后迟到的回调（旧代际）一律忽略，防止旧流事件折进新会话。
@@ -479,6 +483,7 @@ export function createSessionEngine(deps: EngineDeps): SessionEngine {
         idempotency_key: idempotencyKey,
         content,
         thinking: mode === "thinking",
+        ...(selectedModel !== null ? { model: selectedModel } : {}),
         ...(pinnedSkills.length > 0 ? { pinned_skills: [...pinnedSkills] } : {}),
       })
       .then((receipt) => {
@@ -525,6 +530,7 @@ export function createSessionEngine(deps: EngineDeps): SessionEngine {
           idempotency_key: createId("idem"),
           content: trimmed,
           thinking: activeMode(store) === "thinking",
+          ...(selectedModel !== null ? { model: selectedModel } : {}),
           ...(pinnedSkills.length > 0 ? { pinned_skills: [...pinnedSkills] } : {}),
         })
         .then((receipt) => {
@@ -749,6 +755,13 @@ export function createSessionEngine(deps: EngineDeps): SessionEngine {
     pinnedSkills = [...names]
   }
 
+  function setModel(model: string | null): void {
+    if (disposed) {
+      return
+    }
+    selectedModel = model
+  }
+
   function dispose(): void {
     disposed = true
     closeStream()
@@ -819,6 +832,7 @@ export function createSessionEngine(deps: EngineDeps): SessionEngine {
     deleteConversation,
     setMode,
     setPinnedSkills,
+    setModel,
     dispose,
   }
 }

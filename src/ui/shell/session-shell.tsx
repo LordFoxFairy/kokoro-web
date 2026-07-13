@@ -56,6 +56,7 @@ import {
 } from "@/ui/canvas/canvas-store"
 import { useCanvasResize } from "@/ui/canvas/use-canvas-resize"
 import type { SessionDelivery, SessionToolCall } from "@/core/state"
+import type { ModelCandidate } from "@/contract/http"
 
 import styles from "./session-shell.module.css"
 
@@ -131,9 +132,9 @@ function browserTeamClient(): TeamClient {
 }
 
 // 会话清单读客户端（SESS-LIST）：与引擎同源选择（preview 假流优先，否则 `/api/session` BFF）。
-// 单例稳定引用，供 useSessionList 的取数 effect 依赖不抖动。
-let pageListClient: Pick<SessionClient, "listSessions"> | null = null
-function browserListClient(): Pick<SessionClient, "listSessions"> {
+// 单例稳定引用，供 useSessionList 的取数 effect 依赖不抖动。listModels 复用同客户端（MODEL-UX）。
+let pageListClient: Pick<SessionClient, "listSessions" | "listModels"> | null = null
+function browserListClient(): Pick<SessionClient, "listSessions" | "listModels"> {
   if (!pageListClient) {
     pageListClient = previewClientFromEnv() ?? createSessionClient({ baseUrl: sessionBaseUrl() })
   }
@@ -207,6 +208,25 @@ export function SessionShell({ engine: injectedEngine }: SessionShellProps = {})
   useEffect(() => {
     engine?.setPinnedSkills(pinnedSkills)
   }, [engine, pinnedSkills])
+
+  // 模型候选（MODEL-UX）：挂载即取一次（platform 单源经 session /models BFF）；失败/空=不渲染选择器。
+  const [models, setModels] = useState<readonly ModelCandidate[]>([])
+  // 选中模型 wire 选择子（"provider:name"）：null=用 profile 缺省，不上 wire。首条锁语义由 modeLocked 收口。
+  const [selectedModel, setSelectedModel] = useState<string | null>(null)
+  useEffect(() => {
+    let live = true
+    void browserListClient()
+      .listModels()
+      .then((list) => live && setModels(list.models))
+      .catch(() => live && setModels([]))
+    return () => {
+      live = false
+    }
+  }, [])
+  // 选中模型注入引擎：下一次开跑随 messageCreate 上 wire model（null 不上 wire）。
+  useEffect(() => {
+    engine?.setModel(selectedModel)
+  }, [engine, selectedModel])
 
   // 侧栏可拖拽改宽（两侧自由，均有最小宽度）；收起态用固定窄列，不参与拖拽。
   const { width: railWidth, isResizing, shellRef, onResizeStart } = useRailResize()
@@ -508,6 +528,10 @@ export function SessionShell({ engine: injectedEngine }: SessionShellProps = {})
           modeLocked={modeLocked}
           pinnedSkills={pinnedSkills}
           onUnpinSkill={removePinned}
+          models={models}
+          selectedModel={selectedModel}
+          onModelChange={setSelectedModel}
+          modelLocked={modeLocked}
         />
 
         {/* 重开入口：槽里还有内容但被手动关过——一键回到上次看的产物。 */}

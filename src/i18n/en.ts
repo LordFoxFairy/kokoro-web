@@ -327,4 +327,8 @@ export const en: Partial<Record<MessageKey, string>> = {
   "mcp.errNotFound": "That connection wasn't found.",
   "mcp.errInvalid": "Something's off: check the name, URL and transport.",
   "mcp.errGeneric": "Something went wrong — please try again.",
+  // Composer model selector (MODEL-UX)
+  "composer.modelSwitch": "Switch model",
+  "composer.modelLocked": "Model: {model} (locked this turn)",
+  "composer.modelLockedTitle": "Model is locked for this turn; start a new chat to change it",
 }

@@ -68,3 +68,25 @@ describe("fetchSnapshot：会话不存在/已软删都优雅缺席（不 fail-lo
     await expect(clientFor(500).fetchSnapshot("conv_x")).rejects.toThrow()
   })
 })
+
+describe("listModels（MODEL-UX）：GET /models 过契约 Zod", () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it("解析候选列表（provider/name/is_default）+ 命中 /models 路径", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({ models: [{ provider: "anthropic", name: "claude-sonnet-4-6", is_default: true }] }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    )
+    vi.stubGlobal("fetch", fetchMock)
+    const list = await createSessionClient({ baseUrl: "/api/session" }).listModels()
+    expect(list.models).toEqual([{ provider: "anthropic", name: "claude-sonnet-4-6", is_default: true }])
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/session/models")
+  })
+
+  it("非 ok 时 fail-loud 抛错（不静默降级）", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 503 })))
+    await expect(createSessionClient({ baseUrl: "/api/session" }).listModels()).rejects.toThrow()
+  })
+})

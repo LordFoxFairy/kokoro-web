@@ -13,6 +13,9 @@ import {
   sessionsPath,
   snapshotPath,
   messageCreateReceiptSchema,
+  modelCandidatesPath,
+  modelCandidateListSchema,
+  type ModelCandidateList,
   type RunControlBody,
   type RunControlReceipt,
   type SessionList,
@@ -60,6 +63,8 @@ export type SessionClient = {
   ) => Promise<RunControlReceipt>
   // 软删除（technical/16）：服务端打状态位；幂等（不存在/已删除同为 202）。
   deleteSession: (sessionId: string) => Promise<DeleteSessionReceipt>
+  // 模型候选（MODEL-UX）：本 namespace 声明可选 ∩ platform resolve 可用性；输入框下拉据此枚举。
+  listModels: () => Promise<ModelCandidateList>
   openEvents: (args: OpenEventsArgs) => EventStreamHandle
 }
 
@@ -167,6 +172,20 @@ export function createSessionClient(options: { baseUrl: string }): SessionClient
 
     createMessage: (sessionId, body) =>
       postJson(url(messagesPath(sessionId)), body, (raw) => messageCreateReceiptSchema.parse(raw)),
+
+    listModels: async () => {
+      const target = url(modelCandidatesPath())
+      let response: Response
+      try {
+        response = await fetch(target, { cache: "no-store" })
+      } catch (error) {
+        throw new SessionClientError("network", describeUnknown(error))
+      }
+      if (!response.ok) {
+        throw await httpError("GET", target, response)
+      }
+      return parseJsonResponse(response, (raw) => modelCandidateListSchema.parse(raw))
+    },
 
     fetchSnapshot: async (sessionId) => {
       const target = url(snapshotPath(sessionId))

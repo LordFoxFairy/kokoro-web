@@ -338,6 +338,10 @@ export const zh = {
   "mcp.errNotFound": "没有找到这个连接。",
   "mcp.errInvalid": "填写有误：请检查名称、URL 和传输方式。",
   "mcp.errGeneric": "操作失败，请稍后再试。",
+  // 输入框模型选择器（MODEL-UX）
+  "composer.modelSwitch": "切换模型",
+  "composer.modelLocked": "模型：{model}（本轮锁定）",
+  "composer.modelLockedTitle": "模型在本轮已锁定；开新对话可更换",
 } as const
 
 export type MessageKey = keyof typeof zh

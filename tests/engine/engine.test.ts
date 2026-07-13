@@ -115,6 +115,22 @@ describe("提交链路", () => {
     expect(thread().messages).toHaveLength(1)
   })
 
+  it("MODEL-UX：setModel 后首条 POST 带 model 选择子（首条锁的 wire 值）", async () => {
+    buildEngine()
+    engine.setModel("openai:gpt-5")
+    engine.submit("hi")
+    await settle()
+    expect(client.createCalls[0]!.body).toMatchObject({ content: "hi", model: "openai:gpt-5" })
+  })
+
+  it("MODEL-UX：selectedModel=null（缺省）不带 model 字段（服务端用 profile 缺省）", async () => {
+    buildEngine()
+    engine.setModel(null)
+    engine.submit("hi")
+    await settle()
+    expect(client.createCalls[0]!.body).not.toHaveProperty("model")
+  })
+
   it.each([["   "], [""]])("空白输入 %j 不触发任何副作用", async (input) => {
     buildEngine()
     engine.submit(input)
