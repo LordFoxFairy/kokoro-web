@@ -25,6 +25,13 @@ function makeClient(overrides: Partial<HubClient> = {}): HubClient {
     setSkillEnabled: vi.fn().mockResolvedValue(undefined),
     previewUpload: vi.fn(),
     confirmUpload: vi.fn(),
+    listMcpServers: vi.fn().mockResolvedValue([]),
+    registerMcpServer: vi.fn(),
+    setMcpEnabled: vi.fn().mockResolvedValue(undefined),
+    deleteMcpServer: vi.fn().mockResolvedValue(undefined),
+    listMcpSecrets: vi.fn().mockResolvedValue([]),
+    createMcpSecret: vi.fn(),
+    deleteMcpSecret: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   }
 }

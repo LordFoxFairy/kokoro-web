@@ -105,8 +105,67 @@ export const uploadConfirmSchema = z
   .strict()
 export type UploadConfirm = z.infer<typeof uploadConfirmSchema>
 
+// —— MCP server 池（self 面）——
+
+// 传输种类：与 hub contract/mcp-storage.MCP_TRANSPORTS 对齐（http / streamable_http）。
+export const MCP_TRANSPORTS = ["http", "streamable_http"] as const
+export type McpTransport = (typeof MCP_TRANSPORTS)[number]
+
+// 池视图：official 位（scope=official）与本 namespace 自有 server 合并。secret_ref 是引用名
+// （handle:srt_... / env:VAR）非凭据本体；revision 是内部机制，UI 不呈现（仅收边界不丢字段）。
+export const mcpServerViewSchema = z
+  .object({
+    scope: z.string().min(1),
+    name: z.string().min(1),
+    revision: z.number().int(),
+    transport: z.enum(MCP_TRANSPORTS),
+    url: z.string().min(1),
+    allowed_tools: z.array(z.string()),
+    secret_ref: z.string().nullable(),
+    enabled: z.boolean(),
+  })
+  .strict()
+export type McpServerView = z.infer<typeof mcpServerViewSchema>
+
+export const mcpServerPoolSchema = z.object({ servers: z.array(mcpServerViewSchema) }).strict()
+export const mcpServerRegisteredSchema = z.object({ server: mcpServerViewSchema }).strict()
+
+// self 注册体（门后）：scope 恒取信封头（不进 body）；secret_ref 仅 handle:srt_... 引用或省略。
+export type McpRegisterInput = {
+  name: string
+  transport: McpTransport
+  url: string
+  allowed_tools: string[]
+  secret_ref: string | null
+}
+
+// —— MCP secret handle（self 面）——
+
+// 列表项：句柄 + 名称 + 创建毫秒时间戳（hub SecretListItem 的 camelCase 回传）。值只进不出，绝不回显。
+export const mcpSecretSchema = z
+  .object({ handle: z.string().min(1), name: z.string().min(1), createdAt: z.number().int() })
+  .strict()
+export type McpSecret = z.infer<typeof mcpSecretSchema>
+
+export const mcpSecretListSchema = z.object({ secrets: z.array(mcpSecretSchema) }).strict()
+export const mcpSecretCreatedSchema = z.object({ handle: z.string().min(1) }).strict()
+
 // self 面路径（浏览器同源前缀 /api/hub → BFF 前缀 /hub → hub self 面）。
 export const HUB_BASE = "/api/hub"
+export const mcpServersPath = "/self/mcp/servers"
+export function mcpEnablePath(name: string): string {
+  return `/self/mcp/servers/${encodeURIComponent(name)}/enable`
+}
+export function mcpDisablePath(name: string): string {
+  return `/self/mcp/servers/${encodeURIComponent(name)}/disable`
+}
+export function mcpServerPath(name: string): string {
+  return `/self/mcp/servers/${encodeURIComponent(name)}`
+}
+export const mcpSecretsPath = "/self/mcp/secrets"
+export function mcpSecretPath(handle: string): string {
+  return `/self/mcp/secrets/${encodeURIComponent(handle)}`
+}
 export const skillPoolPath = "/self/skills/pool"
 export const skillQuotaPath = "/self/skills/quota"
 export function skillEnablePath(name: string): string {

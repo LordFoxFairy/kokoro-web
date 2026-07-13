@@ -7,6 +7,16 @@ import {
   HUB_BASE,
   hubDataSchema,
   hubErrorSchema,
+  mcpDisablePath,
+  mcpEnablePath,
+  mcpSecretCreatedSchema,
+  mcpSecretListSchema,
+  mcpSecretPath,
+  mcpSecretsPath,
+  mcpServerPath,
+  mcpServerPoolSchema,
+  mcpServerRegisteredSchema,
+  mcpServersPath,
   skillDisablePath,
   skillEnablePath,
   skillPoolPath,
@@ -19,6 +29,9 @@ import {
   skillUploadPreviewPath,
   uploadConfirmSchema,
   uploadPreviewSchema,
+  type McpRegisterInput,
+  type McpSecret,
+  type McpServerView,
   type SkillCard,
   type SkillQuota,
   type SkillRevision,
@@ -103,7 +116,31 @@ export type HubClient = {
   setSkillEnabled: (name: string, enabled: boolean) => Promise<void>
   previewUpload: (zip: Blob) => Promise<UploadPreview>
   confirmUpload: (zip: Blob, names: string[] | null) => Promise<UploadConfirm>
+  // MCP server 池（self 面）：列表 / 注册 / 启停 / 软删。
+  listMcpServers: () => Promise<McpServerView[]>
+  registerMcpServer: (input: McpRegisterInput) => Promise<McpServerView>
+  setMcpEnabled: (name: string, enabled: boolean) => Promise<void>
+  deleteMcpServer: (name: string) => Promise<void>
+  // MCP secret handle（self 面）：列表 / 创建（值只进不出）/ 软删。
+  listMcpSecrets: () => Promise<McpSecret[]>
+  createMcpSecret: (name: string, value: string) => Promise<string>
+  deleteMcpSecret: (handle: string) => Promise<void>
 }
+
+// 无回执体的变更请求（启停/软删）：只校验状态码，错误尽力取 hub 错误码。与 setSkillEnabled 同形。
+async function mutate(path: string, method: "POST" | "DELETE"): Promise<void> {
+  let response: Response
+  try {
+    response = await fetch(`${HUB_BASE}${path}`, { method, cache: "no-store" })
+  } catch (error) {
+    throw new HubClientError("network", describeUnknown(error), null, null)
+  }
+  if (!response.ok) {
+    throw await readError(response)
+  }
+}
+
+const JSON_HEADERS = { "content-type": "application/json" } as const
 
 function uploadForm(zip: Blob, names: string[] | null): FormData {
   const form = new FormData()
@@ -143,5 +180,36 @@ export function createHubClient(): HubClient {
         method: "POST",
         body: uploadForm(zip, names),
       }),
+    listMcpServers: async () => (await requestData(mcpServersPath, mcpServerPoolSchema)).servers,
+    registerMcpServer: async (input) =>
+      (
+        await requestData(mcpServersPath, mcpServerRegisteredSchema, {
+          method: "POST",
+          headers: JSON_HEADERS,
+          body: JSON.stringify(
+            input.secret_ref === null
+              ? { name: input.name, transport: input.transport, url: input.url, allowed_tools: input.allowed_tools }
+              : {
+                  name: input.name,
+                  transport: input.transport,
+                  url: input.url,
+                  allowed_tools: input.allowed_tools,
+                  secret_ref: input.secret_ref,
+                },
+          ),
+        })
+      ).server,
+    setMcpEnabled: (name, enabled) => mutate(enabled ? mcpEnablePath(name) : mcpDisablePath(name), "POST"),
+    deleteMcpServer: (name) => mutate(mcpServerPath(name), "DELETE"),
+    listMcpSecrets: async () => (await requestData(mcpSecretsPath, mcpSecretListSchema)).secrets,
+    createMcpSecret: async (name, value) =>
+      (
+        await requestData(mcpSecretsPath, mcpSecretCreatedSchema, {
+          method: "POST",
+          headers: JSON_HEADERS,
+          body: JSON.stringify({ name, value }),
+        })
+      ).handle,
+    deleteMcpSecret: (handle) => mutate(mcpSecretPath(handle), "DELETE"),
   }
 }

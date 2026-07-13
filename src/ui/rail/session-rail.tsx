@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 
 import { useLocale, useT } from "@/i18n/context"
-import { ChatsIcon, CoinIcon, PanelIcon, PlusIcon, SearchIcon, SlidersIcon, UsersIcon } from "@/ui/icons/rail"
+import { ChatsIcon, CoinIcon, PanelIcon, PlugIcon, PlusIcon, SearchIcon, SlidersIcon, UsersIcon } from "@/ui/icons/rail"
 
 import { filterConversations, type ConversationSummary } from "./rail-search"
 import styles from "./session-rail.module.css"
@@ -15,6 +15,7 @@ type SessionRailProps = {
   onSelectConversation: (id: string) => void
   onDeleteConversation: (id: string) => void
   onOpenSkills: () => void
+  onOpenMcp: () => void
   onOpenBilling: () => void
   onOpenTeams: () => void
   // 清单服务端水合态（SESS-LIST）：加载/错误态与滚动翻页入口。
@@ -33,6 +34,7 @@ export function SessionRail({
   onSelectConversation,
   onDeleteConversation,
   onOpenSkills,
+  onOpenMcp,
   onOpenBilling,
   onOpenTeams,
   listLoading,
@@ -150,6 +152,12 @@ export function SessionRail({
         <button className={styles.navItem} type="button" onClick={onOpenSkills}>
           <SlidersIcon className={styles.icon} />
           <span className={styles.navLabel}>{t("rail.navSkills")}</span>
+        </button>
+
+        {/* 连接面板入口（MCP-UX）：MCP server 注册/启停/软删 + 凭据 handle 管理的模态。 */}
+        <button className={styles.navItem} type="button" onClick={onOpenMcp} data-testid="rail-mcp">
+          <PlugIcon className={styles.icon} />
+          <span className={styles.navLabel}>{t("rail.navMcp")}</span>
         </button>
 
         {/* 余额面板入口（WEB-BILLING）：打开余额卡 + 账单流水的模态。 */}

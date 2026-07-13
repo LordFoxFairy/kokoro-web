@@ -36,6 +36,7 @@ import { modePresentation } from "@/ui/composer/mode-options"
 import { SessionRail } from "@/ui/rail/session-rail"
 import { useSessionList } from "@/ui/rail/use-session-list"
 import { SkillsPanel } from "@/ui/skills/skills-panel"
+import { McpPanel } from "@/ui/mcp/mcp-panel"
 import type { SessionClient } from "@/engine/client"
 import { useRailResize } from "@/ui/rail/use-rail-resize"
 import { ConversationThread } from "@/ui/thread/conversation-thread"
@@ -189,6 +190,7 @@ export function SessionShell({ engine: injectedEngine }: SessionShellProps = {})
 
   const [railCollapsed, setRailCollapsed] = useState(false)
   const [skillsOpen, setSkillsOpen] = useState(false)
+  const [mcpOpen, setMcpOpen] = useState(false)
   const [billingOpen, setBillingOpen] = useState(false)
   const [teamsOpen, setTeamsOpen] = useState(false)
   // 当前团队 namespace（切换器高亮）：undefined=未取，null=无信封/预览，string=当前 team id。
@@ -426,6 +428,7 @@ export function SessionShell({ engine: injectedEngine }: SessionShellProps = {})
         onSelectConversation={selectConversation}
         onDeleteConversation={deleteConversation}
         onOpenSkills={() => setSkillsOpen(true)}
+        onOpenMcp={() => setMcpOpen(true)}
         onOpenBilling={() => setBillingOpen(true)}
         onOpenTeams={openTeams}
         listLoading={sessionList.loading}
@@ -559,6 +562,8 @@ export function SessionShell({ engine: injectedEngine }: SessionShellProps = {})
           onTogglePin={togglePinned}
         />
       ) : null}
+
+      {mcpOpen ? <McpPanel client={browserHubClient()} onClose={() => setMcpOpen(false)} /> : null}
 
       {billingOpen ? (
         <BillingPanel client={browserBillingClient()} onClose={() => setBillingOpen(false)} />
