@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react"
 
 import { useLocale, useT } from "@/i18n/context"
 import { ChatsIcon, CoinIcon, LibraryIcon, PanelIcon, PlugIcon, PlusIcon, SearchIcon, SlidersIcon, UsersIcon } from "@/ui/icons/rail"
+import { useTheme, type ThemeMode } from "@/ui/theme/theme-context"
 
 import { filterConversations, type ConversationSummary } from "./rail-search"
 import styles from "./session-rail.module.css"
@@ -320,9 +321,39 @@ export function SessionRail({
           <p className={styles.userName}>{t("rail.userName")}</p>
           <p className={styles.userMeta}>{t("rail.userScope")}</p>
         </div>
+      </div>
+      <div className={styles.railControls}>
+        <ThemeSwitch />
         <LangSwitch />
       </div>
     </aside>
+  )
+}
+
+// 主题切换器（WEB-THEME）：系统/亮/暗三态即时切换 + localStorage 持久化（useTheme 内处理）。
+function ThemeSwitch() {
+  const t = useT()
+  const { mode, setMode } = useTheme()
+  const options: { value: ThemeMode; label: string }[] = [
+    { value: "system", label: t("theme.system") },
+    { value: "light", label: t("theme.light") },
+    { value: "dark", label: t("theme.dark") },
+  ]
+  return (
+    <div className={styles.langSwitch} role="group" aria-label={t("theme.switchAria")}>
+      {options.map((option) => (
+        <button
+          key={option.value}
+          type="button"
+          className={styles.langBtn}
+          data-active={mode === option.value}
+          aria-pressed={mode === option.value}
+          onClick={() => setMode(option.value)}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
   )
 }
 

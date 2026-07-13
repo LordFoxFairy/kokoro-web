@@ -11,6 +11,7 @@ vi.mock("@/engine/config", () => ({ sessionBaseUrl: () => "http://s.local" }))
 import { addConversation, type ConversationStore } from "@/core/conversations"
 import { createSessionEngine, type SessionEngine } from "@/engine/machine"
 import { LocaleProvider } from "@/i18n/context"
+import { ThemeProvider } from "@/ui/theme/theme-context"
 import { resetCanvasStore } from "@/ui/canvas/canvas-store"
 import { SessionShell } from "@/ui/shell/session-shell"
 
@@ -54,9 +55,11 @@ afterEach(() => {
 it("主路径：发送 → 流式 → HITL 批准 → 完成收束", async () => {
   buildEngine()
   render(
-    <LocaleProvider>
-      <SessionShell engine={engine} />
-    </LocaleProvider>,
+    <ThemeProvider>
+      <LocaleProvider>
+        <SessionShell engine={engine} />
+      </LocaleProvider>
+    </ThemeProvider>,
   )
 
   // 空首屏 hero 与就绪状态行。
@@ -157,9 +160,11 @@ it("刷新场景：带 pending pause 的 snapshot 水合后审批卡直接可操
     now: () => 1_000,
   })
   render(
-    <LocaleProvider>
-      <SessionShell engine={engine} />
-    </LocaleProvider>,
+    <ThemeProvider>
+      <LocaleProvider>
+        <SessionShell engine={engine} />
+      </LocaleProvider>
+    </ThemeProvider>,
   )
   await act(settle)
   // 线程=事件史全量回放重建（水合后开流从 0）：注入历史事件即重现消息与审批帧。
@@ -189,9 +194,11 @@ it("刷新场景：带 pending pause 的 snapshot 水合后审批卡直接可操
 it("成果链路：delivery.created → 尾部成果卡 → canvas 打开 → 手动关后可重开", async () => {
   buildEngine()
   render(
-    <LocaleProvider>
-      <SessionShell engine={engine} />
-    </LocaleProvider>,
+    <ThemeProvider>
+      <LocaleProvider>
+        <SessionShell engine={engine} />
+      </LocaleProvider>
+    </ThemeProvider>,
   )
   fireEvent.change(screen.getByLabelText("对话输入"), { target: { value: "交付成果" } })
   fireEvent.click(screen.getByLabelText("发送消息"))
@@ -234,9 +241,11 @@ it("成果链路：delivery.created → 尾部成果卡 → canvas 打开 → �
 it("工具 pill 点击升级为 canvas 详情：参数与结果在面板呈现", async () => {
   buildEngine()
   render(
-    <LocaleProvider>
-      <SessionShell engine={engine} />
-    </LocaleProvider>,
+    <ThemeProvider>
+      <LocaleProvider>
+        <SessionShell engine={engine} />
+      </LocaleProvider>
+    </ThemeProvider>,
   )
   fireEvent.change(screen.getByLabelText("对话输入"), { target: { value: "跑个工具" } })
   fireEvent.click(screen.getByLabelText("发送消息"))
@@ -274,9 +283,11 @@ it("工具 pill 点击升级为 canvas 详情：参数与结果在面板呈现",
 it("ask_user 待批帧渲染问答卡：问题=description、choices 可选、提交即 respond", async () => {
   buildEngine()
   render(
-    <LocaleProvider>
-      <SessionShell engine={engine} />
-    </LocaleProvider>,
+    <ThemeProvider>
+      <LocaleProvider>
+        <SessionShell engine={engine} />
+      </LocaleProvider>
+    </ThemeProvider>,
   )
   fireEvent.change(screen.getByLabelText("对话输入"), { target: { value: "选个方案" } })
   fireEvent.click(screen.getByLabelText("发送消息"))
@@ -316,9 +327,11 @@ it("ask_user 待批帧渲染问答卡：问题=description、choices 可选、�
 it("result_review 待批帧渲染审核卡：结果只读、三动作齐备、空替换禁用、采纳即 approve", async () => {
   buildEngine()
   render(
-    <LocaleProvider>
-      <SessionShell engine={engine} />
-    </LocaleProvider>,
+    <ThemeProvider>
+      <LocaleProvider>
+        <SessionShell engine={engine} />
+      </LocaleProvider>
+    </ThemeProvider>,
   )
   fireEvent.change(screen.getByLabelText("对话输入"), { target: { value: "写个文件" } })
   fireEvent.click(screen.getByLabelText("发送消息"))

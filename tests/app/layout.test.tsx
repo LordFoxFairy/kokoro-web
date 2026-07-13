@@ -26,10 +26,14 @@ describe("RootLayout language", () => {
     const { default: RootLayout } = await import("@/app/layout")
 
     const element = RootLayout({ children: <span>child</span> }) as ReactElement<{
-      children: ReactElement<{ children: ReactElement }>
+      children: ReactElement<{ children: ReactElement }>[]
     }>
-    const body = element.props.children
-    const registry = body.props.children
+    // <html> 下现有 <head>（首帧主题脚本）+ <body> 两个子节点；从中取 <body>。
+    const children = element.props.children
+    const body = (Array.isArray(children) ? children : [children]).find(
+      (child) => child.type === "body",
+    )
+    const registry = body!.props.children
 
     expect(registry.type).toBe(AntdRegistry)
   })

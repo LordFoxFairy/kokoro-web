@@ -75,17 +75,49 @@
   /* 衬线栈（系统字体，无需加载）：承载品牌/首屏标题的「米木纸感」暖色身份。 */
   --font-serif: "Songti SC", "Source Han Serif SC", "Noto Serif CJK SC", Georgia,
     "Times New Roman", serif;
+
+  /* 原生控件（滚动条/表单/焦点环）配色跟随亮档。 */
+  color-scheme: light;
 }
 
-/* —— 暗色结构占位 ——
-   仅登记语义槽位与 TODO，不臆造具体色值（暖色纸感的暗色版需换色相而非反色，
-   待专项设计确定后再填。留空使暗色暂时回落到亮色 token，不炸不错）。 */
+/* —— 暗色档（WEB-THEME）——
+   暖色纸感的「夜档」：换色相不反色。原色改为暖炭纸底 + 暖白墨，只重定「原始」token，
+   所有 color-mix 派生量（bg-hover/border-strong/status -bg -border）与别名量随 var() 惰性重算，
+   无需逐条改。文本 alpha 因是字面 rgba（非派生自 ink）必须在此显式重定为浅墨透明档。 */
 .dark {
-  /* TODO(web-dark): 暖色暗底需重定 ink 与 paper 及 status 色相，勿简单反转亮色值。
-     ink 与 paper：暗底暖墨与暖炭纸；
-     text、bg、border 三组：依新原色派生；
-     brand 组：暗底品牌需提亮保对比；
-     success、warning、error、neutral：暗底降饱和、升明度。 */
+  /* 原色：暖炭纸底（近黑暖棕，非纯黑非冷灰）+ 暖白墨。 */
+  --k-ink: #ece3d4;
+  --k-paper: #1b1712;
+
+  /* 文本四级：浅墨逐级淡出（字面 rgba，须显式重定）。 */
+  --k-text-secondary: rgba(236, 227, 212, 0.72);
+  --k-text-tertiary: rgba(236, 227, 212, 0.55);
+  --k-text-muted: rgba(236, 227, 212, 0.4);
+
+  /* 背景层：base=paper（惰性）；container/elevated 逐级抬升的暖炭面。 */
+  --k-bg-container: #241f18;
+  --k-bg-elevated: #2c261d;
+
+  /* 描边：暖炭线（border-strong 随 brand+border 重算）。 */
+  --k-border: #3a3126;
+
+  /* 品牌：夜档需提亮成浅暖木（既作暗底上的强调文字/描边可读，也作填充底）；
+     填充底上的文字翻为暖深墨（k-brand-on）。 */
+  --k-brand: #c6a670;
+  --k-brand-hover: #d4b581;
+  --k-brand-soft: #2e2619;
+  --k-brand-on: #221c13;
+
+  /* 状态：夜档降饱和、升明度（-bg/-border 随各自原色 + container 重算）。
+     -strong 作前景文字，须取浅档保对比。 */
+  --k-success: #83a381;
+  --k-warning: #d9ab55;
+  --k-error: #d3837b;
+  --k-error-strong: #e7a79f;
+  --k-neutral: #9298a3;
+  --k-neutral-strong: #c3c8d0;
+
+  color-scheme: dark;
 }
 
 * {

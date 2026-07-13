@@ -6,7 +6,7 @@
   gap: 0.15rem;
   border-right: 1px solid var(--border-soft);
   padding: 0.85rem 0.6rem;
-  background: color-mix(in srgb, var(--background) 93%, white 7%);
+  background: color-mix(in srgb, var(--background) 93%, var(--k-bg-container) 7%);
   /* 列宽过渡期间裁掉横向溢出，让文字随 rail 收窄被干净裁切而非溢出/换行。 */
   overflow: hidden;
 }
@@ -58,7 +58,7 @@
   border: 0;
   border-radius: 0.6rem;
   background: transparent;
-  color: rgba(43, 37, 32, 0.55);
+  color: color-mix(in srgb, var(--k-ink) 55%, transparent);
   cursor: pointer;
   transition:
     background-color 120ms ease,
@@ -67,7 +67,7 @@
 
 .headBtn:hover,
 .headBtn[data-active="true"] {
-  background: color-mix(in srgb, var(--brand-wood-soft) 55%, white 45%);
+  background: color-mix(in srgb, var(--brand-wood-soft) 55%, var(--k-bg-container) 45%);
   color: var(--foreground);
 }
 
@@ -90,7 +90,7 @@
   justify-content: center;
   border-radius: 0.6rem;
   background: var(--brand-wood);
-  color: #fffdf9;
+  color: var(--k-brand-on);
   font-size: 0.95rem;
 }
 
@@ -111,7 +111,7 @@
   font-size: 0.68rem;
   letter-spacing: 0.16em;
   /* 0.65 alpha 在该浅底上达 ~4.7:1，满足 WCAG AA 正文对比度。 */
-  color: rgba(43, 37, 32, 0.65);
+  color: color-mix(in srgb, var(--k-ink) 65%, transparent);
 }
 
 /* 搜索过滤框：打开时浮现在头部下方，实时过滤「最近」列表。 */
@@ -134,7 +134,7 @@
   width: 0.95rem;
   height: 0.95rem;
   flex-shrink: 0;
-  color: rgba(43, 37, 32, 0.5);
+  color: color-mix(in srgb, var(--k-ink) 50%, transparent);
 }
 
 .searchInput {
@@ -148,7 +148,7 @@
 }
 
 .searchInput::placeholder {
-  color: rgba(43, 37, 32, 0.42);
+  color: color-mix(in srgb, var(--k-ink) 42%, transparent);
 }
 
 /* 隐藏 type=search 的原生清除叉，统一用自绘关闭键。 */
@@ -199,7 +199,7 @@
 
 .navItem:hover:not(:disabled),
 .navItem[data-active="true"] {
-  background: color-mix(in srgb, var(--brand-wood-soft) 55%, white 45%);
+  background: color-mix(in srgb, var(--brand-wood-soft) 55%, var(--k-bg-container) 45%);
 }
 
 /* 新对话：真实操作，暖木字色 + 更实的 hover。 */
@@ -209,7 +209,7 @@
 }
 
 .navItemAction:hover {
-  background: color-mix(in srgb, var(--brand-wood-soft) 78%, white 22%);
+  background: color-mix(in srgb, var(--brand-wood-soft) 78%, var(--k-bg-container) 22%);
 }
 
 .navItem:focus-visible,
@@ -229,7 +229,7 @@
   flex-shrink: 0;
   font-size: 0.72rem;
   letter-spacing: 0.04em;
-  color: rgba(43, 37, 32, 0.4);
+  color: color-mix(in srgb, var(--k-ink) 40%, transparent);
 }
 
 /* 分组标题行：标题 + 右侧排序键（未实现能力入口，disabled 而非隐藏）。 */
@@ -250,7 +250,7 @@
   border: 0;
   border-radius: 0.5rem;
   background: transparent;
-  color: rgba(43, 37, 32, 0.4);
+  color: color-mix(in srgb, var(--k-ink) 40%, transparent);
   cursor: default;
 }
 
@@ -267,7 +267,7 @@
   font-size: 0.72rem;
   font-weight: 600;
   letter-spacing: 0.04em;
-  color: rgba(43, 37, 32, 0.5);
+  color: color-mix(in srgb, var(--k-ink) 50%, transparent);
 }
 
 /* 搜索无匹配时的柔和空态，不撑动列表节奏。 */
@@ -275,7 +275,7 @@
   margin: 0;
   padding: 0.4rem 0.7rem;
   font-size: 0.82rem;
-  color: rgba(43, 37, 32, 0.5);
+  color: color-mix(in srgb, var(--k-ink) 50%, transparent);
 }
 
 /* 历史会话列表：填充 search 与 user-card 之间，超出滚动。 */
@@ -403,7 +403,7 @@
 }
 
 .userCard:hover {
-  background: color-mix(in srgb, var(--brand-wood-soft) 50%, white 50%);
+  background: color-mix(in srgb, var(--brand-wood-soft) 50%, var(--k-bg-container) 50%);
 }
 
 .userAvatar {
@@ -425,7 +425,7 @@
   margin: 0;
   margin-top: 0.02rem;
   font-size: 0.72rem;
-  color: rgba(43, 37, 32, 0.55);
+  color: color-mix(in srgb, var(--k-ink) 55%, transparent);
 }
 
 /* —— 收起态：只留可操作的图标列（新对话 + 当前视图）。 —— */
@@ -458,6 +458,11 @@
 .rail[data-collapsed="true"] .userText {
   max-width: 0;
   opacity: 0;
+}
+
+/* 收起态：控制行（主题/语言）随文本标签一并隐去，只留图标列。 */
+.rail[data-collapsed="true"] .railControls {
+  display: none;
 }
 
 .rail[data-collapsed="true"] .navItem {
@@ -501,10 +506,19 @@
   }
 }
 
+/* 底部控制行（WEB-THEME）：主题切换 + 语言切换两端对齐，居于用户卡下方。 */
+.railControls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.15rem 0.6rem 0.1rem;
+  flex-wrap: wrap;
+}
+
 .langSwitch {
   display: flex;
   gap: 4px;
-  margin-left: auto;
 }
 .langBtn {
   font-size: 11px;
@@ -512,14 +526,14 @@
   border-radius: 6px;
   border: 1px solid transparent;
   background: transparent;
-  color: var(--rail-muted, #9a9a9a);
+  color: var(--k-text-tertiary);
   cursor: pointer;
   line-height: 1.4;
 }
 .langBtn[data-active="true"] {
-  color: var(--rail-fg, #2a2a2a);
-  border-color: var(--rail-border, #e0e0e0);
-  background: var(--rail-hover, #f2f2f2);
+  color: var(--k-text);
+  border-color: var(--k-border);
+  background: var(--k-bg-elevated);
 }
 
 /* 滚动翻页入口（SESS-LIST）：列表底部，暖木文字键。 */

@@ -6,11 +6,13 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest"
 import { LocaleProvider } from "@/i18n/context"
 import { SessionRail } from "@/ui/rail/session-rail"
 import type { ConversationSummary } from "@/ui/rail/rail-search"
+import { ThemeProvider } from "@/ui/theme/theme-context"
 
 function renderRail(overrides?: Partial<Parameters<typeof SessionRail>[0]>) {
   const onRenameConversation = vi.fn()
   const conversations: ConversationSummary[] = [{ id: "ses_1", title: "旧标题" }]
   render(
+    <ThemeProvider>
     <LocaleProvider>
       <SessionRail
         collapsed={false}
@@ -32,7 +34,8 @@ function renderRail(overrides?: Partial<Parameters<typeof SessionRail>[0]>) {
         onLoadMore={() => {}}
         {...overrides}
       />
-    </LocaleProvider>,
+    </LocaleProvider>
+    </ThemeProvider>,
   )
   return { onRenameConversation }
 }

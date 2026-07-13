@@ -183,6 +183,11 @@ export const zh = {
   "lang.switchAria": "界面语言",
   "lang.zh": "中文",
   "lang.en": "English",
+  // 主题切换（WEB-THEME）：系统/亮/暗三态
+  "theme.switchAria": "界面主题",
+  "theme.system": "系统",
+  "theme.light": "亮",
+  "theme.dark": "暗",
   // 登录闸（AUTH-P0：magic-link 签发链 web 端）
   "auth.title": "登录 Kokoro",
   "auth.subtitle": "输入邮箱,我们发一封登录链接邮件给你。",

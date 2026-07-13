@@ -265,7 +265,7 @@
 
 .jump:hover,
 .jump:focus-visible {
-  background: color-mix(in srgb, var(--brand-wood-soft) 70%, white 30%);
+  background: color-mix(in srgb, var(--brand-wood-soft) 70%, var(--k-bg-container) 30%);
   box-shadow:
     0 18px 48px rgba(139, 111, 71, 0.08),
     inset 0 0 0 1px var(--brand-wood);

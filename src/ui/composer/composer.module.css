@@ -12,7 +12,7 @@
   /* 常驻保留一行高度：标签为空时也占位，延后出现不会顶动 composer。 */
   margin: 0;
   min-height: 1rem;
-  color: rgba(43, 37, 32, 0.65);
+  color: color-mix(in srgb, var(--k-ink) 65%, transparent);
   font-size: 0.72rem;
   letter-spacing: 0.02em;
 }
@@ -102,12 +102,12 @@
 }
 
 .mic:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--brand-wood-soft) 60%, white 40%);
+  background: color-mix(in srgb, var(--brand-wood-soft) 60%, var(--k-bg-container) 40%);
 }
 
 .add:disabled,
 .mic:disabled {
-  color: rgba(43, 37, 32, 0.35);
+  color: color-mix(in srgb, var(--k-ink) 35%, transparent);
   cursor: default;
 }
 
@@ -141,7 +141,7 @@
 }
 
 .input::placeholder {
-  color: rgba(43, 37, 32, 0.55);
+  color: color-mix(in srgb, var(--k-ink) 55%, transparent);
 }
 
 /* 输入框本身不画内框：聚焦指示交给整框 :focus-within，避免框中框。 */
@@ -151,7 +151,7 @@
 }
 
 .input:disabled {
-  color: rgba(43, 37, 32, 0.55);
+  color: color-mix(in srgb, var(--k-ink) 55%, transparent);
   cursor: not-allowed;
 }
 
@@ -223,9 +223,9 @@
   align-items: center;
   justify-content: center;
   border-radius: 999px;
-  /* 木色发送键；深底配暖白图标。 */
+  /* 木色发送键；填充底配反白图标（夜档品牌转浅木、图标随 --k-brand-on 翻深墨）。 */
   background: var(--brand-wood);
-  color: #fffdf9;
+  color: var(--k-brand-on);
   font-size: 1rem;
   cursor: pointer;
   transition:
@@ -251,7 +251,7 @@
 
 .sendStop:hover,
 .sendStop:focus-visible {
-  background: color-mix(in srgb, var(--brand-wood-soft) 80%, white 20%);
+  background: color-mix(in srgb, var(--brand-wood-soft) 80%, var(--k-bg-container) 20%);
   box-shadow: inset 0 0 0 1.5px var(--brand-wood);
   outline: none;
 }
@@ -386,7 +386,7 @@
 }
 
 .expandInput::placeholder {
-  color: rgba(43, 37, 32, 0.55);
+  color: color-mix(in srgb, var(--k-ink) 55%, transparent);
 }
 
 .expandFoot {
@@ -397,7 +397,7 @@
 }
 
 .expandHint {
-  color: rgba(43, 37, 32, 0.55);
+  color: color-mix(in srgb, var(--k-ink) 55%, transparent);
   font-size: 0.76rem;
   letter-spacing: 0.01em;
 }
@@ -474,7 +474,7 @@
 }
 
 .menuItem:hover {
-  background: color-mix(in srgb, var(--brand-wood-soft) 50%, white 50%);
+  background: color-mix(in srgb, var(--brand-wood-soft) 50%, var(--k-bg-container) 50%);
 }
 
 .menuItem:focus-visible {
@@ -492,7 +492,7 @@
 .menuItemHint {
   margin-top: 0.1rem;
   font-size: 0.72rem;
-  color: rgba(43, 37, 32, 0.5);
+  color: color-mix(in srgb, var(--k-ink) 50%, transparent);
 }
 
 .menuCheck {
