@@ -58,7 +58,7 @@ import {
 } from "@/ui/canvas/canvas-store"
 import { useCanvasResize } from "@/ui/canvas/use-canvas-resize"
 import type { SessionDelivery, SessionToolCall } from "@/core/state"
-import type { ModelCandidate } from "@/contract/http"
+import type { AgentCandidate, ModelCandidate } from "@/contract/http"
 
 import styles from "./session-shell.module.css"
 
@@ -135,8 +135,8 @@ function browserTeamClient(): TeamClient {
 
 // 会话清单读客户端（SESS-LIST）：与引擎同源选择（preview 假流优先，否则 `/api/session` BFF）。
 // 单例稳定引用，供 useSessionList 的取数 effect 依赖不抖动。listModels 复用同客户端（MODEL-UX）。
-let pageListClient: Pick<SessionClient, "listSessions" | "listModels" | "listArtifacts" | "createShare" | "revokeShare"> | null = null
-function browserListClient(): Pick<SessionClient, "listSessions" | "listModels" | "listArtifacts" | "createShare" | "revokeShare"> {
+let pageListClient: Pick<SessionClient, "listSessions" | "listModels" | "listAgents" | "listArtifacts" | "createShare" | "revokeShare"> | null = null
+function browserListClient(): Pick<SessionClient, "listSessions" | "listModels" | "listAgents" | "listArtifacts" | "createShare" | "revokeShare"> {
   if (!pageListClient) {
     pageListClient = previewClientFromEnv() ?? createSessionClient({ baseUrl: sessionBaseUrl() })
   }
@@ -232,6 +232,25 @@ export function SessionShell({ engine: injectedEngine, brandName }: SessionShell
   useEffect(() => {
     engine?.setModel(selectedModel)
   }, [engine, selectedModel])
+
+  // agent 候选（AGENT-PRESET）：挂载即取一次（namespace profile 经 session /agents BFF）；失败/单候选=不渲染选择器。
+  const [agents, setAgents] = useState<readonly AgentCandidate[]>([])
+  // 选中 agent wire 名（agent 名）：null=用 profile 缺省 general，不上 wire。首条锁语义由 modeLocked 收口。
+  const [selectedAgent, setSelectedAgent] = useState<string | null>(null)
+  useEffect(() => {
+    let live = true
+    void browserListClient()
+      .listAgents()
+      .then((list) => live && setAgents(list.agents))
+      .catch(() => live && setAgents([]))
+    return () => {
+      live = false
+    }
+  }, [])
+  // 选中 agent 注入引擎：下一次开跑随 messageCreate 上 wire agent（null 不上 wire）。
+  useEffect(() => {
+    engine?.setAgent(selectedAgent)
+  }, [engine, selectedAgent])
 
   // 侧栏可拖拽改宽（两侧自由，均有最小宽度）；收起态用固定窄列，不参与拖拽。
   const { width: railWidth, isResizing, shellRef, onResizeStart } = useRailResize()
@@ -545,6 +564,10 @@ export function SessionShell({ engine: injectedEngine, brandName }: SessionShell
           selectedModel={selectedModel}
           onModelChange={setSelectedModel}
           modelLocked={modeLocked}
+          agents={agents}
+          selectedAgent={selectedAgent}
+          onAgentChange={setSelectedAgent}
+          agentLocked={modeLocked}
         />
 
         {/* 重开入口：槽里还有内容但被手动关过——一键回到上次看的产物。 */}

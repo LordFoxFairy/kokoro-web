@@ -331,6 +331,9 @@ export const en: Partial<Record<MessageKey, string>> = {
   "composer.modelSwitch": "Switch model",
   "composer.modelLocked": "Model: {model} (locked this turn)",
   "composer.modelLockedTitle": "Model is locked for this turn; start a new chat to change it",
+  "composer.agentSwitch": "Switch agent",
+  "composer.agentLocked": "Agent: {agent} (locked this turn)",
+  "composer.agentLockedTitle": "Agent is locked for this turn; start a new chat to change it",
   // Artifact library (ARTIFACT-LIB)
   "rail.navLibrary": "Work",
   "library.title": "Artifact library",

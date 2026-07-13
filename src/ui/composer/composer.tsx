@@ -7,7 +7,7 @@ import {
 } from "react"
 
 import type { AgentMode } from "@/core/conversations"
-import type { ModelCandidate } from "@/contract/http"
+import type { AgentCandidate, ModelCandidate } from "@/contract/http"
 import { useT } from "@/i18n/context"
 import { ChevronIcon, SparkIcon } from "@/ui/icons/thread"
 import { PlusIcon } from "@/ui/icons/rail"
@@ -58,6 +58,12 @@ type ComposerProps = {
   selectedModel: string | null
   onModelChange: (selector: string) => void
   modelLocked: boolean
+  // agent 候选（AGENT-PRESET）：单候选（仅 general）不渲染选择器；selectedAgent=null 时高亮缺省（is_default）。
+  // 选择随首条消息定死（agentLocked=已开聊）：锁定态只读展示当前 agent。
+  agents: readonly AgentCandidate[]
+  selectedAgent: string | null
+  onAgentChange: (name: string) => void
+  agentLocked: boolean
 }
 
 // wire 选择子：与 session resolveRuntime 的 "provider:name" 规约一致。
@@ -85,6 +91,10 @@ export function Composer({
   selectedModel,
   onModelChange,
   modelLocked,
+  agents,
+  selectedAgent,
+  onAgentChange,
+  agentLocked,
 }: ComposerProps) {
   const t = useT()
   const modeLabel = MODE_LABEL[mode]
@@ -94,6 +104,12 @@ export function Composer({
   const defaultModel = models.find((m) => m.is_default) ?? models[0]
   const currentSelector = selectedModel ?? (defaultModel ? modelSelector(defaultModel) : undefined)
   const currentModel = models.find((m) => modelSelector(m) === currentSelector) ?? defaultModel
+
+  // 当前选中 agent：selectedAgent 命中候选则用之，否则回落缺省项（is_default=general）。
+  // 单候选（只有 general，无具名预设）=不渲染选择器（无可选项，隐去）。
+  const defaultAgent = agents.find((a) => a.is_default) ?? agents[0]
+  const currentAgentName = selectedAgent ?? defaultAgent?.name
+  const currentAgent = agents.find((a) => a.name === currentAgentName) ?? defaultAgent
 
   // 放大编辑：把同一份草稿摊进一个大编辑面板，方便长文撰写/修改。
   const [expanded, setExpanded] = useState(false)
@@ -170,6 +186,38 @@ export function Composer({
           </div>
 
           <div className={styles.cluster}>
+            {/* agent 选择器（AGENT-PRESET）：候选来自 namespace profile；单候选（仅 general）不渲染。
+                首条消息后锁定为只读展示（与 model 同首条锁语义）。 */}
+            {agents.length > 1 && currentAgent ? (
+              agentLocked ? (
+                <button
+                  type="button"
+                  className={`${styles.mode} ${styles.modeLocked}`}
+                  disabled
+                  aria-label={t("composer.agentLocked", { agent: currentAgent.name })}
+                  title={t("composer.agentLockedTitle")}
+                >
+                  <span>{currentAgent.name}</span>
+                  <LockIcon className={styles.lock} />
+                </button>
+              ) : (
+                <ComposerMenu
+                  triggerClassName={styles.mode}
+                  triggerLabel={t("composer.agentSwitch")}
+                  trigger={
+                    <>
+                      <span>{currentAgent.name}</span>
+                      <ChevronIcon className={styles.chevron} />
+                    </>
+                  }
+                  options={agents.map((a) => ({ key: a.name, label: a.name }))}
+                  selectedKey={currentAgentName}
+                  onSelect={onAgentChange}
+                  align="end"
+                />
+              )
+            ) : null}
+
             {/* 模型选择器（MODEL-UX）：候选来自 platform 单源；首条消息后锁定为只读展示。空候选=不渲染。 */}
             {models.length > 0 && currentModel ? (
               modelLocked ? (

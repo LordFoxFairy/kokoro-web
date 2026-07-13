@@ -94,6 +94,9 @@ export function createPreviewClient(options?: { stepMs?: number }): SessionClien
     // 预览档无 platform 模型源：候选恒为空（输入框据此隐藏模型选择器）。
     listModels: () => Promise.resolve({ models: [] }),
 
+    // 预览档无 namespace profile 源：agent 候选恒为空（输入框据此隐藏 agent 选择器）。
+    listAgents: () => Promise.resolve({ agents: [] }),
+
     // 预览档无持久成果：作品库恒空；分享返回内存假 id（公共页在真 BFF 档才可达）。
     listArtifacts: () => Promise.resolve({ artifacts: [] }),
     createShare: () => Promise.resolve({ share_id: "shr_preview_0000000000000000000000000000" }),

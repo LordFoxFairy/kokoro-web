@@ -342,6 +342,9 @@ export const zh = {
   "composer.modelSwitch": "切换模型",
   "composer.modelLocked": "模型：{model}（本轮锁定）",
   "composer.modelLockedTitle": "模型在本轮已锁定；开新对话可更换",
+  "composer.agentSwitch": "切换 agent",
+  "composer.agentLocked": "agent：{agent}（本轮锁定）",
+  "composer.agentLockedTitle": "agent 在本轮已锁定；开新对话可更换",
   // 作品库（ARTIFACT-LIB）
   "rail.navLibrary": "作品",
   "library.title": "作品库",

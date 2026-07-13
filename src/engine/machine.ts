@@ -173,6 +173,8 @@ export type SessionEngine = {
   setPinnedSkills: (names: readonly string[]) => void
   // 选中模型（MODEL-UX）：首条消息上 wire 为 messageCreate.model（null=用 profile 缺省，不上 wire）。
   setModel: (model: string | null) => void
+  // 选中 agent（AGENT-PRESET）：首条消息上 wire 为 messageCreate.agent（null=用 profile 缺省 general，不上 wire）。
+  setAgent: (agent: string | null) => void
   dispose: () => void
 }
 
@@ -214,6 +216,9 @@ export function createSessionEngine(deps: EngineDeps): SessionEngine {
   let pinnedSkills: string[] = []
   // 选中模型（MODEL-UX，shell 注入）：非 null 即随首条 messageCreate 上 wire 为 model（首条锁语义在 UI 层）。
   let selectedModel: string | null = null
+  // 选中 agent（AGENT-PRESET，shell 注入）：非 null 即随首条 messageCreate 上 wire 为 agent
+  // （null=用 profile 缺省 general，不上 wire；首条锁语义与 model 同在 UI 层）。
+  let selectedAgent: string | null = null
 
   let handle: EventStreamHandle | null = null
   // 流代际守卫：关流后迟到的回调（旧代际）一律忽略，防止旧流事件折进新会话。
@@ -484,6 +489,7 @@ export function createSessionEngine(deps: EngineDeps): SessionEngine {
         content,
         thinking: mode === "thinking",
         ...(selectedModel !== null ? { model: selectedModel } : {}),
+        ...(selectedAgent !== null ? { agent: selectedAgent } : {}),
         ...(pinnedSkills.length > 0 ? { pinned_skills: [...pinnedSkills] } : {}),
       })
       .then((receipt) => {
@@ -531,6 +537,7 @@ export function createSessionEngine(deps: EngineDeps): SessionEngine {
           content: trimmed,
           thinking: activeMode(store) === "thinking",
           ...(selectedModel !== null ? { model: selectedModel } : {}),
+          ...(selectedAgent !== null ? { agent: selectedAgent } : {}),
           ...(pinnedSkills.length > 0 ? { pinned_skills: [...pinnedSkills] } : {}),
         })
         .then((receipt) => {
@@ -762,6 +769,13 @@ export function createSessionEngine(deps: EngineDeps): SessionEngine {
     selectedModel = model
   }
 
+  function setAgent(agent: string | null): void {
+    if (disposed) {
+      return
+    }
+    selectedAgent = agent
+  }
+
   function dispose(): void {
     disposed = true
     closeStream()
@@ -833,6 +847,7 @@ export function createSessionEngine(deps: EngineDeps): SessionEngine {
     setMode,
     setPinnedSkills,
     setModel,
+    setAgent,
     dispose,
   }
 }

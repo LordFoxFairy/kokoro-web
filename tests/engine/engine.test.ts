@@ -131,6 +131,22 @@ describe("提交链路", () => {
     expect(client.createCalls[0]!.body).not.toHaveProperty("model")
   })
 
+  it("AGENT-PRESET：setAgent 后首条 POST 带 agent 名（首条锁的 wire 值）", async () => {
+    buildEngine()
+    engine.setAgent("poet")
+    engine.submit("hi")
+    await settle()
+    expect(client.createCalls[0]!.body).toMatchObject({ content: "hi", agent: "poet" })
+  })
+
+  it("AGENT-PRESET：selectedAgent=null（缺省 general）不带 agent 字段（服务端用 profile 缺省）", async () => {
+    buildEngine()
+    engine.setAgent(null)
+    engine.submit("hi")
+    await settle()
+    expect(client.createCalls[0]!.body).not.toHaveProperty("agent")
+  })
+
   it.each([["   "], [""]])("空白输入 %j 不触发任何副作用", async (input) => {
     buildEngine()
     engine.submit(input)

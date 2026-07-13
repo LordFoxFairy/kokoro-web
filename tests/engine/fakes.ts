@@ -61,6 +61,7 @@ export function createFakeClient(): FakeClient {
     },
     listSessions: () => Promise.resolve({ sessions: [] }),
     listModels: () => Promise.resolve({ models: [] }),
+    listAgents: () => Promise.resolve({ agents: [] }),
     listArtifacts: () => Promise.resolve({ artifacts: [] }),
     createShare: () => Promise.resolve({ share_id: "shr_fake000000000000000000000000000" }),
     revokeShare: () => Promise.resolve({ ok: true as const }),

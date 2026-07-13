@@ -142,6 +142,22 @@ export const modelCandidateListSchema = z
   .strict()
 export type ModelCandidateList = z.infer<typeof modelCandidateListSchema>
 
+export const agentCandidateSchema = z
+  .object({
+    name: z.string().min(1),
+    description: z.string().min(1),
+    is_default: z.boolean(),
+  })
+  .strict()
+export type AgentCandidate = z.infer<typeof agentCandidateSchema>
+
+export const agentCandidateListSchema = z
+  .object({
+    agents: z.array(agentCandidateSchema),
+  })
+  .strict()
+export type AgentCandidateList = z.infer<typeof agentCandidateListSchema>
+
 export const billingSummarySchema = z
   .object({
     balance_micros: z.string().min(1),
@@ -263,6 +279,9 @@ export function billingLedgerPath(): string {
 }
 export function modelCandidatesPath(): string {
   return `/models`
+}
+export function agentCandidatesPath(): string {
+  return `/agents`
 }
 export function artifactsPath(): string {
   return `/artifacts`
