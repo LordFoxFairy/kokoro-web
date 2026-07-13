@@ -26,6 +26,9 @@ type ConversationThreadProps = {
   // 重连续传态：在途轮的 live 锚点改为「重连中…」，区别于普通「正在思考…」。
   isReconnecting: boolean
   hasFailed: boolean
+  // 402：run 被 credit_insufficient 拒——失败处改给计费专用说明 + 查看余额入口（不用通用失败文案）。
+  creditRejected: boolean
+  onOpenBilling: () => void
   onRetry: () => void
   onScroll: (event: UIEvent<HTMLDivElement>) => void
   threadEndRef: RefObject<HTMLDivElement | null>
@@ -65,6 +68,8 @@ export function ConversationThread({
   isStreaming,
   isReconnecting,
   hasFailed,
+  creditRejected,
+  onOpenBilling,
   onRetry,
   onScroll,
   threadEndRef,
@@ -156,7 +161,18 @@ export function ConversationThread({
           />
         ) : null}
 
-        {hasFailed ? (
+        {hasFailed && creditRejected ? (
+          <div className={styles.error} role="alert">
+            <span>{t("billing.creditRejected")}</span>
+            <span>{t("billing.creditPricing")}</span>
+            <button className={styles.retry} type="button" onClick={onOpenBilling}>
+              {t("billing.viewBalance")}
+            </button>
+            <button className={styles.retry} type="button" onClick={onRetry}>
+              {t("thread.retry")}
+            </button>
+          </div>
+        ) : hasFailed ? (
           <div className={styles.error} role="alert">
             <span>{t(failureCopyKey(thread.runError))}</span>
             <button className={styles.retry} type="button" onClick={onRetry}>

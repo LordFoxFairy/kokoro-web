@@ -1,0 +1,173 @@
+/* 计费面板：居中模态浮层，暖纸感（--k-* token）。余额卡 + 流水列表。 */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background: color-mix(in srgb, var(--k-ink) 32%, transparent);
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  width: min(34rem, 100%);
+  max-height: min(44rem, 100%);
+  background: var(--k-bg-container);
+  border: 1px solid var(--k-border);
+  border-radius: 16px;
+  box-shadow: 0 24px 64px -24px color-mix(in srgb, var(--k-ink) 40%, transparent);
+  overflow: hidden;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.25rem 1.5rem 1rem;
+  border-bottom: 1px solid var(--k-border);
+}
+
+.title {
+  font-family: var(--font-serif);
+  font-size: 1.25rem;
+  color: var(--k-text);
+}
+
+.close {
+  width: 2rem;
+  height: 2rem;
+  font-size: 1.25rem;
+  line-height: 1;
+  color: var(--k-text-secondary);
+  border-radius: 8px;
+}
+
+.close:hover {
+  background: var(--k-bg-hover);
+}
+
+.body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 1.25rem 1.5rem 1.5rem;
+}
+
+.hint {
+  padding: 1rem 0;
+  color: var(--k-text-tertiary);
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+.balanceCard {
+  padding: 1.1rem 1.25rem;
+  background: var(--k-bg-elevated);
+  border: 1px solid var(--k-border);
+  border-radius: 14px;
+}
+
+.balanceMain {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.balanceLabel {
+  font-size: 0.8rem;
+  color: var(--k-text-tertiary);
+}
+
+.balanceValue {
+  font-family: var(--font-serif);
+  font-size: 2rem;
+  color: var(--k-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.balanceHeld {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px dashed var(--k-border);
+  font-size: 0.85rem;
+  color: var(--k-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.ledgerHead {
+  margin: 1.5rem 0 0.75rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--k-text);
+}
+
+.ledger {
+  display: flex;
+  flex-direction: column;
+}
+
+.entry {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.7rem 0.25rem;
+  border-bottom: 1px solid var(--k-border);
+}
+
+.entryMain {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.entryReason {
+  font-size: 0.9rem;
+  color: var(--k-text);
+}
+
+.entryDate {
+  font-size: 0.75rem;
+  color: var(--k-text-muted);
+}
+
+.entryDelta {
+  font-size: 0.95rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.entryDelta[data-sign="positive"] {
+  color: var(--k-success);
+}
+
+.entryDelta[data-sign="negative"] {
+  color: var(--k-error);
+}
+
+.entryDelta[data-sign="zero"] {
+  color: var(--k-text-tertiary);
+}
+
+.more {
+  width: 100%;
+  margin-top: 1rem;
+  padding: 0.55rem;
+  font-size: 0.85rem;
+  color: var(--k-brand);
+  border: 1px solid var(--k-border-strong);
+  border-radius: 10px;
+}
+
+.more:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

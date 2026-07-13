@@ -221,6 +221,26 @@ export const zh = {
   // 输入框固定技能
   "composer.pinnedAria": "已固定技能",
   "composer.pinnedRemove": "取消固定 {name}",
+  // 计费面板（WEB-BILLING）
+  "rail.navBilling": "余额",
+  "billing.title": "余额与账单",
+  "billing.close": "关闭余额面板",
+  "billing.loading": "正在加载…",
+  "billing.loadError": "加载失败，请稍后再试",
+  "billing.balance": "可用余额",
+  "billing.held": "冻结中",
+  "billing.ledgerTitle": "账单流水",
+  "billing.ledgerEmpty": "还没有账单记录",
+  "billing.loadMore": "加载更多",
+  "billing.reasonModelCall": "模型调用",
+  "billing.reasonToolCall": "工具调用",
+  "billing.reasonSubscription": "订阅",
+  "billing.reasonRefund": "退款",
+  "billing.reasonAdjustment": "手动调整",
+  // 402：run 被 credit_insufficient 拒
+  "billing.creditRejected": "余额不足，这条消息未能开始。",
+  "billing.creditPricing": "查看价格或联系我们了解充值方式。",
+  "billing.viewBalance": "查看余额",
 } as const
 
 export type MessageKey = keyof typeof zh

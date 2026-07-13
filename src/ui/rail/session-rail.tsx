@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 
 import { useLocale, useT } from "@/i18n/context"
-import { ChatsIcon, PanelIcon, PlusIcon, SearchIcon, SlidersIcon } from "@/ui/icons/rail"
+import { ChatsIcon, CoinIcon, PanelIcon, PlusIcon, SearchIcon, SlidersIcon } from "@/ui/icons/rail"
 
 import { filterConversations, type ConversationSummary } from "./rail-search"
 import styles from "./session-rail.module.css"
@@ -15,6 +15,7 @@ type SessionRailProps = {
   onSelectConversation: (id: string) => void
   onDeleteConversation: (id: string) => void
   onOpenSkills: () => void
+  onOpenBilling: () => void
 }
 
 export function SessionRail({
@@ -26,6 +27,7 @@ export function SessionRail({
   onSelectConversation,
   onDeleteConversation,
   onOpenSkills,
+  onOpenBilling,
 }: SessionRailProps) {
   const t = useT()
   const [searchOpen, setSearchOpen] = useState(false)
@@ -137,6 +139,12 @@ export function SessionRail({
         <button className={styles.navItem} type="button" onClick={onOpenSkills}>
           <SlidersIcon className={styles.icon} />
           <span className={styles.navLabel}>{t("rail.navSkills")}</span>
+        </button>
+
+        {/* 余额面板入口（WEB-BILLING）：打开余额卡 + 账单流水的模态。 */}
+        <button className={styles.navItem} type="button" onClick={onOpenBilling}>
+          <CoinIcon className={styles.icon} />
+          <span className={styles.navLabel}>{t("rail.navBilling")}</span>
         </button>
       </nav>
 

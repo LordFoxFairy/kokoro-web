@@ -48,6 +48,15 @@ export function ChatsIcon({ className }: IconProps) {
   )
 }
 
+export function CoinIcon({ className }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden>
+      <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="1.6" />
+      <path d="M14.5 9.2a3 3 0 0 0-2.5-1.2c-1.7 0-3 1.8-3 4s1.3 4 3 4a3 3 0 0 0 2.5-1.2" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  )
+}
+
 export function SlidersIcon({ className }: IconProps) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden>

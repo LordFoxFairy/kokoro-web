@@ -26,7 +26,9 @@ import { z } from "zod"
 import { createPersistedStore } from "@/lib/persisted-store"
 import { useHydrated } from "@/lib/use-hydrated"
 
+import { createBillingClient, CREDIT_INSUFFICIENT, type BillingClient } from "@/billing/client"
 import { createHubClient, type HubClient } from "@/hub/client"
+import { BillingPanel } from "@/ui/billing/billing-panel"
 import { Composer, MAX_INPUT_LENGTH } from "@/ui/composer/composer"
 import { modePresentation } from "@/ui/composer/mode-options"
 import { SessionRail } from "@/ui/rail/session-rail"
@@ -105,6 +107,15 @@ function browserHubClient(): HubClient {
   return pageHubClient
 }
 
+// 页面级单例计费客户端：经同源 `/api/session` BFF 代理取 billing 窄读。
+let pageBillingClient: BillingClient | null = null
+function browserBillingClient(): BillingClient {
+  if (!pageBillingClient) {
+    pageBillingClient = createBillingClient()
+  }
+  return pageBillingClient
+}
+
 // 页面级单例：整页共享一个引擎实例（含流句柄与重连计时器），仅浏览器创建，SSR 为 null。
 let pageEngine: SessionEngine | null = null
 
@@ -155,6 +166,7 @@ export function SessionShell({ engine: injectedEngine }: SessionShellProps = {})
 
   const [railCollapsed, setRailCollapsed] = useState(false)
   const [skillsOpen, setSkillsOpen] = useState(false)
+  const [billingOpen, setBillingOpen] = useState(false)
   const composerRef = useRef<HTMLTextAreaElement | null>(null)
 
   // 固定技能清单（跨 tab 同步）：读缓存稳定引用，SSR/未水合回退空。
@@ -182,6 +194,9 @@ export function SessionShell({ engine: injectedEngine }: SessionShellProps = {})
   const hasMessages = thread.messages.length > 0
   // 失败双源：client/机器错误态（machine.error）与 agent 裁决的 run.failed 终态，都显式呈现。
   const hasFailed = !isStreaming && (machine.phase === "error" || thread.runStatus === "failed")
+  // 402：run 被 credit_insufficient 拒（session 受理挂点余额不足）——错误码由 client 从错误体取出，
+  // 落在 machine.error。据此给计费专用说明 + 价格/联系入口（不复用通用失败文案）。
+  const creditRejected = hasFailed && machine.error === CREDIT_INSUFFICIENT
 
   const mode = store ? activeMode(store) : pendingMode
   // 已开聊即锁定：线程有消息（本地追加或 snapshot 水合）后模式不可再切换。
@@ -345,6 +360,7 @@ export function SessionShell({ engine: injectedEngine }: SessionShellProps = {})
         onSelectConversation={selectConversation}
         onDeleteConversation={(id) => engine?.deleteConversation(id)}
         onOpenSkills={() => setSkillsOpen(true)}
+        onOpenBilling={() => setBillingOpen(true)}
       />
 
       {/* 拖拽分隔条：调整 rail/main 宽度（两侧自由、各有最小宽度）；收起态不可拖。 */}
@@ -368,6 +384,8 @@ export function SessionShell({ engine: injectedEngine }: SessionShellProps = {})
             isStreaming={isStreaming}
             isReconnecting={isReconnecting}
             hasFailed={hasFailed}
+            creditRejected={creditRejected}
+            onOpenBilling={() => setBillingOpen(true)}
             onRetry={() => engine?.retry()}
             onScroll={handleThreadScroll}
             threadEndRef={threadEndRef}
@@ -469,6 +487,10 @@ export function SessionShell({ engine: injectedEngine }: SessionShellProps = {})
           pinned={pinnedSkills}
           onTogglePin={togglePinned}
         />
+      ) : null}
+
+      {billingOpen ? (
+        <BillingPanel client={browserBillingClient()} onClose={() => setBillingOpen(false)} />
       ) : null}
     </main>
   )
