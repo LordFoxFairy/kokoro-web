@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 
 import { useLocale, useT } from "@/i18n/context"
-import { ChatsIcon, CoinIcon, PanelIcon, PlugIcon, PlusIcon, SearchIcon, SlidersIcon, UsersIcon } from "@/ui/icons/rail"
+import { ChatsIcon, CoinIcon, LibraryIcon, PanelIcon, PlugIcon, PlusIcon, SearchIcon, SlidersIcon, UsersIcon } from "@/ui/icons/rail"
 
 import { filterConversations, type ConversationSummary } from "./rail-search"
 import styles from "./session-rail.module.css"
@@ -18,6 +18,7 @@ type SessionRailProps = {
   onOpenMcp: () => void
   onOpenBilling: () => void
   onOpenTeams: () => void
+  onOpenLibrary: () => void
   // 清单服务端水合态（SESS-LIST）：加载/错误态与滚动翻页入口。
   listLoading: boolean
   listError: boolean
@@ -37,6 +38,7 @@ export function SessionRail({
   onOpenMcp,
   onOpenBilling,
   onOpenTeams,
+  onOpenLibrary,
   listLoading,
   listError,
   hasMore,
@@ -147,6 +149,12 @@ export function SessionRail({
           <ChatsIcon className={styles.icon} />
           <span className={styles.navLabel}>{t("rail.navChat")}</span>
         </div>
+
+        {/* 作品库入口（ARTIFACT-LIB）：打开属主 namespace 全部成果跨会话聚合的卡片网格模态。 */}
+        <button className={styles.navItem} type="button" onClick={onOpenLibrary} data-testid="rail-library">
+          <LibraryIcon className={styles.icon} />
+          <span className={styles.navLabel}>{t("rail.navLibrary")}</span>
+        </button>
 
         {/* 技能面板入口（WEB-SKILLS）：打开 hub self 面池/上传的模态。 */}
         <button className={styles.navItem} type="button" onClick={onOpenSkills}>

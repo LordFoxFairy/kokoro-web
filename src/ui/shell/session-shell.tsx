@@ -37,6 +37,8 @@ import { SessionRail } from "@/ui/rail/session-rail"
 import { useSessionList } from "@/ui/rail/use-session-list"
 import { SkillsPanel } from "@/ui/skills/skills-panel"
 import { McpPanel } from "@/ui/mcp/mcp-panel"
+import { ArtifactLibraryPanel } from "@/ui/library/artifact-library-panel"
+import { ShareButton } from "@/ui/share/share-button"
 import type { SessionClient } from "@/engine/client"
 import { useRailResize } from "@/ui/rail/use-rail-resize"
 import { ConversationThread } from "@/ui/thread/conversation-thread"
@@ -133,8 +135,8 @@ function browserTeamClient(): TeamClient {
 
 // 会话清单读客户端（SESS-LIST）：与引擎同源选择（preview 假流优先，否则 `/api/session` BFF）。
 // 单例稳定引用，供 useSessionList 的取数 effect 依赖不抖动。listModels 复用同客户端（MODEL-UX）。
-let pageListClient: Pick<SessionClient, "listSessions" | "listModels"> | null = null
-function browserListClient(): Pick<SessionClient, "listSessions" | "listModels"> {
+let pageListClient: Pick<SessionClient, "listSessions" | "listModels" | "listArtifacts" | "createShare" | "revokeShare"> | null = null
+function browserListClient(): Pick<SessionClient, "listSessions" | "listModels" | "listArtifacts" | "createShare" | "revokeShare"> {
   if (!pageListClient) {
     pageListClient = previewClientFromEnv() ?? createSessionClient({ baseUrl: sessionBaseUrl() })
   }
@@ -194,6 +196,7 @@ export function SessionShell({ engine: injectedEngine }: SessionShellProps = {})
   const [mcpOpen, setMcpOpen] = useState(false)
   const [billingOpen, setBillingOpen] = useState(false)
   const [teamsOpen, setTeamsOpen] = useState(false)
+  const [libraryOpen, setLibraryOpen] = useState(false)
   // 当前团队 namespace（切换器高亮）：undefined=未取，null=无信封/预览，string=当前 team id。
   const [teamNamespace, setTeamNamespace] = useState<string | null | undefined>(undefined)
   const composerRef = useRef<HTMLTextAreaElement | null>(null)
@@ -451,6 +454,7 @@ export function SessionShell({ engine: injectedEngine }: SessionShellProps = {})
         onOpenMcp={() => setMcpOpen(true)}
         onOpenBilling={() => setBillingOpen(true)}
         onOpenTeams={openTeams}
+        onOpenLibrary={() => setLibraryOpen(true)}
         listLoading={sessionList.loading}
         listError={sessionList.error}
         hasMore={sessionList.hasMore}
@@ -469,6 +473,12 @@ export function SessionShell({ engine: injectedEngine }: SessionShellProps = {})
       ) : null}
 
       <section className={styles.main}>
+        {/* 会话头部（SHARE-1）：有活跃会话且已开聊时显分享入口——创建可撤销只读链接。 */}
+        {mounted && activeId !== null && hasMessages ? (
+          <div className={styles.mainHeader}>
+            <ShareButton client={browserListClient()} sessionId={activeId} />
+          </div>
+        ) : null}
         {!mounted ? (
           <div className={styles.stage} aria-hidden />
         ) : hasMessages ? (
@@ -588,6 +598,17 @@ export function SessionShell({ engine: injectedEngine }: SessionShellProps = {})
       ) : null}
 
       {mcpOpen ? <McpPanel client={browserHubClient()} onClose={() => setMcpOpen(false)} /> : null}
+
+      {libraryOpen ? (
+        <ArtifactLibraryPanel
+          client={browserListClient()}
+          onClose={() => setLibraryOpen(false)}
+          onOpenSession={(id) => {
+            selectConversation(id)
+            setLibraryOpen(false)
+          }}
+        />
+      ) : null}
 
       {billingOpen ? (
         <BillingPanel client={browserBillingClient()} onClose={() => setBillingOpen(false)} />

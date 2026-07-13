@@ -3,6 +3,8 @@
 import { ZodError } from "zod"
 
 import {
+  artifactListSchema,
+  artifactsPath,
   controlPath,
   eventsPath,
   LAST_EVENT_ID_HEADER,
@@ -11,15 +13,19 @@ import {
   runControlReceiptSchema,
   sessionListSchema,
   sessionsPath,
+  sharePath,
+  shareReceiptSchema,
   snapshotPath,
   messageCreateReceiptSchema,
   modelCandidatesPath,
   modelCandidateListSchema,
+  type ArtifactList,
   type ModelCandidateList,
   type RunControlBody,
   type RunControlReceipt,
   type SessionList,
   type SessionSnapshot,
+  type ShareReceipt,
   type MessageCreateParams,
   type MessageCreateReceipt,
   deleteSessionReceiptSchema,
@@ -65,6 +71,11 @@ export type SessionClient = {
   deleteSession: (sessionId: string) => Promise<DeleteSessionReceipt>
   // 模型候选（MODEL-UX）：本 namespace 声明可选 ∩ platform resolve 可用性；输入框下拉据此枚举。
   listModels: () => Promise<ModelCandidateList>
+  // 作品库（ARTIFACT-LIB）：属主 namespace 全部成果跨会话聚合、复合游标分页（cursor 缺省=首页）。
+  listArtifacts: (cursor?: string) => Promise<ArtifactList>
+  // 分享（SHARE-1）：创建返 share_id（活跃分享幂等返同 id）；撤销置失效（公共读随即 404）。
+  createShare: (sessionId: string) => Promise<ShareReceipt>
+  revokeShare: (sessionId: string) => Promise<RunControlReceipt>
   openEvents: (args: OpenEventsArgs) => EventStreamHandle
 }
 
@@ -205,6 +216,38 @@ export function createSessionClient(options: { baseUrl: string }): SessionClient
         throw await httpError("GET", target, response)
       }
       return parseJsonResponse(response, parseSessionSnapshot)
+    },
+
+    listArtifacts: async (cursor) => {
+      const query = cursor !== undefined ? `?cursor=${encodeURIComponent(cursor)}` : ""
+      const target = url(`${artifactsPath()}${query}`)
+      let response: Response
+      try {
+        response = await fetch(target, { cache: "no-store" })
+      } catch (error) {
+        throw new SessionClientError("network", describeUnknown(error))
+      }
+      if (!response.ok) {
+        throw await httpError("GET", target, response)
+      }
+      return parseJsonResponse(response, (raw) => artifactListSchema.parse(raw))
+    },
+
+    createShare: (sessionId) =>
+      postJson(url(sharePath(sessionId)), {}, (raw) => shareReceiptSchema.parse(raw)),
+
+    revokeShare: async (sessionId) => {
+      const target = url(sharePath(sessionId))
+      let response: Response
+      try {
+        response = await fetch(target, { method: "DELETE" })
+      } catch (error) {
+        throw new SessionClientError("network", describeUnknown(error))
+      }
+      if (!response.ok) {
+        throw await httpError("DELETE", target, response)
+      }
+      return parseJsonResponse(response, (raw) => runControlReceiptSchema.parse(raw))
     },
 
     sendControl: (sessionId, runId, body) =>

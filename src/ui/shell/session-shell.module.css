@@ -154,6 +154,14 @@
   z-index: 1;
 }
 
+/* 会话头部条（SHARE-1）：分享入口靠右，贴主区顶端，不参与线程滚动。 */
+.mainHeader {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  padding: 0.6rem 1.25rem 0;
+}
+
 /* 首帧占位：rail 与 composer 立即就位，主内容水合后淡入——刷新不闪、不跳。 */
 .stage {
   flex: 1;

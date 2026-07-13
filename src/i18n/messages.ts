@@ -342,6 +342,32 @@ export const zh = {
   "composer.modelSwitch": "切换模型",
   "composer.modelLocked": "模型：{model}（本轮锁定）",
   "composer.modelLockedTitle": "模型在本轮已锁定；开新对话可更换",
+  // 作品库（ARTIFACT-LIB）
+  "rail.navLibrary": "作品",
+  "library.title": "作品库",
+  "library.close": "关闭作品库",
+  "library.loading": "正在加载作品…",
+  "library.loadError": "作品加载失败",
+  "library.empty": "还没有成果——完成的产物会汇集到这里",
+  "library.loadMore": "加载更多",
+  "library.downloadAria": "下载 {title}",
+  "library.openSource": "查看来源会话",
+  // 分享（SHARE-1）
+  "share.button": "分享",
+  "share.creating": "创建中…",
+  "share.title": "分享此会话",
+  "share.readonlyHint": "任何持链接者可只读查看本会话线程与成果；随时可撤销。",
+  "share.linkAria": "公共分享链接",
+  "share.copy": "复制链接",
+  "share.copied": "已复制",
+  "share.revoke": "撤销分享",
+  "share.done": "完成",
+  "share.error": "分享失败",
+  // 公共分享页（SHARE-1）
+  "shared.loading": "正在加载…",
+  "shared.notFound": "此分享不可用",
+  "shared.notFoundHint": "链接可能已被撤销，或会话已删除。",
+  "shared.readonlyBadge": "只读分享",
 } as const
 
 export type MessageKey = keyof typeof zh

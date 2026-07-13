@@ -1,0 +1,103 @@
+/* 会话头部分享控件：触发按钮 + 展开的链接/撤销浮层（暖纸 token）。 */
+
+.wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.trigger {
+  padding: 0.4rem 0.85rem;
+  font-size: 0.82rem;
+  color: var(--k-text-secondary);
+  border: 1px solid var(--k-border-strong);
+  border-radius: 999px;
+}
+
+.trigger:hover {
+  background: var(--k-bg-hover);
+  color: var(--k-text);
+}
+
+.trigger:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.err {
+  font-size: 0.78rem;
+  color: var(--k-error);
+}
+
+.popover {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  right: 0;
+  z-index: 40;
+  width: min(22rem, 80vw);
+  padding: 0.9rem 1rem;
+  background: var(--k-bg-container);
+  border: 1px solid var(--k-border);
+  border-radius: 12px;
+  box-shadow: 0 16px 40px -18px color-mix(in srgb, var(--k-ink) 40%, transparent);
+}
+
+.hint {
+  margin-bottom: 0.6rem;
+  font-size: 0.8rem;
+  color: var(--k-text-tertiary);
+}
+
+.linkRow {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.link {
+  flex: 1;
+  min-width: 0;
+  padding: 0.4rem 0.55rem;
+  font-size: 0.78rem;
+  color: var(--k-text);
+  background: var(--k-bg-elevated);
+  border: 1px solid var(--k-border);
+  border-radius: 8px;
+}
+
+.copy {
+  padding: 0.4rem 0.7rem;
+  font-size: 0.78rem;
+  color: var(--k-brand);
+  border: 1px solid var(--k-border-strong);
+  border-radius: 8px;
+  white-space: nowrap;
+}
+
+.actions {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 0.75rem;
+}
+
+.revoke {
+  padding: 0.4rem 0.7rem;
+  font-size: 0.78rem;
+  color: var(--k-error);
+  border-radius: 8px;
+}
+
+.revoke:hover {
+  background: var(--k-bg-hover);
+}
+
+.dismiss {
+  padding: 0.4rem 0.7rem;
+  font-size: 0.78rem;
+  color: var(--k-text-secondary);
+  border-radius: 8px;
+}
+
+.dismiss:hover {
+  background: var(--k-bg-hover);
+}

@@ -89,6 +89,26 @@ export const deliverySchema = z
   .strict()
 export type Delivery = z.infer<typeof deliverySchema>
 
+export const artifactRecordSchema = z
+  .object({
+    content_hash: z.string().min(1),
+    session_id: z.string().min(1),
+    title: z.string().min(1),
+    mime: z.string().min(1),
+    size: z.number().int(),
+    created_at: z.string().min(1),
+  })
+  .strict()
+export type ArtifactRecord = z.infer<typeof artifactRecordSchema>
+
+export const artifactListSchema = z
+  .object({
+    artifacts: z.array(artifactRecordSchema),
+    next_cursor: z.string().min(1).optional(),
+  })
+  .strict()
+export type ArtifactList = z.infer<typeof artifactListSchema>
+
 export const sessionListItemSchema = z
   .object({
     session_id: z.string().min(1),
@@ -197,6 +217,9 @@ export type RunControlBody = z.infer<typeof runControlBodySchema>
 export const runControlReceiptSchema = z.object({ ok: z.literal(true) }).strict()
 export type RunControlReceipt = z.infer<typeof runControlReceiptSchema>
 
+export const shareReceiptSchema = z.object({ share_id: z.string().min(1) }).strict()
+export type ShareReceipt = z.infer<typeof shareReceiptSchema>
+
 export const controlReceiptViewSchema = z.object({ decision_id: z.string().min(1), status: z.enum(["pending", "persisted", "applied", "failed"]) }).strict()
 export type ControlReceiptView = z.infer<typeof controlReceiptViewSchema>
 
@@ -240,4 +263,16 @@ export function billingLedgerPath(): string {
 }
 export function modelCandidatesPath(): string {
   return `/models`
+}
+export function artifactsPath(): string {
+  return `/artifacts`
+}
+export function artifactContentPath(contentHash: string): string {
+  return `/artifacts/${contentHash}`
+}
+export function sharePath(sessionId: string): string {
+  return `/sessions/${sessionId}/share`
+}
+export function sharedSnapshotPath(shareId: string): string {
+  return `/shared/${shareId}`
 }
