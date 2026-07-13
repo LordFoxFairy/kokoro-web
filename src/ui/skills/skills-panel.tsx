@@ -4,20 +4,20 @@
 // scope 恒由 BFF 从信封 namespace 派生，前端不碰身份轴。池只含「有效可用」项（official 上架∧
 // 用户未关 + 自有包）；required 官方技能拒关由 hub 409 hub.skill_required 反射为锁定态。
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useRef, useState } from "react"
 
 import { useT } from "@/i18n/context"
+import { invalidate, useAsyncAction, useResource } from "@/lib/query"
 import { HubClientError, type HubClient } from "@/hub/client"
 import type { SkillCard, SkillQuota, SkillRevision, UploadCandidate } from "@/hub/schemas"
 
 import styles from "./skills-panel.module.css"
 
 const OFFICIAL_SCOPE = "official"
+// hub 技能池查询键：启停/发布成功后 invalidate 此前缀重取（含配额，池取数合并读）。
+const SKILLS_KEY = "hub/skills"
 
-type PoolState =
-  | { kind: "loading" }
-  | { kind: "error" }
-  | { kind: "ready"; skills: SkillCard[]; quota: SkillQuota | null }
+type Pool = { skills: SkillCard[]; quota: SkillQuota | null }
 
 type UploadState =
   | { kind: "idle" }
@@ -37,52 +37,36 @@ type SkillsPanelProps = {
 export function SkillsPanel({ client, onClose, pinned, onTogglePin }: SkillsPanelProps) {
   const t = useT()
   const [tab, setTab] = useState<"pool" | "upload">("pool")
-  const [pool, setPool] = useState<PoolState>({ kind: "loading" })
+  // 池 + 配额合并读经查询层（模块缓存/去重/失活）：池只含「有效可用」项，配额缺失回退 null。
+  const pool = useResource<Pool>(
+    SKILLS_KEY,
+    useCallback(async (): Promise<Pool> => {
+      const [skills, quota] = await Promise.all([
+        client.listSkillPool(),
+        client.skillQuota().catch(() => null),
+      ])
+      return { skills, quota }
+    }, [client]),
+  )
   // required 锁定集合：某技能 disable 撞 409 hub.skill_required 后记入，UI 据此锁 toggle。
   const [locked, setLocked] = useState<Set<string>>(new Set())
   const [busy, setBusy] = useState<string | null>(null)
   const [expanded, setExpanded] = useState<string | null>(null)
 
-  // 纯取数（不 setState）：结果态回给调用方 setPool。挂载 effect 用 .then(setPool)（async 回调，
-  // 无同步级联渲染，对齐 login-gate 的探针 idiom）。
-  const loadPoolData = useCallback(async (): Promise<PoolState> => {
-    try {
-      const [skills, quota] = await Promise.all([
-        client.listSkillPool(),
-        client.skillQuota().catch(() => null),
-      ])
-      return { kind: "ready", skills, quota }
-    } catch {
-      return { kind: "error" }
-    }
-  }, [client])
-
-  // 手动重取（重试/停用后/发布后）：先回 loading 态再取。仅在事件回调里调用，不在 effect 内。
-  const reloadPool = useCallback(async () => {
-    setPool({ kind: "loading" })
-    setPool(await loadPoolData())
-  }, [loadPoolData])
-
-  useEffect(() => {
-    void loadPoolData().then(setPool)
-  }, [loadPoolData])
-
+  const disableAction = useAsyncAction((name: string) => client.setSkillEnabled(name, false))
   const onDisable = useCallback(
     async (name: string) => {
       // 池内项恒为「已启用」：唯一动作是停用（停用后离池）。required 撞 409 → 锁定回滚。
       setBusy(name)
-      try {
-        await client.setSkillEnabled(name, false)
-        await reloadPool()
-      } catch (error) {
-        if (error instanceof HubClientError && error.code === "hub.skill_required") {
-          setLocked((prev) => new Set(prev).add(name))
-        }
-      } finally {
-        setBusy(null)
+      const outcome = await disableAction.run(name)
+      setBusy(null)
+      if (outcome.ok) {
+        invalidate(SKILLS_KEY) // 成功→失活重取池（离池 + 配额回收）。
+      } else if (outcome.error instanceof HubClientError && outcome.error.code === "hub.skill_required") {
+        setLocked((prev) => new Set(prev).add(name))
       }
     },
-    [client, reloadPool],
+    [disableAction],
   )
 
   return (
@@ -131,19 +115,20 @@ export function SkillsPanel({ client, onClose, pinned, onTogglePin }: SkillsPane
         <div className={styles.body}>
           {tab === "pool" ? (
             <PoolTab
-              pool={pool}
+              pool={pool.data ?? null}
+              failed={pool.error !== undefined && pool.data === undefined}
               pinned={pinned}
               locked={locked}
               busy={busy}
               expanded={expanded}
               client={client}
-              onRetry={reloadPool}
+              onRetry={pool.refetch}
               onDisable={onDisable}
               onTogglePin={onTogglePin}
               onToggleExpand={(name) => setExpanded((prev) => (prev === name ? null : name))}
             />
           ) : (
-            <UploadTab client={client} onPublished={reloadPool} />
+            <UploadTab client={client} onPublished={() => invalidate(SKILLS_KEY)} />
           )}
         </div>
       </div>
@@ -153,6 +138,7 @@ export function SkillsPanel({ client, onClose, pinned, onTogglePin }: SkillsPane
 
 function PoolTab({
   pool,
+  failed,
   pinned,
   locked,
   busy,
@@ -163,7 +149,8 @@ function PoolTab({
   onTogglePin,
   onToggleExpand,
 }: {
-  pool: PoolState
+  pool: Pool | null
+  failed: boolean
   pinned: readonly string[]
   locked: Set<string>
   busy: string | null
@@ -175,18 +162,19 @@ function PoolTab({
   onToggleExpand: (name: string) => void
 }) {
   const t = useT()
-  if (pool.kind === "loading") {
+  // 有数据即渲染（含后台刷新期，缓存不闪空）；无数据时失败优先于 loading。
+  if (pool === null) {
+    if (failed) {
+      return (
+        <div className={styles.hint}>
+          <p>{t("skills.loadError")}</p>
+          <button type="button" className={styles.retry} onClick={onRetry}>
+            {t("skills.retry")}
+          </button>
+        </div>
+      )
+    }
     return <p className={styles.hint}>{t("skills.loading")}</p>
-  }
-  if (pool.kind === "error") {
-    return (
-      <div className={styles.hint}>
-        <p>{t("skills.loadError")}</p>
-        <button type="button" className={styles.retry} onClick={onRetry}>
-          {t("skills.retry")}
-        </button>
-      </div>
-    )
   }
   return (
     <>
@@ -265,31 +253,23 @@ function PoolTab({
 
 function Revisions({ client, name }: { client: HubClient; name: string }) {
   const t = useT()
-  const [state, setState] = useState<
-    { kind: "loading" } | { kind: "error" } | { kind: "ready"; revisions: SkillRevision[] }
-  >({ kind: "loading" })
-  useEffect(() => {
-    let live = true
-    client
-      .skillRevisions(name)
-      .then((revisions) => live && setState({ kind: "ready", revisions }))
-      .catch(() => live && setState({ kind: "error" }))
-    return () => {
-      live = false
+  // 版本历史按技能名各存一份缓存键（展开即取，收起不失活——重展开即刻见旧值）。
+  const revisions = useResource<SkillRevision[]>(
+    `hub/skill-revisions/${name}`,
+    useCallback(() => client.skillRevisions(name), [client, name]),
+  )
+  if (revisions.data === undefined) {
+    if (revisions.error !== undefined) {
+      return <p className={styles.revHint}>{t("skills.loadError")}</p>
     }
-  }, [client, name])
-  if (state.kind === "loading") {
     return <p className={styles.revHint}>{t("skills.loading")}</p>
   }
-  if (state.kind === "error") {
-    return <p className={styles.revHint}>{t("skills.loadError")}</p>
-  }
-  if (state.revisions.length === 0) {
+  if (revisions.data.length === 0) {
     return <p className={styles.revHint}>{t("skills.revEmpty")}</p>
   }
   return (
     <ul className={styles.revList}>
-      {state.revisions.map((rev) => (
+      {revisions.data.map((rev) => (
         <li key={rev.revision} className={styles.revRow}>
           <span>{t("skills.revLabel", { revision: rev.revision })}</span>
           <span className={styles.revMeta}>

@@ -1,5 +1,14 @@
 import "@testing-library/jest-dom/vitest"
 
+import { afterEach } from "vitest"
+
+import { __resetResourceStore } from "@/lib/query/resource-store"
+
+// 查询层模块级缓存跨用例隔离：每例后清空，避免上例数据/在飞态污染下例（与 cleanup 同级）。
+afterEach(() => {
+  __resetResourceStore()
+})
+
 if (!window.matchMedia) {
   Object.defineProperty(window, "matchMedia", {
     writable: true,

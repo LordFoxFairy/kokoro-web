@@ -5,22 +5,22 @@
 // official 位只读（徽标标注），namespace 自有项可启停/软删。revision/config_hash 是内部机制，
 // 不向用户呈现——只呈现「已更新」语义。hub 拒绝（mutation 门 / 私网 URL / 非法凭据引用）经错误码人话化。
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useState } from "react"
 
 import { useT } from "@/i18n/context"
+import { invalidate, useResource } from "@/lib/query"
 import { HubClientError, type HubClient } from "@/hub/client"
 import { MCP_TRANSPORTS, type McpSecret, type McpServerView, type McpTransport } from "@/hub/schemas"
 
 import styles from "./mcp-panel.module.css"
 
 const OFFICIAL_SCOPE = "official"
+// hub MCP 查询键：server/secret 任一变更（启停/软删/注册/建删凭据）后 invalidate 此键重取。
+const MCP_KEY = "hub/mcp"
 
 type Translate = ReturnType<typeof useT>
 
-type DataState =
-  | { kind: "loading" }
-  | { kind: "error" }
-  | { kind: "ready"; servers: McpServerView[]; secrets: McpSecret[] }
+type McpData = { servers: McpServerView[]; secrets: McpSecret[] }
 
 type McpPanelProps = {
   client: HubClient
@@ -58,32 +58,28 @@ function transportLabel(t: Translate, transport: McpTransport): string {
 export function McpPanel({ client, onClose }: McpPanelProps) {
   const t = useT()
   const [tab, setTab] = useState<"servers" | "secrets">("servers")
-  const [data, setData] = useState<DataState>({ kind: "loading" })
 
-  // 纯取数（不 setState）：servers 是主体（失败即 error）；secrets 尽力而为——secret broker 未配置
-  // （503 secret_broker_disabled）不该拖垮整个连接面板，容错回空池（凭据 tab / 向导下拉据此降级）。
-  const loadData = useCallback(async (): Promise<DataState> => {
-    try {
+  // server + secret 合并读经查询层：servers 是主体（失败即 error）；secrets 尽力而为——secret
+  // broker 未配置（503 secret_broker_disabled）不该拖垮整个连接面板，容错回空池。
+  const data = useResource<McpData>(
+    MCP_KEY,
+    useCallback(async (): Promise<McpData> => {
       const [servers, secrets] = await Promise.all([
         client.listMcpServers(),
         client.listMcpSecrets().catch(() => []),
       ])
-      return { kind: "ready", servers, secrets }
-    } catch {
-      return { kind: "error" }
-    }
-  }, [client])
+      return { servers, secrets }
+    }, [client]),
+  )
 
+  // 变更后失活重取（保持 async 签名，子组件仍可 await；invalidate 本身同步）。
   const reload = useCallback(async () => {
-    setData(await loadData())
-  }, [loadData])
+    invalidate(MCP_KEY)
+  }, [])
 
-  useEffect(() => {
-    void loadData().then(setData)
-  }, [loadData])
-
-  const servers = data.kind === "ready" ? data.servers : []
-  const secrets = data.kind === "ready" ? data.secrets : []
+  const servers = data.data?.servers ?? []
+  const secrets = data.data?.secrets ?? []
+  const failed = data.error !== undefined && data.data === undefined
 
   return (
     <div className={styles.overlay} onClick={onClose}>
@@ -129,15 +125,17 @@ export function McpPanel({ client, onClose }: McpPanelProps) {
         </div>
 
         <div className={styles.body}>
-          {data.kind === "loading" ? (
-            <p className={styles.hint}>{t("mcp.loading")}</p>
-          ) : data.kind === "error" ? (
-            <div className={styles.hint}>
-              <p>{t("mcp.loadError")}</p>
-              <button type="button" className={styles.retry} onClick={reload}>
-                {t("mcp.retry")}
-              </button>
-            </div>
+          {data.data === undefined ? (
+            failed ? (
+              <div className={styles.hint}>
+                <p>{t("mcp.loadError")}</p>
+                <button type="button" className={styles.retry} onClick={data.refetch}>
+                  {t("mcp.retry")}
+                </button>
+              </div>
+            ) : (
+              <p className={styles.hint}>{t("mcp.loading")}</p>
+            )
           ) : tab === "servers" ? (
             <ServersTab client={client} servers={servers} secrets={secrets} onChanged={reload} />
           ) : (

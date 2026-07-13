@@ -4,9 +4,10 @@
 // Wave3 rail/技能/余额随 namespace 天然重水合）+ 待处理邀请（accept/decline）+ 当前团队成员管理
 // （owner/admin 邀请/改角色/移除；member 只读）。user principal 全留服务端，前端只见同源 `/api/team/*`。
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useState } from "react"
 
 import { useT } from "@/i18n/context"
+import { invalidate, useResource } from "@/lib/query"
 import {
   TeamClientError,
   type Member,
@@ -18,6 +19,11 @@ import {
 } from "@/team/client"
 
 import styles from "./team-panel.module.css"
+
+// 团队查询键：切换/邀请/成员变更后按前缀失活重取（team/ 覆盖全部；细分键各自可单独失活）。
+const TEAMS_KEY = "team/teams"
+const INVITES_KEY = "team/invites"
+const DETAIL_PREFIX = "team/detail"
 
 type TeamsState =
   | { kind: "loading" }
@@ -64,50 +70,49 @@ function errorKey(error: unknown): TeamErrorKey {
 
 export function TeamPanel({ client, currentNamespace, onClose, onSwitched }: TeamPanelProps) {
   const t = useT()
-  const [teams, setTeams] = useState<TeamsState>({ kind: "loading" })
-  const [invites, setInvites] = useState<PendingInvite[]>([])
-  const [detail, setDetail] = useState<DetailState>({ kind: "loading" })
   const [busy, setBusy] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
 
-  // 纯取数（不 setState）：结果态回给调用方。挂载 effect 用 .then(setState)（async 回调，
-  // 无同步级联渲染，对齐 skills-panel 惯用法）；事件回调里另包 reload 包装直接 setState。
-  const fetchTeams = useCallback(async (): Promise<TeamsState> => {
-    try {
-      return { kind: "ready", teams: await client.listMyTeams() }
-    } catch {
-      return { kind: "error" }
-    }
-  }, [client])
+  // 团队清单 / 待处理邀请 / 当前团队详情三读经查询层（模块缓存/去重/失活）。
+  // ResourceResult 适配回既有判别式，子组件展示分支不变。
+  const teamsRes = useResource<TeamSummary[]>(
+    TEAMS_KEY,
+    useCallback(() => client.listMyTeams(), [client]),
+  )
+  const invitesRes = useResource<PendingInvite[]>(
+    INVITES_KEY,
+    useCallback(() => client.listInvites(), [client]),
+  )
+  // detail 按 namespace 分键；无信封/预览（null）时取数即抛，落 error 态（对齐旧「无 ns → error」）。
+  const detailRes = useResource<TeamDetail>(
+    `${DETAIL_PREFIX}/${currentNamespace ?? "__none__"}`,
+    useCallback(() => {
+      if (currentNamespace === null) {
+        return Promise.reject(new Error("no-namespace"))
+      }
+      return client.teamDetail(currentNamespace)
+    }, [client, currentNamespace]),
+  )
 
-  const fetchInvites = useCallback(async (): Promise<PendingInvite[]> => {
-    try {
-      return await client.listInvites()
-    } catch {
-      return []
-    }
-  }, [client])
+  const teams: TeamsState =
+    teamsRes.data !== undefined
+      ? { kind: "ready", teams: teamsRes.data }
+      : teamsRes.error !== undefined
+        ? { kind: "error" }
+        : { kind: "loading" }
+  // 邀请尽力而为：失败回空池（与旧 catch→[] 一致）。
+  const invites = invitesRes.data ?? []
+  const detail: DetailState =
+    detailRes.data !== undefined
+      ? { kind: "ready", detail: detailRes.data }
+      : detailRes.error !== undefined
+        ? { kind: "error" }
+        : { kind: "loading" }
 
-  const fetchDetail = useCallback(async (): Promise<DetailState> => {
-    if (currentNamespace === null) {
-      return { kind: "error" }
-    }
-    try {
-      return { kind: "ready", detail: await client.teamDetail(currentNamespace) }
-    } catch {
-      return { kind: "error" }
-    }
-  }, [client, currentNamespace])
-
-  const loadTeams = useCallback(async () => setTeams(await fetchTeams()), [fetchTeams])
-  const loadInvites = useCallback(async () => setInvites(await fetchInvites()), [fetchInvites])
-  const loadDetail = useCallback(async () => setDetail(await fetchDetail()), [fetchDetail])
-
-  useEffect(() => {
-    void fetchTeams().then(setTeams)
-    void fetchInvites().then(setInvites)
-    void fetchDetail().then(setDetail)
-  }, [fetchTeams, fetchInvites, fetchDetail])
+  const afterMemberMutation = useCallback(async () => {
+    invalidate(DETAIL_PREFIX)
+    invalidate(TEAMS_KEY)
+  }, [])
 
   const onSwitch = useCallback(
     async (teamId: string) => {
@@ -130,14 +135,17 @@ export function TeamPanel({ client, currentNamespace, onClose, onSwitched }: Tea
       setNotice(null)
       try {
         await client.acceptInvite(inviteId)
-        await Promise.all([loadTeams(), loadInvites(), loadDetail()])
+        // 入队成功：清单/邀请/详情全失活重取（新团队进列表、邀请离池、详情随之刷新）。
+        invalidate(TEAMS_KEY)
+        invalidate(INVITES_KEY)
+        invalidate(DETAIL_PREFIX)
       } catch (error) {
         setNotice(t(errorKey(error)))
       } finally {
         setBusy(null)
       }
     },
-    [client, loadTeams, loadInvites, loadDetail, t],
+    [client, t],
   )
 
   const onDecline = useCallback(
@@ -146,19 +154,15 @@ export function TeamPanel({ client, currentNamespace, onClose, onSwitched }: Tea
       setNotice(null)
       try {
         await client.declineInvite(inviteId)
-        await loadInvites()
+        invalidate(INVITES_KEY)
       } catch (error) {
         setNotice(t(errorKey(error)))
       } finally {
         setBusy(null)
       }
     },
-    [client, loadInvites, t],
+    [client, t],
   )
-
-  const afterMemberMutation = useCallback(async () => {
-    await Promise.all([loadDetail(), loadTeams()])
-  }, [loadDetail, loadTeams])
 
   return (
     <div className={styles.overlay} onClick={onClose}>
@@ -191,7 +195,7 @@ export function TeamPanel({ client, currentNamespace, onClose, onSwitched }: Tea
             teams={teams}
             currentNamespace={currentNamespace}
             busy={busy}
-            onRetry={loadTeams}
+            onRetry={teamsRes.refetch}
             onSwitch={onSwitch}
           />
 
@@ -219,7 +223,7 @@ export function TeamPanel({ client, currentNamespace, onClose, onSwitched }: Tea
             setBusy={setBusy}
             onError={(error) => setNotice(t(errorKey(error)))}
             onMutated={afterMemberMutation}
-            onRetry={loadDetail}
+            onRetry={detailRes.refetch}
           />
         </div>
       </div>

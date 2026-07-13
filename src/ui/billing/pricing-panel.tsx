@@ -4,15 +4,19 @@
 // （site/owner 从信封派生）。诚实态优先：payment 未配置 / checkout 501 → 显式「支付暂未开通」+ 禁用购买，
 // 状态真来自后端，绝不放假按钮。金额/积分全程 BigInt 换算展示（不过 Number 丢精度）。
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useState } from "react"
 
 import { formatMicros, formatMinor } from "@/billing/format"
 import type { PlanCatalogEntry, PricingClient } from "@/billing/pricing"
 import { PricingClientError } from "@/billing/pricing"
 import { useT } from "@/i18n/context"
+import { useResource } from "@/lib/query"
 import type { MessageKey } from "@/i18n/messages"
 
 import styles from "./pricing-panel.module.css"
+
+// 套餐目录查询键（单发只读）：checkout 购买不改目录，故无失活。
+const CATALOG_KEY = "billing/plans"
 
 type CatalogState =
   | { kind: "loading" }
@@ -38,29 +42,23 @@ function intervalKey(interval: PlanCatalogEntry["billing_interval"]): MessageKey
 
 export function PricingPanel({ client, onClose }: PricingPanelProps) {
   const t = useT()
-  const [catalog, setCatalog] = useState<CatalogState>({ kind: "loading" })
+  // 目录经查询层单发读；ResourceResult 映射回四态判别式——payment 未配置（not_configured）→
+  // 诚实未开通态 unavailable，其余失败=加载错误，展示分支不变。
+  const catalogRes = useResource<PlanCatalogEntry[]>(
+    CATALOG_KEY,
+    useCallback(async () => (await client.plans()).plans, [client]),
+  )
+  const catalog: CatalogState =
+    catalogRes.data !== undefined
+      ? { kind: "ready", plans: catalogRes.data }
+      : catalogRes.error !== undefined
+        ? catalogRes.error instanceof PricingClientError && catalogRes.error.reason === "not_configured"
+          ? { kind: "unavailable" }
+          : { kind: "error" }
+        : { kind: "loading" }
   // 购买诚实态（来自后端 checkout 响应）：unavailable=501 未开通（禁用购买）；login=401 未登录。
   const [purchaseNotice, setPurchaseNotice] = useState<"none" | "unavailable" | "login">("none")
   const [pendingPlan, setPendingPlan] = useState<string | null>(null)
-
-  useEffect(() => {
-    let live = true
-    void client
-      .plans()
-      .then((catalogResult) => {
-        if (live) setCatalog({ kind: "ready", plans: catalogResult.plans })
-      })
-      .catch((error: unknown) => {
-        if (!live) return
-        // payment 未配置（预览档 / 未接服务）→ 诚实未开通态；其余失败=加载错误。
-        setCatalog(error instanceof PricingClientError && error.reason === "not_configured"
-          ? { kind: "unavailable" }
-          : { kind: "error" })
-      })
-    return () => {
-      live = false
-    }
-  }, [client])
 
   const buy = useCallback(
     async (planId: string) => {

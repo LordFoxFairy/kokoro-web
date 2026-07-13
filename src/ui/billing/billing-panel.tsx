@@ -10,9 +10,13 @@ import type { BillingLedgerEntry, BillingSummary } from "@/contract/http"
 import { formatMicros, formatSignedMicros, microSign } from "@/billing/format"
 import type { BillingClient } from "@/billing/client"
 import { useT } from "@/i18n/context"
+import { useResource } from "@/lib/query"
 import type { MessageKey } from "@/i18n/messages"
 
 import styles from "./billing-panel.module.css"
+
+// 余额卡查询键（单发可缓存读）。流水为分页累加，保留本地 accumulator（同 use-session-list 范式）。
+const SUMMARY_KEY = "billing/summary"
 
 type SummaryState =
   | { kind: "loading" }
@@ -51,16 +55,19 @@ function reasonKey(reason: string): MessageKey | null {
 
 export function BillingPanel({ client, onClose, onOpenPricing }: BillingPanelProps) {
   const t = useT()
-  const [summary, setSummary] = useState<SummaryState>({ kind: "loading" })
   const [ledger, setLedger] = useState<LedgerState>({ kind: "loading" })
 
-  const loadSummary = useCallback(async (): Promise<SummaryState> => {
-    try {
-      return { kind: "ready", summary: await client.summary() }
-    } catch {
-      return { kind: "error" }
-    }
-  }, [client])
+  // 余额卡经查询层单发读；ResourceResult 适配回既有判别式，渲染分支不变。
+  const summaryRes = useResource<BillingSummary>(
+    SUMMARY_KEY,
+    useCallback(() => client.summary(), [client]),
+  )
+  const summary: SummaryState =
+    summaryRes.data !== undefined
+      ? { kind: "ready", summary: summaryRes.data }
+      : summaryRes.error !== undefined
+        ? { kind: "error" }
+        : { kind: "loading" }
 
   const loadLedger = useCallback(async (): Promise<LedgerState> => {
     try {
@@ -72,9 +79,8 @@ export function BillingPanel({ client, onClose, onOpenPricing }: BillingPanelPro
   }, [client])
 
   useEffect(() => {
-    void loadSummary().then(setSummary)
     void loadLedger().then(setLedger)
-  }, [loadSummary, loadLedger])
+  }, [loadLedger])
 
   const loadMore = useCallback(async () => {
     if (ledger.kind !== "ready" || ledger.cursor === undefined || ledger.loadingMore) {
