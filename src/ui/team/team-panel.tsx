@@ -8,6 +8,7 @@ import { useCallback, useState } from "react"
 
 import { useT } from "@/i18n/context"
 import { invalidate, useResource } from "@/lib/query"
+import { canAssignRoles, canManageMembers } from "@/team/permissions"
 import {
   TeamClientError,
   type Member,
@@ -379,8 +380,8 @@ function MembersSection({
   }
 
   const { team, viewerRole, members, invites } = detail.detail
-  const canManage = viewerRole === "owner" || viewerRole === "admin"
-  const isOwner = viewerRole === "owner"
+  const canManage = canManageMembers(viewerRole)
+  const isOwner = canAssignRoles(viewerRole)
 
   return (
     <section className={styles.section} data-testid="team-members">

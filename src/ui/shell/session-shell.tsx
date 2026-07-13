@@ -21,7 +21,7 @@ import { useT } from "@/i18n/context"
 
 import { useHydrated } from "@/lib/use-hydrated"
 
-import { CREDIT_INSUFFICIENT } from "@/billing/client"
+import { isCreditInsufficient } from "@/billing/rules"
 import { Composer, MAX_INPUT_LENGTH } from "@/ui/composer/composer"
 import { modePresentation } from "@/ui/composer/mode-options"
 import { HeaderTitle } from "@/ui/shell/header-title"
@@ -98,7 +98,7 @@ export function SessionShell({ engine: injectedEngine, brandName }: SessionShell
   const hasFailed = !isStreaming && (machine.phase === "error" || thread.runStatus === "failed")
   // 402：run 被 credit_insufficient 拒——错误码由 client 从错误体取出，落在 machine.error。据此给计费
   // 专用说明 + 价格/联系入口（不复用通用失败文案）。
-  const creditRejected = hasFailed && machine.error === CREDIT_INSUFFICIENT
+  const creditRejected = hasFailed && isCreditInsufficient(machine.error)
 
   const mode = store ? activeMode(store) : pendingMode
   // 已开聊即锁定：线程有消息（本地追加或 snapshot 水合）后模式不可再切换。

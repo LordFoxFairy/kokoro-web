@@ -7,11 +7,11 @@
 import { useCallback, useState } from "react"
 
 import { formatMicros, formatMinor } from "@/billing/format"
+import { planIntervalKey } from "@/billing/rules"
 import type { PlanCatalogEntry, PricingClient } from "@/billing/pricing"
 import { PricingClientError } from "@/billing/pricing"
 import { useT } from "@/i18n/context"
 import { useResource } from "@/lib/query"
-import type { MessageKey } from "@/i18n/messages"
 
 import styles from "./pricing-panel.module.css"
 
@@ -27,17 +27,6 @@ type CatalogState =
 type PricingPanelProps = {
   client: PricingClient
   onClose: () => void
-}
-
-function intervalKey(interval: PlanCatalogEntry["billing_interval"]): MessageKey {
-  switch (interval) {
-    case "once":
-      return "pricing.intervalOnce"
-    case "month":
-      return "pricing.intervalMonth"
-    case "year":
-      return "pricing.intervalYear"
-  }
 }
 
 export function PricingPanel({ client, onClose }: PricingPanelProps) {
@@ -130,7 +119,7 @@ export function PricingPanel({ client, onClose }: PricingPanelProps) {
                   <div className={styles.price}>
                     <span className={styles.priceAmount}>{formatMinor(plan.amount_minor)}</span>
                     <span className={styles.priceMeta}>
-                      {plan.currency} · {t(intervalKey(plan.billing_interval))}
+                      {plan.currency} · {t(planIntervalKey(plan.billing_interval))}
                     </span>
                   </div>
                   <ul className={styles.benefits}>

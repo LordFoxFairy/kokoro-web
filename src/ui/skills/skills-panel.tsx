@@ -8,7 +8,8 @@ import { useCallback, useRef, useState } from "react"
 
 import { useT } from "@/i18n/context"
 import { invalidate, useAsyncAction, useResource } from "@/lib/query"
-import { HubClientError, type HubClient } from "@/hub/client"
+import type { HubClient } from "@/hub/client"
+import { isRequiredLockError } from "@/hub/rules"
 import type { SkillCard, SkillQuota, SkillRevision, UploadCandidate } from "@/hub/schemas"
 
 import styles from "./skills-panel.module.css"
@@ -62,7 +63,7 @@ export function SkillsPanel({ client, onClose, pinned, onTogglePin }: SkillsPane
       setBusy(null)
       if (outcome.ok) {
         invalidate(SKILLS_KEY) // 成功→失活重取池（离池 + 配额回收）。
-      } else if (outcome.error instanceof HubClientError && outcome.error.code === "hub.skill_required") {
+      } else if (isRequiredLockError(outcome.error)) {
         setLocked((prev) => new Set(prev).add(name))
       }
     },
