@@ -16,6 +16,7 @@ import {
   type AuthConfig,
 } from "@/lib/server/auth"
 import { sealEnvelope } from "@/lib/server/session-envelope"
+import { resolveSiteId } from "@/lib/server/site"
 
 export const runtime = "nodejs"
 
@@ -59,12 +60,14 @@ export async function GET(request: Request): Promise<NextResponse> {
   // 信封 exp 对齐 runtime_jwt exp；解不出则给 1h 兜底（不超过 token 真实寿命由 session 验签兜住）。
   const exp = decodeJwtExp(consumed.token) ?? nowSec + 3600
   const maxAge = Math.max(0, exp - nowSec)
+  // 按请求 Host 定站点（SITE-REAL）：未接 site 服务时回退 config 的 env 缺省站点。
+  const siteId = await resolveSiteId(request.headers.get("host"), config.siteId)
   const sealed = sealEnvelope(
     {
       runtime_jwt: consumed.token,
       user_id: consumed.user.id,
       namespace: consumed.namespace,
-      site_id: config.siteId,
+      site_id: siteId,
       exp,
     },
     config.sessionSecrets,

@@ -14,6 +14,7 @@ import {
   sameOriginOk,
   userRequestMagicLink,
 } from "@/lib/server/auth"
+import { resolveSiteId } from "@/lib/server/site"
 
 export const runtime = "nodejs"
 
@@ -34,7 +35,9 @@ export async function POST(request: Request): Promise<NextResponse> {
   }
 
   const nonce = newNonce()
-  const outcome = await userRequestMagicLink(config, parsed.data.email, hashNonce(nonce))
+  // 按请求 Host 定站点（SITE-REAL）：未接 site 服务时回退 config 的 env 缺省站点。
+  const siteId = await resolveSiteId(request.headers.get("host"), config.siteId)
+  const outcome = await userRequestMagicLink(config, parsed.data.email, hashNonce(nonce), siteId)
 
   if (outcome.kind === "rate_limited") {
     return NextResponse.json({ error: "rate_limited" }, { status: 429 })

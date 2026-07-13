@@ -195,15 +195,17 @@ export type MagicLinkRequestOutcome =
   | { kind: "unavailable" }
 
 // 申请：把 nonce 哈希随邮箱交 user。存在性不泄露——除限频外一律等价「已发送」。
+// siteId 由调用方按请求 Host 解析后传入（SITE-REAL）；不传则回退 config 的 env 缺省站点。
 export async function userRequestMagicLink(
   config: AuthConfig,
   email: string,
   nonceHash: string,
+  siteId: string = config.siteId,
 ): Promise<MagicLinkRequestOutcome> {
   const response = await fetch(new URL("/auth/magic-links", config.userBaseUrl), {
     method: "POST",
     headers: callerHeaders(config),
-    body: JSON.stringify({ site_id: config.siteId, email, nonce_hash: nonceHash }),
+    body: JSON.stringify({ site_id: siteId, email, nonce_hash: nonceHash }),
     cache: "no-store",
   }).catch(() => null)
   if (response === null) {

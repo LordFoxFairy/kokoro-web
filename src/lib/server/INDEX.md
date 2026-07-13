@@ -22,12 +22,21 @@
   - 出站：`callerHeaders`（`x-kokoro-service: web-bff` + 可选内部凭据），`userRequestMagicLink`/
     `userConsumeMagicLink`（对 user 的 magic-link 调用，失败归一）。
   - `sameOriginOk`：变更类请求同源守卫（Origin 存在且 host 不符则拒）。
+  - `userRequestMagicLink` 第 4 参 `siteId` 由调用方按 Host 解析后传入（缺省回退 `config.siteId`）。
+- `site.ts`（host→site 解析，SITE-REAL）
+  - `resolveSite(host, env?)`：Host 经 kokoro-site `/site-context/resolve` 定 `{siteId, brand}`；按
+    host 短 TTL（30s）缓存。未配置 `KOKORO_SITE_BASE_URL`/host 缺失/未命中 → 退回 env 缺省站点
+    （`KOKORO_SITE_ID`）+ 默认品牌 Kokoro 并 WARN（SITE-REAL-FALLBACK 安全网，待 Wave6 收紧）。
+  - `resolveSiteId(host, fallbackSiteId)`：仅取 site_id 供 auth 流（magic-link/callback/team-switch）
+    密封进信封；未接 site 服务时行为与旧 env 常量一致。
+  - `SiteBrand`/`ResolvedSite`/`DEFAULT_BRAND`；`__clearSiteResolveCache()` 仅测试用。
 
 ## 关键协作者
 
-- 上游：`src/app/api/auth/*`（request/callback/logout/session-state）、`src/app/api/session/[...path]`
-  （代理）、`src/app/api/hub/[...path]`（骨架）。
-- 下游：kokoro-user（`/auth/magic-links`、`/auth/magic-links/consume`）、kokoro-session（代理目标）。
+- 上游：`src/app/api/auth/*`（request/callback/logout/session-state）、`src/app/api/team/switch`、
+  `src/app/page.tsx`（rail 品牌注入）、`src/app/api/session/[...path]`（代理）、`src/app/api/hub/[...path]`（骨架）。
+- 下游：kokoro-user（`/auth/magic-links`、`/auth/magic-links/consume`）、kokoro-session（代理目标）、
+  kokoro-site（`/site-context/resolve`，出站 `x-kokoro-service: web-bff`；`KOKORO_SITE_BASE_URL`）。
 
 ## 运行时约束
 

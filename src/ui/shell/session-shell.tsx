@@ -180,9 +180,11 @@ function isNewChatShortcut(event: {
 type SessionShellProps = {
   // 测试注入缝：不传则使用页面级单例引擎。
   engine?: SessionEngine | null
+  // 服务端按 host 解析的站点品牌名（SITE-REAL），透传给 rail。
+  brandName?: string
 }
 
-export function SessionShell({ engine: injectedEngine }: SessionShellProps = {}) {
+export function SessionShell({ engine: injectedEngine, brandName }: SessionShellProps = {}) {
   const t = useT()
   const engine = injectedEngine !== undefined ? injectedEngine : browserEngine()
   const snapshot = useSessionEngine(engine)
@@ -446,6 +448,7 @@ export function SessionShell({ engine: injectedEngine }: SessionShellProps = {})
         collapsed={railCollapsed}
         onToggleCollapse={() => setRailCollapsed((value) => !value)}
         onNewChat={startNewChat}
+        brandName={brandName}
         conversations={conversations}
         activeId={activeId}
         onSelectConversation={selectConversation}

@@ -15,6 +15,7 @@ import {
   userIssueTeamSession,
 } from "@/lib/server/auth"
 import { sealEnvelope } from "@/lib/server/session-envelope"
+import { resolveSiteId } from "@/lib/server/site"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -49,12 +50,14 @@ export async function POST(request: Request): Promise<NextResponse> {
   const nowSec = Math.floor(Date.now() / 1000)
   const exp = decodeJwtExp(outcome.result.token) ?? nowSec + 3600
   const maxAge = Math.max(0, exp - nowSec)
+  // 按请求 Host 定站点（SITE-REAL）：未接 site 服务时回退 config 的 env 缺省站点。
+  const siteId = await resolveSiteId(request.headers.get("host"), config.siteId)
   const sealed = sealEnvelope(
     {
       runtime_jwt: outcome.result.token,
       user_id: outcome.result.user.id,
       namespace: outcome.result.namespace,
-      site_id: config.siteId,
+      site_id: siteId,
       exp,
     },
     config.sessionSecrets,

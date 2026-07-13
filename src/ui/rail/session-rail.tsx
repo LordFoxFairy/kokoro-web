@@ -10,6 +10,8 @@ type SessionRailProps = {
   collapsed: boolean
   onToggleCollapse: () => void
   onNewChat: () => void
+  // 服务端按 host 解析的站点品牌名（SITE-REAL）；缺省回退硬编码 Kokoro。
+  brandName?: string
   conversations: ConversationSummary[]
   activeId: string | null
   onSelectConversation: (id: string) => void
@@ -30,6 +32,7 @@ export function SessionRail({
   collapsed,
   onToggleCollapse,
   onNewChat,
+  brandName,
   conversations,
   activeId,
   onSelectConversation,
@@ -72,7 +75,7 @@ export function SessionRail({
             心
           </div>
           <div className={styles.brandText}>
-            <p className={styles.brandTitle}>Kokoro</p>
+            <p className={styles.brandTitle}>{brandName ?? "Kokoro"}</p>
             <p className={styles.brandSubtitle}>こころ</p>
           </div>
         </div>
