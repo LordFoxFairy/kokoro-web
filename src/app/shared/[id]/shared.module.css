@@ -1,0 +1,90 @@
+/* 公共分享页：居中单列只读线程，暖纸底（与主壳同 token）。无侧栏无输入框。 */
+
+.page {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 100vh;
+  background: var(--k-bg-base, #fbf7f0);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid var(--k-border);
+  background: var(--k-bg-container);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  font-family: var(--font-serif);
+  color: var(--k-brand);
+  background: var(--k-bg-elevated);
+  border: 1px solid var(--k-border);
+  border-radius: 10px;
+}
+
+.headText {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.title {
+  font-family: var(--font-serif);
+  font-size: 1.1rem;
+  color: var(--k-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.badge {
+  font-size: 0.72rem;
+  color: var(--k-text-tertiary);
+}
+
+.thread {
+  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  width: min(52rem, 100%);
+  margin: 0 auto;
+  padding: 0 1rem;
+}
+
+.hint {
+  margin: auto;
+  color: var(--k-text-tertiary);
+  font-size: 0.9rem;
+}
+
+.notFound {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  margin: auto;
+  padding: 2rem;
+  text-align: center;
+}
+
+.notFoundTitle {
+  font-family: var(--font-serif);
+  font-size: 1.4rem;
+  color: var(--k-text);
+}
+
+.notFoundHint {
+  color: var(--k-text-tertiary);
+  font-size: 0.9rem;
+}
