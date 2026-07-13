@@ -27,9 +27,11 @@ import { createPersistedStore } from "@/lib/persisted-store"
 import { useHydrated } from "@/lib/use-hydrated"
 
 import { createBillingClient, CREDIT_INSUFFICIENT, type BillingClient } from "@/billing/client"
+import { createPricingClient, type PricingClient } from "@/billing/pricing"
 import { createHubClient, type HubClient } from "@/hub/client"
 import { createTeamClient, type TeamClient } from "@/team/client"
 import { BillingPanel } from "@/ui/billing/billing-panel"
+import { PricingPanel } from "@/ui/billing/pricing-panel"
 import { TeamPanel } from "@/ui/team/team-panel"
 import { Composer, MAX_INPUT_LENGTH } from "@/ui/composer/composer"
 import { modePresentation } from "@/ui/composer/mode-options"
@@ -124,6 +126,15 @@ function browserBillingClient(): BillingClient {
   return pageBillingClient
 }
 
+// 页面级单例价格/购买客户端（PAY-2）：同源 `/api/billing` BFF 代理到 payment storefront 面。
+let pagePricingClient: PricingClient | null = null
+function browserPricingClient(): PricingClient {
+  if (!pagePricingClient) {
+    pagePricingClient = createPricingClient()
+  }
+  return pagePricingClient
+}
+
 // 页面级单例团队客户端（TEAM-1）：同源 `/api/team` BFF，切换/邀请/成员管理。
 let pageTeamClient: TeamClient | null = null
 function browserTeamClient(): TeamClient {
@@ -197,6 +208,8 @@ export function SessionShell({ engine: injectedEngine, brandName }: SessionShell
   const [skillsOpen, setSkillsOpen] = useState(false)
   const [mcpOpen, setMcpOpen] = useState(false)
   const [billingOpen, setBillingOpen] = useState(false)
+  // 价格/购买面板（PAY-2）：余额面板与 402 说明处的「查看套餐」入口共用此开关。
+  const [pricingOpen, setPricingOpen] = useState(false)
   const [teamsOpen, setTeamsOpen] = useState(false)
   const [libraryOpen, setLibraryOpen] = useState(false)
   // 当前团队 namespace（切换器高亮）：undefined=未取，null=无信封/预览，string=当前 team id。
@@ -512,6 +525,7 @@ export function SessionShell({ engine: injectedEngine, brandName }: SessionShell
             hasFailed={hasFailed}
             creditRejected={creditRejected}
             onOpenBilling={() => setBillingOpen(true)}
+            onOpenPricing={() => setPricingOpen(true)}
             onRetry={() => engine?.retry()}
             onScroll={handleThreadScroll}
             threadEndRef={threadEndRef}
@@ -636,8 +650,19 @@ export function SessionShell({ engine: injectedEngine, brandName }: SessionShell
         />
       ) : null}
 
+      {pricingOpen ? (
+        <PricingPanel client={browserPricingClient()} onClose={() => setPricingOpen(false)} />
+      ) : null}
+
       {billingOpen ? (
-        <BillingPanel client={browserBillingClient()} onClose={() => setBillingOpen(false)} />
+        <BillingPanel
+          client={browserBillingClient()}
+          onClose={() => setBillingOpen(false)}
+          onOpenPricing={() => {
+            setBillingOpen(false)
+            setPricingOpen(true)
+          }}
+        />
       ) : null}
 
       {teamsOpen && teamNamespace !== undefined ? (

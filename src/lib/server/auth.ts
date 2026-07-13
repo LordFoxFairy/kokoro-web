@@ -26,6 +26,8 @@ export interface AuthConfig {
   sessionBaseUrl: string
   siteId: string
   hubBaseUrl: string | null
+  // payment 服务面（经网关到 kokoro-payment）；未配置=预览档（PAY-2 价格页据此降级为诚实未开通态）。
+  paymentBaseUrl: string | null
   // web-bff 出站内部凭据；未配置=直通（TRUST 合流前）。
   internalSecret: string | null
   secureCookies: boolean
@@ -55,6 +57,7 @@ export function authConfig(env: NodeJS.ProcessEnv = process.env): AuthConfig | n
     sessionBaseUrl,
     siteId,
     hubBaseUrl: env.KOKORO_HUB_BASE_URL?.trim() || null,
+    paymentBaseUrl: env.KOKORO_PAYMENT_BASE_URL?.trim() || null,
     internalSecret: env.KOKORO_INTERNAL_SECRET_WEB_BFF?.trim() || null,
     secureCookies: env.NODE_ENV === "production",
     revealDevLink: env.NODE_ENV !== "production",

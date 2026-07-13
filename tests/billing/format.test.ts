@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { formatMicros, formatSignedMicros, microSign } from "@/billing/format"
+import { formatMicros, formatMinor, formatSignedMicros, microSign } from "@/billing/format"
 
 describe("micro-unit formatting (BigInt safe)", () => {
   it("shifts micros to units and trims trailing zeros", () => {
@@ -32,5 +32,22 @@ describe("micro-unit formatting (BigInt safe)", () => {
   it("falls back to 0 on malformed input instead of throwing", () => {
     expect(formatMicros("not-a-number")).toBe("0")
     expect(microSign("1.5")).toBe("zero")
+  })
+})
+
+describe("minor-unit price formatting (PAY-2, BigInt safe)", () => {
+  it("shifts minor units to 2-decimal amount", () => {
+    expect(formatMinor("4900")).toBe("49.00")
+    expect(formatMinor("9")).toBe("0.09")
+    expect(formatMinor("0")).toBe("0.00")
+    expect(formatMinor("100000")).toBe("1000.00")
+  })
+
+  it("keeps BigInt precision beyond Number range", () => {
+    expect(formatMinor("900719925474099300")).toBe("9007199254740993.00")
+  })
+
+  it("falls back to 0 on malformed input instead of throwing", () => {
+    expect(formatMinor("not-a-number")).toBe("0")
   })
 })

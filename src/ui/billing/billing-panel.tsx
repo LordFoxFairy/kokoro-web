@@ -27,6 +27,8 @@ type LedgerState =
 type BillingPanelProps = {
   client: BillingClient
   onClose: () => void
+  // PAY-2：余额卡下的「查看套餐」购买入口（原充值入口留白位）；缺省不渲染（兼容未接 payment 的档）。
+  onOpenPricing?: () => void
 }
 
 // 已知 credit reason → 本地化 key；未知 reason 回退原文（绝不裸露 key，也不吞未知类别）。
@@ -47,7 +49,7 @@ function reasonKey(reason: string): MessageKey | null {
   }
 }
 
-export function BillingPanel({ client, onClose }: BillingPanelProps) {
+export function BillingPanel({ client, onClose, onOpenPricing }: BillingPanelProps) {
   const t = useT()
   const [summary, setSummary] = useState<SummaryState>({ kind: "loading" })
   const [ledger, setLedger] = useState<LedgerState>({ kind: "loading" })
@@ -129,6 +131,12 @@ export function BillingPanel({ client, onClose }: BillingPanelProps) {
               </>
             )}
           </section>
+
+          {onOpenPricing ? (
+            <button type="button" className={styles.more} onClick={onOpenPricing}>
+              {t("billing.viewPricing")}
+            </button>
+          ) : null}
 
           <h3 className={styles.ledgerHead}>{t("billing.ledgerTitle")}</h3>
           {ledger.kind === "loading" ? (

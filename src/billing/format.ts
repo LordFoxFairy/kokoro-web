@@ -48,3 +48,23 @@ export function formatSignedMicros(micros: string): string {
   const formatted = formatMicros(micros)
   return microSign(micros) === "positive" ? `+${formatted}` : formatted
 }
+
+// 套餐定价（PAY-2）：金额恒为「最小货币单位」整数字符串（1 单位 = 100 分位，如 cents）。全程 BigInt——
+// 十进制移位保留两位小数（V1 通用档，零小数币种如 JPY 的精修归后续）；非法输入回退 "0"，绝不抛。
+const MINOR_PER_UNIT = BigInt(100)
+
+export function formatMinor(minor: string): string {
+  let value: bigint
+  try {
+    value = BigInt(minor)
+  } catch {
+    return "0"
+  }
+  const negative = value < ZERO
+  const abs = negative ? -value : value
+  const whole = abs / MINOR_PER_UNIT
+  const fraction = abs % MINOR_PER_UNIT
+  const frac = fraction.toString().padStart(2, "0")
+  const out = `${whole.toString()}.${frac}`
+  return negative ? `-${out}` : out
+}
