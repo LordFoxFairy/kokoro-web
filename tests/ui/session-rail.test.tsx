@@ -20,6 +20,7 @@ function renderRail(overrides?: Partial<Parameters<typeof SessionRail>[0]>) {
         onNewChat={() => {}}
         conversations={conversations}
         activeId="ses_1"
+        awaitingIds={new Set()}
         onSelectConversation={() => {}}
         onDeleteConversation={() => {}}
         onRenameConversation={onRenameConversation}
@@ -89,4 +90,14 @@ it("空题与未改动不触发请求", () => {
   const input2 = screen.getByLabelText("会话标题")
   fireEvent.keyDown(input2, { key: "Enter" })
   expect(onRenameConversation).not.toHaveBeenCalled()
+})
+
+it("待批徽标（HITL-NOTIFY）：id 命中 awaitingIds 才渲染", () => {
+  renderRail({ awaitingIds: new Set(["ses_1"]) })
+  expect(screen.getByLabelText("等待批准")).toBeInTheDocument()
+})
+
+it("待批徽标：id 未命中则不渲染", () => {
+  renderRail({ awaitingIds: new Set(["ses_other"]) })
+  expect(screen.queryByLabelText("等待批准")).toBeNull()
 })

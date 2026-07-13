@@ -69,6 +69,9 @@ export const zh = {
   "hitl.askOptions": "可选回答",
   "hitl.askReply": "回复 agent",
   "hitl.awaitingApproval": "等待批准",
+  // 跨会话待批系统通知（HITL-NOTIFY）
+  "hitl.notifyTitle": "有一步需要你决定",
+  "hitl.notifyBody": "一个会话正在等待你的审批。",
   "hitl.answered": "已人工答复",
   "hitl.approve": "批准",
   "hitl.reject": "拒绝",

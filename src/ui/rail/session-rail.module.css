@@ -306,6 +306,9 @@
 .itemSelect {
   flex: 1;
   min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
   border: 0;
   background: transparent;
   text-align: left;
@@ -316,10 +319,22 @@
 }
 
 .itemTitle {
+  flex: 1;
+  min-width: 0;
   display: block;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+/* 待批徽标（HITL-NOTIFY）：琥珀实心点 + 柔环，跨会话提示「此会话有待你决定的审批」。 */
+.itemAwaiting {
+  flex-shrink: 0;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: var(--k-warning);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--k-warning) 22%, transparent);
 }
 
 /* 删除键只在 hover/active 时浮现，仅改透明度——不改盒尺寸，不引发列表抖动。 */

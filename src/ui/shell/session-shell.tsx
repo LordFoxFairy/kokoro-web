@@ -37,6 +37,13 @@ import { Composer, MAX_INPUT_LENGTH } from "@/ui/composer/composer"
 import { modePresentation } from "@/ui/composer/mode-options"
 import { HeaderTitle } from "@/ui/shell/header-title"
 import { SessionRail } from "@/ui/rail/session-rail"
+import { notifyAwaiting } from "@/ui/hitl/awaiting-notify"
+import {
+  readAwaiting,
+  serverAwaiting,
+  setAwaiting,
+  subscribeAwaiting,
+} from "@/ui/hitl/awaiting-store"
 import { useSessionList } from "@/ui/rail/use-session-list"
 import { SkillsPanel } from "@/ui/skills/skills-panel"
 import { McpPanel } from "@/ui/mcp/mcp-panel"
@@ -70,6 +77,8 @@ const STORAGE_KEY = "kokoro.web.conversations"
 // 未发送草稿按会话持久化：切会话/刷新都保留（in-memory useState 会丢）。空串=无草稿。
 // 与会话 store 分键：逐键改动不惊动引擎、也不跨 tab 抢占（草稿是本地正在编辑态）。
 const DRAFT_PENDING_KEY = "__pending__"
+// 标签页基础 title（与 layout metadata 对齐）；待批时前缀 ● + 计数（HITL-NOTIFY）。
+const BASE_TITLE = "Kokoro Web"
 const draftStore = createPersistedStore({
   key: "kokoro.web.drafts",
   schema: z.record(z.string(), z.string()),
@@ -316,6 +325,28 @@ export function SessionShell({ engine: injectedEngine, brandName }: SessionShell
     wasStreamingRef.current = isStreaming
   }, [isStreaming])
 
+  // 跨会话待批可见性（HITL-NOTIFY）：活跃会话进入 awaiting-hitl 即登记注册表、离开即销账；
+  // 切走后活跃会话变了但注册表保留 A 的待批徽标（单活跃流下这是唯一的跨会话来源）。
+  const awaitingIds = useSyncExternalStore(subscribeAwaiting, readAwaiting, serverAwaiting)
+  const prevAwaitingRef = useRef(false)
+  useEffect(() => {
+    if (activeId === null) {
+      return
+    }
+    const isAwaiting = machine.phase === "awaiting-hitl"
+    setAwaiting(activeId, isAwaiting)
+    // 新进入待批（非重渲染重复）才弹系统通知：拒绝/不支持静默。
+    if (isAwaiting && !prevAwaitingRef.current) {
+      notifyAwaiting(t("hitl.notifyTitle"), t("hitl.notifyBody"))
+    }
+    prevAwaitingRef.current = isAwaiting
+  }, [activeId, machine.phase, t])
+
+  // 标签页 title 前缀（HITL-NOTIFY）：任一会话待批即 ● 前缀 + 计数，切走仍可见「有事等你」。
+  useEffect(() => {
+    document.title = awaitingIds.size > 0 ? `● (${awaitingIds.size}) ${BASE_TITLE}` : BASE_TITLE
+  }, [awaitingIds])
+
   // 草稿按当前会话取值：正在编辑的键命中用内存值，否则读持久化（切会话/刷新即取回，不丢字）。
   // 键控派生（非 effect 同步 setState）：mounted 门控保证 SSR/水合首帧一致（服务端无 localStorage）。
   const draftKey = activeId ?? DRAFT_PENDING_KEY
@@ -514,6 +545,7 @@ export function SessionShell({ engine: injectedEngine, brandName }: SessionShell
         brandName={brandName}
         conversations={conversations}
         activeId={activeId}
+        awaitingIds={awaitingIds}
         onSelectConversation={selectConversation}
         onDeleteConversation={deleteConversation}
         onRenameConversation={renameConversation}

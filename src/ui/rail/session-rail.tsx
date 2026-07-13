@@ -15,6 +15,8 @@ type SessionRailProps = {
   brandName?: string
   conversations: ConversationSummary[]
   activeId: string | null
+  // 待批会话 id 集（HITL-NOTIFY）：命中的条目上挂待批徽标（跨会话可见性）。
+  awaitingIds: ReadonlySet<string>
   onSelectConversation: (id: string) => void
   onDeleteConversation: (id: string) => void
   // 会话重命名（CONV-UX）：提交非空新题；乐观更新 + 失败回滚由上层处理。
@@ -38,6 +40,7 @@ export function SessionRail({
   brandName,
   conversations,
   activeId,
+  awaitingIds,
   onSelectConversation,
   onDeleteConversation,
   onRenameConversation,
@@ -279,6 +282,13 @@ export function SessionRail({
                           onDoubleClick={() => startRename(conversation.id, conversation.title)}
                           aria-current={conversation.id === activeId ? "true" : undefined}
                         >
+                          {/* 待批徽标（HITL-NOTIFY）：琥珀点提示该会话有待你决定的审批，跨会话可见。 */}
+                          {awaitingIds.has(conversation.id) ? (
+                            <span
+                              className={styles.itemAwaiting}
+                              aria-label={t("hitl.awaitingApproval")}
+                            />
+                          ) : null}
                           <span className={styles.itemTitle}>{title}</span>
                         </button>
                         <button

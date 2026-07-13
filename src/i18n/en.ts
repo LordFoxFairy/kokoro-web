@@ -62,6 +62,8 @@ export const en: Partial<Record<MessageKey, string>> = {
   "hitl.askOptions": "Answer options",
   "hitl.askReply": "Reply to agent",
   "hitl.awaitingApproval": "Awaiting approval",
+  "hitl.notifyTitle": "A step needs your decision",
+  "hitl.notifyBody": "A conversation is waiting for your approval.",
   "hitl.answered": "Answered",
   "hitl.approve": "Approve",
   "hitl.reject": "Reject",
