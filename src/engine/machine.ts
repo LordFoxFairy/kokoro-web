@@ -167,6 +167,8 @@ export type SessionEngine = {
   newConversation: () => void
   deleteConversation: (id: string) => void
   setMode: (mode: AgentMode) => void
+  // 输入框固定技能（UI 偏好）：随每次开跑/插话上 wire 为 messageCreate.pinned_skills。
+  setPinnedSkills: (names: readonly string[]) => void
   dispose: () => void
 }
 
@@ -204,6 +206,8 @@ export function createSessionEngine(deps: EngineDeps): SessionEngine {
   // 最近一次未获回执的提交：POST 失败重试复用同一 idempotency_key（服务端命中即重放 receipt）。
   let pendingSubmission: { content: string; idempotencyKey: string } | null = null
   let notice: NoticeSpec | null = null
+  // 固定技能（UI 偏好，shell 持久化后经 setPinnedSkills 注入）：非空即随 messageCreate 上 wire。
+  let pinnedSkills: string[] = []
 
   let handle: EventStreamHandle | null = null
   // 流代际守卫：关流后迟到的回调（旧代际）一律忽略，防止旧流事件折进新会话。
@@ -473,6 +477,7 @@ export function createSessionEngine(deps: EngineDeps): SessionEngine {
         idempotency_key: idempotencyKey,
         content,
         thinking: mode === "thinking",
+        ...(pinnedSkills.length > 0 ? { pinned_skills: [...pinnedSkills] } : {}),
       })
       .then((receipt) => {
         // 回执落地前用户已重置/切换：丢弃迟到回执，不复活旧轮。
@@ -518,6 +523,7 @@ export function createSessionEngine(deps: EngineDeps): SessionEngine {
           idempotency_key: createId("idem"),
           content: trimmed,
           thinking: activeMode(store) === "thinking",
+          ...(pinnedSkills.length > 0 ? { pinned_skills: [...pinnedSkills] } : {}),
         })
         .then((receipt) => {
           if (disposed || store?.activeId !== steerSessionId) {
@@ -714,6 +720,13 @@ export function createSessionEngine(deps: EngineDeps): SessionEngine {
     notify()
   }
 
+  function setPinnedSkills(names: readonly string[]): void {
+    if (disposed) {
+      return
+    }
+    pinnedSkills = [...names]
+  }
+
   function dispose(): void {
     disposed = true
     closeStream()
@@ -782,6 +795,7 @@ export function createSessionEngine(deps: EngineDeps): SessionEngine {
     newConversation,
     deleteConversation,
     setMode,
+    setPinnedSkills,
     dispose,
   }
 }

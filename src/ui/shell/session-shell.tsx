@@ -26,9 +26,11 @@ import { z } from "zod"
 import { createPersistedStore } from "@/lib/persisted-store"
 import { useHydrated } from "@/lib/use-hydrated"
 
+import { createHubClient, type HubClient } from "@/hub/client"
 import { Composer, MAX_INPUT_LENGTH } from "@/ui/composer/composer"
 import { modePresentation } from "@/ui/composer/mode-options"
 import { SessionRail } from "@/ui/rail/session-rail"
+import { SkillsPanel } from "@/ui/skills/skills-panel"
 import { useRailResize } from "@/ui/rail/use-rail-resize"
 import { ConversationThread } from "@/ui/thread/conversation-thread"
 import { useAutoScroll } from "@/ui/thread/use-auto-scroll"
@@ -73,6 +75,34 @@ function writeDraft(key: string, value: string): void {
   } else {
     draftStore.write({ ...all, [key]: value })
   }
+}
+
+// 固定技能（UI 偏好）：只存技能名清单，随消息上 wire 为 pinned_skills。与会话/草稿分键。
+const EMPTY_PINNED: readonly string[] = []
+const pinnedStore = createPersistedStore({
+  key: "kokoro.web.pinned_skills",
+  schema: z.array(z.string()),
+})
+
+function togglePinned(name: string): void {
+  const current = pinnedStore.read() ?? []
+  pinnedStore.write(current.includes(name) ? current.filter((n) => n !== name) : [...current, name])
+}
+
+function removePinned(name: string): void {
+  const current = pinnedStore.read() ?? []
+  if (current.includes(name)) {
+    pinnedStore.write(current.filter((n) => n !== name))
+  }
+}
+
+// 页面级单例 hub 客户端：同源 `/api/hub` BFF，仅浏览器构造。
+let pageHubClient: HubClient | null = null
+function browserHubClient(): HubClient {
+  if (!pageHubClient) {
+    pageHubClient = createHubClient()
+  }
+  return pageHubClient
 }
 
 // 页面级单例：整页共享一个引擎实例（含流句柄与重连计时器），仅浏览器创建，SSR 为 null。
@@ -124,7 +154,19 @@ export function SessionShell({ engine: injectedEngine }: SessionShellProps = {})
   const mounted = useHydrated()
 
   const [railCollapsed, setRailCollapsed] = useState(false)
+  const [skillsOpen, setSkillsOpen] = useState(false)
   const composerRef = useRef<HTMLTextAreaElement | null>(null)
+
+  // 固定技能清单（跨 tab 同步）：读缓存稳定引用，SSR/未水合回退空。
+  const pinnedSkills = useSyncExternalStore(
+    pinnedStore.subscribe,
+    () => pinnedStore.read() ?? EMPTY_PINNED,
+    () => EMPTY_PINNED,
+  )
+  // 固定技能变化即注入引擎：下一次开跑/插话随 messageCreate 上 wire pinned_skills。
+  useEffect(() => {
+    engine?.setPinnedSkills(pinnedSkills)
+  }, [engine, pinnedSkills])
 
   // 侧栏可拖拽改宽（两侧自由，均有最小宽度）；收起态用固定窄列，不参与拖拽。
   const { width: railWidth, isResizing, shellRef, onResizeStart } = useRailResize()
@@ -302,6 +344,7 @@ export function SessionShell({ engine: injectedEngine }: SessionShellProps = {})
         activeId={activeId}
         onSelectConversation={selectConversation}
         onDeleteConversation={(id) => engine?.deleteConversation(id)}
+        onOpenSkills={() => setSkillsOpen(true)}
       />
 
       {/* 拖拽分隔条：调整 rail/main 宽度（两侧自由、各有最小宽度）；收起态不可拖。 */}
@@ -371,6 +414,8 @@ export function SessionShell({ engine: injectedEngine }: SessionShellProps = {})
           mode={mode}
           onModeChange={(next) => engine?.setMode(next)}
           modeLocked={modeLocked}
+          pinnedSkills={pinnedSkills}
+          onUnpinSkill={removePinned}
         />
 
         {/* 重开入口：槽里还有内容但被手动关过——一键回到上次看的产物。 */}
@@ -415,6 +460,15 @@ export function SessionShell({ engine: injectedEngine }: SessionShellProps = {})
             onClose={() => closeCanvas(activeId)}
           />
         </>
+      ) : null}
+
+      {skillsOpen ? (
+        <SkillsPanel
+          client={browserHubClient()}
+          onClose={() => setSkillsOpen(false)}
+          pinned={pinnedSkills}
+          onTogglePin={togglePinned}
+        />
       ) : null}
     </main>
   )

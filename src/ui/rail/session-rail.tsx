@@ -14,6 +14,7 @@ type SessionRailProps = {
   activeId: string | null
   onSelectConversation: (id: string) => void
   onDeleteConversation: (id: string) => void
+  onOpenSkills: () => void
 }
 
 export function SessionRail({
@@ -24,6 +25,7 @@ export function SessionRail({
   activeId,
   onSelectConversation,
   onDeleteConversation,
+  onOpenSkills,
 }: SessionRailProps) {
   const t = useT()
   const [searchOpen, setSearchOpen] = useState(false)
@@ -130,6 +132,12 @@ export function SessionRail({
           <ChatsIcon className={styles.icon} />
           <span className={styles.navLabel}>{t("rail.navChat")}</span>
         </div>
+
+        {/* 技能面板入口（WEB-SKILLS）：打开 hub self 面池/上传的模态。 */}
+        <button className={styles.navItem} type="button" onClick={onOpenSkills}>
+          <SlidersIcon className={styles.icon} />
+          <span className={styles.navLabel}>{t("rail.navSkills")}</span>
+        </button>
       </nav>
 
       {hasConversations ? (

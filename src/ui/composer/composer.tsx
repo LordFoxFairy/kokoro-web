@@ -48,6 +48,9 @@ type ComposerProps = {
   mode: AgentMode
   onModeChange: (mode: AgentMode) => void
   modeLocked: boolean
+  // 固定技能（WEB-SKILLS）：随消息上 wire 为 pinned_skills；chip 可就地取消固定。
+  pinnedSkills: readonly string[]
+  onUnpinSkill: (name: string) => void
 }
 
 export function Composer({
@@ -64,6 +67,8 @@ export function Composer({
   mode,
   onModeChange,
   modeLocked,
+  pinnedSkills,
+  onUnpinSkill,
 }: ComposerProps) {
   const t = useT()
   const modeLabel = MODE_LABEL[mode]
@@ -85,6 +90,23 @@ export function Composer({
 
   return (
     <div className={styles.wrap}>
+      {pinnedSkills.length > 0 ? (
+        <div className={styles.pinnedRow} aria-label={t("composer.pinnedAria")}>
+          {pinnedSkills.map((name) => (
+            <span key={name} className={styles.pinnedChip}>
+              <span className={styles.pinnedName}>{name}</span>
+              <button
+                type="button"
+                className={styles.pinnedRemove}
+                aria-label={t("composer.pinnedRemove", { name })}
+                onClick={() => onUnpinSkill(name)}
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      ) : null}
       <form className={styles.composer} aria-label={t("composer.editArea")} onSubmit={onSubmit}>
         <textarea
           ref={composerRef}
