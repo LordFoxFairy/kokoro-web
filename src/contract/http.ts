@@ -188,7 +188,7 @@ export type BillingLedger = z.infer<typeof billingLedgerSchema>
 export const sessionSnapshotSchema = z
   .object({
     session: sessionMetaSchema,
-    messages: z.array(messageRecordSchema),
+    messages: z.array(messageRecordSchema).optional(),
     active_run: activeRunSchema.optional(),
     pending_pauses: z.array(pendingPauseSchema),
     files: z.array(workspaceFileSchema),

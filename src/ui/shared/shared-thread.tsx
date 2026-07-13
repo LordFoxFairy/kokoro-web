@@ -14,7 +14,9 @@ import { ConversationThread } from "@/ui/thread/conversation-thread"
 // 公共快照 → 只读线程状态：messages 直接投影（stepsByRun 空，assistant 文本由 projections
 // 的防御性 text 步骤补齐渲染）；用户消息以自身 id 充当 runId，assistant 归其 run。
 function stateFromPublicSnapshot(snapshot: SessionSnapshot): SessionStreamState {
-  const messages: SessionMessage[] = snapshot.messages.map((message) => ({
+  // M-6：SessionSnapshot.messages 转 optional（属主面省略）；分享面 session 保证必携，
+  // 此处 ?? [] 仅作契约可选性的防御守卫（正常分享快照恒有 messages）。
+  const messages: SessionMessage[] = (snapshot.messages ?? []).map((message) => ({
     id: message.message_id,
     role: message.role,
     content: message.content,
