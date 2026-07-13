@@ -6,9 +6,11 @@ import { NextResponse } from "next/server"
 
 import {
   authConfig,
-  callerHeaders,
+  INTERNAL_SECRET_HEADER,
   readEnvelope,
   sameOriginOk,
+  SERVICE_HEADER,
+  SERVICE_VALUE,
 } from "@/lib/server/auth"
 
 export const runtime = "nodejs"
@@ -43,14 +45,22 @@ async function proxy(
   const search = new URL(request.url).search
   const target = `${config.userBaseUrl.replace(/\/+$/, "")}/bff/${segments.join("/")}${search}`
 
-  const headers = new Headers(callerHeaders(config))
+  const headers = new Headers()
+  headers.set(SERVICE_HEADER, SERVICE_VALUE)
+  if (config.internalSecret !== null) {
+    headers.set(INTERNAL_SECRET_HEADER, config.internalSecret)
+  }
   // user principal 从信封派生（web 侧解封结果），浏览器无从伪造。
   headers.set("x-user-id", envelope.user_id)
 
-  const body =
-    request.method === "GET" || request.method === "HEAD"
-      ? undefined
-      : await request.text()
+  // 仅在确有 body 时透传 content-type：无 body 的 POST（accept/decline/remove-self）不能带
+  // application/json，否则上游 fastify 对空体报 FST_ERR_CTP_EMPTY_JSON_BODY(400)。
+  const rawBody =
+    request.method === "GET" || request.method === "HEAD" ? "" : await request.text()
+  const body = rawBody.length > 0 ? rawBody : undefined
+  if (body !== undefined) {
+    headers.set("content-type", request.headers.get("content-type") ?? "application/json")
+  }
 
   let upstream: Response
   try {

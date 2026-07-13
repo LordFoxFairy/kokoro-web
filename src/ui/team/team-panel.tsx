@@ -270,7 +270,7 @@ function SwitcherSection({
                   onClick={() => onSwitch(summary.team.id)}
                 >
                   <span className={styles.teamName}>
-                    {summary.team.type === "personal" ? t("team.personalName") : summary.team.name}
+                    {teamLabel(summary.team.type, summary.membership.role, summary.team.name, t)}
                   </span>
                   <span className={styles.teamMeta}>
                     <span className={styles.roleBadge} data-role={summary.membership.role}>
@@ -381,9 +381,7 @@ function MembersSection({
   return (
     <section className={styles.section} data-testid="team-members">
       <div className={styles.sectionRow}>
-        <h3 className={styles.sectionTitle}>
-          {team.type === "personal" ? t("team.personalName") : team.name}
-        </h3>
+        <h3 className={styles.sectionTitle}>{teamLabel(team.type, viewerRole, team.name, t)}</h3>
         <span className={styles.roleBadge} data-role={viewerRole}>
           {t(roleKey(viewerRole))}
         </span>
@@ -608,6 +606,16 @@ function MemberRow({
       </div>
     </li>
   )
+}
+
+// 团队名：自己拥有的个人空间显示「个人空间」；他人的个人团队/普通团队一律显示真实名。
+function teamLabel(
+  type: "personal" | "team",
+  role: TeamRole,
+  name: string,
+  t: (key: "team.personalName") => string,
+): string {
+  return type === "personal" && role === "owner" ? t("team.personalName") : name
 }
 
 function roleKey(role: TeamRole): "team.roleOwner" | "team.roleAdmin" | "team.roleMember" {
