@@ -45,8 +45,8 @@ type ConversationThreadProps = {
   onCancelRun?: () => void
 }
 
-// 失败讲人话：契约失败码 → 文案 key（未知/内部错误回退通用句）。i18n 在渲染处按码取译。
-function failureCopyKey(runError: { code: string; message: string } | null): MessageKey {
+// 失败讲人话：契约失败码 → 文案 key。闭集 7 码逐码本地化，未知码兜底通用句。i18n 在渲染处按码取译。
+export function failureCopyKey(runError: { code: string; message: string } | null): MessageKey {
   switch (runError?.code) {
     case "token_budget_exceeded":
       return "fail.tokenBudget"
@@ -56,6 +56,12 @@ function failureCopyKey(runError: { code: string; message: string } | null): Mes
       return "fail.assembly"
     case "enqueue_failed":
       return "fail.enqueue"
+    case "dispatch_exhausted":
+      return "fail.dispatch"
+    case "contract_incompatible":
+      return "fail.contract"
+    case "internal_error":
+      return "fail.internal"
     default:
       return "fail.generic"
   }
@@ -180,7 +186,20 @@ export function ConversationThread({
           </div>
         ) : hasFailed ? (
           <div className={styles.error} role="alert">
-            <span>{t(failureCopyKey(thread.runError))}</span>
+            <div className={styles.errorBody}>
+              <span>{t(failureCopyKey(thread.runError))}</span>
+              {/* internal_error 额外反馈指引：重试仍失败时引导用户把详情反馈给我们。 */}
+              {thread.runError?.code === "internal_error" ? (
+                <span className={styles.errorHint}>{t("fail.internalHint")}</span>
+              ) : null}
+              {/* message 原文折叠可展开（兜底展示，绝不裸露错误码）。 */}
+              {thread.runError?.message ? (
+                <details className={styles.errorDetail}>
+                  <summary>{t("fail.showDetail")}</summary>
+                  <pre>{thread.runError.message}</pre>
+                </details>
+              ) : null}
+            </div>
             <button className={styles.retry} type="button" onClick={onRetry}>
               {t("thread.retry")}
             </button>

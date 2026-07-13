@@ -142,7 +142,12 @@ export const en: Partial<Record<MessageKey, string>> = {
   "fail.recursion": "This turn hit the loop-guard from too many steps. Try a more specific request.",
   "fail.assembly": "This space is misconfigured and the turn couldn't start — please contact an admin.",
   "fail.enqueue": "The service is temporarily unavailable; this turn didn't start. Retry shortly.",
+  "fail.dispatch": "We kept trying to dispatch this turn and gave up. Retry to resend your last message.",
+  "fail.contract": "The client and server versions are incompatible; this turn couldn't run — refresh the page, and contact an admin if it persists.",
+  "fail.internal": "Something went wrong internally and this turn didn't finish.",
   "fail.generic": "This turn didn't finish. Please try again.",
+  "fail.internalHint": "If retrying still fails, please share these details with us.",
+  "fail.showDetail": "View error details",
   // mode
   "mode.hintFast": "Faster responses",
   "mode.hintThink": "Deeper thinking",

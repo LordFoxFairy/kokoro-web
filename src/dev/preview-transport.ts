@@ -73,6 +73,23 @@ export function createPreviewClient(options?: { stepMs?: number }): SessionClien
       session.started = true
       session.queued.push(envelope("session.created", { title: content, owner_id: "local-user" }))
     }
+    // 预览失败态演练：消息以 `!fail:<code>` 起头则合成对应 run.failed，供 ERROR-UX 卡片人工走查。
+    // 仅 dev 假流内可达（NEXT_PUBLIC_SESSION_PREVIEW=1），不影响真实链路。
+    const failMatch = /^!fail:([a-z_]+)/.exec(content.trim())
+    if (failMatch) {
+      const code = failMatch[1]
+      session.queued.push(
+        envelope("run.created", { run_id: runId }),
+        envelope("thinking.delta", { segment_id: segmentId, delta: "Sketching a preview reply." }),
+        envelope("run.failed", {
+          code,
+          error_kind: "PreviewSyntheticError",
+          message: `Synthetic failure for preview: ${code}\n  at previewTransport.enqueueRun (dev harness)`,
+        }),
+      )
+      drain(session)
+      return
+    }
     session.queued.push(
       envelope("run.created", { run_id: runId }),
       envelope("thinking.delta", { segment_id: segmentId, delta: "Sketching a preview reply." }),

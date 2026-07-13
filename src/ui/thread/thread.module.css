@@ -1151,7 +1151,7 @@
 
 .error {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 0.6rem;
   align-self: flex-start;
   max-width: 76%;
@@ -1161,6 +1161,58 @@
   padding: 0.5rem 0.75rem;
   color: var(--k-error-strong);
   font-size: 0.82rem;
+}
+
+/* 失败文案列：主句 + 可选反馈指引 + 折叠详情，纵向堆叠；重试按钮在右侧顶对齐。 */
+.errorBody {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+/* 反馈指引（internal_error）：比主句更轻的辅助语气。 */
+.errorHint {
+  color: color-mix(in srgb, var(--k-error-strong) 70%, var(--foreground) 30%);
+  font-size: 0.78rem;
+}
+
+/* 原始错误信息折叠：summary 为暖木可点触发，展开后 message 原文以等宽预格式呈现（可换行、可滚动）。 */
+.errorDetail > summary {
+  cursor: pointer;
+  color: var(--brand-wood);
+  font-size: 0.78rem;
+  list-style: none;
+}
+
+.errorDetail > summary::-webkit-details-marker {
+  display: none;
+}
+
+.errorDetail > summary::before {
+  content: "▸";
+  display: inline-block;
+  margin-right: 0.3rem;
+  font-size: 0.7rem;
+}
+
+.errorDetail[open] > summary::before {
+  content: "▾";
+}
+
+.errorDetail > pre {
+  margin: 0.35rem 0 0;
+  max-height: 9rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  border-radius: 0.5rem;
+  padding: 0.4rem 0.55rem;
+  background: color-mix(in srgb, var(--k-error) 6%, var(--surface) 94%);
+  color: color-mix(in srgb, var(--k-error-strong) 82%, var(--foreground) 18%);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.74rem;
+  line-height: 1.5;
 }
 
 /* 重试入口：暖木描边胶囊，固定尺寸；hover/focus 只换底色与阴影，绝不改变盒子大小。 */
