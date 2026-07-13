@@ -28,7 +28,9 @@ import { useHydrated } from "@/lib/use-hydrated"
 
 import { createBillingClient, CREDIT_INSUFFICIENT, type BillingClient } from "@/billing/client"
 import { createHubClient, type HubClient } from "@/hub/client"
+import { createTeamClient, type TeamClient } from "@/team/client"
 import { BillingPanel } from "@/ui/billing/billing-panel"
+import { TeamPanel } from "@/ui/team/team-panel"
 import { Composer, MAX_INPUT_LENGTH } from "@/ui/composer/composer"
 import { modePresentation } from "@/ui/composer/mode-options"
 import { SessionRail } from "@/ui/rail/session-rail"
@@ -118,6 +120,15 @@ function browserBillingClient(): BillingClient {
   return pageBillingClient
 }
 
+// 页面级单例团队客户端（TEAM-1）：同源 `/api/team` BFF，切换/邀请/成员管理。
+let pageTeamClient: TeamClient | null = null
+function browserTeamClient(): TeamClient {
+  if (!pageTeamClient) {
+    pageTeamClient = createTeamClient()
+  }
+  return pageTeamClient
+}
+
 // 会话清单读客户端（SESS-LIST）：与引擎同源选择（preview 假流优先，否则 `/api/session` BFF）。
 // 单例稳定引用，供 useSessionList 的取数 effect 依赖不抖动。
 let pageListClient: Pick<SessionClient, "listSessions"> | null = null
@@ -179,6 +190,9 @@ export function SessionShell({ engine: injectedEngine }: SessionShellProps = {})
   const [railCollapsed, setRailCollapsed] = useState(false)
   const [skillsOpen, setSkillsOpen] = useState(false)
   const [billingOpen, setBillingOpen] = useState(false)
+  const [teamsOpen, setTeamsOpen] = useState(false)
+  // 当前团队 namespace（切换器高亮）：undefined=未取，null=无信封/预览，string=当前 team id。
+  const [teamNamespace, setTeamNamespace] = useState<string | null | undefined>(undefined)
   const composerRef = useRef<HTMLTextAreaElement | null>(null)
 
   // 固定技能清单（跨 tab 同步）：读缓存稳定引用，SSR/未水合回退空。
@@ -331,6 +345,16 @@ export function SessionShell({ engine: injectedEngine }: SessionShellProps = {})
     }
   }
 
+  // 打开团队面板即取当前 namespace（切换器高亮当前项）；每次打开重取，切换后回来反映新态。
+  const openTeams = useCallback(() => {
+    setTeamNamespace(undefined)
+    setTeamsOpen(true)
+    void browserTeamClient()
+      .currentNamespace()
+      .then((ns) => setTeamNamespace(ns))
+      .catch(() => setTeamNamespace(null))
+  }, [])
+
   const startNewChat = useCallback(() => {
     // 不清 draft：newConversation 换 activeId 后，上面的 effect 会加载新会话自己的草稿。
     engine?.newConversation()
@@ -403,6 +427,7 @@ export function SessionShell({ engine: injectedEngine }: SessionShellProps = {})
         onDeleteConversation={deleteConversation}
         onOpenSkills={() => setSkillsOpen(true)}
         onOpenBilling={() => setBillingOpen(true)}
+        onOpenTeams={openTeams}
         listLoading={sessionList.loading}
         listError={sessionList.error}
         hasMore={sessionList.hasMore}
@@ -537,6 +562,15 @@ export function SessionShell({ engine: injectedEngine }: SessionShellProps = {})
 
       {billingOpen ? (
         <BillingPanel client={browserBillingClient()} onClose={() => setBillingOpen(false)} />
+      ) : null}
+
+      {teamsOpen && teamNamespace !== undefined ? (
+        <TeamPanel
+          client={browserTeamClient()}
+          currentNamespace={teamNamespace}
+          onClose={() => setTeamsOpen(false)}
+          onSwitched={() => window.location.reload()}
+        />
       ) : null}
     </main>
   )

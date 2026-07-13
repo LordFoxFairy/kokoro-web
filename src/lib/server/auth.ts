@@ -222,6 +222,41 @@ export async function userRequestMagicLink(
   return { kind: "ok", linkToken: parsed.data.data.link_token ?? null }
 }
 
+export type TeamSessionOutcome =
+  | { kind: "ok"; result: ConsumeResult }
+  | { kind: "forbidden" }
+  | { kind: "unavailable" }
+
+// 团队换签（web → user /bff/auth/team-sessions）：携 user principal（x-user-id）换目标 namespace 的
+// runtime token。403=非该 team 活跃成员（被移除/从未加入）；其余失败归一 unavailable。token 只在服务端
+// 重新密封进信封，绝不回给浏览器。
+export async function userIssueTeamSession(
+  config: AuthConfig,
+  userId: string,
+  teamId: string,
+): Promise<TeamSessionOutcome> {
+  const response = await fetch(new URL("/bff/auth/team-sessions", config.userBaseUrl), {
+    method: "POST",
+    headers: { ...callerHeaders(config), "x-user-id": userId },
+    body: JSON.stringify({ team_id: teamId }),
+    cache: "no-store",
+  }).catch(() => null)
+  if (response === null) {
+    return { kind: "unavailable" }
+  }
+  if (response.status === 403) {
+    return { kind: "forbidden" }
+  }
+  if (!response.ok) {
+    return { kind: "unavailable" }
+  }
+  const parsed = consumeResponseSchema.safeParse(await response.json().catch(() => null))
+  if (!parsed.success) {
+    return { kind: "unavailable" }
+  }
+  return { kind: "ok", result: parsed.data.data }
+}
+
 // 消费：带回同一 nonce 哈希。任何失败都归一为 null（跨设备/无效/已用/过期不区分）。
 export async function userConsumeMagicLink(
   config: AuthConfig,

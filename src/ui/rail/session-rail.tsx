@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 
 import { useLocale, useT } from "@/i18n/context"
-import { ChatsIcon, CoinIcon, PanelIcon, PlusIcon, SearchIcon, SlidersIcon } from "@/ui/icons/rail"
+import { ChatsIcon, CoinIcon, PanelIcon, PlusIcon, SearchIcon, SlidersIcon, UsersIcon } from "@/ui/icons/rail"
 
 import { filterConversations, type ConversationSummary } from "./rail-search"
 import styles from "./session-rail.module.css"
@@ -16,6 +16,7 @@ type SessionRailProps = {
   onDeleteConversation: (id: string) => void
   onOpenSkills: () => void
   onOpenBilling: () => void
+  onOpenTeams: () => void
   // 清单服务端水合态（SESS-LIST）：加载/错误态与滚动翻页入口。
   listLoading: boolean
   listError: boolean
@@ -33,6 +34,7 @@ export function SessionRail({
   onDeleteConversation,
   onOpenSkills,
   onOpenBilling,
+  onOpenTeams,
   listLoading,
   listError,
   hasMore,
@@ -154,6 +156,12 @@ export function SessionRail({
         <button className={styles.navItem} type="button" onClick={onOpenBilling}>
           <CoinIcon className={styles.icon} />
           <span className={styles.navLabel}>{t("rail.navBilling")}</span>
+        </button>
+
+        {/* 团队面板入口（TEAM-1）：切换团队 + 待处理邀请 + 成员管理的模态。 */}
+        <button className={styles.navItem} type="button" onClick={onOpenTeams} data-testid="rail-teams">
+          <UsersIcon className={styles.icon} />
+          <span className={styles.navLabel}>{t("rail.navTeams")}</span>
         </button>
       </nav>
 
