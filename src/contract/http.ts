@@ -233,6 +233,11 @@ export type RunControlBody = z.infer<typeof runControlBodySchema>
 export const runControlReceiptSchema = z.object({ ok: z.literal(true) }).strict()
 export type RunControlReceipt = z.infer<typeof runControlReceiptSchema>
 
+export const renameSessionBodySchema = z.object({ title: z.string().min(1) }).strict()
+export type RenameSessionBody = z.infer<typeof renameSessionBodySchema>
+export const renameSessionReceiptSchema = z.object({ ok: z.literal(true) }).strict()
+export type RenameSessionReceipt = z.infer<typeof renameSessionReceiptSchema>
+
 export const shareReceiptSchema = z.object({ share_id: z.string().min(1) }).strict()
 export type ShareReceipt = z.infer<typeof shareReceiptSchema>
 
@@ -294,4 +299,7 @@ export function sharePath(sessionId: string): string {
 }
 export function sharedSnapshotPath(shareId: string): string {
   return `/shared/${shareId}`
+}
+export function renameSessionPath(sessionId: string): string {
+  return `/sessions/${sessionId}/title`
 }

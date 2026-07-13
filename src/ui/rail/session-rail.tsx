@@ -16,6 +16,8 @@ type SessionRailProps = {
   activeId: string | null
   onSelectConversation: (id: string) => void
   onDeleteConversation: (id: string) => void
+  // 会话重命名（CONV-UX）：提交非空新题；乐观更新 + 失败回滚由上层处理。
+  onRenameConversation: (id: string, title: string) => void
   onOpenSkills: () => void
   onOpenMcp: () => void
   onOpenBilling: () => void
@@ -37,6 +39,7 @@ export function SessionRail({
   activeId,
   onSelectConversation,
   onDeleteConversation,
+  onRenameConversation,
   onOpenSkills,
   onOpenMcp,
   onOpenBilling,
@@ -52,12 +55,42 @@ export function SessionRail({
   const [query, setQuery] = useState("")
   const searchInputRef = useRef<HTMLInputElement>(null)
 
+  // 会话重命名内联编辑态（CONV-UX）：editingId 命中的条目以输入框替换标题。
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [draftTitle, setDraftTitle] = useState("")
+  const renameInputRef = useRef<HTMLInputElement>(null)
+
   // 打开搜索即聚焦输入框，省去一次额外点击。
   useEffect(() => {
     if (searchOpen) {
       searchInputRef.current?.focus()
     }
   }, [searchOpen])
+
+  // 进入编辑即聚焦并全选，改题一气呵成。
+  useEffect(() => {
+    if (editingId !== null) {
+      renameInputRef.current?.focus()
+      renameInputRef.current?.select()
+    }
+  }, [editingId])
+
+  const startRename = (id: string, current: string) => {
+    setEditingId(id)
+    setDraftTitle(current)
+  }
+  const cancelRename = () => {
+    setEditingId(null)
+    setDraftTitle("")
+  }
+  // 提交：非空且与原题不同才上抛（空题/未改动直接收工，不触发请求）。
+  const commitRename = (current: string) => {
+    const value = draftTitle.trim()
+    if (editingId !== null && value !== "" && value !== current) {
+      onRenameConversation(editingId, value)
+    }
+    cancelRename()
+  }
 
   const closeSearch = () => {
     setSearchOpen(false)
@@ -207,28 +240,64 @@ export function SessionRail({
             <>
               {filtered.map((conversation) => {
                 const title = conversation.title || t("rail.newChat")
+                const editing = conversation.id === editingId
                 return (
                   <div
                     key={conversation.id}
                     className={styles.item}
                     data-active={conversation.id === activeId ? "true" : "false"}
+                    data-editing={editing ? "true" : "false"}
                   >
-                    <button
-                      className={styles.itemSelect}
-                      type="button"
-                      onClick={() => onSelectConversation(conversation.id)}
-                      aria-current={conversation.id === activeId ? "true" : undefined}
-                    >
-                      <span className={styles.itemTitle}>{title}</span>
-                    </button>
-                    <button
-                      className={styles.itemDelete}
-                      type="button"
-                      aria-label={t("rail.deleteChat", { title })}
-                      onClick={() => onDeleteConversation(conversation.id)}
-                    >
-                      ×
-                    </button>
+                    {editing ? (
+                      <input
+                        ref={renameInputRef}
+                        className={styles.itemRenameInput}
+                        value={draftTitle}
+                        maxLength={256}
+                        aria-label={t("rail.renamePlaceholder")}
+                        placeholder={t("rail.renamePlaceholder")}
+                        onChange={(event) => setDraftTitle(event.target.value)}
+                        onBlur={() => commitRename(conversation.title)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault()
+                            commitRename(conversation.title)
+                          } else if (event.key === "Escape") {
+                            event.preventDefault()
+                            cancelRename()
+                          }
+                        }}
+                      />
+                    ) : (
+                      <>
+                        {/* 双击标题即进入内联改题（与悬停 ✎ 按钮同入口）。 */}
+                        <button
+                          className={styles.itemSelect}
+                          type="button"
+                          onClick={() => onSelectConversation(conversation.id)}
+                          onDoubleClick={() => startRename(conversation.id, conversation.title)}
+                          aria-current={conversation.id === activeId ? "true" : undefined}
+                        >
+                          <span className={styles.itemTitle}>{title}</span>
+                        </button>
+                        <button
+                          className={styles.itemRename}
+                          type="button"
+                          aria-label={t("rail.renameChat", { title })}
+                          onClick={() => startRename(conversation.id, conversation.title)}
+                        >
+                          ✎
+                        </button>
+                        <button
+                          className={styles.itemDelete}
+                          type="button"
+                          aria-label={t("rail.deleteChat", { title })}
+                          onClick={() => onDeleteConversation(conversation.id)}
+                        >
+                          ×
+                        </button>
+                      </>
+                    )}
                   </div>
                 )
               })}

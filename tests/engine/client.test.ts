@@ -90,3 +90,38 @@ describe("listModels（MODEL-UX）：GET /models 过契约 Zod", () => {
     await expect(createSessionClient({ baseUrl: "/api/session" }).listModels()).rejects.toThrow()
   })
 })
+
+describe("renameSession（CONV-UX）：PATCH /sessions/{id}/title 过契约 Zod", () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it("PATCH 命中 /title 路径 + 送 {title} 体 + 解析 {ok:true}", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    )
+    vi.stubGlobal("fetch", fetchMock)
+    const receipt = await createSessionClient({ baseUrl: "/api/session" }).renameSession("ses_1", "新标题")
+    expect(receipt).toEqual({ ok: true })
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/session/sessions/ses_1/title")
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit
+    expect(init.method).toBe("PATCH")
+    expect(JSON.parse(init.body as string)).toEqual({ title: "新标题" })
+  })
+
+  it("非 ok（422 超长 / 403 他人 / 404 软删）fail-loud 抛错（错误码回带）", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ error: "title_too_long" }), {
+          status: 422,
+          headers: { "content-type": "application/json" },
+        }),
+      ),
+    )
+    await expect(
+      createSessionClient({ baseUrl: "/api/session" }).renameSession("ses_1", "x"),
+    ).rejects.toThrow("title_too_long")
+  })
+})

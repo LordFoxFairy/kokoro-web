@@ -35,6 +35,7 @@ import { PricingPanel } from "@/ui/billing/pricing-panel"
 import { TeamPanel } from "@/ui/team/team-panel"
 import { Composer, MAX_INPUT_LENGTH } from "@/ui/composer/composer"
 import { modePresentation } from "@/ui/composer/mode-options"
+import { HeaderTitle } from "@/ui/shell/header-title"
 import { SessionRail } from "@/ui/rail/session-rail"
 import { useSessionList } from "@/ui/rail/use-session-list"
 import { SkillsPanel } from "@/ui/skills/skills-panel"
@@ -146,8 +147,8 @@ function browserTeamClient(): TeamClient {
 
 // 会话清单读客户端（SESS-LIST）：与引擎同源选择（preview 假流优先，否则 `/api/session` BFF）。
 // 单例稳定引用，供 useSessionList 的取数 effect 依赖不抖动。listModels 复用同客户端（MODEL-UX）。
-let pageListClient: Pick<SessionClient, "listSessions" | "listModels" | "listAgents" | "listArtifacts" | "createShare" | "revokeShare"> | null = null
-function browserListClient(): Pick<SessionClient, "listSessions" | "listModels" | "listAgents" | "listArtifacts" | "createShare" | "revokeShare"> {
+let pageListClient: Pick<SessionClient, "listSessions" | "listModels" | "listAgents" | "listArtifacts" | "createShare" | "revokeShare" | "renameSession"> | null = null
+function browserListClient(): Pick<SessionClient, "listSessions" | "listModels" | "listAgents" | "listArtifacts" | "createShare" | "revokeShare" | "renameSession"> {
   if (!pageListClient) {
     pageListClient = previewClientFromEnv() ?? createSessionClient({ baseUrl: sessionBaseUrl() })
   }
@@ -292,15 +293,19 @@ export function SessionShell({ engine: injectedEngine, brandName }: SessionShell
   // localStorage 不再作清单真源。新建/切换/删除/开跑收尾后触发 refresh 重取首页。
   const [listRefresh, setListRefresh] = useState(0)
   const sessionList = useSessionList(browserListClient(), listRefresh)
+  // 会话重命名乐观覆写（CONV-UX）：改题即刻反映，服务端回执前先展示新题；失败回滚（删除覆写）。
+  // 成功后覆写与服务端清单最终一致（值相同，展示无差），故无需额外对账 effect——覆写留存但恒等于服务端题。
+  const [titleOverrides, setTitleOverrides] = useState<Record<string, string>>({})
+  const withOverride = (id: string, title: string): string => titleOverrides[id] ?? title
   // 当前活跃会话若尚未在服务端清单出现（新建未落库 / 列表未及刷新）：合成一条置顶项，不让它从侧栏消失。
   const activeInList = activeId !== null && sessionList.entries.some((entry) => entry.id === activeId)
   const conversations =
     activeId !== null && !activeInList
       ? [
-          { id: activeId, title: thread.meta?.title ?? conversationTitle(thread.messages) },
-          ...sessionList.entries.map((entry) => ({ id: entry.id, title: entry.title })),
+          { id: activeId, title: withOverride(activeId, thread.meta?.title ?? conversationTitle(thread.messages)) },
+          ...sessionList.entries.map((entry) => ({ id: entry.id, title: withOverride(entry.id, entry.title) })),
         ]
-      : sessionList.entries.map((entry) => ({ id: entry.id, title: entry.title }))
+      : sessionList.entries.map((entry) => ({ id: entry.id, title: withOverride(entry.id, entry.title) }))
 
   // run 收尾（streaming→idle 落沿）即刷新清单：首条消息落库后新会话进服务端列表，标题也随之更新。
   const wasStreamingRef = useRef(false)
@@ -439,6 +444,32 @@ export function SessionShell({ engine: injectedEngine, brandName }: SessionShell
     [engine],
   )
 
+  // 会话重命名（CONV-UX）：乐观置题 → PATCH /sessions/{id}/title；成功重取清单对账，失败回滚覆写。
+  // 空题/未变化直接忽略（不发请求）。长度上限由端点收口（超 256 → 422 → 回滚）。
+  const renameConversation = useCallback(
+    (id: string, title: string) => {
+      const trimmed = title.trim()
+      if (trimmed === "") return
+      setTitleOverrides((prev) => ({ ...prev, [id]: trimmed }))
+      void browserListClient()
+        .renameSession(id, trimmed)
+        .then(() => {
+          // 服务端已落题：重取清单取回权威标题（对账 effect 随后清覆写）。
+          setListRefresh((n) => n + 1)
+        })
+        .catch(() => {
+          // 失败回滚：撤销乐观覆写，标题回落服务端原值。
+          setTitleOverrides((prev) => {
+            if (!(id in prev)) return prev
+            const next = { ...prev }
+            delete next[id]
+            return next
+          })
+        })
+    },
+    [],
+  )
+
   // 新对话快捷键 ⇧⌘O（侧栏展示该提示，故全局接入键盘使其真实可用）。
   useEffect(() => {
     const onKeyDown = (event: globalThis.KeyboardEvent) => {
@@ -485,6 +516,7 @@ export function SessionShell({ engine: injectedEngine, brandName }: SessionShell
         activeId={activeId}
         onSelectConversation={selectConversation}
         onDeleteConversation={deleteConversation}
+        onRenameConversation={renameConversation}
         onOpenSkills={() => setSkillsOpen(true)}
         onOpenMcp={() => setMcpOpen(true)}
         onOpenBilling={() => setBillingOpen(true)}
@@ -511,6 +543,11 @@ export function SessionShell({ engine: injectedEngine, brandName }: SessionShell
         {/* 会话头部（SHARE-1）：有活跃会话且已开聊时显分享入口——创建可撤销只读链接。 */}
         {mounted && activeId !== null && hasMessages ? (
           <div className={styles.mainHeader}>
+            {/* 会话头部标题可改（CONV-UX）：与侧栏条目同一 renameConversation 收口。 */}
+            <HeaderTitle
+              title={conversations.find((c) => c.id === activeId)?.title ?? conversationTitle(thread.messages)}
+              onRename={(title) => renameConversation(activeId, title)}
+            />
             <ShareButton client={browserListClient()} sessionId={activeId} />
           </div>
         ) : null}

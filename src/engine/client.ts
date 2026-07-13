@@ -33,6 +33,9 @@ import {
   type MessageCreateReceipt,
   deleteSessionReceiptSchema,
   type DeleteSessionReceipt,
+  renameSessionPath,
+  renameSessionReceiptSchema,
+  type RenameSessionReceipt,
 } from "@/contract/http"
 import { parseSessionEvent, type SessionEvent } from "@/contract/session-events"
 
@@ -72,6 +75,8 @@ export type SessionClient = {
   ) => Promise<RunControlReceipt>
   // 软删除（technical/16）：服务端打状态位；幂等（不存在/已删除同为 202）。
   deleteSession: (sessionId: string) => Promise<DeleteSessionReceipt>
+  // 会话重命名（CONV-UX）：显式改题（他人 403 / 软删·不存在 404 / 超 256 → 422）；成功 200 {ok:true}。
+  renameSession: (sessionId: string, title: string) => Promise<RenameSessionReceipt>
   // 模型候选（MODEL-UX）：本 namespace 声明可选 ∩ platform resolve 可用性；输入框下拉据此枚举。
   listModels: () => Promise<ModelCandidateList>
   // agent 候选（AGENT-PRESET）：本 namespace 声明的具名预设 + general 缺省入口；输入框选择器据此枚举。
@@ -284,6 +289,24 @@ export function createSessionClient(options: { baseUrl: string }): SessionClient
         throw await httpError("DELETE", target, response)
       }
       return parseJsonResponse(response, (raw) => deleteSessionReceiptSchema.parse(raw))
+    },
+
+    renameSession: async (sessionId, title) => {
+      const target = url(renameSessionPath(sessionId))
+      let response: Response
+      try {
+        response = await fetch(target, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ title }),
+        })
+      } catch (error) {
+        throw new SessionClientError("network", describeUnknown(error))
+      }
+      if (!response.ok) {
+        throw await httpError("PATCH", target, response)
+      }
+      return parseJsonResponse(response, (raw) => renameSessionReceiptSchema.parse(raw))
     },
 
     // fetch 流式 SSE（非 EventSource）：首连即可携带 Last-Event-ID 头（契约续流轴 = seq），

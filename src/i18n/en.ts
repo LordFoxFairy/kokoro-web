@@ -26,6 +26,10 @@ export const en: Partial<Record<MessageKey, string>> = {
   "rail.userName": "Current user",
   "rail.userScope": "Local session",
   "rail.deleteChat": "Delete chat {title}",
+  "rail.renameChat": "Rename chat {title}",
+  "rail.renamePlaceholder": "Chat title",
+  "rail.renameSave": "Save title",
+  "rail.renameCancel": "Cancel rename",
   // shell
   "shell.resizeAria": "Resize sidebar",
   "shell.heading": "What would you like to do today?",

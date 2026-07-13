@@ -23,6 +23,9 @@ export type FakeClient = SessionClient & {
   controlCalls: { sessionId: string; runId: string; body: RunControlBody }[]
   snapshotCalls: string[]
   deleteCalls: string[]
+  renameCalls: { sessionId: string; title: string }[]
+  // 默认成功 {ok:true}；测试可重写为 reject 以驱动失败回滚路径。
+  nextRename: (sessionId: string, title: string) => Promise<{ ok: true }>
   streams: FakeStream[]
   nextCreate: (sessionId: string, body: MessageCreateParams) => Promise<MessageCreateReceipt>
   nextControl: () => Promise<{ ok: true }>
@@ -77,6 +80,12 @@ export function createFakeClient(): FakeClient {
     deleteSession: (sessionId: string) => {
       client.deleteCalls.push(sessionId)
       return Promise.resolve({ status: "deleted" })
+    },
+    renameCalls: [] as { sessionId: string; title: string }[],
+    nextRename: () => Promise.resolve({ ok: true as const }),
+    renameSession: (sessionId: string, title: string) => {
+      client.renameCalls.push({ sessionId, title })
+      return client.nextRename(sessionId, title)
     },
     sendControl: (sessionId, runId, body) => {
       client.controlCalls.push({ sessionId, runId, body })

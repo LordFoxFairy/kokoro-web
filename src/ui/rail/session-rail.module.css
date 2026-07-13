@@ -347,6 +347,50 @@
   color: var(--brand-wood-hover);
 }
 
+/* 重命名键：与删除键同浮现节奏（仅改透明度，不改盒尺寸避免抖动）。 */
+.itemRename {
+  flex-shrink: 0;
+  opacity: 0;
+  border: 0;
+  background: transparent;
+  padding: 0 0.35rem;
+  font-size: 0.85rem;
+  line-height: 1;
+  color: color-mix(in srgb, var(--foreground) 45%, white 55%);
+  cursor: pointer;
+  transition:
+    opacity 120ms ease,
+    color 120ms ease;
+}
+
+.item:hover .itemRename,
+.item[data-active="true"] .itemRename {
+  opacity: 1;
+}
+
+.itemRename:hover {
+  color: var(--brand-wood-hover);
+}
+
+/* 内联改题输入框：占满条目宽度，视觉上贴合 itemSelect 内距。 */
+.itemRenameInput {
+  flex: 1;
+  min-width: 0;
+  margin: 0.2rem 0.35rem;
+  border: 1px solid var(--brand-wood-hover);
+  border-radius: 0.45rem;
+  background: var(--background);
+  padding: 0.3rem 0.5rem;
+  font-size: 0.85rem;
+  font-family: inherit;
+  color: var(--foreground);
+}
+
+.itemRenameInput:focus {
+  outline: 2px solid color-mix(in srgb, var(--brand-wood-hover) 55%, transparent);
+  outline-offset: 1px;
+}
+
 /* 底部账户：纤细一行，无边框，hover 显柔和 pill。 */
 .userCard {
   margin-top: auto;

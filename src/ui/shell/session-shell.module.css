@@ -157,9 +157,51 @@
 /* 会话头部条（SHARE-1）：分享入口靠右，贴主区顶端，不参与线程滚动。 */
 .mainHeader {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
   align-items: center;
+  gap: 0.75rem;
   padding: 0.6rem 1.25rem 0;
+}
+
+/* 会话头部标题（CONV-UX）：双击进入内联改题；平时是无边框文本，hover 露出可编辑意味。 */
+.headerTitle {
+  min-width: 0;
+  max-width: 60%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  border: 0;
+  background: transparent;
+  padding: 0.25rem 0.4rem;
+  border-radius: 0.45rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--foreground);
+  cursor: text;
+  transition: background-color 120ms ease;
+}
+
+.headerTitle:hover {
+  background: var(--brand-wood-soft);
+}
+
+.headerTitleInput {
+  min-width: 0;
+  max-width: 60%;
+  flex: 1;
+  border: 1px solid var(--brand-wood-hover);
+  border-radius: 0.45rem;
+  background: var(--background);
+  padding: 0.25rem 0.5rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  font-family: inherit;
+  color: var(--foreground);
+}
+
+.headerTitleInput:focus {
+  outline: 2px solid color-mix(in srgb, var(--brand-wood-hover) 55%, transparent);
+  outline-offset: 1px;
 }
 
 /* 首帧占位：rail 与 composer 立即就位，主内容水合后淡入——刷新不闪、不跳。 */

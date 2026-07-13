@@ -33,6 +33,10 @@ export const zh = {
   "rail.userName": "当前用户",
   "rail.userScope": "本地会话",
   "rail.deleteChat": "删除会话 {title}",
+  "rail.renameChat": "重命名会话 {title}",
+  "rail.renamePlaceholder": "会话标题",
+  "rail.renameSave": "保存标题",
+  "rail.renameCancel": "取消重命名",
   // shell 外壳
   "shell.resizeAria": "调整侧栏宽度",
   "shell.heading": "今天想做什么？",
