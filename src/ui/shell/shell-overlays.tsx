@@ -9,6 +9,7 @@ import { TeamPanel } from "@/ui/team/team-panel"
 import { SkillsPanel } from "@/ui/skills/skills-panel"
 import { McpPanel } from "@/ui/mcp/mcp-panel"
 import { ArtifactLibraryPanel } from "@/ui/library/artifact-library-panel"
+import { SettingsPanel } from "@/ui/settings/settings-panel"
 
 import {
   browserBillingClient,
@@ -24,10 +25,12 @@ export function ShellOverlays({
   panels,
   pinnedSkills,
   onOpenSession,
+  brandName,
 }: {
   panels: OverlayPanels
   pinnedSkills: readonly string[]
   onOpenSession: (id: string) => void
+  brandName?: string
 }) {
   return (
     <>
@@ -75,6 +78,10 @@ export function ShellOverlays({
           onClose={panels.closeTeams}
           onSwitched={() => window.location.reload()}
         />
+      ) : null}
+
+      {panels.settingsOpen ? (
+        <SettingsPanel onClose={panels.closeSettings} brandName={brandName} />
       ) : null}
     </>
   )

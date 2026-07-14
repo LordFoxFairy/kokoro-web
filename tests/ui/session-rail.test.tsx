@@ -30,6 +30,7 @@ function renderRail(overrides?: Partial<Parameters<typeof SessionRail>[0]>) {
         onOpenBilling={() => {}}
         onOpenTeams={() => {}}
         onOpenLibrary={() => {}}
+        onOpenSettings={() => {}}
         listLoading={false}
         listError={false}
         hasMore={false}

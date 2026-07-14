@@ -222,6 +222,7 @@ export function SessionShell({ engine: injectedEngine, brandName }: SessionShell
         onOpenBilling={panels.openBilling}
         onOpenTeams={panels.openTeams}
         onOpenLibrary={panels.openLibrary}
+        onOpenSettings={panels.openSettings}
         listLoading={conversationsCtl.loading}
         listError={conversationsCtl.error}
         hasMore={conversationsCtl.hasMore}
@@ -365,6 +366,7 @@ export function SessionShell({ engine: injectedEngine, brandName }: SessionShell
         panels={panels}
         pinnedSkills={pinnedSkills}
         onOpenSession={conversationsCtl.selectConversation}
+        brandName={brandName}
       />
     </main>
   )

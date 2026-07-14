@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react"
-import Link from "next/link"
 
 import { useT } from "@/i18n/context"
 import { ChatsIcon, CoinIcon, GearIcon, LibraryIcon, PanelIcon, PlugIcon, PlusIcon, SearchIcon, SlidersIcon, UsersIcon } from "@/ui/icons/rail"
@@ -29,6 +28,8 @@ type SessionRailProps = {
   onOpenBilling: () => void
   onOpenTeams: () => void
   onOpenLibrary: () => void
+  // 设置浮层入口（WEB-FACE 面三）：rail 用户区默认弹 SettingsPanel。
+  onOpenSettings: () => void
   // 清单服务端水合态（SESS-LIST）：加载/错误态与滚动翻页入口。
   listLoading: boolean
   listError: boolean
@@ -53,6 +54,7 @@ export function SessionRail({
   onOpenBilling,
   onOpenTeams,
   onOpenLibrary,
+  onOpenSettings,
   listLoading,
   listError,
   hasMore,
@@ -334,7 +336,7 @@ export function SessionRail({
         </nav>
       ) : null}
 
-      <UserCard brandName={brandName} />
+      <UserCard brandName={brandName} onOpenSettings={onOpenSettings} />
     </aside>
   )
 }
@@ -366,7 +368,7 @@ function useTeamName(): string | null | undefined {
   return name
 }
 
-function UserCard({ brandName }: { brandName?: string }) {
+function UserCard({ brandName, onOpenSettings }: { brandName?: string; onOpenSettings: () => void }) {
   const t = useT()
   const teamName = useTeamName()
   // 身份主文案：团队名（真实 namespace 归属）；未取到回退品牌名。不硬凑 email（信封无此字段）。
@@ -381,16 +383,17 @@ function UserCard({ brandName }: { brandName?: string }) {
         <p className={styles.userName}>{display}</p>
         <p className={styles.userMeta}>{t("rail.userScope")}</p>
       </div>
-      {/* 设置入口（WEB-FACE 面三）：跳 /settings 用户设置页（与管理后台严格分离）。 */}
-      <Link
+      {/* 设置入口（WEB-FACE 面三）：弹 SettingsPanel 浮层（/settings 整页保留作深链兜底）。 */}
+      <button
+        type="button"
         className={styles.userSettings}
-        href="/settings"
         aria-label={t("rail.navSettings")}
         title={t("rail.navSettings")}
         data-testid="rail-settings"
+        onClick={onOpenSettings}
       >
         <GearIcon className={styles.icon} />
-      </Link>
+      </button>
     </div>
   )
 }

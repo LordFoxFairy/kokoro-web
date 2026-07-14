@@ -9,7 +9,7 @@ import { useCallback, useEffect, useState } from "react"
 
 import { browserTeamClient } from "./page-clients"
 
-export type PanelName = "skills" | "mcp" | "billing" | "pricing" | "teams" | "library"
+export type PanelName = "skills" | "mcp" | "billing" | "pricing" | "teams" | "library" | "settings"
 
 // 从当前 URL 读 `?panel=` 深链目标（仅浏览器）：命中六个已知面板名之一才返回。
 function panelFromUrl(): PanelName | null {
@@ -17,7 +17,7 @@ function panelFromUrl(): PanelName | null {
     return null
   }
   const value = new URLSearchParams(window.location.search).get("panel")
-  const known: readonly PanelName[] = ["skills", "mcp", "billing", "pricing", "teams", "library"]
+  const known: readonly PanelName[] = ["skills", "mcp", "billing", "pricing", "teams", "library", "settings"]
   return known.find((name) => name === value) ?? null
 }
 
@@ -28,6 +28,7 @@ export type OverlayPanels = {
   pricingOpen: boolean
   teamsOpen: boolean
   libraryOpen: boolean
+  settingsOpen: boolean
   teamNamespace: string | null | undefined
   openSkills: () => void
   closeSkills: () => void
@@ -41,6 +42,8 @@ export type OverlayPanels = {
   closeTeams: () => void
   openLibrary: () => void
   closeLibrary: () => void
+  openSettings: () => void
+  closeSettings: () => void
 }
 
 export function useOverlayPanels(): OverlayPanels {
@@ -52,6 +55,7 @@ export function useOverlayPanels(): OverlayPanels {
   const [pricingOpen, setPricingOpen] = useState(initial === "pricing")
   const [teamsOpen, setTeamsOpen] = useState(initial === "teams")
   const [libraryOpen, setLibraryOpen] = useState(initial === "library")
+  const [settingsOpen, setSettingsOpen] = useState(initial === "settings")
   // 当前团队 namespace（切换器高亮）：undefined=未取，null=无信封/预览，string=当前 team id。
   const [teamNamespace, setTeamNamespace] = useState<string | null | undefined>(undefined)
 
@@ -95,6 +99,7 @@ export function useOverlayPanels(): OverlayPanels {
     pricingOpen,
     teamsOpen,
     libraryOpen,
+    settingsOpen,
     teamNamespace,
     openSkills: useCallback(() => setSkillsOpen(true), []),
     closeSkills: useCallback(() => setSkillsOpen(false), []),
@@ -108,5 +113,7 @@ export function useOverlayPanels(): OverlayPanels {
     closeTeams: useCallback(() => setTeamsOpen(false), []),
     openLibrary: useCallback(() => setLibraryOpen(true), []),
     closeLibrary: useCallback(() => setLibraryOpen(false), []),
+    openSettings: useCallback(() => setSettingsOpen(true), []),
+    closeSettings: useCallback(() => setSettingsOpen(false), []),
   }
 }
