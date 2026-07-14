@@ -1,8 +1,7 @@
 import { headers } from "next/headers"
 import { notFound } from "next/navigation"
 
-import { LoginGate } from "@/ui/auth/login-gate"
-import { SessionShell } from "@/ui/shell/session-shell"
+import { HomeGate } from "@/ui/auth/home-gate"
 import { resolveSite } from "@/lib/server/site"
 
 export default async function Home() {
@@ -13,9 +12,6 @@ export default async function Home() {
     // strict 档 fail-closed：解析失败不退默认品牌，渲染中性无品牌 404（防多租户品牌串味）。
     notFound()
   }
-  return (
-    <LoginGate>
-      <SessionShell brandName={site.brand.name} />
-    </LoginGate>
-  )
+  // 会话态分流交客户端 HomeGate：有效信封→工作台，匿名→营销落地页（登录卡在 /login）。
+  return <HomeGate brandName={site.brand.name} />
 }

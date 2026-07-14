@@ -1,0 +1,509 @@
+/* 营销落地页样式（WEB-FACE 面一）：Kokoro 暖纸皮肤，亮暗双态随 globals.css 的 --k-* token。
+   结构=顶栏/Hero/能力交替/FAQ/深色CTA/多列页脚；桌面多列→移动单列，顶栏收汉堡。 */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: var(--k-bg-base);
+  color: var(--k-text);
+}
+
+/* —— 顶栏 —— */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.85rem clamp(1rem, 4vw, 2.5rem);
+  background: color-mix(in srgb, var(--k-bg-base) 88%, transparent);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--k-border);
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  color: var(--k-text);
+}
+
+.brandMark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  background: var(--k-brand-soft);
+  color: var(--k-brand);
+}
+
+.heartMark {
+  width: 1.15rem;
+  height: 1.15rem;
+}
+
+.brandName {
+  font-family: var(--font-serif);
+  font-size: 1.15rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.navDesktop {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.navLink {
+  padding: 0.5rem 0.85rem;
+  border-radius: 0.6rem;
+  font-size: 0.92rem;
+  color: var(--k-text-secondary);
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.navLink:hover {
+  background: var(--k-bg-hover);
+  color: var(--k-text);
+}
+
+.navCta {
+  padding: 0.5rem 1.1rem;
+  border-radius: 0.6rem;
+  font-size: 0.92rem;
+  font-weight: 600;
+  background: var(--k-brand);
+  color: var(--k-brand-on);
+  transition: background 0.15s ease;
+}
+
+.navCta:hover {
+  background: var(--k-brand-hover);
+}
+
+.navToggle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 2.4rem;
+  height: 2.4rem;
+  font-size: 1.35rem;
+  line-height: 1;
+  border: 1px solid var(--k-border);
+  border-radius: 0.6rem;
+  background: var(--k-bg-container);
+  color: var(--k-text);
+  cursor: pointer;
+}
+
+.navMobile {
+  display: none;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.75rem clamp(1rem, 4vw, 2.5rem) 1rem;
+  border-bottom: 1px solid var(--k-border);
+  background: var(--k-bg-container);
+}
+
+.navMobile .navLink,
+.navMobile .navCta {
+  text-align: center;
+}
+
+/* —— 主体 —— */
+.main {
+  flex: 1;
+  width: 100%;
+  max-width: 68rem;
+  margin: 0 auto;
+  padding: 0 clamp(1rem, 4vw, 2.5rem);
+}
+
+/* Hero：柔和 pastel 光晕 + 大标题 + prompt 风格输入作 CTA。 */
+.hero {
+  position: relative;
+  text-align: center;
+  padding: clamp(3rem, 8vw, 6rem) 0 clamp(2.5rem, 6vw, 4.5rem);
+}
+
+.hero::before {
+  content: "";
+  position: absolute;
+  inset: -10% -20% 30%;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(45% 40% at 20% 0%, rgba(255, 194, 222, 0.26), transparent 74%),
+    radial-gradient(45% 40% at 55% -6%, rgba(255, 228, 188, 0.28), transparent 76%),
+    radial-gradient(50% 44% at 85% 0%, rgba(189, 220, 255, 0.26), transparent 76%);
+}
+
+.heroTitle,
+.heroSubtitle,
+.heroInputRow,
+.heroNote {
+  position: relative;
+  z-index: 1;
+}
+
+.heroTitle {
+  margin: 0 auto;
+  max-width: 22ch;
+  font-family: var(--font-serif);
+  font-size: clamp(2.1rem, 5vw, 3.4rem);
+  font-weight: 600;
+  line-height: 1.12;
+  letter-spacing: -0.01em;
+}
+
+.heroSubtitle {
+  margin: 1.1rem auto 0;
+  max-width: 42ch;
+  font-size: clamp(1rem, 2vw, 1.2rem);
+  line-height: 1.55;
+  color: var(--k-text-secondary);
+}
+
+.heroInputRow {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  max-width: 34rem;
+  margin: 2rem auto 0;
+  padding: 0.4rem 0.4rem 0.4rem 0.5rem;
+  border: 1px solid var(--k-border-strong);
+  border-radius: 0.9rem;
+  background: var(--k-bg-container);
+  box-shadow: 0 18px 44px rgba(139, 111, 71, 0.12);
+}
+
+.heroInput {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--k-text);
+  font-size: 1rem;
+  padding: 0.55rem 0.45rem;
+  outline: none;
+}
+
+.heroInput::placeholder {
+  color: var(--k-text-muted);
+}
+
+.heroSubmit {
+  flex-shrink: 0;
+  padding: 0.6rem 1.35rem;
+  border: none;
+  border-radius: 0.65rem;
+  background: var(--k-brand);
+  color: var(--k-brand-on);
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.heroSubmit:hover {
+  background: var(--k-brand-hover);
+}
+
+.heroNote {
+  margin: 0.9rem auto 0;
+  max-width: 40ch;
+  font-size: 0.82rem;
+  color: var(--k-text-tertiary);
+}
+
+/* —— 区块通用头 —— */
+.sectionHead {
+  text-align: center;
+  max-width: 46ch;
+  margin: 0 auto clamp(2rem, 5vw, 3rem);
+}
+
+.sectionTitle {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: clamp(1.6rem, 3.5vw, 2.3rem);
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.sectionSub {
+  margin: 0.75rem 0 0;
+  font-size: 1rem;
+  line-height: 1.55;
+  color: var(--k-text-secondary);
+}
+
+/* —— 能力区：左右交替 —— */
+.caps {
+  padding: clamp(2.5rem, 6vw, 4.5rem) 0;
+}
+
+.capList {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(2.5rem, 6vw, 4.5rem);
+}
+
+.capRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: center;
+  gap: clamp(1.5rem, 5vw, 4rem);
+}
+
+.capRow[data-flip="true"] .capArtWrap {
+  order: 2;
+}
+
+.capArtWrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 4 / 3;
+  border: 1px solid var(--k-border);
+  border-radius: 1.1rem;
+  background: var(--k-bg-elevated);
+  padding: clamp(1.5rem, 4vw, 2.75rem);
+}
+
+.capArt {
+  width: 100%;
+  height: 100%;
+}
+
+.capArtBase {
+  fill: var(--k-bg-container);
+  stroke: var(--k-border);
+  stroke-width: 1;
+}
+
+.capArtSoft {
+  fill: var(--k-brand-soft);
+}
+
+.capArtInk {
+  fill: var(--k-brand);
+}
+
+.capArtStroke {
+  fill: none;
+  stroke: var(--k-brand);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.capTitle {
+  margin: 0;
+  font-size: clamp(1.3rem, 2.5vw, 1.65rem);
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.capBody {
+  margin: 0.75rem 0 0;
+  font-size: 1rem;
+  line-height: 1.6;
+  color: var(--k-text-secondary);
+}
+
+/* —— FAQ 手风琴（原生 details/summary，无 JS） —— */
+.faq {
+  padding: clamp(2.5rem, 6vw, 4.5rem) 0;
+}
+
+.faqList {
+  max-width: 44rem;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.faqItem {
+  border: 1px solid var(--k-border);
+  border-radius: 0.85rem;
+  background: var(--k-bg-container);
+  overflow: hidden;
+}
+
+.faqQuestion {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.1rem 1.25rem;
+  font-size: 1.02rem;
+  font-weight: 600;
+  cursor: pointer;
+  list-style: none;
+}
+
+.faqQuestion::-webkit-details-marker {
+  display: none;
+}
+
+.faqChevron {
+  flex-shrink: 0;
+  font-size: 1.3rem;
+  line-height: 1;
+  color: var(--k-brand);
+  transition: transform 0.18s ease;
+}
+
+.faqItem[open] .faqChevron {
+  transform: rotate(45deg);
+}
+
+.faqAnswer {
+  margin: 0;
+  padding: 0 1.25rem 1.15rem;
+  font-size: 0.96rem;
+  line-height: 1.6;
+  color: var(--k-text-secondary);
+}
+
+/* —— 深色 CTA 块 —— */
+.ctaBlock {
+  text-align: center;
+  margin: clamp(2rem, 5vw, 3.5rem) 0 clamp(3rem, 7vw, 5rem);
+  padding: clamp(2.5rem, 6vw, 4rem) clamp(1.5rem, 5vw, 3rem);
+  border-radius: 1.5rem;
+  background: var(--k-ink);
+  color: var(--k-text-on-brand);
+}
+
+.ctaTitle {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: clamp(1.6rem, 3.5vw, 2.4rem);
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--k-text-on-brand);
+}
+
+.ctaBody {
+  margin: 0.85rem auto 0;
+  max-width: 40ch;
+  font-size: 1.02rem;
+  line-height: 1.55;
+  color: color-mix(in srgb, var(--k-text-on-brand) 78%, transparent);
+}
+
+.ctaButton {
+  display: inline-block;
+  margin-top: 1.75rem;
+  padding: 0.8rem 2rem;
+  border-radius: 0.7rem;
+  font-size: 1rem;
+  font-weight: 600;
+  background: var(--k-brand);
+  color: var(--k-brand-on);
+  transition: background 0.15s ease;
+}
+
+.ctaButton:hover {
+  background: var(--k-brand-hover);
+}
+
+/* —— 多列页脚 —— */
+.footer {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: clamp(1.5rem, 5vw, 3rem);
+  align-items: start;
+  max-width: 68rem;
+  width: 100%;
+  margin: 0 auto;
+  padding: clamp(2.5rem, 5vw, 3.5rem) clamp(1rem, 4vw, 2.5rem);
+  border-top: 1px solid var(--k-border);
+}
+
+.footBrandCol {
+  max-width: 26rem;
+}
+
+.footTagline {
+  margin: 0.85rem 0 0;
+  font-size: 0.9rem;
+  line-height: 1.55;
+  color: var(--k-text-tertiary);
+}
+
+.footCol {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.footColHead {
+  margin: 0 0 0.25rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--k-text-muted);
+}
+
+.footLink {
+  font-size: 0.92rem;
+  color: var(--k-text-secondary);
+  transition: color 0.15s ease;
+}
+
+.footLink:hover {
+  color: var(--k-text);
+}
+
+.footRights {
+  grid-column: 1 / -1;
+  margin: 0.5rem 0 0;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--k-border);
+  font-size: 0.82rem;
+  color: var(--k-text-muted);
+}
+
+/* —— 响应式：≤768px 顶栏收汉堡、能力区/页脚转单列 —— */
+@media (max-width: 768px) {
+  .navDesktop {
+    display: none;
+  }
+
+  .navToggle {
+    display: inline-flex;
+  }
+
+  .navMobile {
+    display: flex;
+  }
+
+  .capRow {
+    grid-template-columns: 1fr;
+    gap: 1.25rem;
+  }
+
+  .capRow[data-flip="true"] .capArtWrap {
+    order: 0;
+  }
+
+  .capArtWrap {
+    aspect-ratio: 16 / 9;
+  }
+
+  .footer {
+    grid-template-columns: 1fr;
+  }
+}
