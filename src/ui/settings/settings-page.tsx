@@ -13,6 +13,7 @@ import type { AgentCandidate, BillingSummary, ModelCandidate } from "@/contract/
 import { formatMicros } from "@/billing/format"
 import { useLocale, useT } from "@/i18n/context"
 import { useTheme, type ThemeMode } from "@/ui/theme/theme-context"
+import { CoinIcon, LibraryIcon, SlidersIcon, SunIcon, UsersIcon } from "@/ui/icons/rail"
 import type { Locale } from "@/i18n/messages"
 import { browserBillingClient, browserListClient, browserTeamClient } from "@/ui/shell/page-clients"
 import { useSessionState } from "@/ui/auth/use-session-state"
@@ -59,23 +60,23 @@ export function SettingsPage({ brandName }: { brandName?: string }) {
       <div className={styles.shell}>
         <nav className={styles.nav} aria-label={t("settings.title")}>
           <a className={styles.navItem} href="#sec-account">
-            <span className={styles.navIcon} aria-hidden>◍</span>
+            <span className={styles.navIcon} aria-hidden><UsersIcon className={styles.navIconSvg} /></span>
             {t("settings.accountTitle")}
           </a>
           <a className={styles.navItem} href="#sec-appearance">
-            <span className={styles.navIcon} aria-hidden>◐</span>
+            <span className={styles.navIcon} aria-hidden><SunIcon className={styles.navIconSvg} /></span>
             {t("settings.appearanceTitle")}
           </a>
           <a className={styles.navItem} href="#sec-chat">
-            <span className={styles.navIcon} aria-hidden>✦</span>
+            <span className={styles.navIcon} aria-hidden><SlidersIcon className={styles.navIconSvg} /></span>
             {t("settings.chatTitle")}
           </a>
           <a className={styles.navItem} href="#sec-subscription">
-            <span className={styles.navIcon} aria-hidden>◆</span>
+            <span className={styles.navIcon} aria-hidden><CoinIcon className={styles.navIconSvg} /></span>
             {t("settings.subTitle")}
           </a>
           <a className={styles.navItem} href="#sec-capabilities">
-            <span className={styles.navIcon} aria-hidden>◈</span>
+            <span className={styles.navIcon} aria-hidden><LibraryIcon className={styles.navIconSvg} /></span>
             {t("settings.capsTitle")}
           </a>
           <p className={styles.navBrand} aria-hidden>

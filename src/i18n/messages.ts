@@ -31,7 +31,7 @@ export const zh = {
   "rail.listError": "会话列表加载失败",
   "rail.loadMore": "加载更多",
   "rail.userName": "当前用户",
-  "rail.userScope": "本地会话",
+  "rail.userScope": "个人工作区",
   "rail.deleteChat": "删除会话 {title}",
   "rail.renameChat": "重命名会话 {title}",
   "rail.renamePlaceholder": "会话标题",

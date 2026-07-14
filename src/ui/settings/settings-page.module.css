@@ -67,6 +67,11 @@
   font-size: 0.85rem;
 }
 
+.navIconSvg {
+  width: 0.95rem;
+  height: 0.95rem;
+}
+
 .navBrand {
   margin: 1.25rem 0 0;
   padding-left: 0.8rem;

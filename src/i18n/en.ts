@@ -24,7 +24,7 @@ export const en: Partial<Record<MessageKey, string>> = {
   "rail.listError": "Failed to load chats",
   "rail.loadMore": "Load more",
   "rail.userName": "Current user",
-  "rail.userScope": "Local session",
+  "rail.userScope": "Personal workspace",
   "rail.deleteChat": "Delete chat {title}",
   "rail.renameChat": "Rename chat {title}",
   "rail.renamePlaceholder": "Chat title",

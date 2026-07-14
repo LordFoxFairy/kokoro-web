@@ -100,11 +100,27 @@ export function SlidersIcon({ className }: IconProps) {
 }
 
 export function GearIcon({ className }: IconProps) {
+  // 真齿轮轮廓（此前是「圆+8放射线」被误读成太阳）：中心圆 + 环齿。
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden>
-      <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.6" />
+      <circle cx="12" cy="12" r="3.1" stroke="currentColor" strokeWidth="1.6" />
       <path
-        d="M12 3.5v2M12 18.5v2M4.7 7.5l1.7 1M17.6 15.5l1.7 1M4.7 16.5l1.7-1M17.6 8.5l1.7-1"
+        d="M12 2.6a1 1 0 0 1 1 1v1.15c.63.16 1.23.4 1.77.73l.82-.82a1 1 0 0 1 1.41 1.41l-.82.82c.32.55.57 1.14.73 1.77H19a1 1 0 0 1 0 2h-1.16c-.16.63-.4 1.22-.73 1.77l.82.82a1 1 0 0 1-1.41 1.41l-.82-.82c-.54.33-1.14.57-1.77.73V19a1 1 0 0 1-2 0v-1.16a6.9 6.9 0 0 1-1.77-.73l-.82.82a1 1 0 0 1-1.41-1.41l.82-.82A6.9 6.9 0 0 1 6.16 14H5a1 1 0 0 1 0-2h1.15c.16-.63.41-1.22.74-1.77l-.82-.82a1 1 0 0 1 1.41-1.41l.82.82c.54-.33 1.14-.57 1.77-.73V3.6a1 1 0 0 1 1-1H12Z"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+export function SunIcon({ className }: IconProps) {
+  // 外观/主题图标（settings 外观分区）。
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden>
+      <circle cx="12" cy="12" r="4" stroke="currentColor" strokeWidth="1.6" />
+      <path
+        d="M12 2.5v2.4M12 19.1v2.4M4.4 4.4l1.7 1.7M17.9 17.9l1.7 1.7M2.5 12h2.4M19.1 12h2.4M4.4 19.6l1.7-1.7M17.9 6.1l1.7-1.7"
         stroke="currentColor"
         strokeWidth="1.6"
         strokeLinecap="round"

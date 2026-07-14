@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
 
-import { useLocale, useT } from "@/i18n/context"
+import { useT } from "@/i18n/context"
 import { ChatsIcon, CoinIcon, GearIcon, LibraryIcon, PanelIcon, PlugIcon, PlusIcon, SearchIcon, SlidersIcon, UsersIcon } from "@/ui/icons/rail"
-import { useTheme, type ThemeMode } from "@/ui/theme/theme-context"
+import { browserTeamClient } from "@/ui/shell/page-clients"
 
 import { filterConversations, type ConversationSummary } from "./rail-search"
 import styles from "./session-rail.module.css"
@@ -334,81 +334,63 @@ export function SessionRail({
         </nav>
       ) : null}
 
-      <div className={styles.userCard}>
-        <div className={styles.userAvatar} aria-hidden />
-        <div className={styles.userText}>
-          <p className={styles.userName}>{t("rail.userName")}</p>
-          <p className={styles.userMeta}>{t("rail.userScope")}</p>
-        </div>
-        {/* 设置入口（WEB-FACE 面三）：跳 /settings 用户设置页（与管理后台严格分离）。 */}
-        <Link
-          className={styles.userSettings}
-          href="/settings"
-          aria-label={t("rail.navSettings")}
-          title={t("rail.navSettings")}
-          data-testid="rail-settings"
-        >
-          <GearIcon className={styles.icon} />
-        </Link>
-      </div>
-      <div className={styles.railControls}>
-        <ThemeSwitch />
-        <LangSwitch />
-      </div>
+      <UserCard brandName={brandName} />
     </aside>
   )
 }
 
-// 主题切换器（WEB-THEME）：系统/亮/暗三态即时切换 + localStorage 持久化（useTheme 内处理）。
-function ThemeSwitch() {
-  const t = useT()
-  const { mode, setMode } = useTheme()
-  const options: { value: ThemeMode; label: string }[] = [
-    { value: "system", label: t("theme.system") },
-    { value: "light", label: t("theme.light") },
-    { value: "dark", label: t("theme.dark") },
-  ]
-  return (
-    <div className={styles.langSwitch} role="group" aria-label={t("theme.switchAria")}>
-      {options.map((option) => (
-        <button
-          key={option.value}
-          type="button"
-          className={styles.langBtn}
-          data-active={mode === option.value}
-          aria-pressed={mode === option.value}
-          onClick={() => setMode(option.value)}
-        >
-          {option.label}
-        </button>
-      ))}
-    </div>
-  )
+// rail 底部用户区：团队/空间身份（首字母头像 + 团队名）+ 设置入口。主题/语言已收归设置页
+// 外观分区（单一真源），此处不再重复摆放切换器。
+function useTeamName(): string | null | undefined {
+  // undefined=未取，null=预览/无信封，string=已解析团队名（与 settings AccountCard 同源逻辑）。
+  const [name, setName] = useState<string | null | undefined>(undefined)
+  useEffect(() => {
+    let live = true
+    void (async () => {
+      try {
+        const namespace = await browserTeamClient().currentNamespace()
+        if (namespace === null) {
+          if (live) setName(null)
+          return
+        }
+        const teams = await browserTeamClient().listMyTeams()
+        if (live) setName(teams.find((entry) => entry.team.id === namespace)?.team.name ?? null)
+      } catch {
+        if (live) setName(null)
+      }
+    })()
+    return () => {
+      live = false
+    }
+  }, [])
+  return name
 }
 
-// 语言切换器（M3-P4）：zh/en 即时切换 + localStorage 持久化（useLocale 内处理）。
-function LangSwitch() {
-  const { locale, setLocale, t } = useLocale()
+function UserCard({ brandName }: { brandName?: string }) {
+  const t = useT()
+  const teamName = useTeamName()
+  // 身份主文案：团队名（真实 namespace 归属）；未取到回退品牌名。不硬凑 email（信封无此字段）。
+  const display = teamName === undefined ? brandName ?? "Kokoro" : teamName ?? brandName ?? "Kokoro"
+  const initial = (display.trim().charAt(0) || "K").toUpperCase()
   return (
-    <div className={styles.langSwitch} role="group" aria-label={t("lang.switchAria")}>
-      <button
-        type="button"
-        className={styles.langBtn}
-        data-active={locale === "zh"}
-        aria-pressed={locale === "zh"}
-        onClick={() => setLocale("zh")}
+    <div className={styles.userCard}>
+      <div className={styles.userAvatar} aria-hidden>
+        {initial}
+      </div>
+      <div className={styles.userText}>
+        <p className={styles.userName}>{display}</p>
+        <p className={styles.userMeta}>{t("rail.userScope")}</p>
+      </div>
+      {/* 设置入口（WEB-FACE 面三）：跳 /settings 用户设置页（与管理后台严格分离）。 */}
+      <Link
+        className={styles.userSettings}
+        href="/settings"
+        aria-label={t("rail.navSettings")}
+        title={t("rail.navSettings")}
+        data-testid="rail-settings"
       >
-        {t("lang.zh")}
-      </button>
-      <button
-        type="button"
-        className={styles.langBtn}
-        data-active={locale === "en"}
-        aria-pressed={locale === "en"}
-        onClick={() => setLocale("en")}
-      >
-        {t("lang.en")}
-      </button>
+        <GearIcon className={styles.icon} />
+      </Link>
     </div>
   )
 }
