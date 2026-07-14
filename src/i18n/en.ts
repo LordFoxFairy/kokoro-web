@@ -479,6 +479,7 @@ export const en: Partial<Record<MessageKey, string>> = {
   "settings.accountTeam": "Current team",
   "settings.accountTeamUnknown": "Personal space",
   "settings.accountTeamPreview": "Preview mode (not signed in)",
+  "settings.accountSpaceLabel": "Workspace",
   "settings.accountSwitchTeam": "Switch team",
   "settings.logout": "Sign out",
   "settings.appearanceTitle": "Appearance & language",

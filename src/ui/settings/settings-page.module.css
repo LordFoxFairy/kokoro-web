@@ -125,6 +125,46 @@
   color: var(--k-text);
 }
 
+/* 账户分区身份概览头：大首字母头像（品牌渐变）+ 团队名 + 工作区标签。 */
+.identity {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  margin-bottom: 1.5rem;
+}
+
+.identityAvatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 3rem;
+  height: 3rem;
+  flex-shrink: 0;
+  border-radius: 50%;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: 0.01em;
+  background: linear-gradient(135deg, var(--k-brand), var(--k-brand-hover));
+}
+
+.identityText {
+  min-width: 0;
+}
+
+.identityName {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 650;
+  color: var(--k-text);
+}
+
+.identityMeta {
+  margin: 0.12rem 0 0;
+  font-size: 0.82rem;
+  color: var(--k-text-tertiary);
+}
+
 /* 卡头（标题 + 就地保存徽标）。 */
 .cardHead {
   display: flex;

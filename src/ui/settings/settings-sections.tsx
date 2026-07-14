@@ -70,13 +70,20 @@ export function AccountCard() {
       : teamName === null
         ? t("settings.accountTeamPreview")
         : teamName
+  // 身份概览头像取团队名首字母；未取到/无名回退占位字母（不硬凑 email，信封无此字段）。
+  const initial = ((teamName ?? "").trim().charAt(0) || "K").toUpperCase()
 
   return (
     <section className={styles.card} data-settings-card data-testid="settings-account">
       <h2 className={styles.cardTitle}>{t("settings.accountTitle")}</h2>
-      <div className={styles.row}>
-        <span className={styles.rowLabel}>{t("settings.accountTeam")}</span>
-        <span className={styles.rowValue}>{teamLabel}</span>
+      <div className={styles.identity}>
+        <span className={styles.identityAvatar} aria-hidden>
+          {initial}
+        </span>
+        <div className={styles.identityText}>
+          <p className={styles.identityName}>{teamLabel}</p>
+          <p className={styles.identityMeta}>{t("settings.accountSpaceLabel")}</p>
+        </div>
       </div>
       <div className={styles.cardActions}>
         <Link className={styles.secondaryBtn} href="/?panel=teams">

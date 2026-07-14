@@ -22,7 +22,16 @@ type SectionKey = "account" | "appearance" | "chat" | "subscription" | "capabili
 
 type NavEntry = { key: SectionKey; label: string; Icon: ComponentType<{ className?: string }> }
 
-export function SettingsPanel({ onClose, brandName }: { onClose: () => void; brandName?: string }) {
+export function SettingsPanel({
+  onClose,
+  brandName,
+  onOpenPanel,
+}: {
+  onClose: () => void
+  brandName?: string
+  // 分区内 `/?panel=X` 链接的工作台内直开：深链在客户端导航下不生效，改由此分发到 overlay panels。
+  onOpenPanel: (panel: string) => void
+}) {
   const t = useT()
   const [active, setActive] = useState<SectionKey>("account")
 
@@ -88,7 +97,27 @@ export function SettingsPanel({ onClose, brandName }: { onClose: () => void; bra
             ×
           </button>
           {/* key 触发切换淡入：每次换分区重挂载 → CSS 入场动画重放。 */}
-          <div key={active} className={styles.contentScroll}>
+          <div
+            key={active}
+            className={styles.contentScroll}
+            onClickCapture={(event) => {
+              // 分区内的 `/?panel=X` 跳转卡（能力入口/切换团队/余额流水）在工作台内点击是「同页导航」，
+              // useOverlayPanels 深链只在首帧读 URL、不响应客户端导航 → 直接分发开对应浮层。必须在
+              // 捕获阶段拦截：Next Link 的内层 onClick 在冒泡阶段先跑 router.push，外层 onClick 里
+              // preventDefault 已太晚。capture 阶段 stopPropagation 截断，Link handler 不再执行。
+              const anchor = (event.target as HTMLElement).closest("a")
+              if (!anchor) {
+                return
+              }
+              const query = anchor.getAttribute("href")?.split("?")[1] ?? ""
+              const panel = new URLSearchParams(query).get("panel")
+              if (panel) {
+                event.preventDefault()
+                event.stopPropagation()
+                onOpenPanel(panel)
+              }
+            }}
+          >
             {active === "account" ? <AccountCard /> : null}
             {active === "appearance" ? <AppearanceCard /> : null}
             {active === "chat" ? <ChatPrefsCard /> : null}

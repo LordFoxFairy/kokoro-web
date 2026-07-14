@@ -81,7 +81,20 @@ export function ShellOverlays({
       ) : null}
 
       {panels.settingsOpen ? (
-        <SettingsPanel onClose={panels.closeSettings} brandName={brandName} />
+        <SettingsPanel
+          onClose={panels.closeSettings}
+          brandName={brandName}
+          onOpenPanel={(panel) => {
+            // 设置浮层内的 `/?panel=X` 卡片直接切到对应浮层（关设置 + 开目标），不依赖失效的同页深链。
+            panels.closeSettings()
+            if (panel === "skills") panels.openSkills()
+            else if (panel === "mcp") panels.openMcp()
+            else if (panel === "library") panels.openLibrary()
+            else if (panel === "billing") panels.openBilling()
+            else if (panel === "pricing") panels.openPricing()
+            else if (panel === "teams") panels.openTeams()
+          }}
+        />
       ) : null}
     </>
   )

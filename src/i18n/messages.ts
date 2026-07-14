@@ -495,6 +495,7 @@ export const zh = {
   "settings.accountTeam": "当前团队",
   "settings.accountTeamUnknown": "个人空间",
   "settings.accountTeamPreview": "预览模式（未登录）",
+  "settings.accountSpaceLabel": "工作区",
   "settings.accountSwitchTeam": "切换团队",
   "settings.logout": "退出登录",
   "settings.appearanceTitle": "外观与语言",
