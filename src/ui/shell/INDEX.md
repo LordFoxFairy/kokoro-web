@@ -17,3 +17,5 @@
 - shell 是插槽接线：新增域状态放对应 controller hook，不要塞回 shell。
 - page-clients 是浏览器单例：SSR/未水合返回 null/惰性，取数 effect 依赖其稳定引用。
 - 鉴权由 httpOnly 信封 cookie 同源携带，前端不持 token。
+- `useOverlayPanels` 支持 `/?panel=<name>` 深链（settings 入口卡跳回工作台直开面板）：初值由 URL 懒派生，打开后 strip 掉参数。
+- `useComposerSelectors` 的模型/agent 初值取 `@/ui/settings/chat-prefs` 缺省偏好——新对话首帧预填，开跑后 modeLocked 锁定，会话级锁语义不变。

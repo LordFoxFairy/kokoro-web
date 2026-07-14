@@ -8,6 +8,7 @@ import { useEffect, useState } from "react"
 
 import type { AgentCandidate, ModelCandidate } from "@/contract/http"
 import type { SessionEngine } from "@/engine/machine"
+import { readChatAgent, readChatModel } from "@/ui/settings/chat-prefs"
 
 import { browserListClient } from "./page-clients"
 
@@ -22,8 +23,9 @@ export type ComposerSelectors = {
 
 export function useComposerSelectors(engine: SessionEngine | null): ComposerSelectors {
   const [models, setModels] = useState<readonly ModelCandidate[]>([])
-  // 选中模型 wire 选择子（"provider:name"）：null=用 profile 缺省，不上 wire。
-  const [selectedModel, setSelectedModel] = useState<string | null>(null)
+  // 选中模型 wire 选择子（"provider:name"）：null=用 profile 缺省，不上 wire。初值取 settings 缺省偏好
+  // （WEB-FACE 面三）——新对话首帧预填，开跑后 modeLocked 锁定，会话级锁语义不变。
+  const [selectedModel, setSelectedModel] = useState<string | null>(() => readChatModel())
   useEffect(() => {
     let live = true
     void browserListClient()
@@ -39,8 +41,8 @@ export function useComposerSelectors(engine: SessionEngine | null): ComposerSele
   }, [engine, selectedModel])
 
   const [agents, setAgents] = useState<readonly AgentCandidate[]>([])
-  // 选中 agent wire 名：null=用 profile 缺省 general，不上 wire。
-  const [selectedAgent, setSelectedAgent] = useState<string | null>(null)
+  // 选中 agent wire 名：null=用 profile 缺省 general，不上 wire。初值取 settings 缺省偏好（面三）。
+  const [selectedAgent, setSelectedAgent] = useState<string | null>(() => readChatAgent())
   useEffect(() => {
     let live = true
     void browserListClient()

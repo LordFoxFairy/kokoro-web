@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react"
+import Link from "next/link"
 
 import { useLocale, useT } from "@/i18n/context"
-import { ChatsIcon, CoinIcon, LibraryIcon, PanelIcon, PlugIcon, PlusIcon, SearchIcon, SlidersIcon, UsersIcon } from "@/ui/icons/rail"
+import { ChatsIcon, CoinIcon, GearIcon, LibraryIcon, PanelIcon, PlugIcon, PlusIcon, SearchIcon, SlidersIcon, UsersIcon } from "@/ui/icons/rail"
 import { useTheme, type ThemeMode } from "@/ui/theme/theme-context"
 
 import { filterConversations, type ConversationSummary } from "./rail-search"
@@ -339,6 +340,16 @@ export function SessionRail({
           <p className={styles.userName}>{t("rail.userName")}</p>
           <p className={styles.userMeta}>{t("rail.userScope")}</p>
         </div>
+        {/* 设置入口（WEB-FACE 面三）：跳 /settings 用户设置页（与管理后台严格分离）。 */}
+        <Link
+          className={styles.userSettings}
+          href="/settings"
+          aria-label={t("rail.navSettings")}
+          title={t("rail.navSettings")}
+          data-testid="rail-settings"
+        >
+          <GearIcon className={styles.icon} />
+        </Link>
       </div>
       <div className={styles.railControls}>
         <ThemeSwitch />
