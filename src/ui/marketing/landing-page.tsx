@@ -229,40 +229,40 @@ export function LandingPage({ brandName }: { brandName?: string }) {
         <section className={styles.hero}>
           <h1 className={styles.heroTitle}>{t("marketing.heroTitle")}</h1>
           <p className={styles.heroSubtitle}>{t("marketing.heroSubtitle")}</p>
-          <div className={styles.heroInputRow}>
-            <input
+          <div className={styles.heroInputCard}>
+            <textarea
               className={styles.heroInput}
               value={heroDraft}
+              rows={2}
               placeholder={t("marketing.heroInputPlaceholder")}
               aria-label={t("marketing.heroInputAria")}
               onChange={(event) => setHeroDraft(event.target.value)}
               onKeyDown={(event) => {
-                if (event.key === "Enter") {
+                if (event.key === "Enter" && !event.shiftKey) {
                   event.preventDefault()
                   startFromHero()
                 }
               }}
               data-testid="landing-hero-input"
             />
-            <button
-              type="button"
-              className={styles.heroSubmit}
-              onClick={startFromHero}
-              aria-label={t("marketing.heroStart")}
-              data-testid="landing-hero-start"
-            >
-              <span className={styles.heroSubmitText}>{t("marketing.heroStart")}</span>
-              <span className={styles.heroSubmitArrow} aria-hidden>
-                →
-              </span>
-            </button>
-          </div>
-          <div className={styles.heroChips}>
-            {HERO_CHIPS.map((chip) => (
-              <a key={chip} className={styles.heroChip} href="#capabilities">
-                {t(chip)}
-              </a>
-            ))}
+            <div className={styles.heroInputBar}>
+              <div className={styles.heroInputTags}>
+                {HERO_CHIPS.map((chip) => (
+                  <a key={chip} className={styles.heroTag} href="#capabilities">
+                    {t(chip)}
+                  </a>
+                ))}
+              </div>
+              <button
+                type="button"
+                className={styles.heroSend}
+                onClick={startFromHero}
+                aria-label={t("marketing.heroStart")}
+                data-testid="landing-hero-start"
+              >
+                <span aria-hidden>↑</span>
+              </button>
+            </div>
           </div>
           <p className={styles.heroNote}>{t("marketing.heroNote")}</p>
         </section>

@@ -8,51 +8,52 @@
    暖色纸感身份靠两枚原色 ink/paper 派生：文本用 ink 半透明叠在纸上，随底色透气。 */
 :root {
   /* 原色：暖墨 ink（近黑暖棕）+ 暖纸 paper（米白），全体系由此派生。 */
-  --k-ink: #2b2520;
-  --k-paper: #fbfaf8;
+  /* 原色：深墨蓝 ink（近黑冷调）+ 洁白 paper（微冷底），clean modern 身份由此派生。 */
+  --k-ink: #0f1729;
+  --k-paper: #f7f9fc;
 
-  /* 文本四级：ink 逐级淡出，半透明让文字吸收底层纸色，维持暖色层次。 */
+  /* 文本四级：ink 逐级淡出（冷调半透明，吸收底层洁白）。 */
   --k-text: var(--k-ink);
-  --k-text-secondary: rgba(43, 37, 32, 0.7);
-  --k-text-tertiary: rgba(43, 37, 32, 0.54);
-  --k-text-muted: rgba(43, 37, 32, 0.4);
-  /* 品牌色/深色底上的反白文字（暖白，非纯白）。 */
-  --k-text-on-brand: #fffdf9;
+  --k-text-secondary: rgba(15, 23, 41, 0.66);
+  --k-text-tertiary: rgba(15, 23, 41, 0.5);
+  --k-text-muted: rgba(15, 23, 41, 0.38);
+  /* 品牌色/深色底上的反白文字（纯白）。 */
+  --k-text-on-brand: #ffffff;
 
-  /* 背景四层：base 页底 → container 卡面 → elevated 抬升暖底 → hover 交互态。 */
+  /* 背景四层：base 页底（微冷） → container 卡面（纯白） → elevated 抬升冷底 → hover 交互态。 */
   --k-bg-base: var(--k-paper);
   --k-bg-container: #ffffff;
-  --k-bg-elevated: #fbf6ec;
-  --k-bg-hover: color-mix(in srgb, var(--k-brand) 8%, var(--k-bg-container));
+  --k-bg-elevated: #f1f4fa;
+  --k-bg-hover: color-mix(in srgb, var(--k-brand) 7%, var(--k-bg-container));
 
-  /* 描边：default 柔木线 + strong 品牌加权（焦点/强调边界）。 */
-  --k-border: #ebe0cf;
+  /* 描边：default 冷灰线 + strong 品牌加权（焦点/强调边界）。 */
+  --k-border: #e4e8f0;
   --k-border-strong: color-mix(in srgb, var(--k-brand) 42%, var(--k-border));
 
-  /* 品牌：暖木主色 + hover 深化 + soft 浅底 + on 反白 + ring 焦点环。 */
-  --k-brand: #8b6f47;
-  --k-brand-hover: #7b5f39;
-  --k-brand-soft: #f3ead6;
+  /* 品牌：清新现代蓝主色 + hover 深化 + soft 浅蓝底 + on 反白 + ring 焦点环。 */
+  --k-brand: #3b6cf6;
+  --k-brand-hover: #2f5ae0;
+  --k-brand-soft: #e9f0ff;
   --k-brand-on: var(--k-text-on-brand);
-  --k-brand-ring: color-mix(in srgb, var(--k-brand) 55%, transparent);
+  --k-brand-ring: color-mix(in srgb, var(--k-brand) 45%, transparent);
 
   /* 状态三梯度：每态给前景（文字/图标/强调）· bg（浅色填充）· border（描边）。
-     色相贴暖纸：success 暖鼠尾草绿、warning 琥珀、error 红木、neutral 石板灰。 */
-  --k-success: #5b7f5a;
+     色相清新现代：success 翠绿、warning 琥珀、error 珊瑚红、neutral 冷石板灰。 */
+  --k-success: #16a34a;
   --k-success-bg: color-mix(in srgb, var(--k-success) 10%, var(--k-bg-container));
   --k-success-border: color-mix(in srgb, var(--k-success) 42%, transparent);
 
-  --k-warning: #c8923c;
+  --k-warning: #d99a2b;
   --k-warning-bg: color-mix(in srgb, var(--k-warning) 12%, var(--k-bg-container));
   --k-warning-border: color-mix(in srgb, var(--k-warning) 45%, transparent);
 
-  --k-error: #b4584f;
-  --k-error-strong: #7a3a33;
+  --k-error: #e5484d;
+  --k-error-strong: #b42318;
   --k-error-bg: color-mix(in srgb, var(--k-error) 8%, var(--k-bg-container));
   --k-error-border: color-mix(in srgb, var(--k-error) 40%, transparent);
 
-  --k-neutral: #8a8f99;
-  --k-neutral-strong: #5c616b;
+  --k-neutral: #8a94a6;
+  --k-neutral-strong: #5b6577;
   --k-neutral-bg: color-mix(in srgb, var(--k-neutral) 8%, var(--k-bg-container));
   --k-neutral-border: color-mix(in srgb, var(--k-neutral) 40%, transparent);
 
@@ -85,37 +86,37 @@
    所有 color-mix 派生量（bg-hover/border-strong/status -bg -border）与别名量随 var() 惰性重算，
    无需逐条改。文本 alpha 因是字面 rgba（非派生自 ink）必须在此显式重定为浅墨透明档。 */
 .dark {
-  /* 原色：暖炭纸底（近黑暖棕，非纯黑非冷灰）+ 暖白墨。 */
-  --k-ink: #ece3d4;
-  --k-paper: #1b1712;
+  /* 原色：深板岩蓝底（近黑冷调，非纯黑）+ 冷白墨。 */
+  --k-ink: #e6e9f0;
+  --k-paper: #0d1117;
 
-  /* 文本四级：浅墨逐级淡出（字面 rgba，须显式重定）。 */
-  --k-text-secondary: rgba(236, 227, 212, 0.72);
-  --k-text-tertiary: rgba(236, 227, 212, 0.55);
-  --k-text-muted: rgba(236, 227, 212, 0.4);
+  /* 文本四级：冷白墨逐级淡出（字面 rgba，须显式重定）。 */
+  --k-text-secondary: rgba(230, 233, 240, 0.7);
+  --k-text-tertiary: rgba(230, 233, 240, 0.52);
+  --k-text-muted: rgba(230, 233, 240, 0.38);
 
-  /* 背景层：base=paper（惰性）；container/elevated 逐级抬升的暖炭面。 */
-  --k-bg-container: #241f18;
-  --k-bg-elevated: #2c261d;
+  /* 背景层：base=paper（惰性）；container/elevated 逐级抬升的板岩面。 */
+  --k-bg-container: #161b24;
+  --k-bg-elevated: #1d232e;
 
-  /* 描边：暖炭线（border-strong 随 brand+border 重算）。 */
-  --k-border: #3a3126;
+  /* 描边：冷板岩线（border-strong 随 brand+border 重算）。 */
+  --k-border: #262d3a;
 
-  /* 品牌：夜档需提亮成浅暖木（既作暗底上的强调文字/描边可读，也作填充底）；
-     填充底上的文字翻为暖深墨（k-brand-on）。 */
-  --k-brand: #c6a670;
-  --k-brand-hover: #d4b581;
-  --k-brand-soft: #2e2619;
-  --k-brand-on: #221c13;
+  /* 品牌：夜档提亮成浅亮蓝（暗底上强调文字/描边可读，也作填充底）；
+     填充底上文字翻为深墨（k-brand-on）。 */
+  --k-brand: #6b8dff;
+  --k-brand-hover: #85a0ff;
+  --k-brand-soft: #1a2136;
+  --k-brand-on: #0d1117;
 
   /* 状态：夜档降饱和、升明度（-bg/-border 随各自原色 + container 重算）。
      -strong 作前景文字，须取浅档保对比。 */
-  --k-success: #83a381;
-  --k-warning: #d9ab55;
-  --k-error: #d3837b;
-  --k-error-strong: #e7a79f;
-  --k-neutral: #9298a3;
-  --k-neutral-strong: #c3c8d0;
+  --k-success: #56c271;
+  --k-warning: #e0b25a;
+  --k-error: #f47171;
+  --k-error-strong: #ffa39e;
+  --k-neutral: #9298a6;
+  --k-neutral-strong: #c3c8d4;
 
   color-scheme: dark;
 }

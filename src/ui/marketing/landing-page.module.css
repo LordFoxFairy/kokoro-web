@@ -54,9 +54,9 @@
   z-index: 0;
   pointer-events: none;
   background:
-    radial-gradient(42% 40% at 20% 0%, rgba(255, 194, 222, 0.3), transparent 72%),
-    radial-gradient(44% 42% at 55% -6%, rgba(255, 220, 176, 0.32), transparent 74%),
-    radial-gradient(48% 44% at 84% 0%, rgba(189, 220, 255, 0.3), transparent 74%);
+    radial-gradient(42% 40% at 20% 0%, rgba(150, 180, 255, 0.28), transparent 72%),
+    radial-gradient(44% 42% at 55% -6%, rgba(180, 200, 255, 0.3), transparent 74%),
+    radial-gradient(48% 44% at 84% 0%, rgba(140, 210, 245, 0.26), transparent 74%);
 }
 
 .heroTitle,
@@ -91,102 +91,99 @@
   color: var(--k-text-secondary);
 }
 
-/* 巨型输入框：对标参考的大而醒目的 CTA 输入，粗描边 + 大投影。 */
-.heroInputRow {
-  display: flex;
-  gap: 0.5rem;
-  align-items: center;
-  max-width: 40rem;
-  margin: 2.25rem auto 0;
-  padding: 0.55rem 0.55rem 0.55rem 0.9rem;
-  border: 1.5px solid var(--k-border-strong);
-  border-radius: 1.15rem;
+/* 巨型输入卡：对标参考的焦点输入——大卡 + 内置底栏（能力标签 + 圆形发送键）+ 大投影。 */
+.heroInputCard {
+  position: relative;
+  z-index: 1;
+  max-width: 42rem;
+  margin: 2.5rem auto 0;
+  padding: 1rem 1rem 0.85rem;
+  border: 1px solid var(--k-border);
+  border-radius: 1.25rem;
   background: var(--k-bg-container);
-  box-shadow: 0 22px 50px rgba(43, 37, 32, 0.12);
+  box-shadow: 0 24px 60px -16px rgba(15, 23, 41, 0.16), 0 2px 8px rgba(15, 23, 41, 0.04);
+  text-align: left;
   transition: box-shadow 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
 }
 
-/* 输入区作视觉焦点：聚焦即抬升 + 品牌焦点环。 */
-.heroInputRow:focus-within {
+/* 输入卡作视觉焦点：聚焦即抬升 + 品牌焦点环。 */
+.heroInputCard:focus-within {
   border-color: var(--k-brand);
-  box-shadow: 0 26px 60px rgba(43, 37, 32, 0.16), 0 0 0 4px var(--k-brand-ring);
+  box-shadow: 0 28px 70px -16px rgba(59, 108, 246, 0.28), 0 0 0 4px var(--k-brand-ring);
   transform: translateY(-1px);
 }
 
 .heroInput {
-  flex: 1;
-  min-width: 0;
+  display: block;
+  width: 100%;
   border: none;
   background: transparent;
   color: var(--k-text);
-  font-size: 1.08rem;
-  padding: 0.85rem 0.4rem;
+  font-family: inherit;
+  font-size: 1.1rem;
+  line-height: 1.5;
+  resize: none;
   outline: none;
+  min-height: 3.2rem;
 }
 
 .heroInput::placeholder {
   color: var(--k-text-muted);
 }
 
-.heroSubmit {
-  flex-shrink: 0;
-  display: inline-flex;
+.heroInputBar {
+  display: flex;
   align-items: center;
-  gap: 0.4rem;
-  height: 3.15rem;
-  padding: 0 1.5rem;
-  border: none;
-  border-radius: 0.85rem;
-  background: var(--k-brand);
-  color: var(--k-brand-on);
-  font-size: 1rem;
-  font-weight: 700;
-  cursor: pointer;
-  box-shadow: 0 8px 18px rgba(139, 111, 71, 0.28);
-  transition: background 0.15s ease;
+  gap: 0.6rem;
+  margin-top: 0.7rem;
 }
 
-.heroSubmit:hover {
-  background: var(--k-brand-hover);
-}
-
-.heroSubmitArrow {
-  font-size: 1.15rem;
-  line-height: 1;
-}
-
-/* 能力 chip 行：对标参考输入框下的能力 tab 行——真实能力短标签，锚到能力区。 */
-.heroChips {
+.heroInputTags {
   display: flex;
   flex-wrap: wrap;
-  justify-content: center;
-  gap: 0.5rem;
-  margin: 1.5rem auto 0;
-  max-width: 40rem;
+  gap: 0.4rem;
+  flex: 1;
+  min-width: 0;
 }
 
-.heroChip {
-  padding: 0.45rem 1rem;
+.heroTag {
+  padding: 0.35rem 0.75rem;
   border: 1px solid var(--k-border);
   border-radius: 999px;
-  background: var(--k-bg-container);
+  background: var(--k-bg-base);
   color: var(--k-text-secondary);
-  font-size: 0.88rem;
+  font-size: 0.8rem;
   font-weight: 500;
   transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
 }
 
-.heroChip {
-  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease, transform 0.15s ease,
-    box-shadow 0.15s ease;
-}
-
-.heroChip:hover {
+.heroTag:hover {
   border-color: var(--k-brand);
   color: var(--k-brand);
   background: var(--k-brand-soft);
-  transform: translateY(-2px);
-  box-shadow: 0 6px 14px rgba(139, 111, 71, 0.16);
+}
+
+.heroSend {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.6rem;
+  height: 2.6rem;
+  border: none;
+  border-radius: 999px;
+  background: var(--k-brand);
+  color: var(--k-brand-on);
+  font-size: 1.2rem;
+  cursor: pointer;
+  box-shadow: 0 6px 16px -3px rgba(59, 108, 246, 0.5);
+  transition: background 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.heroSend:hover {
+  background: var(--k-brand-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px -3px rgba(59, 108, 246, 0.6);
 }
 
 .heroNote {
@@ -575,7 +572,7 @@
 /* —— 深色 CTA 块（全宽底色，内容内收） —— */
 /* 用固定暖近黑（不用会随暗档翻转成浅色的 --k-ink），保证亮暗两档都是深底 + 反白文字高对比。 */
 .ctaBlock {
-  background: #241f18;
+  background: linear-gradient(135deg, #131a2e 0%, #0f1729 55%, #16224a 100%);
   padding: clamp(3rem, 7vw, 5rem) clamp(1rem, 4vw, 2.5rem);
 }
 
@@ -622,7 +619,7 @@
 /* —— 深色多列页脚 —— */
 /* 固定暖近黑（比 CTA 更深），亮暗两档一致深底。 */
 .footer {
-  background: #1c1811;
+  background: #0c1220;
   color: color-mix(in srgb, var(--k-text-on-brand) 82%, transparent);
   padding: clamp(2.75rem, 5vw, 3.75rem) clamp(1rem, 4vw, 2.5rem) 2rem;
 }
@@ -729,11 +726,8 @@
     grid-template-columns: 1fr;
   }
 
-  .heroSubmitText {
-    display: none;
-  }
-
-  .heroSubmit {
-    padding: 0 1.15rem;
+  .heroInputCard {
+    margin-top: 1.75rem;
+    border-radius: 1rem;
   }
 }
