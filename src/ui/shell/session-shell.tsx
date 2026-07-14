@@ -41,6 +41,7 @@ import { useCanvasWorkspace } from "./use-canvas-workspace"
 import { useComposerSelectors } from "./use-composer-selectors"
 import { useConversationList } from "./use-conversation-list"
 import { useDraft } from "./use-draft"
+import { ScenarioCards } from "./scenario-cards"
 import { useOverlayPanels } from "./use-overlay-panels"
 import { removePinned, usePinnedSkills } from "./use-pinned-skills"
 
@@ -281,6 +282,12 @@ export function SessionShell({ engine: injectedEngine, brandName }: SessionShell
           <div className={styles.hero}>
             <h1 className={styles.headline}>{t("shell.heading")}</h1>
             <p className={styles.subhead}>{t("shell.subhead")}</p>
+            <ScenarioCards
+              onPick={(prompt) => {
+                updateDraft(prompt)
+                focusComposer()
+              }}
+            />
           </div>
         )}
 
