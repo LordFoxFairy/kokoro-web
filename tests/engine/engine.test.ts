@@ -492,6 +492,37 @@ describe("snapshot-first 水合与中断恢复", () => {
     expect(engine.getSnapshot().machine).toMatchObject({ phase: "error", error: "status 500" })
   })
 
+  it("水合撞 403 session_forbidden：驱逐越权 activeId、回退空态，不 fail-loud 也不拿坏 id 开跑", async () => {
+    // 陈旧/越权 activeId（跨用户切换后 localStorage 残留了他人会话 id）：hydrate 撞
+    // session_forbidden。不得 fail-loud 卡死，也不得留着这个 id 供 submit 去 POST（必再 403）。
+    buildEngine(SEEDED) // activeId=conv_9
+    let idCounter = 100
+    client.nextSnapshot = (sessionId) =>
+      sessionId === "conv_9"
+        ? Promise.reject(new SessionClientError("http", "session_forbidden"))
+        : Promise.resolve(null) // 驱逐后新建的 fallback 会话：服务端 404→null（空态即真）
+    engine.dispose()
+    engine = createSessionEngine({
+      client,
+      storage,
+      now: () => 1_000,
+      createId: (prefix) => `${prefix}_evict_${(idCounter += 1)}`,
+    })
+    await settle()
+    const store = engine.getSnapshot().store
+    expect(engine.getSnapshot().machine.phase).toBe("idle")
+    // 越权 id 已被驱逐、不再是活跃项、不再留在本地索引。
+    expect(store?.activeId).not.toBe("conv_9")
+    expect(store?.conversations.some((c) => c.id === "conv_9")).toBe(false)
+    // 驱逐不发 deleteSession（不属于当前用户，无权也不该删服务端）。
+    expect(client.deleteCalls).not.toContain("conv_9")
+    // 回退后在干净的新会话上开跑：POST 用新 id，正常进 streaming。
+    engine.submit("hello")
+    await settle()
+    expect(client.createCalls.at(-1)?.sessionId).toBe(store?.activeId)
+    expect(engine.getSnapshot().machine.phase).toBe("streaming")
+  })
+
   it("切会话即重新水合目标会话", async () => {
     let store = addConversation(null, "conv_a", 100)
     store = addConversation(store, "conv_b", 200)

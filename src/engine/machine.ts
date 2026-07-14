@@ -26,7 +26,7 @@ import { createSessionStreamState, type SessionStreamState } from "@/core/state"
 import type { SessionEvent } from "@/contract/session-events"
 import type { PersistedStore } from "@/lib/persisted-store"
 
-import type { SessionClient, EventStreamHandle } from "./client"
+import { SessionClientError, type SessionClient, type EventStreamHandle } from "./client"
 import {
   buildResumeDecisions,
   pendingToolIdsOf,
@@ -192,6 +192,15 @@ function defaultCreateId(prefix: string): string {
 
 // control 撞终态的冲突码（session 契约 409/410）：暂停失效信号，触发 snapshot 对账。
 const STALE_CONTROL_ERRORS = new Set(["run_not_active", "no_pending_pause", "session_deleted"])
+
+// session 越权码（403）：activeId 指向的会话不属于当前用户——跨用户切换后 localStorage 残留了
+// 他人会话 id，或本地缓存陈旧。与 404/410（无此会话→空态即真）语义不同：这是「坏 id」，
+// 必须从本地索引驱逐，绝不 fail-loud 卡死，也绝不留着它去 POST（必再 403）。
+const SESSION_FORBIDDEN = "session_forbidden"
+
+function isSessionForbidden(error: unknown): boolean {
+  return error instanceof SessionClientError && error.message === SESSION_FORBIDDEN
+}
 
 function describeUnknown(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
@@ -454,6 +463,12 @@ export function createSessionEngine(deps: EngineDeps): SessionEngine {
         if (disposed || generation !== hydrateGeneration) {
           return
         }
+        if (isSessionForbidden(error)) {
+          // activeId 越权（跨用户残留 / 陈旧本地缓存）：驱逐它、回退空态，绝不 fail-loud 卡死，
+          // 也绝不留着它供 submit 去 POST（必再 403）。
+          evictActiveConversation()
+          return
+        }
         // fail-loud：水合失败进状态机错误态，不渲染半真半假的本地线程。
         machine = transition(machine, { type: "FAIL", error: describeUnknown(error) })
         notify()
@@ -667,6 +682,16 @@ export function createSessionEngine(deps: EngineDeps): SessionEngine {
     commitStore(next)
     notify()
     hydrate(next.activeId)
+  }
+
+  // 驱逐当前 activeId（越权/陈旧 id）：从本地索引移除并回退——余下首个或全新空会话，再照常水合。
+  // 不发 deleteSession（会话不属于当前用户，无权也不该删服务端）。递归天然收敛：新建 fallback
+  // 命服务端 404→空线程即停；余下会话若也越权，会再走一次驱逐。
+  function evictActiveConversation(): void {
+    if (!store) {
+      return
+    }
+    activateConversation(removeConversation(store, store.activeId, createId("conv"), now()))
   }
 
   function selectConversation(id: string): void {
