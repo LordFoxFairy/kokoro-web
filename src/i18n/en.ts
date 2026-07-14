@@ -467,6 +467,7 @@ export const en: Partial<Record<MessageKey, string>> = {
   "settings.language": "Language",
   "settings.chatTitle": "Chat preferences",
   "settings.chatHint": "These prefill your choices for the first message of a new chat; they lock per conversation once it starts.",
+  "settings.saved": "Saved",
   "settings.defaultModel": "Default model",
   "settings.defaultAgent": "Default agent",
   "settings.followProfile": "Follow workspace default",

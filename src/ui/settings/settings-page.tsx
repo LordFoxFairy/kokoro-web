@@ -205,6 +205,8 @@ function ChatPrefsCard() {
   const [agents, setAgents] = useState<readonly AgentCandidate[]>([])
   const [model, setModel] = useState<string>(() => readChatModel() ?? FOLLOW_PROFILE)
   const [agent, setAgent] = useState<string>(() => readChatAgent() ?? FOLLOW_PROFILE)
+  // 就地保存反馈：改动后闪一枚「已保存」徽标，约 1.6s 后自动消（setState 在 timeout 内，非 effect 体内直接调）。
+  const [saved, setSaved] = useState(false)
 
   useEffect(() => {
     let live = true
@@ -221,18 +223,35 @@ function ChatPrefsCard() {
     }
   }, [])
 
+  useEffect(() => {
+    if (!saved) {
+      return
+    }
+    const id = setTimeout(() => setSaved(false), 1600)
+    return () => clearTimeout(id)
+  }, [saved])
+
   const onModelChange = (value: string): void => {
     setModel(value)
     writeChatModel(value === FOLLOW_PROFILE ? null : value)
+    setSaved(true)
   }
   const onAgentChange = (value: string): void => {
     setAgent(value)
     writeChatAgent(value === FOLLOW_PROFILE ? null : value)
+    setSaved(true)
   }
 
   return (
     <section className={styles.card} data-testid="settings-chat">
-      <h2 className={styles.cardTitle}>{t("settings.chatTitle")}</h2>
+      <div className={styles.cardHead}>
+        <h2 className={styles.cardTitle}>{t("settings.chatTitle")}</h2>
+        {saved ? (
+          <span className={styles.savedBadge} role="status" data-testid="settings-saved">
+            {t("settings.saved")}
+          </span>
+        ) : null}
+      </div>
       <label className={styles.row}>
         <span className={styles.rowLabel}>{t("settings.defaultModel")}</span>
         <select

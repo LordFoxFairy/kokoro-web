@@ -482,6 +482,7 @@ export const zh = {
   "settings.language": "语言",
   "settings.chatTitle": "对话偏好",
   "settings.chatHint": "新对话发出首条消息时预填这些选择；本轮开跑后按会话锁定。",
+  "settings.saved": "已保存",
   "settings.defaultModel": "缺省模型",
   "settings.defaultAgent": "缺省 agent",
   "settings.followProfile": "跟随空间缺省",

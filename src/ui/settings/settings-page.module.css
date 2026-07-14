@@ -61,6 +61,28 @@
   color: var(--k-text);
 }
 
+/* 卡头（标题 + 就地保存徽标）。 */
+.cardHead {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 1.1rem;
+}
+
+.cardHead .cardTitle {
+  margin: 0;
+}
+
+.savedBadge {
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  background: var(--k-success-bg);
+  border: 1px solid var(--k-success-border);
+  color: var(--k-success);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
 .row {
   display: flex;
   align-items: center;

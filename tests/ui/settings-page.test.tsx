@@ -80,12 +80,14 @@ describe("SettingsPage", () => {
     expect(await screen.findByText("Studio")).toBeInTheDocument()
   })
 
-  it("persists a chosen default model to localStorage", async () => {
+  it("persists a chosen default model to localStorage and flashes saved feedback", async () => {
     renderSettings()
     const select = await screen.findByTestId("settings-default-model")
     fireEvent.change(select, { target: { value: "anthropic:opus" } })
     const prefs = JSON.parse(window.localStorage.getItem("kokoro.web.chat-prefs") ?? "{}")
     expect(prefs.model).toBe("anthropic:opus")
+    // 就地保存反馈。
+    expect(screen.getByTestId("settings-saved")).toBeInTheDocument()
   })
 
   it("links capability entries to the workspace panel deep links", () => {
