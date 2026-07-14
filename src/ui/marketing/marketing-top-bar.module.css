@@ -1,0 +1,131 @@
+/* 营销/登录共用顶栏样式（WEB-FACE）：暖纸皮肤，桌面横排、移动汉堡下拉。 */
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  height: 4rem;
+  padding: 0 clamp(1rem, 4vw, 2.5rem);
+  background: color-mix(in srgb, var(--k-bg-base) 90%, transparent);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--k-border);
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  color: var(--k-text);
+}
+
+.brandMark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  background: var(--k-brand-soft);
+  color: var(--k-brand);
+}
+
+.heartMark {
+  width: 1.15rem;
+  height: 1.15rem;
+}
+
+.brandName {
+  font-family: var(--font-serif);
+  font-size: 1.2rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.navDesktop {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.navLink {
+  padding: 0.5rem 0.9rem;
+  border-radius: 0.55rem;
+  font-size: 0.94rem;
+  font-weight: 500;
+  color: var(--k-text-secondary);
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.navLink:hover {
+  background: var(--k-bg-hover);
+  color: var(--k-text);
+}
+
+.navCta {
+  margin-left: 0.35rem;
+  padding: 0.55rem 1.25rem;
+  border-radius: 0.6rem;
+  font-size: 0.94rem;
+  font-weight: 600;
+  background: var(--k-brand);
+  color: var(--k-brand-on);
+  box-shadow: 0 6px 16px rgba(139, 111, 71, 0.22);
+  transition: background 0.15s ease;
+}
+
+.navCta:hover {
+  background: var(--k-brand-hover);
+}
+
+.navToggle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  font-size: 1.4rem;
+  line-height: 1;
+  border: 1px solid var(--k-border);
+  border-radius: 0.6rem;
+  background: var(--k-bg-container);
+  color: var(--k-text);
+  cursor: pointer;
+}
+
+.navMobile {
+  position: sticky;
+  top: 4rem;
+  z-index: 29;
+  display: none;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.85rem clamp(1rem, 4vw, 2.5rem) 1.1rem;
+  border-bottom: 1px solid var(--k-border);
+  background: var(--k-bg-container);
+}
+
+.navMobile .navLink,
+.navMobile .navCta {
+  margin: 0;
+  text-align: center;
+  padding-top: 0.7rem;
+  padding-bottom: 0.7rem;
+}
+
+@media (max-width: 768px) {
+  .navDesktop {
+    display: none;
+  }
+
+  .navToggle {
+    display: inline-flex;
+  }
+
+  .navMobile {
+    display: flex;
+  }
+}

@@ -1,5 +1,5 @@
-/* 登录页样式（WEB-FACE 面二）：浅底全屏 + 居中暖纸卡，顶栏仅品牌、页脚隐藏。
-   Kokoro 暖纸 --k-* 皮肤，亮暗双态随 globals.css。移动态白卡近全宽。 */
+/* 登录页样式（WEB-FACE 面二）：浅底全屏 + 共用顶栏 + 居中宽白卡。对标参考的卡宽/圆角/阴影、
+   大主按钮视觉重量与层级；落我们暖纸 --k-* token，亮暗双态随 globals.css。移动态白卡近全宽。 */
 
 .screen {
   position: relative;
@@ -8,7 +8,7 @@
   min-height: 100vh;
   min-height: 100dvh;
   background: var(--k-bg-base);
-  overflow: hidden;
+  overflow-x: hidden;
 }
 
 /* 柔和 pastel 光晕：与落地页/壳同语言，浅底上方一层低饱和渐变。 */
@@ -19,52 +19,20 @@
   z-index: 0;
   pointer-events: none;
   background:
-    radial-gradient(52% 46% at 12% -8%, rgba(255, 194, 222, 0.24), transparent 76%),
-    radial-gradient(50% 44% at 44% -10%, rgba(255, 228, 188, 0.24), transparent 78%),
-    radial-gradient(56% 50% at 82% -8%, rgba(189, 220, 255, 0.26), transparent 78%);
-}
-
-.topbar {
-  position: relative;
-  z-index: 2;
-  display: flex;
-  align-items: center;
-  padding: 1rem clamp(1rem, 4vw, 2.5rem);
-}
-
-.brand {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  color: var(--k-text);
-}
-
-.brandDot {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.9rem;
-  height: 1.9rem;
-  border-radius: 999px;
-  background: var(--k-brand-soft);
-  color: var(--k-brand);
-}
-
-.brandName {
-  font-family: var(--font-serif);
-  font-size: 1.1rem;
-  font-weight: 600;
+    radial-gradient(52% 46% at 12% -8%, rgba(255, 194, 222, 0.22), transparent 76%),
+    radial-gradient(50% 44% at 44% -10%, rgba(255, 228, 188, 0.22), transparent 78%),
+    radial-gradient(56% 50% at 82% -8%, rgba(189, 220, 255, 0.24), transparent 78%);
 }
 
 /* toast 归一：顶部居中浮层，暖纸卡面 + 错误语义描边。 */
 .toast {
   position: fixed;
-  top: 1rem;
+  top: 5rem;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 30;
-  max-width: min(28rem, calc(100vw - 2rem));
-  padding: 0.7rem 1.1rem;
+  z-index: 40;
+  max-width: min(30rem, calc(100vw - 2rem));
+  padding: 0.75rem 1.15rem;
   border: 1px solid var(--k-error-border);
   border-radius: 0.7rem;
   background: var(--k-error-bg);
@@ -81,49 +49,35 @@
   flex: 1;
   display: grid;
   place-items: center;
-  padding: 1.5rem;
+  padding: clamp(1rem, 4vw, 3rem);
 }
 
+/* 宽白卡：对标参考卡宽（~33rem）/圆角/柔和大阴影，居中。 */
 .card {
-  width: min(24rem, 100%);
+  width: min(33rem, 100%);
   border: 1px solid var(--k-border);
-  border-radius: 1.2rem;
+  border-radius: 1.25rem;
   background: var(--k-bg-container);
-  box-shadow: 0 24px 60px rgba(139, 111, 71, 0.12);
-  padding: 2.25rem 1.9rem 1.9rem;
+  box-shadow: 0 30px 70px rgba(43, 37, 32, 0.1);
+  padding: clamp(1.75rem, 4vw, 2.75rem);
   text-align: center;
 }
 
-.brandBadge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 3rem;
-  height: 3rem;
-  margin-bottom: 1rem;
-  border-radius: 999px;
-  background: var(--k-brand-soft);
-  color: var(--k-brand);
-}
-
-.brandIcon {
-  width: 1.55rem;
-  height: 1.55rem;
-}
-
+/* 大标题：对标参考的醒目粗标题（层级最重）。 */
 .title {
-  margin: 0;
+  margin: 0 0 1.75rem;
   font-family: var(--font-serif);
-  font-size: 1.45rem;
-  font-weight: 600;
+  font-size: clamp(1.5rem, 3.5vw, 1.9rem);
+  font-weight: 700;
+  letter-spacing: 0.005em;
   color: var(--k-text);
 }
 
 .subtitle {
-  margin: 0.55rem 0 1.5rem;
-  font-size: 0.92rem;
+  margin: -1rem 0 1.75rem;
+  font-size: 0.95rem;
   line-height: 1.55;
-  color: var(--k-text-tertiary);
+  color: var(--k-text-secondary);
 }
 
 .field {
@@ -134,21 +88,22 @@
 
 .fieldLabel {
   display: block;
-  margin-bottom: 0.4rem;
-  font-size: 0.82rem;
+  margin-bottom: 0.45rem;
+  font-size: 0.85rem;
   font-weight: 600;
   color: var(--k-text-secondary);
 }
 
+/* 大输入框：对标参考的高度/描边。 */
 .input {
   width: 100%;
-  height: 2.75rem;
-  padding: 0 0.85rem;
+  height: 3.25rem;
+  padding: 0 1rem;
   border: 1px solid var(--k-border);
-  border-radius: 0.7rem;
+  border-radius: 0.75rem;
   background: var(--k-bg-container);
   color: var(--k-text);
-  font-size: 0.98rem;
+  font-size: 1rem;
   outline: none;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
@@ -162,17 +117,23 @@
   color: var(--k-text-muted);
 }
 
+/* 大主按钮：对标参考 Google 按钮的视觉重量——大而醒目的实心块，本处承载「发送登录链接」。 */
 .primaryBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
   width: 100%;
-  height: 2.75rem;
+  height: 3.5rem;
   border: none;
-  border-radius: 0.7rem;
+  border-radius: 0.75rem;
   background: var(--k-brand);
   color: var(--k-brand-on);
-  font-size: 0.98rem;
-  font-weight: 600;
+  font-size: 1.05rem;
+  font-weight: 700;
   cursor: pointer;
-  transition: background 0.15s ease;
+  box-shadow: 0 10px 24px rgba(139, 111, 71, 0.24);
+  transition: background 0.15s ease, box-shadow 0.15s ease;
 }
 
 .primaryBtn:hover:not(:disabled) {
@@ -182,48 +143,55 @@
 .primaryBtn:disabled {
   opacity: 0.6;
   cursor: default;
+  box-shadow: none;
 }
 
-.primaryLink {
-  display: block;
-  width: 100%;
-  height: 2.75rem;
-  line-height: 2.75rem;
-  border-radius: 0.7rem;
-  background: var(--k-brand);
-  color: var(--k-brand-on);
-  font-size: 0.95rem;
-  font-weight: 600;
-  transition: background 0.15s ease;
+.primaryArrow {
+  font-size: 1.15rem;
+  line-height: 1;
 }
 
-.primaryLink:hover {
-  background: var(--k-brand-hover);
-}
-
-.note {
-  margin: 1.25rem 0 0;
-  font-size: 0.82rem;
-  line-height: 1.5;
-  color: var(--k-text-tertiary);
-}
-
-/* 发送后态动作区：重发（带倒计时禁用）+ 改邮箱返回。 */
-.sentActions {
+/* 分隔线「或」：对标参考社交/邮箱之间的分区。 */
+.divider {
   display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  margin-top: 1.25rem;
+  align-items: center;
+  gap: 0.85rem;
+  margin: 1.35rem 0;
+  color: var(--k-text-muted);
+  font-size: 0.82rem;
 }
 
+.divider::before,
+.divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--k-border);
+}
+
+/* OAuth 诚实占位：占参考的社交按钮位，禁用态明确「即将开放」（不塌陷、不假功能）。 */
+.oauthPlaceholder {
+  width: 100%;
+  height: 3.25rem;
+  border: 1px dashed var(--k-border-strong);
+  border-radius: 0.75rem;
+  background: var(--k-bg-elevated);
+  color: var(--k-text-muted);
+  font-size: 0.95rem;
+  font-weight: 500;
+  cursor: not-allowed;
+}
+
+/* 次按钮（发送后态重发，带倒计时禁用）。 */
 .secondaryBtn {
   width: 100%;
-  height: 2.6rem;
+  height: 3rem;
+  margin-top: 0.85rem;
   border: 1px solid var(--k-border);
-  border-radius: 0.7rem;
+  border-radius: 0.75rem;
   background: var(--k-bg-container);
   color: var(--k-text);
-  font-size: 0.92rem;
+  font-size: 0.95rem;
   font-weight: 500;
   cursor: pointer;
   transition: background 0.15s ease, border-color 0.15s ease;
@@ -239,28 +207,38 @@
   cursor: default;
 }
 
-.linkBtn {
+/* 底部切换/说明行（对标参考「Don't have an account? Sign up here」）。 */
+.switchLine {
+  margin: 1.35rem 0 0;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--k-text-secondary);
+}
+
+.switchLink {
   border: none;
   background: transparent;
   color: var(--k-brand);
   font-size: 0.9rem;
+  font-weight: 600;
   cursor: pointer;
-  padding: 0.35rem;
+  padding: 0;
 }
 
-.linkBtn:hover {
+.switchLink:hover {
   color: var(--k-brand-hover);
   text-decoration: underline;
 }
 
-/* 移动态：白卡近全宽，内边距收敛。 */
+/* 移动态：白卡近全宽。 */
 @media (max-width: 480px) {
-  .stage {
-    padding: 1rem;
-  }
-
   .card {
     width: 100%;
-    padding: 2rem 1.4rem 1.6rem;
+    border-radius: 1rem;
+    padding: 1.6rem 1.25rem;
+  }
+
+  .toast {
+    top: 4.75rem;
   }
 }

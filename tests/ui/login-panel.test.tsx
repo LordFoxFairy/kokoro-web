@@ -26,11 +26,13 @@ afterEach(() => {
 })
 
 describe("LoginPanel", () => {
-  it("renders the email field and submit without any OAuth or inline error", () => {
+  it("renders the email field, submit, and a disabled OAuth placeholder (no fake buttons, no inline error)", () => {
     renderPanel()
     expect(screen.getByTestId("login-panel")).toBeInTheDocument()
     expect(screen.getByTestId("login-email")).toBeInTheDocument()
     expect(screen.getByTestId("login-submit")).toBeInTheDocument()
+    // OAuth 保留视觉占位骨架但为禁用「即将开放」，不是可点假按钮。
+    expect(screen.getByTestId("login-oauth-slot")).toBeDisabled()
     expect(screen.queryByTestId("login-toast")).not.toBeInTheDocument()
   })
 

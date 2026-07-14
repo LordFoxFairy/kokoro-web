@@ -55,8 +55,9 @@
 
 .cardTitle {
   margin: 0 0 1.1rem;
-  font-size: 1.1rem;
-  font-weight: 600;
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--k-text);
 }
 
 .row {
