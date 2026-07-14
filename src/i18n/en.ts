@@ -410,6 +410,7 @@ export const en: Partial<Record<MessageKey, string>> = {
   "marketing.chipMcp": "Connect MCP",
   "marketing.chipDeliver": "Deliver results",
   "marketing.chipTeam": "Team workspace",
+  "marketing.chipModel": "Multi-model",
   "marketing.capsHeading": "What it can do for you",
   "marketing.capsSubheading": "Not another chat box — a partner that plans, does the work, and hands you the result.",
   "marketing.capChatTitle": "A conversation you stay in control of",

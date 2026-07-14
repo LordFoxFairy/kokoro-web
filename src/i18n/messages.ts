@@ -425,6 +425,7 @@ export const zh = {
   "marketing.chipMcp": "连接 MCP",
   "marketing.chipDeliver": "成果交付",
   "marketing.chipTeam": "团队协作",
+  "marketing.chipModel": "多模型",
   "marketing.capsHeading": "它能为你做什么",
   "marketing.capsSubheading": "不是又一个聊天框，而是一个会规划、动手、把成果交到你手里的伙伴。",
   "marketing.capChatTitle": "对话即协作，关键处由你把关",

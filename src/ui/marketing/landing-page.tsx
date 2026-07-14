@@ -169,16 +169,87 @@ function CapabilityArt({ variant }: { variant: number }) {
   )
 }
 
-type Capability = { title: MessageKey; body: MessageKey }
+type Capability = { title: MessageKey; body: MessageKey; tab: MessageKey }
 
 const CAPABILITIES: readonly Capability[] = [
-  { title: "marketing.capChatTitle", body: "marketing.capChatBody" },
-  { title: "marketing.capSkillsTitle", body: "marketing.capSkillsBody" },
-  { title: "marketing.capMcpTitle", body: "marketing.capMcpBody" },
-  { title: "marketing.capDeliverTitle", body: "marketing.capDeliverBody" },
-  { title: "marketing.capTeamTitle", body: "marketing.capTeamBody" },
-  { title: "marketing.capModelTitle", body: "marketing.capModelBody" },
+  { title: "marketing.capChatTitle", body: "marketing.capChatBody", tab: "marketing.chipChat" },
+  { title: "marketing.capSkillsTitle", body: "marketing.capSkillsBody", tab: "marketing.chipSkills" },
+  { title: "marketing.capMcpTitle", body: "marketing.capMcpBody", tab: "marketing.chipMcp" },
+  { title: "marketing.capDeliverTitle", body: "marketing.capDeliverBody", tab: "marketing.chipDeliver" },
+  { title: "marketing.capTeamTitle", body: "marketing.capTeamBody", tab: "marketing.chipTeam" },
+  { title: "marketing.capModelTitle", body: "marketing.capModelBody", tab: "marketing.chipModel" },
 ]
+
+// 能力展示轮播（对标参考 CardSlider）：自动轮播的 tab 切换 + 大展示台，悬停暂停、点 tab 切换、
+// 面板交叉淡入 + 进度条。滚动窗口式交互，替代静态图文堆叠。
+const SHOWCASE_INTERVAL_MS = 4200
+
+function CapabilityShowcase() {
+  const t = useT()
+  const [active, setActive] = useState(0)
+  const [paused, setPaused] = useState(false)
+  const count = CAPABILITIES.length
+
+  useEffect(() => {
+    if (paused) return
+    const id = window.setTimeout(() => setActive((a) => (a + 1) % count), SHOWCASE_INTERVAL_MS)
+    return () => window.clearTimeout(id)
+  }, [active, paused, count])
+
+  return (
+    <div
+      className={styles.showcase}
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
+    >
+      <div className={styles.showTabs} role="tablist" aria-label={t("marketing.capsHeading")}>
+        {CAPABILITIES.map((cap, index) => (
+          <button
+            key={cap.tab}
+            type="button"
+            role="tab"
+            aria-selected={index === active}
+            className={styles.showTab}
+            data-active={index === active ? "true" : undefined}
+            onClick={() => setActive(index)}
+            data-testid={`cap-tab-${index}`}
+          >
+            <span>{t(cap.tab)}</span>
+            {index === active ? (
+              <span
+                key={`${active}-${paused}`}
+                className={styles.showTabBar}
+                data-paused={paused ? "true" : undefined}
+                aria-hidden
+              />
+            ) : null}
+          </button>
+        ))}
+      </div>
+      <div className={styles.showStage}>
+        {CAPABILITIES.map((cap, index) => (
+          <article
+            key={cap.title}
+            className={styles.showPanel}
+            data-active={index === active ? "true" : undefined}
+            aria-hidden={index !== active}
+          >
+            <div className={styles.showText}>
+              <span className={styles.showIndex}>
+                {String(index + 1).padStart(2, "0")} / {String(count).padStart(2, "0")}
+              </span>
+              <h3 className={styles.showTitle}>{t(cap.title)}</h3>
+              <p className={styles.showBody}>{t(cap.body)}</p>
+            </div>
+            <div className={styles.showArt}>
+              <CapabilityArt variant={index} />
+            </div>
+          </article>
+        ))}
+      </div>
+    </div>
+  )
+}
 
 // Hero 能力 chip（对标参考输入框下的能力 tab 行）：锚到能力区的真实能力短标签，非产品下拉。
 const HERO_CHIPS: readonly MessageKey[] = [
@@ -272,23 +343,7 @@ export function LandingPage({ brandName }: { brandName?: string }) {
             <h2 className={styles.sectionTitle}>{t("marketing.capsHeading")}</h2>
             <p className={styles.sectionSub}>{t("marketing.capsSubheading")}</p>
           </div>
-          <div className={styles.capList}>
-            {CAPABILITIES.map((cap, index) => (
-              <article
-                key={cap.title}
-                className={styles.capRow}
-                data-flip={index % 2 === 1 ? "true" : undefined}
-              >
-                <div className={styles.capArtWrap}>
-                  <CapabilityArt variant={index} />
-                </div>
-                <div className={styles.capText}>
-                  <h3 className={styles.capTitle}>{t(cap.title)}</h3>
-                  <p className={styles.capBody}>{t(cap.body)}</p>
-                </div>
-              </article>
-            ))}
-          </div>
+          <CapabilityShowcase />
         </section>
 
         <section className={styles.faq} id="faq">

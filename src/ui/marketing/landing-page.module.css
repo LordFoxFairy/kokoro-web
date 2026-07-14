@@ -221,40 +221,142 @@
   padding: clamp(3rem, 7vw, 5rem) 0;
 }
 
-.capList {
+/* —— 能力展示轮播（滚动窗口）：tab 行 + 大展示台（交叉淡入）+ 自动进度条 —— */
+.showcase {
+  margin-top: clamp(1.5rem, 4vw, 2.5rem);
+}
+
+.showTabs {
   display: flex;
-  flex-direction: column;
-  gap: clamp(2.75rem, 6vw, 4.5rem);
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-bottom: clamp(1.5rem, 3vw, 2.25rem);
 }
 
-.capRow {
+.showTab {
+  position: relative;
+  overflow: hidden;
+  padding: 0.55rem 1.1rem;
+  border: 1px solid var(--k-border);
+  border-radius: 999px;
+  background: var(--k-bg-container);
+  color: var(--k-text-secondary);
+  font-size: 0.92rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+}
+
+.showTab:hover {
+  color: var(--k-text);
+  border-color: var(--k-border-strong);
+}
+
+.showTab[data-active="true"] {
+  color: var(--k-brand-on);
+  background: var(--k-brand);
+  border-color: var(--k-brand);
+}
+
+/* 自动切换进度条：从左到右填充满即切下一 tab；悬停暂停时定住。 */
+.showTabBar {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 2px;
+  width: 100%;
+  transform-origin: left;
+  background: rgba(255, 255, 255, 0.85);
+  animation: showTabFill 4.2s linear forwards;
+}
+
+.showTabBar[data-paused="true"] {
+  animation-play-state: paused;
+}
+
+@keyframes showTabFill {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+.showStage {
+  position: relative;
+  border: 1px solid var(--k-border);
+  border-radius: 1.5rem;
+  background: var(--k-bg-container);
+  box-shadow: 0 24px 60px -24px rgba(15, 23, 41, 0.14);
+  overflow: hidden;
+  min-height: 22rem;
+}
+
+.showPanel {
+  position: absolute;
+  inset: 0;
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 1.05fr;
   align-items: center;
-  gap: clamp(1.5rem, 5vw, 4.5rem);
+  gap: clamp(1.5rem, 4vw, 3.5rem);
+  padding: clamp(1.75rem, 4vw, 3rem);
+  opacity: 0;
+  transform: translateY(12px);
+  pointer-events: none;
+  transition: opacity 0.5s ease, transform 0.5s ease;
 }
 
-.capRow[data-flip="true"] .capArtWrap {
-  order: 2;
+.showPanel[data-active="true"] {
+  position: relative;
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
 }
 
-.capArtWrap {
+.showIndex {
+  display: inline-block;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--k-brand);
+  margin-bottom: 0.75rem;
+}
+
+.showTitle {
+  margin: 0;
+  font-size: clamp(1.4rem, 2.6vw, 1.9rem);
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--k-text);
+}
+
+.showBody {
+  margin: 0.9rem 0 0;
+  font-size: clamp(1rem, 1.6vw, 1.1rem);
+  line-height: 1.65;
+  color: var(--k-text-secondary);
+}
+
+.showArt {
   display: flex;
   align-items: center;
   justify-content: center;
   aspect-ratio: 4 / 3;
-  border: 1px solid var(--k-border);
-  border-radius: 1.25rem;
+  border-radius: 1.15rem;
   background: var(--k-bg-elevated);
-  padding: clamp(1.5rem, 4vw, 2.75rem);
-  box-shadow: 0 12px 30px rgba(43, 37, 32, 0.06);
-  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+  padding: clamp(1.25rem, 3vw, 2.25rem);
 }
 
-.capArtWrap:hover {
-  transform: translateY(-4px);
-  border-color: var(--k-border-strong);
-  box-shadow: 0 20px 44px rgba(43, 37, 32, 0.12);
+@media (max-width: 768px) {
+  .showPanel {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+  .showStage {
+    min-height: 30rem;
+  }
 }
 
 .capArt {
