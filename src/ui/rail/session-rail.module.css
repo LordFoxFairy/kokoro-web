@@ -503,11 +503,6 @@
   opacity: 0;
 }
 
-/* 收起态：控制行（主题/语言）随文本标签一并隐去，只留图标列。 */
-.rail[data-collapsed="true"] .railControls {
-  display: none;
-}
-
 .rail[data-collapsed="true"] .navItem {
   width: 2.4rem;
   margin: 0 auto;
@@ -577,36 +572,6 @@
   .rail {
     padding: 0.85rem;
   }
-}
-
-/* 底部控制行（WEB-THEME）：主题切换 + 语言切换两端对齐，居于用户卡下方。 */
-.railControls {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  padding: 0.15rem 0.6rem 0.1rem;
-  flex-wrap: wrap;
-}
-
-.langSwitch {
-  display: flex;
-  gap: 4px;
-}
-.langBtn {
-  font-size: 11px;
-  padding: 2px 7px;
-  border-radius: 6px;
-  border: 1px solid transparent;
-  background: transparent;
-  color: var(--k-text-tertiary);
-  cursor: pointer;
-  line-height: 1.4;
-}
-.langBtn[data-active="true"] {
-  color: var(--k-text);
-  border-color: var(--k-border);
-  background: var(--k-bg-elevated);
 }
 
 /* 滚动翻页入口（SESS-LIST）：列表底部，暖木文字键。 */
