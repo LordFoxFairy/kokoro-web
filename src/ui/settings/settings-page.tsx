@@ -56,16 +56,50 @@ export function SettingsPage({ brandName }: { brandName?: string }) {
           {t("settings.backToApp")}
         </Link>
       </header>
-      <main className={styles.stack}>
-        <AccountCard router={router} />
-        <AppearanceCard />
-        <ChatPrefsCard />
-        <SubscriptionCard />
-        <CapabilitiesCard />
-      </main>
-      <p className={styles.brandFoot} aria-hidden>
-        {brandName ?? "Kokoro"}
-      </p>
+      <div className={styles.shell}>
+        <nav className={styles.nav} aria-label={t("settings.title")}>
+          <a className={styles.navItem} href="#sec-account">
+            <span className={styles.navIcon} aria-hidden>◍</span>
+            {t("settings.accountTitle")}
+          </a>
+          <a className={styles.navItem} href="#sec-appearance">
+            <span className={styles.navIcon} aria-hidden>◐</span>
+            {t("settings.appearanceTitle")}
+          </a>
+          <a className={styles.navItem} href="#sec-chat">
+            <span className={styles.navIcon} aria-hidden>✦</span>
+            {t("settings.chatTitle")}
+          </a>
+          <a className={styles.navItem} href="#sec-subscription">
+            <span className={styles.navIcon} aria-hidden>◆</span>
+            {t("settings.subTitle")}
+          </a>
+          <a className={styles.navItem} href="#sec-capabilities">
+            <span className={styles.navIcon} aria-hidden>◈</span>
+            {t("settings.capsTitle")}
+          </a>
+          <p className={styles.navBrand} aria-hidden>
+            {brandName ?? "Kokoro"}
+          </p>
+        </nav>
+        <main className={styles.stack}>
+          <div id="sec-account" className={styles.anchor}>
+            <AccountCard router={router} />
+          </div>
+          <div id="sec-appearance" className={styles.anchor}>
+            <AppearanceCard />
+          </div>
+          <div id="sec-chat" className={styles.anchor}>
+            <ChatPrefsCard />
+          </div>
+          <div id="sec-subscription" className={styles.anchor}>
+            <SubscriptionCard />
+          </div>
+          <div id="sec-capabilities" className={styles.anchor}>
+            <CapabilitiesCard />
+          </div>
+        </main>
+      </div>
     </div>
   )
 }

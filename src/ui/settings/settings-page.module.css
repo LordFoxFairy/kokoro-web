@@ -14,9 +14,70 @@
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  max-width: 42rem;
+  max-width: 60rem;
   margin: 0 auto;
   padding: 1.75rem clamp(1rem, 4vw, 1.5rem) 0.5rem;
+}
+
+/* 两栏设置：左侧粘性分区导航 + 右侧内容（premium settings 布局）。 */
+.shell {
+  display: grid;
+  grid-template-columns: 15rem minmax(0, 1fr);
+  gap: clamp(1.5rem, 4vw, 2.75rem);
+  max-width: 60rem;
+  margin: 0 auto;
+  padding: 1.25rem clamp(1rem, 4vw, 1.5rem) 0;
+  align-items: start;
+}
+
+.nav {
+  position: sticky;
+  top: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.navItem {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.6rem 0.8rem;
+  border-radius: 0.65rem;
+  font-size: 0.95rem;
+  font-weight: 550;
+  color: var(--k-text-secondary);
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.navItem:hover {
+  background: var(--k-bg-hover);
+  color: var(--k-text);
+}
+
+.navIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 0.45rem;
+  background: var(--k-brand-soft);
+  color: var(--k-brand);
+  font-size: 0.85rem;
+}
+
+.navBrand {
+  margin: 1.25rem 0 0;
+  padding-left: 0.8rem;
+  font-family: var(--font-serif);
+  font-size: 0.85rem;
+  color: var(--k-text-muted);
+}
+
+/* 锚点滚动留出顶距（粘性导航不遮住标题）。 */
+.anchor {
+  scroll-margin-top: 1.5rem;
 }
 
 .pageTitle {
@@ -41,9 +102,7 @@
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
-  max-width: 42rem;
-  margin: 0 auto;
-  padding: 1.25rem clamp(1rem, 4vw, 1.5rem) 0;
+  min-width: 0;
 }
 
 .card {
@@ -51,7 +110,7 @@
   border-radius: 1rem;
   background: var(--k-bg-container);
   padding: 1.6rem 1.75rem;
-  box-shadow: 0 10px 26px rgba(43, 37, 32, 0.05);
+  box-shadow: 0 10px 26px rgba(15, 23, 41, 0.05);
 }
 
 .cardTitle {
