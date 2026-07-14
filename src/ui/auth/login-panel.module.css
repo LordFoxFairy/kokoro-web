@@ -1,0 +1,266 @@
+/* 登录页样式（WEB-FACE 面二）：浅底全屏 + 居中暖纸卡，顶栏仅品牌、页脚隐藏。
+   Kokoro 暖纸 --k-* 皮肤，亮暗双态随 globals.css。移动态白卡近全宽。 */
+
+.screen {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: var(--k-bg-base);
+  overflow: hidden;
+}
+
+/* 柔和 pastel 光晕：与落地页/壳同语言，浅底上方一层低饱和渐变。 */
+.screen::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(52% 46% at 12% -8%, rgba(255, 194, 222, 0.24), transparent 76%),
+    radial-gradient(50% 44% at 44% -10%, rgba(255, 228, 188, 0.24), transparent 78%),
+    radial-gradient(56% 50% at 82% -8%, rgba(189, 220, 255, 0.26), transparent 78%);
+}
+
+.topbar {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  padding: 1rem clamp(1rem, 4vw, 2.5rem);
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--k-text);
+}
+
+.brandDot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.9rem;
+  height: 1.9rem;
+  border-radius: 999px;
+  background: var(--k-brand-soft);
+  color: var(--k-brand);
+}
+
+.brandName {
+  font-family: var(--font-serif);
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+/* toast 归一：顶部居中浮层，暖纸卡面 + 错误语义描边。 */
+.toast {
+  position: fixed;
+  top: 1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 30;
+  max-width: min(28rem, calc(100vw - 2rem));
+  padding: 0.7rem 1.1rem;
+  border: 1px solid var(--k-error-border);
+  border-radius: 0.7rem;
+  background: var(--k-error-bg);
+  color: var(--k-error-strong);
+  font-size: 0.9rem;
+  line-height: 1.45;
+  box-shadow: 0 14px 36px rgba(139, 111, 71, 0.16);
+  text-align: center;
+}
+
+.stage {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  display: grid;
+  place-items: center;
+  padding: 1.5rem;
+}
+
+.card {
+  width: min(24rem, 100%);
+  border: 1px solid var(--k-border);
+  border-radius: 1.2rem;
+  background: var(--k-bg-container);
+  box-shadow: 0 24px 60px rgba(139, 111, 71, 0.12);
+  padding: 2.25rem 1.9rem 1.9rem;
+  text-align: center;
+}
+
+.brandBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 3rem;
+  height: 3rem;
+  margin-bottom: 1rem;
+  border-radius: 999px;
+  background: var(--k-brand-soft);
+  color: var(--k-brand);
+}
+
+.brandIcon {
+  width: 1.55rem;
+  height: 1.55rem;
+}
+
+.title {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 1.45rem;
+  font-weight: 600;
+  color: var(--k-text);
+}
+
+.subtitle {
+  margin: 0.55rem 0 1.5rem;
+  font-size: 0.92rem;
+  line-height: 1.55;
+  color: var(--k-text-tertiary);
+}
+
+.field {
+  display: block;
+  text-align: left;
+  margin-bottom: 1rem;
+}
+
+.fieldLabel {
+  display: block;
+  margin-bottom: 0.4rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--k-text-secondary);
+}
+
+.input {
+  width: 100%;
+  height: 2.75rem;
+  padding: 0 0.85rem;
+  border: 1px solid var(--k-border);
+  border-radius: 0.7rem;
+  background: var(--k-bg-container);
+  color: var(--k-text);
+  font-size: 0.98rem;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.input:focus {
+  border-color: var(--k-border-strong);
+  box-shadow: 0 0 0 3px var(--k-brand-ring);
+}
+
+.input::placeholder {
+  color: var(--k-text-muted);
+}
+
+.primaryBtn {
+  width: 100%;
+  height: 2.75rem;
+  border: none;
+  border-radius: 0.7rem;
+  background: var(--k-brand);
+  color: var(--k-brand-on);
+  font-size: 0.98rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.primaryBtn:hover:not(:disabled) {
+  background: var(--k-brand-hover);
+}
+
+.primaryBtn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.primaryLink {
+  display: block;
+  width: 100%;
+  height: 2.75rem;
+  line-height: 2.75rem;
+  border-radius: 0.7rem;
+  background: var(--k-brand);
+  color: var(--k-brand-on);
+  font-size: 0.95rem;
+  font-weight: 600;
+  transition: background 0.15s ease;
+}
+
+.primaryLink:hover {
+  background: var(--k-brand-hover);
+}
+
+.note {
+  margin: 1.25rem 0 0;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: var(--k-text-tertiary);
+}
+
+/* 发送后态动作区：重发（带倒计时禁用）+ 改邮箱返回。 */
+.sentActions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 1.25rem;
+}
+
+.secondaryBtn {
+  width: 100%;
+  height: 2.6rem;
+  border: 1px solid var(--k-border);
+  border-radius: 0.7rem;
+  background: var(--k-bg-container);
+  color: var(--k-text);
+  font-size: 0.92rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.secondaryBtn:hover:not(:disabled) {
+  background: var(--k-bg-hover);
+  border-color: var(--k-border-strong);
+}
+
+.secondaryBtn:disabled {
+  color: var(--k-text-muted);
+  cursor: default;
+}
+
+.linkBtn {
+  border: none;
+  background: transparent;
+  color: var(--k-brand);
+  font-size: 0.9rem;
+  cursor: pointer;
+  padding: 0.35rem;
+}
+
+.linkBtn:hover {
+  color: var(--k-brand-hover);
+  text-decoration: underline;
+}
+
+/* 移动态：白卡近全宽，内边距收敛。 */
+@media (max-width: 480px) {
+  .stage {
+    padding: 1rem;
+  }
+
+  .card {
+    width: 100%;
+    padding: 2rem 1.4rem 1.6rem;
+  }
+}

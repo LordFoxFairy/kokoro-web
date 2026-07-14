@@ -5,7 +5,7 @@
 // → 深色 CTA 块 → 多列页脚（只挂真实目的地：页内锚 + /login）。皮肤守 Kokoro 暖纸 --k-* 体系，
 // 亮暗双态随 globals.css。hero 输入回车即暂存草稿并跳 /login，登录回跳后 composer 预填。
 
-import { useState, type ReactNode } from "react"
+import { useEffect, useState, type ReactNode } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 
@@ -96,6 +96,14 @@ export function LandingPage({ brandName }: { brandName?: string }) {
   const [heroDraft, setHeroDraft] = useState("")
   const [navOpen, setNavOpen] = useState(false)
   const brand = brandName ?? "Kokoro"
+
+  // magic-link 回调失败 303 落在 `/?auth=link_unavailable`（callback 机制不改）：转投 /login，
+  // 由登录页统一 toast 提示重发。落地页本身不承载登录错误 UI。
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("auth") === "link_unavailable") {
+      router.replace("/login?auth=link_unavailable")
+    }
+  }, [router])
 
   // hero 输入回车/点开始：暂存草稿到 pending 键 → 跳 /login；登录回跳 `/` 后 composer 读同键预填。
   const startFromHero = (): void => {
