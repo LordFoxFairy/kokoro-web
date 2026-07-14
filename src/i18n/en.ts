@@ -392,6 +392,8 @@ export const en: Partial<Record<MessageKey, string>> = {
   "shared.notFoundHint": "The link may have been revoked, or the session deleted.",
   "shared.readonlyBadge": "Read-only share",
   // Marketing landing (WEB-FACE face 1)
+  "marketing.navCaps": "Capabilities",
+  "marketing.navFaq": "FAQ",
   "marketing.navPricing": "Pricing",
   "marketing.navLogin": "Sign in",
   "marketing.navCta": "Get started",

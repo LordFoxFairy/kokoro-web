@@ -23,7 +23,7 @@
 .hero {
   position: relative;
   text-align: center;
-  padding: clamp(3.5rem, 9vw, 6.5rem) 0 clamp(2.5rem, 6vw, 4rem);
+  padding: clamp(2.5rem, 6vw, 4.5rem) 0 clamp(2rem, 5vw, 3.25rem);
 }
 
 .hero::before {
@@ -218,26 +218,104 @@
   height: 100%;
 }
 
-.capArtBase {
+/* 场景底：柔和暖纸晕染，随主题切色（每张背景微差，避免死板）。 */
+.capScene {
+  fill: color-mix(in srgb, var(--k-brand-soft) 55%, var(--k-bg-container));
+}
+
+/* pastel accent 晕（decorative 背景色块，营造色彩层次）。 */
+.capBlobPink {
+  fill: rgba(244, 184, 208, 0.5);
+}
+.capBlobAmber {
+  fill: rgba(240, 201, 138, 0.5);
+}
+.capBlobBlue {
+  fill: rgba(169, 200, 240, 0.5);
+}
+.capBlobGreen {
+  fill: rgba(143, 191, 154, 0.45);
+}
+
+/* 白卡与内容条。 */
+.capCard {
   fill: var(--k-bg-container);
   stroke: var(--k-border);
-  stroke-width: 1;
+  stroke-width: 1.5;
 }
-
-.capArtSoft {
-  fill: var(--k-brand-soft);
+.capMuted {
+  fill: color-mix(in srgb, var(--k-brand) 22%, transparent);
 }
-
-.capArtInk {
+.capInk {
   fill: var(--k-brand);
 }
+.capOn {
+  fill: var(--k-brand-on);
+}
+.capOnDot {
+  fill: var(--k-brand-on);
+}
 
-.capArtStroke {
+/* pastel 实心填充块（图标/卡）。 */
+.capAccentPinkFill {
+  fill: #e79ebc;
+}
+.capAccentAmberFill {
+  fill: #e0a95a;
+}
+.capAccentBlueFill {
+  fill: #7fa8e0;
+}
+.capAccentGreenFill {
+  fill: #7aa886;
+}
+.capAccentGreen {
+  fill: var(--k-success);
+}
+
+/* 头像。 */
+.capAvatarInk {
+  fill: var(--k-brand);
+  stroke: var(--k-bg-container);
+  stroke-width: 3;
+}
+.capAvatarAmber {
+  fill: #e0a95a;
+  stroke: var(--k-bg-container);
+  stroke-width: 3;
+}
+.capAvatarPink {
+  fill: #e79ebc;
+  stroke: var(--k-bg-container);
+  stroke-width: 3;
+}
+
+/* 描边符号：审批勾 / 分享 / 连接线。 */
+.capCheck {
   fill: none;
-  stroke: var(--k-brand);
+  stroke: var(--k-text-on-brand);
   stroke-width: 3;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+.capCheckThin {
+  fill: none;
+  stroke: var(--k-brand-on);
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+.capShare {
+  fill: none;
+  stroke: var(--k-brand-on);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.capLink {
+  fill: none;
+  stroke: color-mix(in srgb, var(--k-brand) 55%, transparent);
+  stroke-width: 3;
+  stroke-linecap: round;
 }
 
 .capTitle {

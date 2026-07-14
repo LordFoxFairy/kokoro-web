@@ -25,8 +25,15 @@ export function MarketingTopBar({ brandName }: { brandName?: string }) {
   const brand = brandName ?? "Kokoro"
   const [navOpen, setNavOpen] = useState(false)
 
+  // 功能导航：均为页内真实目的地锚点 + 真实路由，不放不存在的产品下拉。
   const links = (
     <>
+      <Link className={styles.navLink} href="/#capabilities" onClick={() => setNavOpen(false)}>
+        {t("marketing.navCaps")}
+      </Link>
+      <Link className={styles.navLink} href="/#faq" onClick={() => setNavOpen(false)}>
+        {t("marketing.navFaq")}
+      </Link>
       <Link className={styles.navLink} href="/#faq" onClick={() => setNavOpen(false)}>
         {t("marketing.navPricing")}
       </Link>

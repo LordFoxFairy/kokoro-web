@@ -50,7 +50,8 @@
   border: 1px solid var(--k-border);
   border-radius: 1rem;
   background: var(--k-bg-container);
-  padding: 1.5rem;
+  padding: 1.6rem 1.75rem;
+  box-shadow: 0 10px 26px rgba(43, 37, 32, 0.05);
 }
 
 .cardTitle {

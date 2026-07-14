@@ -407,6 +407,8 @@ export const zh = {
   "shared.notFoundHint": "链接可能已被撤销，或会话已删除。",
   "shared.readonlyBadge": "只读分享",
   // 营销落地页（WEB-FACE 面一）：未登录访客的首页
+  "marketing.navCaps": "能力",
+  "marketing.navFaq": "常见问题",
   "marketing.navPricing": "定价",
   "marketing.navLogin": "登录",
   "marketing.navCta": "开始使用",

@@ -16,46 +16,83 @@ import { stashPendingDraft } from "@/ui/shell/use-draft"
 import { MarketingTopBar } from "./marketing-top-bar"
 import styles from "./landing-page.module.css"
 
-// 能力区抽象插画：暖纸底上的几何母题（非产品截图，避免造假素材）。variant 决定构图。
+// 能力区原创彩色插画（成套，每张贴一个能力语义）：暖纸风 + 品牌木色 + 一组柔和 pastel accent，
+// 有色彩、细节与层次——本仓自绘 SVG，非任何第三方素材。variant 决定场景。
 function CapabilityArt({ variant }: { variant: number }) {
   return (
-    <svg className={styles.capArt} viewBox="0 0 120 90" aria-hidden data-variant={variant}>
-      <rect className={styles.capArtBase} x="8" y="10" width="104" height="70" rx="10" />
+    <svg className={styles.capArt} viewBox="0 0 200 150" role="img" aria-hidden data-variant={variant}>
+      {/* 每张一层柔和场景底色（pastel 晕染），再叠白卡与主题元素。 */}
+      <rect className={styles.capScene} x="0" y="0" width="200" height="150" rx="16" />
       {variant === 0 ? (
+        // 对话协作 + HITL 审批：两枚对话气泡 + 审批勾徽标。
         <>
-          <rect className={styles.capArtSoft} x="20" y="24" width="52" height="8" rx="4" />
-          <rect className={styles.capArtSoft} x="20" y="40" width="72" height="8" rx="4" />
-          <rect className={styles.capArtInk} x="20" y="58" width="30" height="10" rx="5" />
+          <circle className={styles.capBlobPink} cx="150" cy="34" r="40" />
+          <rect className={styles.capCard} x="26" y="30" width="96" height="34" rx="10" />
+          <rect className={styles.capMuted} x="38" y="41" width="60" height="5" rx="2.5" />
+          <rect className={styles.capMuted} x="38" y="51" width="42" height="5" rx="2.5" />
+          <rect className={styles.capInk} x="92" y="78" width="82" height="34" rx="10" />
+          <rect className={styles.capOn} x="104" y="89" width="52" height="5" rx="2.5" />
+          <rect className={styles.capOn} x="104" y="99" width="34" height="5" rx="2.5" />
+          <circle className={styles.capAccentGreen} cx="150" cy="66" r="15" />
+          <path className={styles.capCheck} d="M143 66 l5 5 l9 -10" />
         </>
       ) : variant === 1 ? (
+        // 技能库：模块化技能卡网格 + 高亮一枚 + 新增位。
         <>
-          <circle className={styles.capArtInk} cx="34" cy="34" r="9" />
-          <circle className={styles.capArtSoft} cx="60" cy="34" r="9" />
-          <circle className={styles.capArtSoft} cx="86" cy="34" r="9" />
-          <rect className={styles.capArtSoft} x="24" y="54" width="72" height="8" rx="4" />
+          <circle className={styles.capBlobAmber} cx="46" cy="120" r="42" />
+          <rect className={styles.capCard} x="30" y="28" width="46" height="40" rx="9" />
+          <rect className={styles.capInk} x="86" y="28" width="46" height="40" rx="9" />
+          <rect className={styles.capCard} x="142" y="28" width="30" height="40" rx="9" />
+          <rect className={styles.capCard} x="30" y="82" width="46" height="40" rx="9" />
+          <rect className={styles.capCard} x="86" y="82" width="46" height="40" rx="9" />
+          <rect className={styles.capAccentBlueFill} x="142" y="82" width="30" height="40" rx="9" />
+          <rect className={styles.capMuted} x="40" y="45" width="26" height="5" rx="2.5" />
+          <rect className={styles.capOn} x="96" y="45" width="26" height="5" rx="2.5" />
+          <path className={styles.capCheckThin} d="M151 102 h12 M157 96 v12" />
         </>
       ) : variant === 2 ? (
+        // 连接 MCP：中心枢纽节点连接三个工具节点。
         <>
-          <circle className={styles.capArtInk} cx="34" cy="45" r="8" />
-          <circle className={styles.capArtInk} cx="86" cy="45" r="8" />
-          <path className={styles.capArtStroke} d="M42 45 H78" />
-          <rect className={styles.capArtSoft} x="24" y="24" width="72" height="6" rx="3" />
+          <circle className={styles.capBlobBlue} cx="100" cy="40" r="46" />
+          <path className={styles.capLink} d="M100 75 L48 40 M100 75 L152 40 M100 75 L100 118" />
+          <circle className={styles.capInk} cx="100" cy="75" r="18" />
+          <circle className={styles.capOnDot} cx="100" cy="75" r="6" />
+          <rect className={styles.capAccentPinkFill} x="34" y="26" width="28" height="28" rx="8" />
+          <rect className={styles.capAccentAmberFill} x="138" y="26" width="28" height="28" rx="8" />
+          <rect className={styles.capAccentGreenFill} x="86" y="106" width="28" height="28" rx="8" />
         </>
       ) : variant === 3 ? (
+        // 成果交付 / 分享：产物文档 + 分享链接徽标。
         <>
-          <path className={styles.capArtStroke} d="M28 60 L52 36 L70 50 L92 26" />
-          <circle className={styles.capArtInk} cx="92" cy="26" r="5" />
+          <circle className={styles.capBlobGreen} cx="150" cy="118" r="42" />
+          <rect className={styles.capCard} x="40" y="24" width="86" height="102" rx="12" />
+          <rect className={styles.capMuted} x="54" y="40" width="58" height="6" rx="3" />
+          <rect className={styles.capMuted} x="54" y="56" width="40" height="6" rx="3" />
+          <rect className={styles.capAccentAmberFill} x="54" y="76" width="58" height="36" rx="7" />
+          <circle className={styles.capInk} cx="140" cy="52" r="18" />
+          <path className={styles.capShare} d="M134 52 h12 M141 47 l6 5 l-6 5" />
         </>
       ) : variant === 4 ? (
+        // 团队协作：共享工作区 + 三枚成员头像。
         <>
-          <circle className={styles.capArtInk} cx="46" cy="40" r="10" />
-          <circle className={styles.capArtSoft} cx="72" cy="40" r="10" />
-          <rect className={styles.capArtSoft} x="30" y="60" width="60" height="7" rx="3.5" />
+          <circle className={styles.capBlobPink} cx="52" cy="40" r="44" />
+          <rect className={styles.capCard} x="30" y="46" width="140" height="76" rx="12" />
+          <rect className={styles.capMuted} x="44" y="60" width="70" height="6" rx="3" />
+          <rect className={styles.capMuted} x="44" y="74" width="112" height="6" rx="3" />
+          <rect className={styles.capAccentBlueFill} x="44" y="94" width="48" height="16" rx="8" />
+          <circle className={styles.capAvatarInk} cx="78" cy="34" r="16" />
+          <circle className={styles.capAvatarAmber} cx="104" cy="34" r="16" />
+          <circle className={styles.capAvatarPink} cx="130" cy="34" r="16" />
         </>
       ) : (
+        // 多模型：模型选择器 + 一枚激活 chip。
         <>
-          <rect className={styles.capArtInk} x="22" y="26" width="30" height="38" rx="6" />
-          <rect className={styles.capArtSoft} x="60" y="26" width="30" height="38" rx="6" />
+          <circle className={styles.capBlobBlue} cx="150" cy="118" r="42" />
+          <rect className={styles.capCard} x="34" y="40" width="132" height="70" rx="14" />
+          <rect className={styles.capInk} x="46" y="58" width="52" height="34" rx="9" />
+          <rect className={styles.capOn} x="58" y="72" width="28" height="6" rx="3" />
+          <rect className={styles.capAccentAmberFill} x="106" y="58" width="24" height="34" rx="9" />
+          <rect className={styles.capAccentPinkFill} x="136" y="58" width="24" height="34" rx="9" />
         </>
       )}
     </svg>
