@@ -3,12 +3,33 @@
    桌面多列→移动单列。对比度与主次层级按参考不淡化。顶栏见 marketing-top-bar。 */
 
 .page {
+  position: relative;
   display: flex;
   flex-direction: column;
   min-height: 100vh;
   min-height: 100dvh;
   background: var(--k-bg-base);
   color: var(--k-text);
+}
+
+/* 极淡网格纹理：暖纸底上一层几不可见的经纬线，给整页一点结构层次（不喧宾夺主）。 */
+.page::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(to right, color-mix(in srgb, var(--k-ink) 3%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--k-ink) 3%, transparent) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.6), transparent 55%);
+  -webkit-mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.6), transparent 55%);
+}
+
+.page > * {
+  position: relative;
+  z-index: 1;
 }
 
 .main {
@@ -51,11 +72,15 @@
   margin: 0 auto;
   max-width: 20ch;
   font-family: var(--font-serif);
-  font-size: clamp(2.3rem, 5.5vw, 3.8rem);
+  font-size: clamp(2.4rem, 5.8vw, 4rem);
   font-weight: 700;
-  line-height: 1.1;
-  letter-spacing: -0.015em;
-  color: var(--k-text);
+  line-height: 1.08;
+  letter-spacing: -0.02em;
+  /* 暖色渐变文字：ink→暖木，给大标题视觉重量（亮暗双档都保对比）。 */
+  background: linear-gradient(120deg, var(--k-text) 55%, var(--k-brand) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 
 .heroSubtitle {
@@ -78,6 +103,14 @@
   border-radius: 1.15rem;
   background: var(--k-bg-container);
   box-shadow: 0 22px 50px rgba(43, 37, 32, 0.12);
+  transition: box-shadow 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+}
+
+/* 输入区作视觉焦点：聚焦即抬升 + 品牌焦点环。 */
+.heroInputRow:focus-within {
+  border-color: var(--k-brand);
+  box-shadow: 0 26px 60px rgba(43, 37, 32, 0.16), 0 0 0 4px var(--k-brand-ring);
+  transform: translateY(-1px);
 }
 
 .heroInput {
@@ -143,10 +176,17 @@
   transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
 }
 
+.heroChip {
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease, transform 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
 .heroChip:hover {
-  border-color: var(--k-border-strong);
-  color: var(--k-text);
-  background: var(--k-bg-hover);
+  border-color: var(--k-brand);
+  color: var(--k-brand);
+  background: var(--k-brand-soft);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 14px rgba(139, 111, 71, 0.16);
 }
 
 .heroNote {
@@ -211,6 +251,13 @@
   background: var(--k-bg-elevated);
   padding: clamp(1.5rem, 4vw, 2.75rem);
   box-shadow: 0 12px 30px rgba(43, 37, 32, 0.06);
+  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+}
+
+.capArtWrap:hover {
+  transform: translateY(-4px);
+  border-color: var(--k-border-strong);
+  box-shadow: 0 20px 44px rgba(43, 37, 32, 0.12);
 }
 
 .capArt {
@@ -318,6 +365,113 @@
   stroke-linecap: round;
 }
 
+/* 柔和投影：给主卡/节点/按钮组多一层深度。 */
+.capElevated {
+  filter: drop-shadow(0 3px 7px rgba(43, 37, 32, 0.14));
+}
+
+/* 更浅的内容条（次级信息）。 */
+.capMutedSoft {
+  fill: color-mix(in srgb, var(--k-brand) 12%, transparent);
+}
+
+/* 审批按钮组。 */
+.capBtnGreen {
+  fill: var(--k-success);
+}
+.capBtnGlyphOn {
+  fill: none;
+  stroke: var(--k-text-on-brand);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.capBtnOutline {
+  fill: var(--k-bg-container);
+  stroke: var(--k-border-strong);
+  stroke-width: 1.5;
+}
+.capBtnGlyphInk {
+  fill: none;
+  stroke: color-mix(in srgb, var(--k-brand) 60%, transparent);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+}
+
+/* 列表行（技能/模型）：激活态品牌软底，闲置态浅底。 */
+.capRowActive {
+  fill: var(--k-brand-soft);
+  stroke: color-mix(in srgb, var(--k-brand) 30%, transparent);
+  stroke-width: 1.5;
+}
+.capRowIdle {
+  fill: color-mix(in srgb, var(--k-brand) 5%, var(--k-bg-container));
+}
+
+/* 行内图标 tile。 */
+.capIconInk {
+  fill: var(--k-brand);
+}
+.capIconAmber {
+  fill: #e0a95a;
+}
+.capIconBlue {
+  fill: #7fa8e0;
+}
+
+/* 固定/新增描边符号。 */
+.capPin {
+  fill: none;
+  stroke: var(--k-brand);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+}
+
+/* 服务在线状态点。 */
+.capStatusDot {
+  fill: var(--k-success);
+  stroke: var(--k-bg-container);
+  stroke-width: 2;
+}
+
+/* 分享按钮 + 分享连线。 */
+.capShareBtn {
+  fill: var(--k-brand);
+}
+.capShareLink {
+  fill: none;
+  stroke: var(--k-text-on-brand);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+/* 品牌软底小 chip。 */
+.capChipBrand {
+  fill: var(--k-brand);
+}
+
+/* 团队「+更多」头像 + 加号。 */
+.capAvatarPlus {
+  fill: var(--k-brand-soft);
+  stroke: var(--k-bg-container);
+  stroke-width: 3;
+}
+.capPlus {
+  fill: none;
+  stroke: var(--k-brand);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+}
+
+/* 模型选中勾。 */
+.capCheckBrand {
+  fill: none;
+  stroke: var(--k-brand);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .capTitle {
   margin: 0;
   font-size: clamp(1.35rem, 2.5vw, 1.75rem);
@@ -386,6 +540,14 @@
   transform: rotate(45deg);
 }
 
+.faqItem {
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.faqItem[open] {
+  box-shadow: 0 10px 26px rgba(43, 37, 32, 0.07);
+}
+
 .faqAnswer {
   margin: 0;
   padding: 0 1.35rem 1.25rem;
@@ -394,9 +556,26 @@
   color: var(--k-text-secondary);
 }
 
+/* 展开动效：内容淡入 + 轻微下滑（尊重 reduce-motion，globals 已全局收敛动画）。 */
+.faqItem[open] .faqAnswer {
+  animation: faqReveal 0.22s ease;
+}
+
+@keyframes faqReveal {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 /* —— 深色 CTA 块（全宽底色，内容内收） —— */
+/* 用固定暖近黑（不用会随暗档翻转成浅色的 --k-ink），保证亮暗两档都是深底 + 反白文字高对比。 */
 .ctaBlock {
-  background: var(--k-ink);
+  background: #241f18;
   padding: clamp(3rem, 7vw, 5rem) clamp(1rem, 4vw, 2.5rem);
 }
 
@@ -441,8 +620,9 @@
 }
 
 /* —— 深色多列页脚 —— */
+/* 固定暖近黑（比 CTA 更深），亮暗两档一致深底。 */
 .footer {
-  background: color-mix(in srgb, var(--k-ink) 92%, #000);
+  background: #1c1811;
   color: color-mix(in srgb, var(--k-text-on-brand) 82%, transparent);
   padding: clamp(2.75rem, 5vw, 3.75rem) clamp(1rem, 4vw, 2.5rem) 2rem;
 }
