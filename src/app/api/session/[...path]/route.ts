@@ -4,7 +4,7 @@
 
 import { NextResponse } from "next/server"
 
-import { authConfig, readEnvelope, sameOriginOk } from "@/lib/server/auth"
+import { authConfig, resolveSessionWithRefresh, sameOriginOk } from "@/lib/server/auth"
 
 export const runtime = "nodejs"
 // 每请求实时求值：绝不静态化/缓存代理响应（SSE、鉴权头随信封变）。
@@ -23,10 +23,11 @@ async function proxy(request: Request, context: { params: Promise<{ path: string
   if (MUTATION_METHODS.has(request.method) && !sameOriginOk(request)) {
     return NextResponse.json({ error: "forbidden_origin" }, { status: 403 })
   }
-  const envelope = readEnvelope(request, config)
-  if (envelope === null) {
+  const resolved = await resolveSessionWithRefresh(request, config)
+  if (resolved === null) {
     return NextResponse.json({ error: "unauthenticated" }, { status: 401 })
   }
+  const { envelope, setCookie } = resolved
 
   const { path } = await context.params
   const search = new URL(request.url).search
@@ -68,6 +69,10 @@ async function proxy(request: Request, context: { params: Promise<{ path: string
     if (value !== null) {
       responseHeaders.set(name, value)
     }
+  }
+  // 静默续期发生了 → 把重新密封的信封 cookie 写回浏览器（下次请求带新 access/refresh）。
+  if (setCookie !== null) {
+    responseHeaders.append("set-cookie", setCookie)
   }
   return new Response(upstream.body, { status: upstream.status, headers: responseHeaders })
 }

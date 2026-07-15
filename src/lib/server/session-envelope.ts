@@ -10,10 +10,16 @@ import { z } from "zod"
 export const envelopePayloadSchema = z
   .object({
     runtime_jwt: z.string().min(1),
+    // runtime_jwt 的 exp（epoch 秒）：代理据此判断 access 是否快过期、该不该静默续期。
+    access_exp: z.number().int().positive(),
+    // 长效 refresh 明文：代理在 access 快过期时用它调 user /auth/refresh 换新 access。
+    // 只在服务端信封内（AES 加密 + httpOnly），浏览器 JS 读不到。
+    refresh_token: z.string().min(1),
     user_id: z.string().min(1),
     namespace: z.string().min(1),
     site_id: z.string().min(1),
-    // epoch 秒；解封强校验，cookie Max-Age 亦据此设定。
+    // 信封/cookie 生命周期 = refresh 的 exp（epoch 秒，通常 30 天）：解封强校验，cookie Max-Age 亦据此。
+    // 注意语义：这是信封整体寿命（跟随 refresh），不是 access 寿命（access 用 access_exp）。
     exp: z.number().int().positive(),
   })
   .strict()

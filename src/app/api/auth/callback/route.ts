@@ -57,18 +57,23 @@ export async function GET(request: Request): Promise<NextResponse> {
   }
 
   const nowSec = Math.floor(Date.now() / 1000)
-  // 信封 exp 对齐 runtime_jwt exp；解不出则给 1h 兜底（不超过 token 真实寿命由 session 验签兜住）。
-  const exp = decodeJwtExp(consumed.token) ?? nowSec + 3600
-  const maxAge = Math.max(0, exp - nowSec)
+  // access_exp 对齐 runtime_jwt exp（代理据此判该不该续）；解不出给 1h 兜底。
+  const accessExp = decodeJwtExp(consumed.token) ?? nowSec + 3600
+  // 信封/cookie 寿命 = refresh 寿命（30 天）：access 过期后信封仍在，代理才拿得到 refresh 去续。
+  const refreshExpMs = new Date(consumed.refresh_expires_at).getTime()
+  const refreshExp = Number.isFinite(refreshExpMs) ? Math.floor(refreshExpMs / 1000) : nowSec + 2_592_000
+  const maxAge = Math.max(0, refreshExp - nowSec)
   // 按请求 Host 定站点（SITE-REAL）：未接 site 服务时回退 config 的 env 缺省站点。
   const siteId = await resolveSiteId(request.headers.get("host"), config.siteId)
   const sealed = sealEnvelope(
     {
       runtime_jwt: consumed.token,
+      access_exp: accessExp,
+      refresh_token: consumed.refresh_token,
       user_id: consumed.user.id,
       namespace: consumed.namespace,
       site_id: siteId,
-      exp,
+      exp: refreshExp,
     },
     config.sessionSecrets,
   )

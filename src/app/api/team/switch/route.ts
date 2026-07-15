@@ -48,17 +48,22 @@ export async function POST(request: Request): Promise<NextResponse> {
   }
 
   const nowSec = Math.floor(Date.now() / 1000)
-  const exp = decodeJwtExp(outcome.result.token) ?? nowSec + 3600
-  const maxAge = Math.max(0, exp - nowSec)
+  const accessExp = decodeJwtExp(outcome.result.token) ?? nowSec + 3600
+  // 信封/cookie 寿命 = 换团队新签的 refresh 寿命（30 天）。
+  const refreshExpMs = new Date(outcome.result.refresh_expires_at).getTime()
+  const refreshExp = Number.isFinite(refreshExpMs) ? Math.floor(refreshExpMs / 1000) : nowSec + 2_592_000
+  const maxAge = Math.max(0, refreshExp - nowSec)
   // 按请求 Host 定站点（SITE-REAL）：未接 site 服务时回退 config 的 env 缺省站点。
   const siteId = await resolveSiteId(request.headers.get("host"), config.siteId)
   const sealed = sealEnvelope(
     {
       runtime_jwt: outcome.result.token,
+      access_exp: accessExp,
+      refresh_token: outcome.result.refresh_token,
       user_id: outcome.result.user.id,
       namespace: outcome.result.namespace,
       site_id: siteId,
-      exp,
+      exp: refreshExp,
     },
     config.sessionSecrets,
   )

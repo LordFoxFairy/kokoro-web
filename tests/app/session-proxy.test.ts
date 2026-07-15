@@ -13,7 +13,7 @@ const nowSec = (): number => Math.floor(Date.now() / 1000)
 
 function sessionCookie(): string {
   const sealed = sealEnvelope(
-    { runtime_jwt: "rt.jwt.sig", user_id: "u1", namespace: "team_1", site_id: "site-a", exp: nowSec() + 60 },
+    { runtime_jwt: "rt.jwt.sig", access_exp: nowSec() + 3600, refresh_token: "rt-refresh", user_id: "u1", namespace: "team_1", site_id: "site-a", exp: nowSec() + 3600 },
     [ENV.KOKORO_WEB_SESSION_SECRET],
   )
   return `kokoro_session=${sealed}`

@@ -7,7 +7,7 @@ import { NextResponse } from "next/server"
 import {
   authConfig,
   INTERNAL_SECRET_HEADER,
-  readEnvelope,
+  resolveSessionWithRefresh,
   sameOriginOk,
   SERVICE_HEADER,
   SERVICE_VALUE,
@@ -31,10 +31,11 @@ async function proxy(
   if (MUTATION_METHODS.has(request.method) && !sameOriginOk(request)) {
     return NextResponse.json({ error: "forbidden_origin" }, { status: 403 })
   }
-  const envelope = readEnvelope(request, config)
-  if (envelope === null) {
+  const resolved = await resolveSessionWithRefresh(request, config)
+  if (resolved === null) {
     return NextResponse.json({ error: "unauthenticated" }, { status: 401 })
   }
+  const { envelope, setCookie } = resolved
 
   const { path } = await context.params
   const segments = path ?? []
@@ -79,6 +80,9 @@ async function proxy(
   const contentType = upstream.headers.get("content-type")
   if (contentType !== null) {
     responseHeaders.set("content-type", contentType)
+  }
+  if (setCookie !== null) {
+    responseHeaders.append("set-cookie", setCookie)
   }
   return new Response(upstream.body, { status: upstream.status, headers: responseHeaders })
 }

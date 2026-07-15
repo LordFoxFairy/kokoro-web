@@ -5,7 +5,7 @@
 import { createHash, randomBytes } from "node:crypto"
 import { z } from "zod"
 
-import { openEnvelope, type EnvelopePayload } from "./session-envelope"
+import { openEnvelope, sealEnvelope, type EnvelopePayload } from "./session-envelope"
 
 // 信封 cookie（httpOnly，浏览器 JS 读不到）与一次性 nonce cookie（绑定申请设备）。
 export const SESSION_COOKIE = "kokoro_session"
@@ -171,17 +171,32 @@ export function readCookie(request: Request, name: string): string | null {
   return null
 }
 
-// user 的统一响应包 { data, requestId }。
+// user 的统一响应包 { data, requestId }。登录签发现在一并回长效 refresh（明文,仅此刻,封进信封）。
 const consumeResponseSchema = z.object({
   data: z.object({
     token: z.string().min(1),
     namespace: z.string().min(1),
+    refresh_token: z.string().min(1),
+    refresh_expires_at: z.string().min(1),
     user: z.object({ id: z.string().min(1) }).passthrough(),
     team: z.object({ id: z.string().min(1) }).passthrough(),
   }),
 })
 
 export type ConsumeResult = z.infer<typeof consumeResponseSchema>["data"]
+
+// /auth/refresh 响应:换新 access + 轮换后的新 refresh（无 user/team,只需身份轴 + 两个 token）。
+const refreshResponseSchema = z.object({
+  data: z.object({
+    token: z.string().min(1),
+    namespace: z.string().min(1),
+    site_id: z.string().min(1),
+    refresh_token: z.string().min(1),
+    refresh_expires_at: z.string().min(1),
+  }),
+})
+
+export type RefreshResult = z.infer<typeof refreshResponseSchema>["data"]
 
 const requestResponseSchema = z.object({
   data: z.object({
@@ -282,4 +297,89 @@ export async function userConsumeMagicLink(
     return null
   }
   return parsed.data.data
+}
+
+// 静默续期（web BFF → user /auth/refresh）：拿信封里的 refresh 换新 access + 轮换新 refresh。
+// 任何失败（无效/过期/吊销/泄露重放/多 tab 并发落空）都归一 null——调用方按「本次没续到」处理:
+// access 仍有效就继续用旧的,真过期才把用户送回登录。新 token 只在服务端重新密封进信封,不回浏览器。
+export async function userRefreshSession(
+  config: AuthConfig,
+  refreshToken: string,
+): Promise<RefreshResult | null> {
+  const response = await fetch(new URL("/auth/refresh", config.userBaseUrl), {
+    method: "POST",
+    headers: callerHeaders(config),
+    body: JSON.stringify({ refresh_token: refreshToken }),
+    cache: "no-store",
+  }).catch(() => null)
+  if (response === null || !response.ok) {
+    return null
+  }
+  const parsed = refreshResponseSchema.safeParse(await response.json().catch(() => null))
+  if (!parsed.success) {
+    return null
+  }
+  return parsed.data.data
+}
+
+// access 剩余寿命低于此阈值即提前静默续期（趁 access 还有效换新，续失败也不影响本次请求）。
+const REFRESH_THRESHOLD_SECONDS = 300
+
+export interface ResolvedSession {
+  envelope: EnvelopePayload
+  // 续期成功才有：重新密封的信封 cookie 的 Set-Cookie 头值，各代理在响应上 append 写回浏览器。
+  setCookie: string | null
+}
+
+// 代理统一入口：读信封 + 按需静默续期。null = 无信封（未认证）。
+// - access 尚新（剩余 ≥ 阈值）→ 返回当前信封，不续，setCookie=null。
+// - access 快过期 → 用信封里的 refresh 调 /auth/refresh 换新 access + 轮换 refresh，重新密封 → setCookie。
+// - 续期落空（多 tab 并发/refresh 失效）→ 返回当前信封（setCookie=null）：access 若仍有效上游照常，
+//   真过期上游 401、前端 session-state 复检送回登录——此处不强制登出（多 tab 并发不误踢）。
+export async function resolveSessionWithRefresh(
+  request: Request,
+  config: AuthConfig,
+): Promise<ResolvedSession | null> {
+  const envelope = readEnvelope(request, config)
+  if (envelope === null) {
+    return null
+  }
+  const nowSec = Math.floor(Date.now() / 1000)
+  if (envelope.access_exp - nowSec >= REFRESH_THRESHOLD_SECONDS) {
+    return { envelope, setCookie: null }
+  }
+  const refreshed = await userRefreshSession(config, envelope.refresh_token)
+  if (refreshed === null) {
+    return { envelope, setCookie: null }
+  }
+  const newAccessExp = decodeJwtExp(refreshed.token) ?? nowSec + 3600
+  const refreshExpMs = new Date(refreshed.refresh_expires_at).getTime()
+  const newRefreshExp = Number.isFinite(refreshExpMs) ? Math.floor(refreshExpMs / 1000) : nowSec + 2_592_000
+  const next: EnvelopePayload = {
+    runtime_jwt: refreshed.token,
+    access_exp: newAccessExp,
+    refresh_token: refreshed.refresh_token,
+    user_id: envelope.user_id,
+    namespace: refreshed.namespace,
+    site_id: refreshed.site_id,
+    exp: newRefreshExp,
+  }
+  const sealed = sealEnvelope(next, config.sessionSecrets)
+  return { envelope: next, setCookie: serializeSessionCookie(config, sealed, Math.max(0, newRefreshExp - nowSec)) }
+}
+
+// 手动序列化 Set-Cookie:代理走 `new Response(stream)` 流式转发,无 NextResponse.cookies 助手可用。
+function serializeSessionCookie(config: AuthConfig, value: string, maxAge: number): string {
+  const opts = sessionCookieOptions(config, maxAge)
+  const parts = [
+    `${SESSION_COOKIE}=${value}`,
+    `Path=${opts.path}`,
+    `Max-Age=${opts.maxAge}`,
+    "SameSite=Lax",
+    "HttpOnly",
+  ]
+  if (opts.secure) {
+    parts.push("Secure")
+  }
+  return parts.join("; ")
 }
