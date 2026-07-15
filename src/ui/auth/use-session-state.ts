@@ -23,12 +23,28 @@ export function useSessionState(): SessionState {
 
   useEffect(() => {
     let live = true
-    void fetch("/api/auth/session-state", { cache: "no-store" })
-      .then(async (res) => (res.ok ? parseState(await res.json()) : "anonymous"))
-      .then((resolved) => live && setState(resolved === "anonymous" ? "anonymous" : "pass"))
-      .catch(() => live && setState("pass"))
+    const check = (): void => {
+      void fetch("/api/auth/session-state", { cache: "no-store" })
+        .then(async (res) => (res.ok ? parseState(await res.json()) : "anonymous"))
+        .then((resolved) => live && setState(resolved === "anonymous" ? "anonymous" : "pass"))
+        .catch(() => live && setState("pass"))
+    }
+    check()
+    // 复检会话:信封 cookie 随 magic-link TTL 过期（默认 900s），长会话会失效。聚焦/重新可见/每 2 分钟
+    // 复检——过期即翻 anonymous,由页面匿名闸送回登录页,避免各处 API 401 裸报"加载失败"。
+    const onVisible = (): void => {
+      if (document.visibilityState === "visible") {
+        check()
+      }
+    }
+    window.addEventListener("focus", check)
+    document.addEventListener("visibilitychange", onVisible)
+    const timer = setInterval(onVisible, 120_000)
     return () => {
       live = false
+      window.removeEventListener("focus", check)
+      document.removeEventListener("visibilitychange", onVisible)
+      clearInterval(timer)
     }
   }, [])
 

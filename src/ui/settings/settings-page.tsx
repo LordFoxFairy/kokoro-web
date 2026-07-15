@@ -161,7 +161,12 @@ export function SettingsPage({ brandName }: { brandName?: string }) {
       <main className={styles.content}>
         {/* key=tab:切分区重挂载 → 入场动画重放。 */}
         <div key={tab} className={styles.contentInner}>
-          <h1 className={styles.contentTitle}>{activeLabel}</h1>
+          <div className={styles.contentHead}>
+            <h1 className={styles.contentTitle}>{activeLabel}</h1>
+            <Link className={styles.contentBack} href="/">
+              {t("settings.backToApp")}
+            </Link>
+          </div>
           {tab === "account" ? <AccountCard /> : null}
           {tab === "appearance" ? <AppearanceCard /> : null}
           {tab === "chat" ? <ChatPrefsCard /> : null}

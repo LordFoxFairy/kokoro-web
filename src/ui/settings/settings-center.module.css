@@ -129,11 +129,42 @@
   animation: contentIn 0.28s ease both;
 }
 
+.contentHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.75rem;
+}
+
 .contentTitle {
-  margin: 0 0 1.75rem;
+  margin: 0;
   font-size: 1.5rem;
   font-weight: 700;
   color: var(--k-text);
+}
+
+.contentBack {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.5rem 0.95rem;
+  border-radius: 0.6rem;
+  font-size: 0.9rem;
+  font-weight: 550;
+  color: var(--k-brand);
+  background: var(--k-brand-soft);
+  transition: background 0.16s ease;
+}
+
+.contentBack::before {
+  content: "←";
+  font-size: 1rem;
+}
+
+.contentBack:hover {
+  background: color-mix(in srgb, var(--k-brand) 18%, var(--k-bg-container));
 }
 
 @keyframes contentIn {
