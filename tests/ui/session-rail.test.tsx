@@ -25,12 +25,6 @@ function renderRail(overrides?: Partial<Parameters<typeof SessionRail>[0]>) {
         onSelectConversation={() => {}}
         onDeleteConversation={() => {}}
         onRenameConversation={onRenameConversation}
-        onOpenSkills={() => {}}
-        onOpenMcp={() => {}}
-        onOpenBilling={() => {}}
-        onOpenTeams={() => {}}
-        onOpenLibrary={() => {}}
-        onOpenSettings={() => {}}
         listLoading={false}
         listError={false}
         hasMore={false}

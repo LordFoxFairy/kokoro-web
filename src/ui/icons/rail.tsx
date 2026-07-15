@@ -128,3 +128,13 @@ export function SunIcon({ className }: IconProps) {
     </svg>
   )
 }
+
+export function UserIcon({ className }: IconProps) {
+  // 单人（账户分区，与团队分区的多人 UsersIcon 区分）。
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden>
+      <circle cx="12" cy="8" r="3.6" stroke="currentColor" strokeWidth="1.6" />
+      <path d="M5 19.5c0-3.4 3.1-5.6 7-5.6s7 2.2 7 5.6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  )
+}

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react"
+import Link from "next/link"
 
 import { useT } from "@/i18n/context"
 import { ChatsIcon, CoinIcon, GearIcon, LibraryIcon, PanelIcon, PlugIcon, PlusIcon, SearchIcon, SlidersIcon, UsersIcon } from "@/ui/icons/rail"
@@ -23,13 +24,6 @@ type SessionRailProps = {
   onDeleteConversation: (id: string) => void
   // 会话重命名（CONV-UX）：提交非空新题；乐观更新 + 失败回滚由上层处理。
   onRenameConversation: (id: string, title: string) => void
-  onOpenSkills: () => void
-  onOpenMcp: () => void
-  onOpenBilling: () => void
-  onOpenTeams: () => void
-  onOpenLibrary: () => void
-  // 设置浮层入口（WEB-FACE 面三）：rail 用户区默认弹 SettingsPanel。
-  onOpenSettings: () => void
   // 清单服务端水合态（SESS-LIST）：加载/错误态与滚动翻页入口。
   listLoading: boolean
   listError: boolean
@@ -49,12 +43,6 @@ export function SessionRail({
   onSelectConversation,
   onDeleteConversation,
   onRenameConversation,
-  onOpenSkills,
-  onOpenMcp,
-  onOpenBilling,
-  onOpenTeams,
-  onOpenLibrary,
-  onOpenSettings,
   listLoading,
   listError,
   hasMore,
@@ -202,34 +190,31 @@ export function SessionRail({
         </div>
 
         {/* 作品库入口（ARTIFACT-LIB）：打开属主 namespace 全部成果跨会话聚合的卡片网格模态。 */}
-        <button className={styles.navItem} type="button" onClick={onOpenLibrary} data-testid="rail-library">
+        {/* 管理入口统一跳设置中心对应 tab（WEB-FACE 面三）：不再开独立弹窗,全程一个容器 tab 切换。 */}
+        <Link className={styles.navItem} href="/settings?tab=library" data-testid="rail-library">
           <LibraryIcon className={styles.icon} />
           <span className={styles.navLabel}>{t("rail.navLibrary")}</span>
-        </button>
+        </Link>
 
-        {/* 技能面板入口（WEB-SKILLS）：打开 hub self 面池/上传的模态。 */}
-        <button className={styles.navItem} type="button" onClick={onOpenSkills}>
+        <Link className={styles.navItem} href="/settings?tab=skills">
           <SlidersIcon className={styles.icon} />
           <span className={styles.navLabel}>{t("rail.navSkills")}</span>
-        </button>
+        </Link>
 
-        {/* 连接面板入口（MCP-UX）：MCP server 注册/启停/软删 + 凭据 handle 管理的模态。 */}
-        <button className={styles.navItem} type="button" onClick={onOpenMcp} data-testid="rail-mcp">
+        <Link className={styles.navItem} href="/settings?tab=mcp" data-testid="rail-mcp">
           <PlugIcon className={styles.icon} />
           <span className={styles.navLabel}>{t("rail.navMcp")}</span>
-        </button>
+        </Link>
 
-        {/* 余额面板入口（WEB-BILLING）：打开余额卡 + 账单流水的模态。 */}
-        <button className={styles.navItem} type="button" onClick={onOpenBilling}>
+        <Link className={styles.navItem} href="/settings?tab=subscription">
           <CoinIcon className={styles.icon} />
           <span className={styles.navLabel}>{t("rail.navBilling")}</span>
-        </button>
+        </Link>
 
-        {/* 团队面板入口（TEAM-1）：切换团队 + 待处理邀请 + 成员管理的模态。 */}
-        <button className={styles.navItem} type="button" onClick={onOpenTeams} data-testid="rail-teams">
+        <Link className={styles.navItem} href="/settings?tab=team" data-testid="rail-teams">
           <UsersIcon className={styles.icon} />
           <span className={styles.navLabel}>{t("rail.navTeams")}</span>
-        </button>
+        </Link>
       </nav>
 
       {hasConversations || listLoading || listError ? (
@@ -336,7 +321,7 @@ export function SessionRail({
         </nav>
       ) : null}
 
-      <UserCard brandName={brandName} onOpenSettings={onOpenSettings} />
+      <UserCard brandName={brandName} />
     </aside>
   )
 }
@@ -368,7 +353,7 @@ function useTeamName(): string | null | undefined {
   return name
 }
 
-function UserCard({ brandName, onOpenSettings }: { brandName?: string; onOpenSettings: () => void }) {
+function UserCard({ brandName }: { brandName?: string }) {
   const t = useT()
   const teamName = useTeamName()
   // 身份主文案：团队名（真实 namespace 归属）；未取到回退品牌名。不硬凑 email（信封无此字段）。
@@ -384,16 +369,15 @@ function UserCard({ brandName, onOpenSettings }: { brandName?: string; onOpenSet
         <p className={styles.userMeta}>{t("rail.userScope")}</p>
       </div>
       {/* 设置入口（WEB-FACE 面三）：弹 SettingsPanel 浮层（/settings 整页保留作深链兜底）。 */}
-      <button
-        type="button"
+      <Link
         className={styles.userSettings}
+        href="/settings?tab=account"
         aria-label={t("rail.navSettings")}
         title={t("rail.navSettings")}
         data-testid="rail-settings"
-        onClick={onOpenSettings}
       >
         <GearIcon className={styles.icon} />
-      </button>
+      </Link>
     </div>
   )
 }

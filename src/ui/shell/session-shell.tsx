@@ -217,12 +217,6 @@ export function SessionShell({ engine: injectedEngine, brandName }: SessionShell
         }}
         onDeleteConversation={conversationsCtl.deleteConversation}
         onRenameConversation={conversationsCtl.renameConversation}
-        onOpenSkills={panels.openSkills}
-        onOpenMcp={panels.openMcp}
-        onOpenBilling={panels.openBilling}
-        onOpenTeams={panels.openTeams}
-        onOpenLibrary={panels.openLibrary}
-        onOpenSettings={panels.openSettings}
         listLoading={conversationsCtl.loading}
         listError={conversationsCtl.error}
         hasMore={conversationsCtl.hasMore}

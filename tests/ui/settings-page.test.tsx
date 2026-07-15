@@ -1,5 +1,5 @@
-// 用户设置页测试（WEB-FACE 面三）：匿名闸重定向、五卡渲染、对话偏好就地存 localStorage、
-// 能力入口深链、余额摘要。会话态 hook 与 page-clients 均注入 mock（不打网络）。
+// 设置中心测试（WEB-FACE 面三）：匿名闸重定向、默认账户 tab、8 tab 导航、tab 切换单显、对话偏好
+// 就地存 localStorage。会话态 hook 与 page-clients 均注入 mock（不打网络）。
 import { cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -35,10 +35,16 @@ vi.mock("@/ui/shell/page-clients", () => ({
       agents: [{ name: "general", description: "default", is_default: true }],
     }),
   }),
+  // account/appearance/chat tab 不调用下列客户端；仅需存在 export 供模块 import。
+  browserHubClient: () => ({}),
+  browserPricingClient: () => ({}),
+  browserEngine: () => null,
 }))
 
 // import 顺延到 mock 之后。
 import { SettingsPage } from "@/ui/settings/settings-page"
+
+const TAB_KEYS = ["account", "appearance", "chat", "subscription", "skills", "mcp", "library", "team"]
 
 function renderSettings() {
   window.localStorage.setItem("kokoro.locale", "zh")
@@ -62,44 +68,37 @@ afterEach(() => {
   window.localStorage.clear()
 })
 
-describe("SettingsPage", () => {
-  it("redirects anonymous visitors to /login", () => {
+describe("SettingsPage 设置中心", () => {
+  it("匿名访客重定向 /login", () => {
     sessionState = "anonymous"
     renderSettings()
     expect(replace).toHaveBeenCalledWith("/login")
   })
 
-  it("renders all five settings cards when authenticated", async () => {
+  it("默认渲染账户 tab + 8 个 tab 导航 + 解析团队名", async () => {
     renderSettings()
     expect(screen.getByTestId("settings-account")).toBeInTheDocument()
-    expect(screen.getByTestId("settings-appearance")).toBeInTheDocument()
-    expect(screen.getByTestId("settings-chat")).toBeInTheDocument()
-    expect(screen.getByTestId("settings-subscription")).toBeInTheDocument()
-    expect(screen.getByTestId("settings-capabilities")).toBeInTheDocument()
-    // 当前团队名从 namespace 解析。
+    for (const key of TAB_KEYS) {
+      expect(screen.getByTestId(`settings-tab-${key}`)).toBeInTheDocument()
+    }
+    // 账户身份头团队名从 namespace 解析。
     expect(await screen.findByText("Studio")).toBeInTheDocument()
   })
 
-  it("persists a chosen default model to localStorage and flashes saved feedback", async () => {
+  it("切到外观 tab:显示外观分区、账户分区移出 DOM（一次只显一个 tab）", () => {
     renderSettings()
+    fireEvent.click(screen.getByTestId("settings-tab-appearance"))
+    expect(screen.getByTestId("settings-appearance")).toBeInTheDocument()
+    expect(screen.queryByTestId("settings-account")).not.toBeInTheDocument()
+  })
+
+  it("对话 tab:选缺省模型就地存 localStorage + 就地保存反馈", async () => {
+    renderSettings()
+    fireEvent.click(screen.getByTestId("settings-tab-chat"))
     const select = await screen.findByTestId("settings-default-model")
     fireEvent.change(select, { target: { value: "anthropic:opus" } })
     const prefs = JSON.parse(window.localStorage.getItem("kokoro.web.chat-prefs") ?? "{}")
     expect(prefs.model).toBe("anthropic:opus")
-    // 就地保存反馈。
     expect(screen.getByTestId("settings-saved")).toBeInTheDocument()
-  })
-
-  it("links capability entries to the workspace panel deep links", () => {
-    renderSettings()
-    expect(screen.getByTestId("settings-cap-skills")).toHaveAttribute("href", "/?panel=skills")
-    expect(screen.getByTestId("settings-cap-mcp")).toHaveAttribute("href", "/?panel=mcp")
-    expect(screen.getByTestId("settings-cap-library")).toHaveAttribute("href", "/?panel=library")
-  })
-
-  it("shows the billing balance summary", async () => {
-    renderSettings()
-    const balance = await screen.findByTestId("settings-balance")
-    expect(balance.textContent).toContain("12.5")
   })
 })

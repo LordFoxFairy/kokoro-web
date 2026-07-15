@@ -1,0 +1,204 @@
+/* 全屏设置中心:左 tab 竖导航 + 右宽内容区。所有管理功能统一此处 tab 切换,不再跳独立弹窗。
+   refined,lessie 蓝 --k-* token。 */
+
+.page {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: grid;
+  grid-template-columns: 16.5rem minmax(0, 1fr);
+  background: var(--k-bg-base);
+  color: var(--k-text);
+}
+
+/* —— 左:tab 竖导航(全高粘性) —— */
+.nav {
+  position: sticky;
+  top: 0;
+  align-self: start;
+  height: 100vh;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  padding: 1.75rem 1rem 1.25rem;
+  background: var(--k-bg-elevated);
+  border-right: 1px solid var(--k-border);
+}
+
+.brand {
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
+  padding: 0 0.7rem;
+  margin-bottom: 1.5rem;
+}
+
+.brandTitle {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 1.3rem;
+  font-weight: 600;
+  color: var(--k-text);
+}
+
+.brandName {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--k-text-muted);
+}
+
+.tabList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.6rem 0.7rem;
+  border-radius: 0.7rem;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--k-text-secondary);
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.16s ease, color 0.16s ease;
+}
+
+.tab:hover {
+  background: var(--k-bg-hover);
+  color: var(--k-text);
+}
+
+.tab[data-active="true"] {
+  background: var(--k-brand-soft);
+  color: var(--k-brand);
+  font-weight: 600;
+}
+
+.tabIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.7rem;
+  height: 1.7rem;
+  flex-shrink: 0;
+  border-radius: 0.55rem;
+  background: color-mix(in srgb, var(--k-brand) 10%, var(--k-bg-container));
+  color: var(--k-brand);
+  transition: background 0.16s ease, color 0.16s ease;
+}
+
+.tab[data-active="true"] .tabIcon {
+  background: var(--k-brand);
+  color: #fff;
+}
+
+.tabIconSvg {
+  width: 1.05rem;
+  height: 1.05rem;
+}
+
+.backLink {
+  margin-top: 0.75rem;
+  padding: 0.55rem 0.7rem;
+  font-size: 0.88rem;
+  color: var(--k-text-secondary);
+  border-radius: 0.6rem;
+  transition: background 0.16s ease, color 0.16s ease;
+}
+
+.backLink:hover {
+  background: var(--k-bg-hover);
+  color: var(--k-text);
+}
+
+/* —— 右:内容区 —— */
+.content {
+  min-width: 0;
+  padding: clamp(1.75rem, 4vw, 3rem) clamp(1.5rem, 5vw, 4rem);
+}
+
+.contentInner {
+  max-width: 52rem;
+  margin: 0 auto;
+  animation: contentIn 0.28s ease both;
+}
+
+.contentTitle {
+  margin: 0 0 1.75rem;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--k-text);
+}
+
+@keyframes contentIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 内容区内的分区卡去边框(内容流:设置中心统一标题 + 卡内容直铺;各 Content 自带内部布局)。 */
+.contentInner :global([data-settings-card]) {
+  max-width: none;
+  padding: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+}
+
+/* —— 窄屏:nav 转顶部横向条 —— */
+@media (max-width: 760px) {
+  .page {
+    grid-template-columns: 1fr;
+  }
+
+  .nav {
+    position: static;
+    height: auto;
+    flex-direction: row;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.85rem 1rem;
+    border-right: none;
+    border-bottom: 1px solid var(--k-border);
+    overflow-x: auto;
+  }
+
+  .brand {
+    display: none;
+  }
+
+  .tabList {
+    flex-direction: row;
+    flex: none;
+    overflow: visible;
+  }
+
+  .tab {
+    flex-shrink: 0;
+  }
+
+  .backLink {
+    display: none;
+  }
+
+  .content {
+    padding: 1.5rem 1.25rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .contentInner {
+    animation: none;
+  }
+}

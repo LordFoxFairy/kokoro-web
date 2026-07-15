@@ -75,7 +75,6 @@ export function AccountCard() {
 
   return (
     <section className={styles.card} data-settings-card data-testid="settings-account">
-      <h2 className={styles.cardTitle}>{t("settings.accountTitle")}</h2>
       <div className={styles.identity}>
         <span className={styles.identityAvatar} aria-hidden>
           {initial}
@@ -121,7 +120,6 @@ export function AppearanceCard() {
 
   return (
     <section className={styles.card} data-settings-card data-testid="settings-appearance">
-      <h2 className={styles.cardTitle}>{t("settings.appearanceTitle")}</h2>
       <div className={styles.row}>
         <span className={styles.rowLabel}>{t("settings.theme")}</span>
         <div className={styles.segment} role="group" aria-label={t("theme.switchAria")}>
@@ -207,14 +205,13 @@ export function ChatPrefsCard() {
 
   return (
     <section className={styles.card} data-settings-card data-testid="settings-chat">
-      <div className={styles.cardHead}>
-        <h2 className={styles.cardTitle}>{t("settings.chatTitle")}</h2>
-        {saved ? (
+      {saved ? (
+        <div className={styles.cardHead}>
           <span className={styles.savedBadge} role="status" data-testid="settings-saved">
             {t("settings.saved")}
           </span>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
       <label className={styles.row}>
         <span className={styles.rowLabel}>{t("settings.defaultModel")}</span>
         <select

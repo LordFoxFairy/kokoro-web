@@ -1,94 +1,205 @@
 "use client"
 
-// 用户设置整页（WEB-FACE 面三，/settings）：登录后的两栏布局（左分区导航 + 右内容），与管理后台严格
-// 分离。分区内容复用 settings-sections（与设置浮层 SettingsPanel 同源，单一真源）。整页保留作深链兜底
-// （rail 用户区默认弹 SettingsPanel 浮层）。会话闸：匿名 → 重定向 /login（settings 是登录后面）。
+// 设置中心(WEB-FACE 面三,/settings):全屏左 tab 竖导航 + 右内容区,所有管理功能(账户/外观/对话/订阅/
+// 技能/连接/作品/团队)统一此处 tab 切换,不再跳任何独立弹窗。tab 由 URL `?tab=X` 驱动——刷新/深链保持,
+// rail 各管理入口都跳对应 tab。分区内容:账户/外观/对话复用 settings-sections;订阅/技能/连接/作品/团队
+// 复用从原弹窗剥离的 XxxContent。与管理后台严格分离;匿名 → 重定向 /login。
 
-import { useEffect } from "react"
+import { useEffect, useState, type ComponentType } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 
 import { useT } from "@/i18n/context"
-import { CoinIcon, LibraryIcon, SlidersIcon, SunIcon, UsersIcon } from "@/ui/icons/rail"
-import { useSessionState } from "@/ui/auth/use-session-state"
-
 import {
-  AccountCard,
-  AppearanceCard,
-  CapabilitiesCard,
-  ChatPrefsCard,
-  SubscriptionCard,
-} from "./settings-sections"
-import styles from "./settings-page.module.css"
+  ChatsIcon,
+  CoinIcon,
+  LibraryIcon,
+  PlugIcon,
+  SlidersIcon,
+  SunIcon,
+  UserIcon,
+  UsersIcon,
+} from "@/ui/icons/rail"
+import { useSessionState } from "@/ui/auth/use-session-state"
+import {
+  browserBillingClient,
+  browserEngine,
+  browserHubClient,
+  browserListClient,
+  browserPricingClient,
+  browserTeamClient,
+} from "@/ui/shell/page-clients"
+import { togglePinned, usePinnedSkills } from "@/ui/shell/use-pinned-skills"
+import { SkillsContent } from "@/ui/skills/skills-panel"
+import { McpContent } from "@/ui/mcp/mcp-panel"
+import { BillingContent } from "@/ui/billing/billing-panel"
+import { PricingContent } from "@/ui/billing/pricing-panel"
+import { LibraryContent } from "@/ui/library/artifact-library-panel"
+import { TeamContent } from "@/ui/team/team-panel"
+
+import { AccountCard, AppearanceCard, ChatPrefsCard } from "./settings-sections"
+import styles from "./settings-center.module.css"
+
+type TabKey =
+  | "account"
+  | "appearance"
+  | "chat"
+  | "subscription"
+  | "skills"
+  | "mcp"
+  | "library"
+  | "team"
+
+const TAB_KEYS: readonly TabKey[] = [
+  "account",
+  "appearance",
+  "chat",
+  "subscription",
+  "skills",
+  "mcp",
+  "library",
+  "team",
+]
+
+// 首帧从 URL `?tab=` 派生(仅浏览器);命中已知 tab 才用,否则默认账户。
+function tabFromUrl(): TabKey {
+  if (typeof window === "undefined") {
+    return "account"
+  }
+  const value = new URLSearchParams(window.location.search).get("tab")
+  return TAB_KEYS.find((key) => key === value) ?? "account"
+}
 
 export function SettingsPage({ brandName }: { brandName?: string }) {
   const t = useT()
   const router = useRouter()
   const sessionState = useSessionState()
+  const [tab, setTab] = useState<TabKey>(tabFromUrl)
+  // 团队切换器高亮当前 namespace:undefined=未取,null=预览/无信封,string=当前 team id。
+  const [teamNs, setTeamNs] = useState<string | null | undefined>(undefined)
+  const pinnedSkills = usePinnedSkills(browserEngine())
 
-  // 匿名闸：探针裁定匿名即回登录页（settings 是登录后面）。
+  // 匿名闸:探针裁定匿名即回登录页(settings 是登录后面)。
   useEffect(() => {
     if (sessionState === "anonymous") {
       router.replace("/login")
     }
   }, [sessionState, router])
 
+  // 进入团队 tab 且 ns 未取时拉当前 namespace(切 tab 走 selectTab 会置回 undefined 触发重取)。
+  useEffect(() => {
+    if (tab !== "team" || teamNs !== undefined) {
+      return
+    }
+    let live = true
+    void browserTeamClient()
+      .currentNamespace()
+      .then((ns) => live && setTeamNs(ns))
+      .catch(() => live && setTeamNs(null))
+    return () => {
+      live = false
+    }
+  }, [tab, teamNs])
+
+  const selectTab = (next: TabKey): void => {
+    setTab(next)
+    if (next === "team") {
+      setTeamNs(undefined) // 每次进团队重取 ns(切换后回来反映新态)。
+    }
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href)
+      url.searchParams.set("tab", next)
+      window.history.replaceState(window.history.state, "", url.pathname + url.search)
+    }
+  }
+
   if (sessionState !== "pass") {
     return null
   }
 
+  const nav: { key: TabKey; label: string; Icon: ComponentType<{ className?: string }> }[] = [
+    { key: "account", label: t("settings.accountTitle"), Icon: UserIcon },
+    { key: "appearance", label: t("settings.appearanceTitle"), Icon: SunIcon },
+    { key: "chat", label: t("settings.chatTitle"), Icon: ChatsIcon },
+    { key: "subscription", label: t("settings.subTitle"), Icon: CoinIcon },
+    { key: "skills", label: t("rail.navSkills"), Icon: SlidersIcon },
+    { key: "mcp", label: t("rail.navMcp"), Icon: PlugIcon },
+    { key: "library", label: t("rail.navLibrary"), Icon: LibraryIcon },
+    { key: "team", label: t("rail.navTeams"), Icon: UsersIcon },
+  ]
+  const activeLabel = nav.find((entry) => entry.key === tab)?.label ?? ""
+
   return (
     <div className={styles.page}>
-      <header className={styles.topbar}>
-        <h1 className={styles.pageTitle}>{t("settings.title")}</h1>
+      <nav className={styles.nav} aria-label={t("settings.title")}>
+        <div className={styles.brand}>
+          <p className={styles.brandTitle}>{t("settings.title")}</p>
+          <p className={styles.brandName}>{brandName ?? "Kokoro"}</p>
+        </div>
+        <div className={styles.tabList} role="tablist" aria-orientation="vertical">
+          {nav.map(({ key, label, Icon }) => (
+            <button
+              key={key}
+              type="button"
+              role="tab"
+              className={styles.tab}
+              data-active={tab === key}
+              data-testid={`settings-tab-${key}`}
+              aria-selected={tab === key}
+              onClick={() => selectTab(key)}
+            >
+              <span className={styles.tabIcon} aria-hidden>
+                <Icon className={styles.tabIconSvg} />
+              </span>
+              {label}
+            </button>
+          ))}
+        </div>
         <Link className={styles.backLink} href="/">
-          {t("settings.backToApp")}
+          ← {t("settings.backToApp")}
         </Link>
-      </header>
-      <div className={styles.shell}>
-        <nav className={styles.nav} aria-label={t("settings.title")}>
-          <a className={styles.navItem} href="#sec-account">
-            <span className={styles.navIcon} aria-hidden><UsersIcon className={styles.navIconSvg} /></span>
-            {t("settings.accountTitle")}
-          </a>
-          <a className={styles.navItem} href="#sec-appearance">
-            <span className={styles.navIcon} aria-hidden><SunIcon className={styles.navIconSvg} /></span>
-            {t("settings.appearanceTitle")}
-          </a>
-          <a className={styles.navItem} href="#sec-chat">
-            <span className={styles.navIcon} aria-hidden><SlidersIcon className={styles.navIconSvg} /></span>
-            {t("settings.chatTitle")}
-          </a>
-          <a className={styles.navItem} href="#sec-subscription">
-            <span className={styles.navIcon} aria-hidden><CoinIcon className={styles.navIconSvg} /></span>
-            {t("settings.subTitle")}
-          </a>
-          <a className={styles.navItem} href="#sec-capabilities">
-            <span className={styles.navIcon} aria-hidden><LibraryIcon className={styles.navIconSvg} /></span>
-            {t("settings.capsTitle")}
-          </a>
-          <p className={styles.navBrand} aria-hidden>
-            {brandName ?? "Kokoro"}
-          </p>
-        </nav>
-        <main className={styles.stack}>
-          <div id="sec-account" className={styles.anchor}>
-            <AccountCard />
-          </div>
-          <div id="sec-appearance" className={styles.anchor}>
-            <AppearanceCard />
-          </div>
-          <div id="sec-chat" className={styles.anchor}>
-            <ChatPrefsCard />
-          </div>
-          <div id="sec-subscription" className={styles.anchor}>
-            <SubscriptionCard />
-          </div>
-          <div id="sec-capabilities" className={styles.anchor}>
-            <CapabilitiesCard />
-          </div>
-        </main>
-      </div>
+      </nav>
+
+      <main className={styles.content}>
+        {/* key=tab:切分区重挂载 → 入场动画重放。 */}
+        <div key={tab} className={styles.contentInner}>
+          <h1 className={styles.contentTitle}>{activeLabel}</h1>
+          {tab === "account" ? <AccountCard /> : null}
+          {tab === "appearance" ? <AppearanceCard /> : null}
+          {tab === "chat" ? <ChatPrefsCard /> : null}
+          {tab === "subscription" ? (
+            <>
+              <BillingContent client={browserBillingClient()} />
+              <PricingContent client={browserPricingClient()} />
+            </>
+          ) : null}
+          {tab === "skills" ? (
+            <SkillsContent
+              client={browserHubClient()}
+              pinned={pinnedSkills}
+              onTogglePin={togglePinned}
+            />
+          ) : null}
+          {tab === "mcp" ? <McpContent client={browserHubClient()} /> : null}
+          {tab === "library" ? (
+            <LibraryContent
+              client={browserListClient()}
+              onOpenSession={(id) => {
+                // 作品跳源会话:共享引擎单例 openConversation 设 activeId,回工作台即渲染该会话。
+                browserEngine()?.openConversation(id)
+                router.push("/")
+              }}
+            />
+          ) : null}
+          {tab === "team" ? (
+            <TeamContent
+              client={browserTeamClient()}
+              currentNamespace={teamNs ?? null}
+              onSwitched={() => window.location.reload()}
+            />
+          ) : null}
+        </div>
+      </main>
     </div>
   )
 }
