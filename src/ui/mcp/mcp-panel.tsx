@@ -57,6 +57,37 @@ function transportLabel(t: Translate, transport: McpTransport): string {
 
 export function McpPanel({ client, onClose }: McpPanelProps) {
   const t = useT()
+  return (
+    <div className={styles.overlay} onClick={onClose}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={t("mcp.title")}
+        className={styles.panel}
+        data-testid="mcp-panel"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <header className={styles.head}>
+          <div>
+            <h2 className={styles.title}>{t("mcp.title")}</h2>
+            <p className={styles.subtitle}>{t("mcp.subtitle")}</p>
+          </div>
+          <button type="button" className={styles.close} aria-label={t("mcp.close")} onClick={onClose}>
+            ×
+          </button>
+        </header>
+        <McpContent client={client} />
+      </div>
+    </div>
+  )
+}
+
+type McpContentProps = {
+  client: HubClient
+}
+
+export function McpContent({ client }: McpContentProps) {
+  const t = useT()
   const [tab, setTab] = useState<"servers" | "secrets">("servers")
 
   // server + secret 合并读经查询层：servers 是主体（失败即 error）；secrets 尽力而为——secret
@@ -82,26 +113,8 @@ export function McpPanel({ client, onClose }: McpPanelProps) {
   const failed = data.error !== undefined && data.data === undefined
 
   return (
-    <div className={styles.overlay} onClick={onClose}>
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={t("mcp.title")}
-        className={styles.panel}
-        data-testid="mcp-panel"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <header className={styles.head}>
-          <div>
-            <h2 className={styles.title}>{t("mcp.title")}</h2>
-            <p className={styles.subtitle}>{t("mcp.subtitle")}</p>
-          </div>
-          <button type="button" className={styles.close} aria-label={t("mcp.close")} onClick={onClose}>
-            ×
-          </button>
-        </header>
-
-        <div className={styles.tabs} role="tablist">
+    <>
+      <div className={styles.tabs} role="tablist">
           <button
             type="button"
             role="tab"
@@ -142,8 +155,7 @@ export function McpPanel({ client, onClose }: McpPanelProps) {
             <SecretsTab client={client} secrets={secrets} onChanged={reload} />
           )}
         </div>
-      </div>
-    </div>
+    </>
   )
 }
 

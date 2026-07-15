@@ -69,7 +69,14 @@ function errorKey(error: unknown): TeamErrorKey {
   }
 }
 
-export function TeamPanel({ client, currentNamespace, onClose, onSwitched }: TeamPanelProps) {
+type TeamContentProps = {
+  client: TeamClient
+  currentNamespace: string | null
+  // 换签成功回调：由外壳整页刷新，令三竖切按新 namespace 重水合。
+  onSwitched: (namespace: string) => void
+}
+
+export function TeamContent({ client, currentNamespace, onSwitched }: TeamContentProps) {
   const t = useT()
   const [busy, setBusy] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -166,26 +173,7 @@ export function TeamPanel({ client, currentNamespace, onClose, onSwitched }: Tea
   )
 
   return (
-    <div className={styles.overlay} onClick={onClose}>
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={t("team.title")}
-        className={styles.panel}
-        data-testid="team-panel"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <header className={styles.head}>
-          <div>
-            <h2 className={styles.title}>{t("team.title")}</h2>
-            <p className={styles.subtitle}>{t("team.subtitle")}</p>
-          </div>
-          <button type="button" className={styles.close} aria-label={t("team.close")} onClick={onClose}>
-            ×
-          </button>
-        </header>
-
-        <div className={styles.body}>
+    <div className={styles.body}>
           {notice ? (
             <p className={styles.notice} role="alert" data-testid="team-notice">
               {notice}
@@ -226,7 +214,34 @@ export function TeamPanel({ client, currentNamespace, onClose, onSwitched }: Tea
             onMutated={afterMemberMutation}
             onRetry={detailRes.refetch}
           />
-        </div>
+    </div>
+  )
+}
+
+export function TeamPanel({ client, currentNamespace, onClose, onSwitched }: TeamPanelProps) {
+  const t = useT()
+
+  return (
+    <div className={styles.overlay} onClick={onClose}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={t("team.title")}
+        className={styles.panel}
+        data-testid="team-panel"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <header className={styles.head}>
+          <div>
+            <h2 className={styles.title}>{t("team.title")}</h2>
+            <p className={styles.subtitle}>{t("team.subtitle")}</p>
+          </div>
+          <button type="button" className={styles.close} aria-label={t("team.close")} onClick={onClose}>
+            ×
+          </button>
+        </header>
+
+        <TeamContent client={client} currentNamespace={currentNamespace} onSwitched={onSwitched} />
       </div>
     </div>
   )

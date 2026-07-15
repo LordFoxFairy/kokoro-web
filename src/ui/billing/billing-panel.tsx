@@ -53,7 +53,13 @@ function reasonKey(reason: string): MessageKey | null {
   }
 }
 
-export function BillingPanel({ client, onClose, onOpenPricing }: BillingPanelProps) {
+type BillingContentProps = {
+  client: BillingClient
+  // PAY-2：余额卡下的「查看套餐」购买入口；缺省不渲染（兼容未接 payment 的档）。
+  onOpenPricing?: () => void
+}
+
+export function BillingContent({ client, onOpenPricing }: BillingContentProps) {
   const t = useT()
   const [ledger, setLedger] = useState<LedgerState>({ kind: "loading" })
 
@@ -102,23 +108,7 @@ export function BillingPanel({ client, onClose, onOpenPricing }: BillingPanelPro
   }, [client, ledger])
 
   return (
-    <div className={styles.overlay} onClick={onClose}>
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={t("billing.title")}
-        className={styles.panel}
-        data-testid="billing-panel"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <header className={styles.head}>
-          <h2 className={styles.title}>{t("billing.title")}</h2>
-          <button type="button" className={styles.close} aria-label={t("billing.close")} onClick={onClose}>
-            ×
-          </button>
-        </header>
-
-        <div className={styles.body}>
+    <div className={styles.body}>
           <section className={styles.balanceCard} data-testid="billing-balance">
             {summary.kind === "loading" ? (
               <p className={styles.hint}>{t("billing.loading")}</p>
@@ -181,7 +171,31 @@ export function BillingPanel({ client, onClose, onOpenPricing }: BillingPanelPro
               ) : null}
             </>
           )}
-        </div>
+    </div>
+  )
+}
+
+export function BillingPanel({ client, onClose, onOpenPricing }: BillingPanelProps) {
+  const t = useT()
+
+  return (
+    <div className={styles.overlay} onClick={onClose}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={t("billing.title")}
+        className={styles.panel}
+        data-testid="billing-panel"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <header className={styles.head}>
+          <h2 className={styles.title}>{t("billing.title")}</h2>
+          <button type="button" className={styles.close} aria-label={t("billing.close")} onClick={onClose}>
+            ×
+          </button>
+        </header>
+
+        <BillingContent client={client} onOpenPricing={onOpenPricing} />
       </div>
     </div>
   )

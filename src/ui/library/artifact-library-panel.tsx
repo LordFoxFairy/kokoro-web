@@ -45,7 +45,13 @@ function artifactUrl(contentHash: string): string {
   return `${sessionBaseUrl()}${artifactContentPath(encodeURIComponent(contentHash))}`
 }
 
-export function ArtifactLibraryPanel({ client, onClose, onOpenSession }: ArtifactLibraryPanelProps) {
+type LibraryContentProps = {
+  client: Pick<SessionClient, "listArtifacts">
+  // 来源会话跳转：切到该 sessionId（关闭责任移交调用方）。
+  onOpenSession: (sessionId: string) => void
+}
+
+export function LibraryContent({ client, onOpenSession }: LibraryContentProps) {
   const t = useT()
   const { locale } = useLocale()
   const [state, setState] = useState<LibraryState>({ kind: "loading" })
@@ -83,23 +89,7 @@ export function ArtifactLibraryPanel({ client, onClose, onOpenSession }: Artifac
   }, [client, state])
 
   return (
-    <div className={styles.overlay} onClick={onClose}>
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={t("library.title")}
-        className={styles.panel}
-        data-testid="library-panel"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <header className={styles.head}>
-          <h2 className={styles.title}>{t("library.title")}</h2>
-          <button type="button" className={styles.close} aria-label={t("library.close")} onClick={onClose}>
-            ×
-          </button>
-        </header>
-
-        <div className={styles.body}>
+    <div className={styles.body}>
           {state.kind === "loading" ? (
             <p className={styles.hint}>{t("library.loading")}</p>
           ) : state.kind === "error" ? (
@@ -151,7 +141,31 @@ export function ArtifactLibraryPanel({ client, onClose, onOpenSession }: Artifac
               ) : null}
             </>
           )}
-        </div>
+    </div>
+  )
+}
+
+export function ArtifactLibraryPanel({ client, onClose, onOpenSession }: ArtifactLibraryPanelProps) {
+  const t = useT()
+
+  return (
+    <div className={styles.overlay} onClick={onClose}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={t("library.title")}
+        className={styles.panel}
+        data-testid="library-panel"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <header className={styles.head}>
+          <h2 className={styles.title}>{t("library.title")}</h2>
+          <button type="button" className={styles.close} aria-label={t("library.close")} onClick={onClose}>
+            ×
+          </button>
+        </header>
+
+        <LibraryContent client={client} onOpenSession={onOpenSession} />
       </div>
     </div>
   )

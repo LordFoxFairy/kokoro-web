@@ -31,6 +31,34 @@ type PricingPanelProps = {
 
 export function PricingPanel({ client, onClose }: PricingPanelProps) {
   const t = useT()
+  return (
+    <div className={styles.overlay} onClick={onClose}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={t("pricing.title")}
+        className={styles.panel}
+        data-testid="pricing-panel"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <header className={styles.head}>
+          <h2 className={styles.title}>{t("pricing.title")}</h2>
+          <button type="button" className={styles.close} aria-label={t("pricing.close")} onClick={onClose}>
+            ×
+          </button>
+        </header>
+        <PricingContent client={client} />
+      </div>
+    </div>
+  )
+}
+
+type PricingContentProps = {
+  client: PricingClient
+}
+
+export function PricingContent({ client }: PricingContentProps) {
+  const t = useT()
   // 目录经查询层单发读；ResourceResult 映射回四态判别式——payment 未配置（not_configured）→
   // 诚实未开通态 unavailable，其余失败=加载错误，展示分支不变。
   const catalogRes = useResource<PlanCatalogEntry[]>(
@@ -74,23 +102,7 @@ export function PricingPanel({ client, onClose }: PricingPanelProps) {
   const checkoutBlocked = purchaseNotice === "unavailable"
 
   return (
-    <div className={styles.overlay} onClick={onClose}>
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={t("pricing.title")}
-        className={styles.panel}
-        data-testid="pricing-panel"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <header className={styles.head}>
-          <h2 className={styles.title}>{t("pricing.title")}</h2>
-          <button type="button" className={styles.close} aria-label={t("pricing.close")} onClick={onClose}>
-            ×
-          </button>
-        </header>
-
-        <div className={styles.body}>
+    <div className={styles.body}>
           {purchaseNotice === "unavailable" ? (
             <p className={styles.unavailable} role="alert">
               {t("pricing.unavailable")}
@@ -143,8 +155,6 @@ export function PricingPanel({ client, onClose }: PricingPanelProps) {
               ))}
             </ul>
           )}
-        </div>
-      </div>
     </div>
   )
 }

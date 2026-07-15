@@ -37,6 +37,39 @@ type SkillsPanelProps = {
 
 export function SkillsPanel({ client, onClose, pinned, onTogglePin }: SkillsPanelProps) {
   const t = useT()
+  return (
+    <div className={styles.overlay} onClick={onClose}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={t("skills.title")}
+        className={styles.panel}
+        data-testid="skills-panel"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <header className={styles.head}>
+          <div>
+            <h2 className={styles.title}>{t("skills.title")}</h2>
+            <p className={styles.subtitle}>{t("skills.subtitle")}</p>
+          </div>
+          <button type="button" className={styles.close} aria-label={t("skills.close")} onClick={onClose}>
+            ×
+          </button>
+        </header>
+        <SkillsContent client={client} pinned={pinned} onTogglePin={onTogglePin} />
+      </div>
+    </div>
+  )
+}
+
+type SkillsContentProps = {
+  client: HubClient
+  pinned: readonly string[]
+  onTogglePin: (name: string) => void
+}
+
+export function SkillsContent({ client, pinned, onTogglePin }: SkillsContentProps) {
+  const t = useT()
   const [tab, setTab] = useState<"pool" | "upload">("pool")
   // 池 + 配额合并读经查询层（模块缓存/去重/失活）：池只含「有效可用」项，配额缺失回退 null。
   const pool = useResource<Pool>(
@@ -71,26 +104,8 @@ export function SkillsPanel({ client, onClose, pinned, onTogglePin }: SkillsPane
   )
 
   return (
-    <div className={styles.overlay} onClick={onClose}>
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={t("skills.title")}
-        className={styles.panel}
-        data-testid="skills-panel"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <header className={styles.head}>
-          <div>
-            <h2 className={styles.title}>{t("skills.title")}</h2>
-            <p className={styles.subtitle}>{t("skills.subtitle")}</p>
-          </div>
-          <button type="button" className={styles.close} aria-label={t("skills.close")} onClick={onClose}>
-            ×
-          </button>
-        </header>
-
-        <div className={styles.tabs} role="tablist">
+    <>
+      <div className={styles.tabs} role="tablist">
           <button
             type="button"
             role="tab"
@@ -132,8 +147,7 @@ export function SkillsPanel({ client, onClose, pinned, onTogglePin }: SkillsPane
             <UploadTab client={client} onPublished={() => invalidate(SKILLS_KEY)} />
           )}
         </div>
-      </div>
-    </div>
+    </>
   )
 }
 
