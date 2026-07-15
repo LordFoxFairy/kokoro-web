@@ -7,7 +7,7 @@
 
 import { useEffect, useState, type ComponentType } from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 
 import { useT } from "@/i18n/context"
 import {
@@ -61,20 +61,18 @@ const TAB_KEYS: readonly TabKey[] = [
   "team",
 ]
 
-// 首帧从 URL `?tab=` 派生(仅浏览器);命中已知 tab 才用,否则默认账户。
-function tabFromUrl(): TabKey {
-  if (typeof window === "undefined") {
-    return "account"
-  }
-  const value = new URLSearchParams(window.location.search).get("tab")
+// URL `?tab=` 归一到已知 tab,否则默认账户。
+function tabFromParam(value: string | null): TabKey {
   return TAB_KEYS.find((key) => key === value) ?? "account"
 }
 
 export function SettingsPage({ brandName }: { brandName?: string }) {
   const t = useT()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const sessionState = useSessionState()
-  const [tab, setTab] = useState<TabKey>(tabFromUrl)
+  // 初值从 URL query 派生(useSearchParams 在 SSR/client 一致,跨页导航到 ?tab=X 首帧即命中目标 tab)。
+  const [tab, setTab] = useState<TabKey>(() => tabFromParam(searchParams.get("tab")))
   // 团队切换器高亮当前 namespace:undefined=未取,null=预览/无信封,string=当前 team id。
   const [teamNs, setTeamNs] = useState<string | null | undefined>(undefined)
   const pinnedSkills = usePinnedSkills(browserEngine())

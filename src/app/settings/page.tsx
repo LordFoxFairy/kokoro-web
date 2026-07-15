@@ -1,3 +1,5 @@
+import { Suspense } from "react"
+
 import { headers } from "next/headers"
 import { notFound } from "next/navigation"
 
@@ -13,5 +15,10 @@ export default async function SettingsRoute() {
     notFound()
   }
   // 匿名闸在客户端裁决（SettingsPage 内 useSessionState → 匿名重定向 /login）。
-  return <SettingsPage brandName={site.brand.name} />
+  // Suspense 边界:SettingsPage 用 useSearchParams 读 ?tab=,Next 要求包裹。
+  return (
+    <Suspense>
+      <SettingsPage brandName={site.brand.name} />
+    </Suspense>
+  )
 }

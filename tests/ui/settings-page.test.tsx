@@ -10,6 +10,7 @@ const replace = vi.fn()
 const push = vi.fn()
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ replace, push }),
+  useSearchParams: () => new URLSearchParams(),
 }))
 
 let sessionState: "checking" | "pass" | "anonymous" = "pass"
