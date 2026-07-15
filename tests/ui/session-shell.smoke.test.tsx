@@ -7,6 +7,8 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest"
 
 // canvas 面板构造下载 URL 需要 base URL（本文件不发真实请求，仅 URL 拼接）。
 vi.mock("@/engine/config", () => ({ sessionBaseUrl: () => "http://s.local" }))
+// session-shell 的错误恢复卡（余额/套餐）改为路由跳设置中心,需 mock next/navigation。
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }) }))
 
 import { addConversation, type ConversationStore } from "@/core/conversations"
 import { createSessionEngine, type SessionEngine } from "@/engine/machine"

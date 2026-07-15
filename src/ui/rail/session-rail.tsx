@@ -368,7 +368,7 @@ function UserCard({ brandName }: { brandName?: string }) {
         <p className={styles.userName}>{display}</p>
         <p className={styles.userMeta}>{t("rail.userScope")}</p>
       </div>
-      {/* 设置入口（WEB-FACE 面三）：弹 SettingsPanel 浮层（/settings 整页保留作深链兜底）。 */}
+      {/* 设置入口（WEB-FACE 面三）：跳设置中心账户 tab。 */}
       <Link
         className={styles.userSettings}
         href="/settings?tab=account"

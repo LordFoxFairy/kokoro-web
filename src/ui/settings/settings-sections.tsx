@@ -1,7 +1,7 @@
 "use client"
 
 // 设置分区内容（账户 / 外观与语言 / 对话偏好 / 订阅与余额 / 能力入口）：从 settings-page 抽出，
-// 供整页（/settings 深链）与设置浮层（SettingsPanel）共用同一批分区，单一真源。每卡就地保存或即时生效。
+// 供设置中心（/settings）各 tab 复用，单一真源。每卡就地保存或即时生效。
 // 诚实态：信封只有 user_id/namespace/site_id，无客户端 email，不造假 email 行；无密码/API key 机制。
 
 import { useEffect, useState } from "react"

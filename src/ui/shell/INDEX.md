@@ -6,8 +6,7 @@
 ## 公开件
 - `SessionShell`（`session-shell.tsx`）：唯一页面入口组件；props `engine?`（测试注入缝）/ `brandName`。
 - `page-clients.ts`：页面级单例客户端/引擎（`browserEngine` / `browserListClient` / `browserHubClient` / `browserBillingClient` / `browserPricingClient` / `browserTeamClient`）。仅浏览器构造，SSR 为 null。
-- 域 controller hooks（各自持查询/store/回调）：`useComposerSelectors` / `usePinnedSkills`(+`togglePinned`/`removePinned`) / `useDraft` / `useConversationList` / `useAwaitingNotify` / `useCanvasWorkspace` / `useOverlayPanels`。
-- `ShellOverlays`：六个模态浮层的纯展示插槽。
+- 域 controller hooks（各自持查询/store/回调）：`useComposerSelectors` / `usePinnedSkills`(+`togglePinned`/`removePinned`) / `useDraft` / `useConversationList` / `useAwaitingNotify` / `useCanvasWorkspace`。
 - `HeaderTitle`：会话头部可改标题。
 
 ## 协作者
@@ -17,5 +16,5 @@
 - shell 是插槽接线：新增域状态放对应 controller hook，不要塞回 shell。
 - page-clients 是浏览器单例：SSR/未水合返回 null/惰性，取数 effect 依赖其稳定引用。
 - 鉴权由 httpOnly 信封 cookie 同源携带，前端不持 token。
-- `useOverlayPanels` 支持 `/?panel=<name>` 深链（settings 入口卡跳回工作台直开面板）：初值由 URL 懒派生，打开后 strip 掉参数。
+- 管理面板（技能/连接/作品/团队/账单/定价）已统一到整页设置中心 `/settings?tab=X`（见 `@/ui/settings`）；rail 各入口 + 错误恢复卡（余额/套餐）均 `router.push` 跳对应 tab,shell 不再持浮层插槽。
 - `useComposerSelectors` 的模型/agent 初值取 `@/ui/settings/chat-prefs` 缺省偏好——新对话首帧预填，开跑后 modeLocked 锁定，会话级锁语义不变。

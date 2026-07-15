@@ -35,14 +35,13 @@ import { CanvasPanel } from "@/ui/canvas/canvas-panel"
 import { useCanvasResize } from "@/ui/canvas/use-canvas-resize"
 
 import { browserEngine, browserListClient } from "./page-clients"
-import { ShellOverlays } from "./shell-overlays"
+import { useRouter } from "next/navigation"
 import { useAwaitingNotify } from "./use-awaiting-notify"
 import { useCanvasWorkspace } from "./use-canvas-workspace"
 import { useComposerSelectors } from "./use-composer-selectors"
 import { useConversationList } from "./use-conversation-list"
 import { useDraft } from "./use-draft"
 import { ScenarioCards } from "./scenario-cards"
-import { useOverlayPanels } from "./use-overlay-panels"
 import { removePinned, usePinnedSkills } from "./use-pinned-skills"
 
 import styles from "./session-shell.module.css"
@@ -78,10 +77,10 @@ export function SessionShell({ engine: injectedEngine, brandName }: SessionShell
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const composerRef = useRef<HTMLTextAreaElement | null>(null)
 
-  // 域 controller：固定技能 / composer 选择器 / 浮层面板开合（自持状态与副作用）。
+  // 域 controller：固定技能（含注入引擎的副作用）/ composer 选择器。
   const pinnedSkills = usePinnedSkills(engine)
   const selectors = useComposerSelectors(engine)
-  const panels = useOverlayPanels()
+  const router = useRouter()
 
   // 侧栏可拖拽改宽（两侧自由，均有最小宽度）；收起态用固定窄列，不参与拖拽。
   const { width: railWidth, isResizing, shellRef, onResizeStart } = useRailResize()
@@ -256,8 +255,8 @@ export function SessionShell({ engine: injectedEngine, brandName }: SessionShell
             isReconnecting={isReconnecting}
             hasFailed={hasFailed}
             creditRejected={creditRejected}
-            onOpenBilling={panels.openBilling}
-            onOpenPricing={panels.openPricing}
+            onOpenBilling={() => router.push("/settings?tab=subscription")}
+            onOpenPricing={() => router.push("/settings?tab=subscription")}
             onRetry={() => engine?.retry()}
             onScroll={handleThreadScroll}
             threadEndRef={threadEndRef}
@@ -356,12 +355,6 @@ export function SessionShell({ engine: injectedEngine, brandName }: SessionShell
         </>
       ) : null}
 
-      <ShellOverlays
-        panels={panels}
-        pinnedSkills={pinnedSkills}
-        onOpenSession={conversationsCtl.selectConversation}
-        brandName={brandName}
-      />
     </main>
   )
 }
