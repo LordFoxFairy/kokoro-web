@@ -170,6 +170,8 @@ export const en: Partial<Record<MessageKey, string>> = {
   "fail.internalHint": "If retrying still fails, please share these details with us.",
   "fail.showDetail": "View error details",
   // mode
+  "mode.labelFast": "Fast",
+  "mode.labelThinking": "Thinking",
   "mode.hintFast": "Faster responses",
   "mode.hintThink": "Deeper thinking",
   "mode.fastIdle": "I can give you a direct answer",

@@ -22,7 +22,7 @@ import {
 
 import { ComposerMenu } from "./composer-menu"
 import { ExpandDialog } from "./expand-dialog"
-import { MODE_LABEL, isAgentMode, modeOptions } from "./mode-options"
+import { isAgentMode, modeLabelText, modeOptions } from "./mode-options"
 import styles from "./composer.module.css"
 
 // 输入上限：textarea maxLength 与提交守卫双重把关。
@@ -97,7 +97,7 @@ export function Composer({
   agentLocked,
 }: ComposerProps) {
   const t = useT()
-  const modeLabel = MODE_LABEL[mode]
+  const modeLabel = modeLabelText(t, mode)
   const ModeIcon = mode === "thinking" ? SparkIcon : ZapIcon
 
   // 当前选中模型：selectedModel 命中候选则用之，否则回落缺省项（is_default）。空候选=不渲染选择器。

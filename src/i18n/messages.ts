@@ -1,11 +1,26 @@
-// Web 界面静态 i18n（technical/14）：中文是源语言，en 增量覆盖，未译回退中文源。
-// 无第三方库、无动态覆盖层——构建期打包的 key→string 表。新增文案 = 这里加一行 key + en.ts 加译文。
+// Web 界面静态 i18n（technical/14）：中文是唯一源语言，各 locale 增量覆盖（overlays.ts 汇总为数据驱动
+// 查表），未译键在解析层回退中文源。新增文案 = 这里加一行 zh key；各语言译文由 MT 管线生成:
+//   npx tsx scripts/i18n-translate.ts        # zh 源 → 各 locale 增量(Google 免费翻译, 幂等只补缺失)
+// 新增一种语言 = 在 Locale/LOCALES 加码 + overlays.ts 挂上 + 跑一次 MT(不改解析层)。
 
-export type Locale = "zh" | "en"
+export type Locale = "zh" | "en" | "ja" | "ko" | "es" | "fr" | "de" | "pt" | "ru"
 
-export const LOCALES: readonly Locale[] = ["zh", "en"]
+export const LOCALES: readonly Locale[] = ["zh", "en", "ja", "ko", "es", "fr", "de", "pt", "ru"]
 export const DEFAULT_LOCALE: Locale = "zh"
 export const LOCALE_STORAGE_KEY = "kokoro.locale"
+
+// 各语言的母语显示名(语言切换器用;不参与翻译)。
+export const LOCALE_NAMES: Record<Locale, string> = {
+  zh: "中文",
+  en: "English",
+  ja: "日本語",
+  ko: "한국어",
+  es: "Español",
+  fr: "Français",
+  de: "Deutsch",
+  pt: "Português",
+  ru: "Русский",
+}
 
 // zh 是完整源（所有 key 必在此）。命名约定：<区域>.<用途>。{var} 为插值占位。
 export const zh = {
@@ -182,6 +197,8 @@ export const zh = {
   // 原始错误信息折叠（兜底展示，绝不裸露错误码）
   "fail.showDetail": "查看错误详情",
   // 模式菜单提示 + 模式呈现文案（modePresentation 派生，随相位）
+  "mode.labelFast": "快速",
+  "mode.labelThinking": "深度思考",
   "mode.hintFast": "更快回应",
   "mode.hintThink": "更深的思考",
   "mode.fastIdle": "可直接给你一个结论",

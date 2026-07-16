@@ -12,7 +12,7 @@ import type { AgentCandidate, BillingSummary, ModelCandidate } from "@/contract/
 import { formatMicros } from "@/billing/format"
 import { useLocale, useT } from "@/i18n/context"
 import { useTheme, type ThemeMode } from "@/ui/theme/theme-context"
-import type { Locale } from "@/i18n/messages"
+import { LOCALES, LOCALE_NAMES, type Locale } from "@/i18n/messages"
 import { browserBillingClient, browserListClient, browserTeamClient } from "@/ui/shell/page-clients"
 
 import { readChatAgent, readChatModel, writeChatAgent, writeChatModel } from "./chat-prefs"
@@ -113,11 +113,6 @@ export function AppearanceCard() {
     { value: "light", label: t("theme.light") },
     { value: "dark", label: t("theme.dark") },
   ]
-  const langOptions: { value: Locale; label: string }[] = [
-    { value: "zh", label: t("lang.zh") },
-    { value: "en", label: t("lang.en") },
-  ]
-
   return (
     <section className={styles.card} data-settings-card data-testid="settings-appearance">
       <div className={styles.row}>
@@ -139,20 +134,19 @@ export function AppearanceCard() {
       </div>
       <div className={styles.row}>
         <span className={styles.rowLabel}>{t("settings.language")}</span>
-        <div className={styles.segment} role="group" aria-label={t("lang.switchAria")}>
-          {langOptions.map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              className={styles.segmentBtn}
-              data-active={locale === option.value}
-              aria-pressed={locale === option.value}
-              onClick={() => setLocale(option.value)}
-            >
-              {option.label}
-            </button>
+        {/* 语言从 LOCALES 动态列出(母语名);加一种语言=扩 LOCALES + 跑 MT,此处零改动。 */}
+        <select
+          className={styles.select}
+          aria-label={t("lang.switchAria")}
+          value={locale}
+          onChange={(event) => setLocale(event.target.value as Locale)}
+        >
+          {LOCALES.map((code) => (
+            <option key={code} value={code}>
+              {LOCALE_NAMES[code]}
+            </option>
           ))}
-        </div>
+        </select>
       </div>
     </section>
   )
