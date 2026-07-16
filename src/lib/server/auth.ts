@@ -322,6 +322,18 @@ export async function userRefreshSession(
   return parsed.data.data
 }
 
+// 登出吊销（web BFF → user /auth/refresh/revoke）：作废该 refresh 所属 namespace 全部活 refresh，
+// 让被盗/其他持有的 refresh 立即失效，不等 exp 自然到期。best-effort：user 不可达/失败都不抛，
+// 登出体验优先（清 cookie 已断本浏览器，服务端 refresh 最坏也靠 exp 兜底）。
+export async function userRevokeSession(config: AuthConfig, refreshToken: string): Promise<void> {
+  await fetch(new URL("/auth/refresh/revoke", config.userBaseUrl), {
+    method: "POST",
+    headers: callerHeaders(config),
+    body: JSON.stringify({ refresh_token: refreshToken }),
+    cache: "no-store",
+  }).catch(() => null)
+}
+
 // access 剩余寿命低于此阈值即提前静默续期（趁 access 还有效换新，续失败也不影响本次请求）。
 const REFRESH_THRESHOLD_SECONDS = 300
 
