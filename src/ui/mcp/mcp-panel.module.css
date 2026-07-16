@@ -112,6 +112,73 @@
   font-size: 0.85rem;
 }
 
+/* —— 搜索 —— */
+.search {
+  width: 100%;
+  margin-top: 0.85rem;
+  padding: 0.45rem 0.75rem;
+  font-size: 0.85rem;
+  color: var(--k-text);
+  background: var(--k-bg-elevated);
+  border: 1px solid var(--k-border);
+  border-radius: 9px;
+}
+
+.search:focus {
+  outline: none;
+  border-color: var(--k-brand);
+}
+
+/* —— 空态引导 —— */
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 2.5rem 1rem;
+  text-align: center;
+}
+
+.emptyTitle {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--k-text);
+}
+
+.emptyGuide {
+  max-width: 24rem;
+  font-size: 0.83rem;
+  color: var(--k-text-tertiary);
+  line-height: 1.5;
+}
+
+/* —— 删除二次确认 —— */
+.confirmRow {
+  display: inline-flex;
+  gap: 0.3rem;
+}
+
+.confirmYes {
+  padding: 0.32rem 0.7rem;
+  font-size: 0.8rem;
+  color: var(--k-error);
+  border: 1px solid var(--k-error-border);
+  border-radius: 8px;
+}
+
+.confirmYes:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.confirmNo {
+  padding: 0.32rem 0.7rem;
+  font-size: 0.8rem;
+  color: var(--k-text-secondary);
+  border: 1px solid var(--k-border);
+  border-radius: 8px;
+}
+
 .list {
   display: flex;
   flex-direction: column;

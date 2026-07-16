@@ -174,6 +174,9 @@ function ServersTab({
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [registering, setRegistering] = useState(false)
+  const [query, setQuery] = useState("")
+  // 删除是破坏性软删:两步确认(点删除入确认态,再点确认才执行)。
+  const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null)
 
   const onToggle = useCallback(
     async (server: McpServerView) => {
@@ -207,6 +210,11 @@ function ServersTab({
     [client, onChanged, t],
   )
 
+  const q = query.trim().toLowerCase()
+  const filteredServers = servers.filter(
+    (server) => q === "" || server.name.toLowerCase().includes(q) || server.url.toLowerCase().includes(q),
+  )
+
   return (
     <>
       {error ? <p className={styles.error} role="alert">{error}</p> : null}
@@ -227,11 +235,28 @@ function ServersTab({
         </button>
       )}
 
+      {/* 搜索(按名/URL 客户端过滤;仅有 server 时出)。 */}
+      {servers.length > 0 ? (
+        <input
+          type="search"
+          className={styles.search}
+          value={query}
+          placeholder={t("mcp.searchPlaceholder")}
+          aria-label={t("mcp.searchPlaceholder")}
+          onChange={(event) => setQuery(event.target.value)}
+        />
+      ) : null}
+
       {servers.length === 0 ? (
-        <p className={styles.hint}>{t("mcp.empty")}</p>
+        <div className={styles.emptyState} data-testid="mcp-empty">
+          <p className={styles.emptyTitle}>{t("mcp.empty")}</p>
+          <p className={styles.emptyGuide}>{t("mcp.emptyGuide")}</p>
+        </div>
+      ) : filteredServers.length === 0 ? (
+        <p className={styles.hint}>{t("mcp.noMatch")}</p>
       ) : (
         <ul className={styles.list}>
-          {servers.map((server) => {
+          {filteredServers.map((server) => {
             const isOfficial = server.scope === OFFICIAL_SCOPE
             return (
               <li key={`${server.scope}/${server.name}`} className={styles.item} data-testid="mcp-server">
@@ -266,14 +291,37 @@ function ServersTab({
                     >
                       {server.enabled ? t("mcp.disable") : t("mcp.enable")}
                     </button>
-                    <button
-                      type="button"
-                      className={styles.danger}
-                      disabled={busy === server.name}
-                      onClick={() => onDelete(server)}
-                    >
-                      {t("mcp.delete")}
-                    </button>
+                    {confirmingDelete === server.name ? (
+                      <span className={styles.confirmRow}>
+                        <button
+                          type="button"
+                          className={styles.confirmYes}
+                          disabled={busy === server.name}
+                          onClick={() => {
+                            setConfirmingDelete(null)
+                            void onDelete(server)
+                          }}
+                        >
+                          {t("mcp.confirmDelete")}
+                        </button>
+                        <button
+                          type="button"
+                          className={styles.confirmNo}
+                          onClick={() => setConfirmingDelete(null)}
+                        >
+                          {t("mcp.cancel")}
+                        </button>
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        className={styles.danger}
+                        disabled={busy === server.name}
+                        onClick={() => setConfirmingDelete(server.name)}
+                      >
+                        {t("mcp.delete")}
+                      </button>
+                    )}
                   </div>
                 )}
               </li>

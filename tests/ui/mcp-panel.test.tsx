@@ -93,7 +93,9 @@ describe("McpPanel", () => {
     const client = makeClient()
     renderPanel(client)
     await screen.findByText("my-tools")
+    // 删除两步:点「删除」入确认态,再点「确认删除」才真删(破坏性软删前置确认)。
     fireEvent.click(screen.getByText("Delete"))
+    fireEvent.click(screen.getByText("Confirm delete"))
     await waitFor(() => expect(client.deleteMcpServer).toHaveBeenCalledWith("my-tools"))
     await waitFor(() => expect((client.listMcpServers as ReturnType<typeof vi.fn>).mock.calls.length).toBe(2))
   })
