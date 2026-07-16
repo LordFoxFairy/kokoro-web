@@ -151,6 +151,8 @@ export function SkillsContent({ client, pinned, onTogglePin }: SkillsContentProp
   )
 }
 
+type ScopeFilter = "all" | "official" | "own"
+
 function PoolTab({
   pool,
   failed,
@@ -177,6 +179,11 @@ function PoolTab({
   onToggleExpand: (name: string) => void
 }) {
   const t = useT()
+  // 视图态:搜索词 / 范围筛选 / 停用二次确认(停用是破坏性——离池,先确认)。
+  const [query, setQuery] = useState("")
+  const [scope, setScope] = useState<ScopeFilter>("all")
+  const [confirming, setConfirming] = useState<string | null>(null)
+
   // 有数据即渲染（含后台刷新期，缓存不闪空）；无数据时失败优先于 loading。
   if (pool === null) {
     if (failed) {
@@ -191,6 +198,25 @@ function PoolTab({
     }
     return <p className={styles.hint}>{t("skills.loading")}</p>
   }
+
+  const q = query.trim().toLowerCase()
+  const filtered = pool.skills.filter((skill) => {
+    const isOfficial = skill.scope === OFFICIAL_SCOPE
+    if (scope === "official" && !isOfficial) return false
+    if (scope === "own" && isOfficial) return false
+    if (q !== "" && !(skill.name.toLowerCase().includes(q) || (skill.description ?? "").toLowerCase().includes(q))) {
+      return false
+    }
+    return true
+  })
+  const hasSkills = pool.skills.length > 0
+  const scopeFilters: ScopeFilter[] = ["all", "official", "own"]
+  const scopeLabel: Record<ScopeFilter, string> = {
+    all: t("skills.filterAll"),
+    official: t("skills.filterOfficial"),
+    own: t("skills.filterOwn"),
+  }
+
   return (
     <>
       {pool.quota ? (
@@ -205,14 +231,48 @@ function PoolTab({
         </div>
       ) : null}
 
-      {pool.skills.length === 0 ? (
-        <p className={styles.hint}>{t("skills.empty")}</p>
+      {/* 搜索 + 范围筛选(仅有技能时出;客户端过滤,不重取)。 */}
+      {hasSkills ? (
+        <div className={styles.filterBar}>
+          <input
+            type="search"
+            className={styles.search}
+            value={query}
+            placeholder={t("skills.searchPlaceholder")}
+            aria-label={t("skills.searchPlaceholder")}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+          <div className={styles.filterSeg} role="group" aria-label={t("skills.filterAria")}>
+            {scopeFilters.map((value) => (
+              <button
+                key={value}
+                type="button"
+                className={styles.filterBtn}
+                data-active={scope === value}
+                aria-pressed={scope === value}
+                onClick={() => setScope(value)}
+              >
+                {scopeLabel[value]}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {!hasSkills ? (
+        <div className={styles.emptyState} data-testid="skills-empty">
+          <p className={styles.emptyTitle}>{t("skills.empty")}</p>
+          <p className={styles.emptyGuide}>{t("skills.emptyGuide")}</p>
+        </div>
+      ) : filtered.length === 0 ? (
+        <p className={styles.hint}>{t("skills.noMatch")}</p>
       ) : (
         <ul className={styles.list}>
-          {pool.skills.map((skill) => {
+          {filtered.map((skill) => {
             const isOfficial = skill.scope === OFFICIAL_SCOPE
             const isLocked = locked.has(skill.name)
             const isPinned = pinned.includes(skill.name)
+            const isConfirming = confirming === skill.name
             return (
               <li key={`${skill.scope}/${skill.name}`} className={styles.item}>
                 <div className={styles.itemMain}>
@@ -247,14 +307,34 @@ function PoolTab({
                   >
                     {t("skills.revisions")}
                   </button>
-                  <button
-                    type="button"
-                    className={styles.toggle}
-                    disabled={isLocked || busy === skill.name}
-                    onClick={() => onDisable(skill.name)}
-                  >
-                    {isLocked ? t("skills.requiredLock") : t("skills.disable")}
-                  </button>
+                  {/* 停用二次确认:首点入确认态,再点才真停用(破坏性——离池)。 */}
+                  {isConfirming ? (
+                    <span className={styles.confirmRow}>
+                      <button
+                        type="button"
+                        className={styles.confirmYes}
+                        disabled={busy === skill.name}
+                        onClick={() => {
+                          setConfirming(null)
+                          onDisable(skill.name)
+                        }}
+                      >
+                        {t("skills.confirmDisable")}
+                      </button>
+                      <button type="button" className={styles.confirmNo} onClick={() => setConfirming(null)}>
+                        {t("skills.cancel")}
+                      </button>
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      className={styles.toggle}
+                      disabled={isLocked || busy === skill.name}
+                      onClick={() => setConfirming(skill.name)}
+                    >
+                      {isLocked ? t("skills.requiredLock") : t("skills.disable")}
+                    </button>
+                  )}
                 </div>
                 {expanded === skill.name ? <Revisions client={client} name={skill.name} /> : null}
               </li>

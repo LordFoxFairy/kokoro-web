@@ -49,8 +49,9 @@ describe("SkillsPanel", () => {
     renderPanel(makeClient())
     await screen.findByText("brainstorming")
     expect(screen.getByText("my-skill")).toBeTruthy()
-    expect(screen.getByText("Official")).toBeTruthy()
-    expect(screen.getByText("Own")).toBeTruthy()
+    // "Official"/"Own" 现同时出现在范围筛选按钮与技能徽标上（≥1 即渲染）。
+    expect(screen.getAllByText("Official").length).toBeGreaterThan(0)
+    expect(screen.getAllByText("Own").length).toBeGreaterThan(0)
     expect(screen.getByTestId("skills-quota").textContent).toContain("1/20")
   })
 
@@ -58,8 +59,9 @@ describe("SkillsPanel", () => {
     const client = makeClient()
     renderPanel(client)
     await screen.findByText("brainstorming")
-    const disableButtons = screen.getAllByText("Disable")
-    fireEvent.click(disableButtons[0]!)
+    // 停用两步:点「停用」入确认态,再点「确认停用」才真停用（破坏性动作前置确认）。
+    fireEvent.click(screen.getAllByText("Disable")[0]!)
+    fireEvent.click(screen.getByText("Confirm disable"))
     await waitFor(() => expect(client.setSkillEnabled).toHaveBeenCalledWith("brainstorming", false))
     // 停用成功后重取池（初次 + 停用后 = 2 次）。
     await waitFor(() => expect((client.listSkillPool as ReturnType<typeof vi.fn>).mock.calls.length).toBe(2))
@@ -74,6 +76,7 @@ describe("SkillsPanel", () => {
     renderPanel(client)
     await screen.findByText("brainstorming")
     fireEvent.click(screen.getAllByText("Disable")[0]!)
+    fireEvent.click(screen.getByText("Confirm disable"))
     // 撞 409 后出现必备锁定徽标（多处，取任一）。
     await waitFor(() => expect(screen.getAllByText("Required").length).toBeGreaterThan(0))
   })

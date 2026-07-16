@@ -111,6 +111,103 @@
   border-radius: 10px;
 }
 
+/* —— 搜索 + 范围筛选栏 —— */
+.filterBar {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.85rem;
+}
+
+.search {
+  flex: 1;
+  min-width: 0;
+  padding: 0.45rem 0.75rem;
+  font-size: 0.85rem;
+  color: var(--k-text);
+  background: var(--k-bg-elevated);
+  border: 1px solid var(--k-border);
+  border-radius: 9px;
+}
+
+.search:focus {
+  outline: none;
+  border-color: var(--k-brand);
+}
+
+.filterSeg {
+  display: inline-flex;
+  flex-shrink: 0;
+  padding: 0.15rem;
+  gap: 0.1rem;
+  background: var(--k-bg-elevated);
+  border: 1px solid var(--k-border);
+  border-radius: 9px;
+}
+
+.filterBtn {
+  padding: 0.3rem 0.7rem;
+  font-size: 0.8rem;
+  color: var(--k-text-secondary);
+  border-radius: 7px;
+}
+
+.filterBtn[data-active="true"] {
+  background: var(--k-brand-soft);
+  color: var(--k-brand);
+  font-weight: 600;
+}
+
+/* —— 空态引导 —— */
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 2.5rem 1rem;
+  text-align: center;
+}
+
+.emptyTitle {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--k-text);
+}
+
+.emptyGuide {
+  max-width: 24rem;
+  font-size: 0.83rem;
+  color: var(--k-text-tertiary);
+  line-height: 1.5;
+}
+
+/* —— 停用二次确认(破坏性动作前置确认) —— */
+.confirmRow {
+  display: inline-flex;
+  gap: 0.3rem;
+}
+
+.confirmYes {
+  padding: 0.32rem 0.7rem;
+  font-size: 0.8rem;
+  color: var(--k-error);
+  border: 1px solid var(--k-error-border);
+  border-radius: 8px;
+}
+
+.confirmYes:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.confirmNo {
+  padding: 0.32rem 0.7rem;
+  font-size: 0.8rem;
+  color: var(--k-text-secondary);
+  border: 1px solid var(--k-border);
+  border-radius: 8px;
+}
+
 .list {
   display: flex;
   flex-direction: column;
