@@ -474,6 +474,7 @@ export const en: Partial<Record<MessageKey, string>> = {
   "rail.navSettings": "Settings",
   "settings.title": "Settings",
   "settings.backToApp": "Back to workspace",
+  "settings.close": "Close settings",
   "settings.loading": "Loading…",
   "settings.accountTitle": "Account",
   "settings.accountTeam": "Current team",

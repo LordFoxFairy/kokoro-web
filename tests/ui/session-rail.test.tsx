@@ -10,6 +10,7 @@ import { ThemeProvider } from "@/ui/theme/theme-context"
 
 function renderRail(overrides?: Partial<Parameters<typeof SessionRail>[0]>) {
   const onRenameConversation = vi.fn()
+  const onOpenSettings = vi.fn()
   const conversations: ConversationSummary[] = [{ id: "ses_1", title: "旧标题" }]
   render(
     <ThemeProvider>
@@ -25,6 +26,7 @@ function renderRail(overrides?: Partial<Parameters<typeof SessionRail>[0]>) {
         onSelectConversation={() => {}}
         onDeleteConversation={() => {}}
         onRenameConversation={onRenameConversation}
+        onOpenSettings={onOpenSettings}
         listLoading={false}
         listError={false}
         hasMore={false}
@@ -34,7 +36,7 @@ function renderRail(overrides?: Partial<Parameters<typeof SessionRail>[0]>) {
     </LocaleProvider>
     </ThemeProvider>,
   )
-  return { onRenameConversation }
+  return { onRenameConversation, onOpenSettings }
 }
 
 beforeEach(() => {
@@ -86,6 +88,19 @@ it("空题与未改动不触发请求", () => {
   const input2 = screen.getByLabelText("会话标题")
   fireEvent.keyDown(input2, { key: "Enter" })
   expect(onRenameConversation).not.toHaveBeenCalled()
+})
+
+it("管理入口打开设置中心模态对应 tab(不整页导航)", () => {
+  const { onOpenSettings } = renderRail()
+  // 作品/技能/连接/账单/团队入口 + 底部齿轮各自 openSettings 对应 tab。
+  fireEvent.click(screen.getByTestId("rail-library"))
+  expect(onOpenSettings).toHaveBeenLastCalledWith("library")
+  fireEvent.click(screen.getByTestId("rail-mcp"))
+  expect(onOpenSettings).toHaveBeenLastCalledWith("mcp")
+  fireEvent.click(screen.getByTestId("rail-teams"))
+  expect(onOpenSettings).toHaveBeenLastCalledWith("team")
+  fireEvent.click(screen.getByTestId("rail-settings"))
+  expect(onOpenSettings).toHaveBeenLastCalledWith("account")
 })
 
 it("待批徽标（HITL-NOTIFY）：id 命中 awaitingIds 才渲染", () => {

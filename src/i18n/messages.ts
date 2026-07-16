@@ -490,6 +490,7 @@ export const zh = {
   "rail.navSettings": "设置",
   "settings.title": "设置",
   "settings.backToApp": "返回工作台",
+  "settings.close": "关闭设置",
   "settings.loading": "正在加载…",
   "settings.accountTitle": "账户",
   "settings.accountTeam": "当前团队",

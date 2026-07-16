@@ -1,24 +1,14 @@
-import { Suspense } from "react"
+import { redirect } from "next/navigation"
 
-import { headers } from "next/headers"
-import { notFound } from "next/navigation"
-
-import { SettingsPage } from "@/ui/settings/settings-page"
-import { resolveSite } from "@/lib/server/site"
-
-export default async function SettingsRoute() {
-  // 服务端按请求 Host 解析站点品牌（SITE-REAL）：与首页/登录同源，缺省档回退默认 Kokoro。
-  const host = (await headers()).get("host")
-  const site = await resolveSite(host)
-  if (site === null) {
-    // strict 档 fail-closed：解析失败渲染中性无品牌 404（防多租户品牌串味）。
-    notFound()
-  }
-  // 匿名闸在客户端裁决（SettingsPage 内 useSessionState → 匿名重定向 /login）。
-  // Suspense 边界:SettingsPage 用 useSearchParams 读 ?tab=,Next 要求包裹。
-  return (
-    <Suspense>
-      <SettingsPage brandName={site.brand.name} />
-    </Suspense>
-  )
+// 设置已从整页路由改为浮在工作区之上的模态(WEB-FACE 面三)：`/settings?tab=X` 深链兜底——
+// 重定向到 `/?settings=X`,由首页 shell 在信封有效时开对应 tab 的模态(匿名则落营销页,不开模态)。
+// 品牌/会话态解析全交给 `/`(同源同 host),此处只做参数搬运。
+export default async function SettingsRoute({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>
+}) {
+  const tab = (await searchParams).tab
+  const target = typeof tab === "string" && tab.length > 0 ? tab : "account"
+  redirect(`/?settings=${encodeURIComponent(target)}`)
 }

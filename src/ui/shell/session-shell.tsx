@@ -33,9 +33,9 @@ import { useAutoScroll } from "@/ui/thread/use-auto-scroll"
 import { TodoBar } from "@/ui/todo/todo-bar"
 import { CanvasPanel } from "@/ui/canvas/canvas-panel"
 import { useCanvasResize } from "@/ui/canvas/use-canvas-resize"
+import { SettingsModal, normalizeSettingsTab, type SettingsTab } from "@/ui/settings/settings-modal"
 
 import { browserEngine, browserListClient } from "./page-clients"
-import { useRouter } from "next/navigation"
 import { useAwaitingNotify } from "./use-awaiting-notify"
 import { useCanvasWorkspace } from "./use-canvas-workspace"
 import { useComposerSelectors } from "./use-composer-selectors"
@@ -80,7 +80,42 @@ export function SessionShell({ engine: injectedEngine, brandName }: SessionShell
   // 域 controller：固定技能（含注入引擎的副作用）/ composer 选择器。
   const pinnedSkills = usePinnedSkills(engine)
   const selectors = useComposerSelectors(engine)
-  const router = useRouter()
+
+  // 设置中心(WEB-FACE 面三):浮在工作区之上的模态,null=关。开关态用 URL `?settings=<tab>` 同步
+  // (深链/刷新/可分享),读写只经 window.location + history.replaceState——不引 useSearchParams
+  // (免 Suspense 边界,也不动测试的 next/navigation mock)。rail 入口/错误恢复卡改为调 openSettings。
+  // 初值惰性读 URL(SSR 无 window→null);模态渲染再由 mounted 门控,首帧与 SSR 一致(水合安全,
+  // 不在 effect 里 setState)。深链 `/?settings=X`(由 `/settings` 路由重定向而来)即命中开对应 tab。
+  const [settingsTab, setSettingsTab] = useState<SettingsTab | null>(() => {
+    if (typeof window === "undefined") {
+      return null
+    }
+    const raw = new URLSearchParams(window.location.search).get("settings")
+    return raw !== null ? normalizeSettingsTab(raw) : null
+  })
+  const syncSettingsUrl = useCallback((tab: SettingsTab | null): void => {
+    if (typeof window === "undefined") {
+      return
+    }
+    const url = new URL(window.location.href)
+    if (tab === null) {
+      url.searchParams.delete("settings")
+    } else {
+      url.searchParams.set("settings", tab)
+    }
+    window.history.replaceState(window.history.state, "", url.pathname + url.search)
+  }, [])
+  const openSettings = useCallback(
+    (tab: SettingsTab): void => {
+      setSettingsTab(tab)
+      syncSettingsUrl(tab)
+    },
+    [syncSettingsUrl],
+  )
+  const closeSettings = useCallback((): void => {
+    setSettingsTab(null)
+    syncSettingsUrl(null)
+  }, [syncSettingsUrl])
 
   // 侧栏可拖拽改宽（两侧自由，均有最小宽度）；收起态用固定窄列，不参与拖拽。
   const { width: railWidth, isResizing, shellRef, onResizeStart } = useRailResize()
@@ -216,6 +251,7 @@ export function SessionShell({ engine: injectedEngine, brandName }: SessionShell
         }}
         onDeleteConversation={conversationsCtl.deleteConversation}
         onRenameConversation={conversationsCtl.renameConversation}
+        onOpenSettings={openSettings}
         listLoading={conversationsCtl.loading}
         listError={conversationsCtl.error}
         hasMore={conversationsCtl.hasMore}
@@ -255,8 +291,8 @@ export function SessionShell({ engine: injectedEngine, brandName }: SessionShell
             isReconnecting={isReconnecting}
             hasFailed={hasFailed}
             creditRejected={creditRejected}
-            onOpenBilling={() => router.push("/settings?tab=subscription")}
-            onOpenPricing={() => router.push("/settings?tab=subscription")}
+            onOpenBilling={() => openSettings("subscription")}
+            onOpenPricing={() => openSettings("subscription")}
             onRetry={() => engine?.retry()}
             onScroll={handleThreadScroll}
             threadEndRef={threadEndRef}
@@ -355,6 +391,18 @@ export function SessionShell({ engine: injectedEngine, brandName }: SessionShell
         </>
       ) : null}
 
+      {/* 设置中心:浮在工作区之上的模态卡片(rail 入口/错误恢复卡触发,语境原地保留)。
+          门控 mounted:首帧不渲染(与 SSR 一致,水合安全)。key=settingsTab:shell 主动开到不同 tab
+          时重挂载重置初值;内部切 tab 只改 URL 不改此 state,不触发重挂,选中态保持。 */}
+      {mounted && settingsTab !== null ? (
+        <SettingsModal
+          key={settingsTab}
+          brandName={brandName}
+          initialTab={settingsTab}
+          onClose={closeSettings}
+          onTabChange={syncSettingsUrl}
+        />
+      ) : null}
     </main>
   )
 }

@@ -1,21 +1,15 @@
-// 设置中心测试（WEB-FACE 面三）：匿名闸重定向、默认账户 tab、8 tab 导航、tab 切换单显、对话偏好
-// 就地存 localStorage。会话态 hook 与 page-clients 均注入 mock（不打网络）。
+// 设置中心模态（WEB-FACE 面三）：默认账户 tab、8 tab 导航、tab 切换单显、对话偏好就地存 localStorage，
+// 关闭出口(× / Esc / 背幕点击)均触发 onClose。会话态由 shell 保证,模态本身不再自持匿名闸。
+// page-clients 均注入 mock（不打网络）。
 import { cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { LocaleProvider } from "@/i18n/context"
 import { ThemeProvider } from "@/ui/theme/theme-context"
 
-const replace = vi.fn()
-const push = vi.fn()
+// AccountCard(退出登录跳转)用 useRouter；模态本身不依赖路由。
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ replace, push }),
-  useSearchParams: () => new URLSearchParams(),
-}))
-
-let sessionState: "checking" | "pass" | "anonymous" = "pass"
-vi.mock("@/ui/auth/use-session-state", () => ({
-  useSessionState: () => sessionState,
+  useRouter: () => ({ replace: vi.fn(), push: vi.fn() }),
 }))
 
 vi.mock("@/ui/shell/page-clients", () => ({
@@ -43,25 +37,23 @@ vi.mock("@/ui/shell/page-clients", () => ({
 }))
 
 // import 顺延到 mock 之后。
-import { SettingsPage } from "@/ui/settings/settings-page"
+import { SettingsModal } from "@/ui/settings/settings-modal"
 
 const TAB_KEYS = ["account", "appearance", "chat", "subscription", "skills", "mcp", "library", "team"]
 
-function renderSettings() {
+function renderSettings(onClose: () => void = () => {}) {
   window.localStorage.setItem("kokoro.locale", "zh")
   return render(
     <ThemeProvider>
       <LocaleProvider>
-        <SettingsPage brandName="Acme" />
+        <SettingsModal brandName="Acme" initialTab="account" onClose={onClose} />
       </LocaleProvider>
     </ThemeProvider>,
   )
 }
 
 beforeEach(() => {
-  sessionState = "pass"
-  replace.mockClear()
-  push.mockClear()
+  window.localStorage.setItem("kokoro.locale", "zh")
 })
 
 afterEach(() => {
@@ -69,13 +61,7 @@ afterEach(() => {
   window.localStorage.clear()
 })
 
-describe("SettingsPage 设置中心", () => {
-  it("匿名访客重定向 /login", () => {
-    sessionState = "anonymous"
-    renderSettings()
-    expect(replace).toHaveBeenCalledWith("/login")
-  })
-
+describe("SettingsModal 设置中心模态", () => {
   it("默认渲染账户 tab + 8 个 tab 导航 + 解析团队名", async () => {
     renderSettings()
     expect(screen.getByTestId("settings-account")).toBeInTheDocument()
@@ -101,5 +87,31 @@ describe("SettingsPage 设置中心", () => {
     const prefs = JSON.parse(window.localStorage.getItem("kokoro.web.chat-prefs") ?? "{}")
     expect(prefs.model).toBe("anthropic:opus")
     expect(screen.getByTestId("settings-saved")).toBeInTheDocument()
+  })
+
+  it("关闭按钮 × 触发 onClose", () => {
+    const onClose = vi.fn()
+    renderSettings(onClose)
+    fireEvent.click(screen.getByTestId("settings-close"))
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it("Esc 键触发 onClose", () => {
+    const onClose = vi.fn()
+    renderSettings(onClose)
+    fireEvent.keyDown(document.body, { key: "Escape" })
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it("点击背幕触发 onClose,点击卡片内部不关闭", () => {
+    const onClose = vi.fn()
+    renderSettings(onClose)
+    const card = screen.getByTestId("settings-modal")
+    // 卡内点击不冒泡到背幕(stopPropagation),不关闭。
+    fireEvent.click(card)
+    expect(onClose).not.toHaveBeenCalled()
+    // 背幕(卡片父节点)点击关闭。
+    fireEvent.click(card.parentElement as HTMLElement)
+    expect(onClose).toHaveBeenCalledTimes(1)
   })
 })

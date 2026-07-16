@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react"
-import Link from "next/link"
 
 import { useT } from "@/i18n/context"
 import { ChatsIcon, CoinIcon, GearIcon, LibraryIcon, PanelIcon, PlugIcon, PlusIcon, SearchIcon, SlidersIcon, UsersIcon } from "@/ui/icons/rail"
 import { browserTeamClient } from "@/ui/shell/page-clients"
+import type { SettingsTab } from "@/ui/settings/settings-modal"
 
 import { filterConversations, type ConversationSummary } from "./rail-search"
 import styles from "./session-rail.module.css"
@@ -24,6 +24,8 @@ type SessionRailProps = {
   onDeleteConversation: (id: string) => void
   // 会话重命名（CONV-UX）：提交非空新题；乐观更新 + 失败回滚由上层处理。
   onRenameConversation: (id: string, title: string) => void
+  // 打开设置中心模态到指定 tab（WEB-FACE 面三）：管理入口不再整页导航,浮层叠在工作区之上。
+  onOpenSettings: (tab: SettingsTab) => void
   // 清单服务端水合态（SESS-LIST）：加载/错误态与滚动翻页入口。
   listLoading: boolean
   listError: boolean
@@ -43,6 +45,7 @@ export function SessionRail({
   onSelectConversation,
   onDeleteConversation,
   onRenameConversation,
+  onOpenSettings,
   listLoading,
   listError,
   hasMore,
@@ -189,32 +192,51 @@ export function SessionRail({
           <span className={styles.navLabel}>{t("rail.navChat")}</span>
         </div>
 
-        {/* 作品库入口（ARTIFACT-LIB）：打开属主 namespace 全部成果跨会话聚合的卡片网格模态。 */}
-        {/* 管理入口统一跳设置中心对应 tab（WEB-FACE 面三）：不再开独立弹窗,全程一个容器 tab 切换。 */}
-        <Link className={styles.navItem} href="/settings?tab=library" data-testid="rail-library">
+        {/* 作品库入口（ARTIFACT-LIB）：打开属主 namespace 全部成果跨会话聚合的卡片网格。 */}
+        {/* 管理入口统一打开设置中心模态对应 tab（WEB-FACE 面三）：浮层叠在工作区之上,不整页导航。 */}
+        <button
+          type="button"
+          className={styles.navItem}
+          data-testid="rail-library"
+          onClick={() => onOpenSettings("library")}
+        >
           <LibraryIcon className={styles.icon} />
           <span className={styles.navLabel}>{t("rail.navLibrary")}</span>
-        </Link>
+        </button>
 
-        <Link className={styles.navItem} href="/settings?tab=skills">
+        <button type="button" className={styles.navItem} onClick={() => onOpenSettings("skills")}>
           <SlidersIcon className={styles.icon} />
           <span className={styles.navLabel}>{t("rail.navSkills")}</span>
-        </Link>
+        </button>
 
-        <Link className={styles.navItem} href="/settings?tab=mcp" data-testid="rail-mcp">
+        <button
+          type="button"
+          className={styles.navItem}
+          data-testid="rail-mcp"
+          onClick={() => onOpenSettings("mcp")}
+        >
           <PlugIcon className={styles.icon} />
           <span className={styles.navLabel}>{t("rail.navMcp")}</span>
-        </Link>
+        </button>
 
-        <Link className={styles.navItem} href="/settings?tab=subscription">
+        <button
+          type="button"
+          className={styles.navItem}
+          onClick={() => onOpenSettings("subscription")}
+        >
           <CoinIcon className={styles.icon} />
           <span className={styles.navLabel}>{t("rail.navBilling")}</span>
-        </Link>
+        </button>
 
-        <Link className={styles.navItem} href="/settings?tab=team" data-testid="rail-teams">
+        <button
+          type="button"
+          className={styles.navItem}
+          data-testid="rail-teams"
+          onClick={() => onOpenSettings("team")}
+        >
           <UsersIcon className={styles.icon} />
           <span className={styles.navLabel}>{t("rail.navTeams")}</span>
-        </Link>
+        </button>
       </nav>
 
       {hasConversations || listLoading || listError ? (
@@ -321,7 +343,7 @@ export function SessionRail({
         </nav>
       ) : null}
 
-      <UserCard brandName={brandName} />
+      <UserCard brandName={brandName} onOpenSettings={onOpenSettings} />
     </aside>
   )
 }
@@ -353,7 +375,13 @@ function useTeamName(): string | null | undefined {
   return name
 }
 
-function UserCard({ brandName }: { brandName?: string }) {
+function UserCard({
+  brandName,
+  onOpenSettings,
+}: {
+  brandName?: string
+  onOpenSettings: (tab: SettingsTab) => void
+}) {
   const t = useT()
   const teamName = useTeamName()
   // 身份主文案：团队名（真实 namespace 归属）；未取到回退品牌名。不硬凑 email（信封无此字段）。
@@ -368,16 +396,17 @@ function UserCard({ brandName }: { brandName?: string }) {
         <p className={styles.userName}>{display}</p>
         <p className={styles.userMeta}>{t("rail.userScope")}</p>
       </div>
-      {/* 设置入口（WEB-FACE 面三）：跳设置中心账户 tab。 */}
-      <Link
+      {/* 设置入口（WEB-FACE 面三）：打开设置中心模态账户 tab。 */}
+      <button
+        type="button"
         className={styles.userSettings}
-        href="/settings?tab=account"
         aria-label={t("rail.navSettings")}
         title={t("rail.navSettings")}
         data-testid="rail-settings"
+        onClick={() => onOpenSettings("account")}
       >
         <GearIcon className={styles.icon} />
-      </Link>
+      </button>
     </div>
   )
 }
