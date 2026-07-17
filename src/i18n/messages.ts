@@ -297,6 +297,7 @@ export const zh = {
   "billing.loadError": "加载失败，请稍后再试",
   "billing.balance": "可用余额",
   "billing.held": "冻结中",
+  "billing.creditUnit": "积分",
   "billing.ledgerTitle": "账单流水",
   "billing.ledgerEmpty": "还没有账单记录",
   "billing.loadMore": "加载更多",

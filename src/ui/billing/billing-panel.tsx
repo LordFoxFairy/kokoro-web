@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useState } from "react"
 
 import type { BillingLedgerEntry, BillingSummary } from "@/contract/http"
-import { formatMicros, formatSignedMicros, microSign } from "@/billing/format"
+import { formatCredits, formatSignedCredits, microSign } from "@/billing/format"
 import type { BillingClient } from "@/billing/client"
 import { useT } from "@/i18n/context"
 import { useResource } from "@/lib/query"
@@ -118,11 +118,15 @@ export function BillingContent({ client, onOpenPricing }: BillingContentProps) {
               <>
                 <div className={styles.balanceMain}>
                   <span className={styles.balanceLabel}>{t("billing.balance")}</span>
-                  <span className={styles.balanceValue}>{formatMicros(summary.summary.balance_micros)}</span>
+                  <span className={styles.balanceValue}>
+                    {formatCredits(summary.summary.balance_micros)} {t("billing.creditUnit")}
+                  </span>
                 </div>
                 <div className={styles.balanceHeld}>
                   <span>{t("billing.held")}</span>
-                  <span>{formatMicros(summary.summary.held_micros)}</span>
+                  <span>
+                    {formatCredits(summary.summary.held_micros)} {t("billing.creditUnit")}
+                  </span>
                 </div>
               </>
             )}
@@ -153,7 +157,7 @@ export function BillingContent({ client, onOpenPricing }: BillingContentProps) {
                         <span className={styles.entryDate}>{formatDate(entry.created_at)}</span>
                       </div>
                       <span className={styles.entryDelta} data-sign={microSign(entry.delta_micros)}>
-                        {formatSignedMicros(entry.delta_micros)}
+                        {formatSignedCredits(entry.delta_micros)}
                       </span>
                     </li>
                   )

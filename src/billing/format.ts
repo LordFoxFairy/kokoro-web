@@ -30,6 +30,36 @@ export function formatMicros(micros: string): string {
   return negative ? `-${out}` : out
 }
 
+// 用户面单位：积分（credit）。1 积分 = 10_000 micros（与 kokoro-credit domain/amount + PRD 一致）。
+// 展示按此移位（4 位小数），去尾零——整积分显示整数，含碎屑显示小数。BigInt 安全，非法回退 "0"。
+const MICROS_PER_CREDIT = BigInt(10_000)
+const CREDIT_FRACTION_DIGITS = 4
+
+export function formatCredits(micros: string): string {
+  let value: bigint
+  try {
+    value = BigInt(micros)
+  } catch {
+    return "0"
+  }
+  const negative = value < ZERO
+  const abs = negative ? -value : value
+  const whole = abs / MICROS_PER_CREDIT
+  const fraction = abs % MICROS_PER_CREDIT
+  let out = whole.toString()
+  if (fraction > ZERO) {
+    const frac = fraction.toString().padStart(CREDIT_FRACTION_DIGITS, "0").replace(/0+$/, "")
+    out = `${out}.${frac}`
+  }
+  return negative ? `-${out}` : out
+}
+
+// 带符号积分展示（流水条目）：正数前置「+」，负数自带「-」，零不加号。
+export function formatSignedCredits(micros: string): string {
+  const formatted = formatCredits(micros)
+  return microSign(micros) === "positive" ? `+${formatted}` : formatted
+}
+
 // 金额正负（着色/加号用）：BigInt 判定，零单列。
 export function microSign(micros: string): MicroSign {
   let value: bigint

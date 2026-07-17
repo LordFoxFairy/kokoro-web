@@ -28,19 +28,22 @@ function renderPanel(client: BillingClient) {
 afterEach(cleanup)
 
 describe("BillingPanel", () => {
-  it("renders balance and held with BigInt-safe conversion", async () => {
+  it("renders balance and held in credits (1 积分 = 10000 micros)", async () => {
     renderPanel(makeClient())
     const balance = await screen.findByTestId("billing-balance")
-    expect(balance.textContent).toContain("12.5")
-    expect(balance.textContent).toContain("0.5")
+    // 12_500_000 micros / 10_000 = 1250 积分；500_000 / 10_000 = 50 积分。
+    expect(balance.textContent).toContain("1250")
+    expect(balance.textContent).toContain("50")
+    expect(balance.textContent).toContain("积分")
   })
 
   it("colours ledger deltas by sign and localizes known reasons", async () => {
     renderPanel(makeClient())
     await screen.findByText("Model call")
-    const debit = screen.getByText("-0.25")
+    // -250_000 / 10_000 = -25；5_000_000 / 10_000 = +500。
+    const debit = screen.getByText("-25")
     expect(debit.getAttribute("data-sign")).toBe("negative")
-    const credit = screen.getByText("+5")
+    const credit = screen.getByText("+500")
     expect(credit.getAttribute("data-sign")).toBe("positive")
     // 未知 reason 回退原文（不裸露 key）。
     expect(screen.getByText("top_up_custom")).toBeTruthy()

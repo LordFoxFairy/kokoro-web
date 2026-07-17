@@ -1,6 +1,32 @@
 import { describe, expect, it } from "vitest"
 
-import { formatMicros, formatMinor, formatSignedMicros, microSign } from "@/billing/format"
+import {
+  formatCredits,
+  formatMicros,
+  formatMinor,
+  formatSignedCredits,
+  formatSignedMicros,
+  microSign,
+} from "@/billing/format"
+
+describe("credit formatting (1 积分 = 10000 micros, BigInt safe)", () => {
+  it("shifts micros to credits, trims trailing zeros", () => {
+    expect(formatCredits("10000")).toBe("1") // 1 积分
+    expect(formatCredits("80000")).toBe("8") // 8 积分
+    expect(formatCredits("1000000")).toBe("100") // 100 积分
+    expect(formatCredits("5000")).toBe("0.5") // 半积分碎屑
+    expect(formatCredits("0")).toBe("0")
+  })
+  it("signs credits: + on positive, - on negative, none on zero", () => {
+    expect(formatSignedCredits("50000")).toBe("+5")
+    expect(formatSignedCredits("-250000")).toBe("-25")
+    expect(formatSignedCredits("0")).toBe("0")
+  })
+  it("keeps BigInt precision + falls back to 0 on garbage", () => {
+    expect(formatCredits("90071992547409930000")).toBe("9007199254740993")
+    expect(formatCredits("not-a-number")).toBe("0")
+  })
+})
 
 describe("micro-unit formatting (BigInt safe)", () => {
   it("shifts micros to units and trims trailing zeros", () => {
