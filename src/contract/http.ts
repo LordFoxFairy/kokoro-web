@@ -130,6 +130,8 @@ export const modelCandidateSchema = z
   .object({
     provider: z.string().min(1),
     name: z.string().min(1),
+    // 面向用户的展示名（来自模型目录）；缺省时下拉回落 name。
+    display_name: z.string().min(1).optional(),
     is_default: z.boolean(),
   })
   .strict()

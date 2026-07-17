@@ -71,6 +71,11 @@ function modelSelector(model: ModelCandidate): string {
   return `${model.provider}:${model.name}`
 }
 
+// 展示名：优先目录 display_name，缺省回落 wire name（保证始终有可读文案）。
+function modelLabel(model: ModelCandidate): string {
+  return model.display_name ?? model.name
+}
+
 export function Composer({
   draft,
   onDraftChange,
@@ -225,10 +230,10 @@ export function Composer({
                   type="button"
                   className={`${styles.mode} ${styles.modeLocked}`}
                   disabled
-                  aria-label={t("composer.modelLocked", { model: currentModel.name })}
+                  aria-label={t("composer.modelLocked", { model: modelLabel(currentModel) })}
                   title={t("composer.modelLockedTitle")}
                 >
-                  <span>{currentModel.name}</span>
+                  <span>{modelLabel(currentModel)}</span>
                   <LockIcon className={styles.lock} />
                 </button>
               ) : (
@@ -237,11 +242,11 @@ export function Composer({
                   triggerLabel={t("composer.modelSwitch")}
                   trigger={
                     <>
-                      <span>{currentModel.name}</span>
+                      <span>{modelLabel(currentModel)}</span>
                       <ChevronIcon className={styles.chevron} />
                     </>
                   }
-                  options={models.map((m) => ({ key: modelSelector(m), label: m.name }))}
+                  options={models.map((m) => ({ key: modelSelector(m), label: modelLabel(m) }))}
                   selectedKey={currentSelector}
                   onSelect={onModelChange}
                   align="end"
