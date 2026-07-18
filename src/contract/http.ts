@@ -164,6 +164,9 @@ export const billingSummarySchema = z
   .object({
     balance_micros: z.string().min(1),
     held_micros: z.string().min(1),
+    // 组织配额与周期口径；null=未设(不限)。供配额进度条与低余额预警。
+    quota_micros: z.string().min(1).nullable(),
+    quota_period: z.string().min(1).nullable(),
   })
   .strict()
 export type BillingSummary = z.infer<typeof billingSummarySchema>
@@ -172,6 +175,8 @@ export const billingLedgerEntrySchema = z
   .object({
     entry_id: z.string().min(1),
     delta_micros: z.string().min(1),
+    // 入账后余额快照（微单位）：余额趋势逐点重建。
+    balance_after_micros: z.string().min(1),
     reason: z.string().min(1),
     created_at: z.number().int(),
     run_id: z.string().min(1).nullable().optional(),

@@ -100,11 +100,171 @@
   font-variant-numeric: tabular-nums;
 }
 
-.ledgerHead {
+/* B1c 低余额预警条：暖警示底，左文右 CTA。 */
+.lowBalance {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  padding: 0.85rem 1rem;
+  background: var(--k-warning-bg);
+  border: 1px solid var(--k-warning-border);
+  border-radius: 12px;
+}
+
+.lowBalanceText {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.lowBalanceTitle {
+  font-size: 0.9rem;
+  color: var(--k-text);
+}
+
+.lowBalanceBody {
+  font-size: 0.8rem;
+  color: var(--k-text-secondary);
+}
+
+.lowBalanceCta {
+  flex-shrink: 0;
+  padding: 0.45rem 0.9rem;
+  font-size: 0.83rem;
+  font-weight: 600;
+  color: var(--k-brand-on);
+  background: var(--k-brand);
+  border-radius: 10px;
+  white-space: nowrap;
+}
+
+.lowBalanceCta:hover {
+  background: var(--k-brand-hover);
+}
+
+/* 余额走势 sparkline 区。 */
+.trend {
+  margin-top: 0.85rem;
+  padding: 0.75rem 0.9rem;
+  background: var(--k-bg-elevated);
+  border: 1px solid var(--k-border);
+  border-radius: 12px;
+}
+
+.trendHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.4rem;
+}
+
+.trendTitle {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--k-text-secondary);
+}
+
+.trendHint {
+  font-size: 0.72rem;
+  color: var(--k-text-muted);
+}
+
+.sparkline {
+  display: block;
+  width: 100%;
+  height: 2rem;
+}
+
+.sparkline polyline {
+  stroke: var(--k-brand);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.ledgerHeadRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
   margin: 1.5rem 0 0.75rem;
+  flex-wrap: wrap;
+}
+
+.ledgerHead {
   font-size: 0.95rem;
   font-weight: 600;
   color: var(--k-text);
+}
+
+/* 消费/入账筛选 chip 组。 */
+.filters {
+  display: inline-flex;
+  gap: 0.25rem;
+  padding: 0.2rem;
+  background: var(--k-bg-elevated);
+  border-radius: 10px;
+}
+
+.filterChip {
+  padding: 0.3rem 0.65rem;
+  font-size: 0.78rem;
+  color: var(--k-text-secondary);
+  border-radius: 7px;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.filterChip:hover {
+  color: var(--k-text);
+}
+
+.filterChip[data-active="true"] {
+  background: var(--k-bg-container);
+  color: var(--k-text);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--k-ink) 12%, transparent);
+}
+
+/* 按天分组：组头（日期 + 当日净额），下挂当日条目。 */
+.dayGroup {
+  margin-bottom: 0.5rem;
+}
+
+.dayHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.55rem 0.25rem 0.35rem;
+  position: sticky;
+  top: 0;
+  background: var(--k-bg-container);
+  z-index: 1;
+}
+
+.dayLabel {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--k-text-tertiary);
+  letter-spacing: 0.02em;
+}
+
+.dayNet {
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--k-text-tertiary);
+}
+
+.dayNet[data-sign="positive"] {
+  color: var(--k-success);
+}
+
+.dayNet[data-sign="negative"] {
+  color: var(--k-text-secondary);
 }
 
 .ledger {
@@ -136,6 +296,32 @@
 .entryDate {
   font-size: 0.75rem;
   color: var(--k-text-muted);
+}
+
+/* 条目次行：时间 + run 标记。 */
+.entryMeta {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.entryTime {
+  font-size: 0.75rem;
+  color: var(--k-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.runTag {
+  font-size: 0.68rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--k-text-tertiary);
+  background: var(--k-bg-elevated);
+  padding: 0.05rem 0.35rem;
+  border-radius: 5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .entryDelta {

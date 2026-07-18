@@ -54,6 +54,16 @@ export function formatCredits(micros: string): string {
   return negative ? `-${out}` : out
 }
 
+// 微单位 → 积分数值（Number）。**仅供图表几何**（sparkline 相对定位）——绝不用于精算/展示金额
+// （精算走 BigInt 的 formatCredits）。用户余额量级远低于 2^53 积分，图表用途下精度足够。非法回退 0。
+export function creditsToNumber(micros: string): number {
+  try {
+    return Number(BigInt(micros)) / 10_000
+  } catch {
+    return 0
+  }
+}
+
 // 带符号积分展示（流水条目）：正数前置「+」，负数自带「-」，零不加号。
 export function formatSignedCredits(micros: string): string {
   const formatted = formatCredits(micros)
