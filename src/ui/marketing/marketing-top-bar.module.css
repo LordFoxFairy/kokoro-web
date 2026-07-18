@@ -9,6 +9,8 @@
   justify-content: space-between;
   gap: 1rem;
   height: 4rem;
+  /* 固定高度栏永不被 flex 容器压缩（父容器高度受限时会挤压默认 flex-shrink:1 的子项）。 */
+  flex-shrink: 0;
   padding: 0 clamp(1rem, 4vw, 2.5rem);
   background: color-mix(in srgb, var(--k-bg-base) 90%, transparent);
   backdrop-filter: blur(10px);

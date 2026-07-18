@@ -8,6 +8,9 @@
   flex-direction: column;
   min-height: 100vh;
   min-height: 100dvh;
+  /* body 是 flex column 且被钉在视口高度：不设 flex-shrink:0 时本容器会被压缩到视口高、
+     内容溢出、顶栏等可压缩子项被挤（高度抖动）。长到内容真高、由 html 承担文档滚动。 */
+  flex-shrink: 0;
   background: var(--k-bg-base);
   color: var(--k-text);
 }
@@ -27,7 +30,9 @@
   -webkit-mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.6), transparent 55%);
 }
 
-.page > * {
+/* 内容区抬到纹理层（.page::before z-index:0）之上；排除顶栏/移动导航——它们靠自身
+   position:sticky + z-index 建栈,若被此规则改成 relative 会丢失吸顶（同特异性源序覆盖）。 */
+.page > *:not(header):not(nav) {
   position: relative;
   z-index: 1;
 }
@@ -50,7 +55,8 @@
 .hero::before {
   content: "";
   position: absolute;
-  inset: -12% -25% 24%;
+  /* 横向不外溢（原 -25% 左右 bleed 会撑出全页横向滚动条）；纵向氛围 bleed 保留。 */
+  inset: -12% 0 24%;
   z-index: 0;
   pointer-events: none;
   background:
@@ -778,7 +784,7 @@
 .footCol {
   display: flex;
   flex-direction: column;
-  gap: 0.65rem;
+  gap: 0.35rem;
 }
 
 .footColHead {
@@ -791,6 +797,9 @@
 }
 
 .footLink {
+  /* 热区收窄到文字宽（原为 flex 拉伸的整列宽隐形热区）并加纵向 padding 到 ~31px 可点高度。 */
+  align-self: flex-start;
+  padding: 0.45rem 0;
   font-size: 0.94rem;
   color: color-mix(in srgb, var(--k-text-on-brand) 78%, transparent);
   transition: color 0.15s ease;
