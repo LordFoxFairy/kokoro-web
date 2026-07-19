@@ -192,6 +192,24 @@ export const billingLedgerSchema = z
   .strict()
 export type BillingLedger = z.infer<typeof billingLedgerSchema>
 
+// 按模型消费分解（B1d）：model_name 已由 session 解析；model_binding_id=null→"未归属"。
+export const billingByModelItemSchema = z
+  .object({
+    model_binding_id: z.string().min(1).nullable(),
+    model_name: z.string().min(1),
+    spent_micros: z.string().min(1),
+    run_count: z.number().int().nonnegative(),
+  })
+  .strict()
+export const billingByModelSchema = z
+  .object({
+    period_start: z.string().min(1),
+    items: z.array(billingByModelItemSchema),
+  })
+  .strict()
+export type BillingByModelItem = z.infer<typeof billingByModelItemSchema>
+export type BillingByModel = z.infer<typeof billingByModelSchema>
+
 export const sessionSnapshotSchema = z
   .object({
     session: sessionMetaSchema,
@@ -288,6 +306,9 @@ export function billingSummaryPath(): string {
 }
 export function billingLedgerPath(): string {
   return `/billing/ledger`
+}
+export function billingByModelPath(): string {
+  return `/billing/by-model`
 }
 export function modelCandidatesPath(): string {
   return `/models`

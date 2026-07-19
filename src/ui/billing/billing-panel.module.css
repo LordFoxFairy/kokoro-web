@@ -187,6 +187,78 @@
   vector-effect: non-scaling-stroke;
 }
 
+/* B1d 本月按模型消费分解：卡片内每模型一行（名+积分+占比条+对话次数）。 */
+.byModel {
+  margin-top: 0.85rem;
+  padding: 0.75rem 0.9rem;
+  background: var(--k-bg-elevated);
+  border: 1px solid var(--k-border);
+  border-radius: 12px;
+}
+
+.byModelTitle {
+  margin: 0 0 0.55rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--k-text-secondary);
+}
+
+.byModelList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.byModelRow {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.byModelRowHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.byModelName {
+  font-size: 0.82rem;
+  color: var(--k-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.byModelSpent {
+  flex-shrink: 0;
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--k-text-primary);
+}
+
+.byModelBarTrack {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--k-bg-sunken, var(--k-border));
+  overflow: hidden;
+}
+
+.byModelBar {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--k-brand);
+  transition: width 0.3s ease;
+}
+
+.byModelRuns {
+  font-size: 0.72rem;
+  color: var(--k-text-muted);
+}
+
 .ledgerHeadRow {
   display: flex;
   align-items: center;

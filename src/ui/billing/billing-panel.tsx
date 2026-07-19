@@ -6,7 +6,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 
-import type { BillingLedgerEntry, BillingSummary } from "@/contract/http"
+import type { BillingByModel, BillingLedgerEntry, BillingSummary } from "@/contract/http"
 import { creditsToNumber, formatCredits, formatSignedCredits, microSign } from "@/billing/format"
 import type { BillingClient } from "@/billing/client"
 import { useT } from "@/i18n/context"
@@ -17,6 +17,8 @@ import styles from "./billing-panel.module.css"
 
 // 余额卡查询键（单发可缓存读）。流水为分页累加，保留本地 accumulator（同 use-session-list 范式）。
 const SUMMARY_KEY = "billing/summary"
+// 按模型消费分解查询键（B1d，单发可缓存读）。
+const BY_MODEL_KEY = "billing/by-model"
 
 // 低余额阈值：可用余额低于此值 → 顶部预警条引导充值。50 积分 = 500_000 微单位。
 const LOW_BALANCE_MICROS = BigInt(500_000)
@@ -160,6 +162,14 @@ export function BillingContent({ client, onOpenPricing }: BillingContentProps) {
         ? { kind: "error" }
         : { kind: "loading" }
 
+  // B1d 按模型消费分解（本月）：单发缓存读；无账户/off 档→空清单（不渲染区块）。
+  const byModelRes = useResource<BillingByModel>(
+    BY_MODEL_KEY,
+    useCallback(() => client.byModel(), [client]),
+  )
+  const byModelItems = byModelRes.data?.items ?? []
+  const byModelMax = byModelItems.reduce((m, it) => Math.max(m, creditsToNumber(it.spent_micros)), 0)
+
   const loadLedger = useCallback(async (): Promise<LedgerState> => {
     try {
       const page = await client.ledger()
@@ -271,6 +281,38 @@ export function BillingContent({ client, onOpenPricing }: BillingContentProps) {
             <span className={styles.trendHint}>{t("billing.trendHint", { count: String(trend.length) })}</span>
           </div>
           <BalanceSparkline values={trend} />
+        </section>
+      ) : null}
+
+      {/* B1d 本月按模型消费分解：有消费才渲染（同 trend 条件渲染范式）。条宽按消费额占比。 */}
+      {byModelItems.length > 0 ? (
+        <section className={styles.byModel} data-testid="billing-by-model">
+          <h3 className={styles.byModelTitle}>{t("billing.byModelTitle")}</h3>
+          <ul className={styles.byModelList}>
+            {byModelItems.map((it) => (
+              <li className={styles.byModelRow} key={it.model_binding_id ?? "unattributed"}>
+                <div className={styles.byModelRowHead}>
+                  <span className={styles.byModelName} title={it.model_name}>
+                    {it.model_name}
+                  </span>
+                  <span className={styles.byModelSpent}>
+                    {formatCredits(it.spent_micros)} {t("billing.creditUnit")}
+                  </span>
+                </div>
+                <div className={styles.byModelBarTrack}>
+                  <div
+                    className={styles.byModelBar}
+                    style={{
+                      width: `${byModelMax > 0 ? Math.max(4, (creditsToNumber(it.spent_micros) / byModelMax) * 100) : 0}%`,
+                    }}
+                  />
+                </div>
+                <span className={styles.byModelRuns}>
+                  {t("billing.byModelRuns", { count: String(it.run_count) })}
+                </span>
+              </li>
+            ))}
+          </ul>
         </section>
       ) : null}
 

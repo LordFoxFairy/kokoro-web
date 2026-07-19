@@ -5,10 +5,13 @@
 import { ZodError } from "zod"
 
 import {
+  billingByModelPath,
+  billingByModelSchema,
   billingLedgerPath,
   billingLedgerSchema,
   billingSummaryPath,
   billingSummarySchema,
+  type BillingByModel,
   type BillingLedger,
   type BillingSummary,
 } from "@/contract/http"
@@ -66,6 +69,8 @@ export type BillingClient = {
   summary: () => Promise<BillingSummary>
   // 分页：cursor 缺省=首页；服务端回 next_cursor（无=到底）。
   ledger: (cursor?: string) => Promise<BillingLedger>
+  // 本周期按模型消费分解（B1d）：无账户/off 档→空清单。
+  byModel: () => Promise<BillingByModel>
 }
 
 export function createBillingClient(): BillingClient {
@@ -75,5 +80,6 @@ export function createBillingClient(): BillingClient {
       const query = cursor !== undefined ? `?cursor=${encodeURIComponent(cursor)}` : ""
       return getJson(`${billingLedgerPath()}${query}`, (raw) => billingLedgerSchema.parse(raw))
     },
+    byModel: () => getJson(billingByModelPath(), (raw) => billingByModelSchema.parse(raw)),
   }
 }

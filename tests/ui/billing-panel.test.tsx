@@ -25,6 +25,7 @@ function makeClient(overrides: Partial<BillingClient> = {}): BillingClient {
       ],
       next_cursor: "cur_2",
     }),
+    byModel: vi.fn().mockResolvedValue({ period_start: "2026-07-01T00:00:00.000Z", items: [] }),
     ...overrides,
   }
 }
