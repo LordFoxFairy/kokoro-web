@@ -72,7 +72,8 @@
 
 .row {
   display: grid;
-  grid-template-columns: 58px 1fr;
+  /* 英文键名(namespace/session)比中文长，留够列宽避免折行。 */
+  grid-template-columns: 72px 1fr;
   align-items: baseline;
   gap: 8px;
 }

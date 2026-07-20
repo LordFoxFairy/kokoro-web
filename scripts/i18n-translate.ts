@@ -30,22 +30,29 @@ const GT: Record<string, string> = {
   pt: "pt",
   ru: "ru",
 }
-const TARGET_LOCALES = ["ja", "ko", "es", "fr", "de", "pt", "ru"]
+// en 必须在列:覆盖率闸(resolve.test ≥95%)对每种上线语言都查,漏掉 en 就会静默漂移到红。
+const TARGET_LOCALES = ["en", "ja", "ko", "es", "fr", "de", "pt", "ru"]
 
 const CONCURRENCY = 5
 const RETRY = 4
 
 type Overlay = Partial<Record<string, string>>
 
-// {name} → KVARn 哨兵(全大写拉丁,翻译不动);同名复用同哨兵。返回还原映射。
-function protect(text: string): { masked: string; restore: (s: string) => string } {
+// {name} → 无字母符号哨兵 %%n%% ;同名复用同哨兵。返回还原映射 + 期望占位集合。
+// 为何不用字母哨兵(旧 KVARn):拉丁字母词会被 ru 音译成 КВАР0、被 ja/ko 拆成「KVAR は 0」,
+// 精确串还原随即失配,坏译文("KVAR" 字样 + 游离数字)直接进 UI。符号型无字母可音译。
+function protect(text: string): {
+  masked: string
+  restore: (s: string) => string
+  expected: readonly string[]
+} {
   const nameToSentinel = new Map<string, string>()
   const sentinelToOriginal: Array<[string, string]> = []
   let i = 0
   const masked = text.replace(/\{(\w+)\}/g, (whole, name: string) => {
     let sentinel = nameToSentinel.get(name)
     if (sentinel === undefined) {
-      sentinel = `KVAR${i++}`
+      sentinel = `%%${i++}%%`
       nameToSentinel.set(name, sentinel)
       sentinelToOriginal.push([sentinel, whole])
     }
@@ -53,15 +60,19 @@ function protect(text: string): { masked: string; restore: (s: string) => string
   })
   const restore = (translated: string): string => {
     let out = translated
-    for (const [sentinel, original] of sentinelToOriginal) out = out.split(sentinel).join(original)
+    for (const [sentinel, original] of sentinelToOriginal) {
+      const idx = sentinel.slice(2, -2)
+      // 容错:允许译文在符号与序号之间插入空白(部分语言会加空格/断词)。
+      out = out.replace(new RegExp(`%\\s*%\\s*${idx}\\s*%\\s*%`, "g"), original)
+    }
     return out
   }
-  return { masked, restore }
+  return { masked, restore, expected: sentinelToOriginal.map(([, original]) => original) }
 }
 
 async function translateOne(text: string, tl: string): Promise<string> {
   if (text.trim() === "") return text
-  const { masked, restore } = protect(text)
+  const { masked, restore, expected } = protect(text)
   const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=zh-CN&tl=${tl}&dt=t&q=${encodeURIComponent(masked)}`
   let lastErr: unknown
   for (let attempt = 0; attempt < RETRY; attempt++) {
@@ -70,7 +81,14 @@ async function translateOne(text: string, tl: string): Promise<string> {
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const data = (await res.json()) as [Array<[string]>, ...unknown[]]
       const translated = data[0].map((seg) => seg[0]).join("")
-      return restore(translated)
+      const out = restore(translated)
+      // 占位符校验闸:哨兵没原样还原(被拆词/音译/吞掉)即判该键失败——宁可缺译回退中文源,
+      // 也绝不写出丢了 {var} 的坏译文（那会让 UI 露出裸文案/游离数字）。
+      const lost = expected.filter((placeholder) => !out.includes(placeholder))
+      if (lost.length > 0) {
+        throw new Error(`placeholder lost after restore: ${lost.join(",")} in ${JSON.stringify(out)}`)
+      }
+      return out
     } catch (err) {
       lastErr = err
       await new Promise((r) => setTimeout(r, 700 * (attempt + 1)))

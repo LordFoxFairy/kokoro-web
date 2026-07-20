@@ -30,8 +30,7 @@ describe("FileChip / PreviewBody / fileUrl", () => {
     )
   })
 
-  it("audio/*：鉴权拉取字节 → blob src 原生播放器（带 Bearer，避 401）", async () => {
-    window.localStorage.setItem("kokoro.auth.token", "tok123")
+  it("audio/*：同源鉴权拉取字节 → blob src 原生播放器（cookie 自动携带，前端不持 token）", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValue({ ok: true, blob: async () => new Blob(["x"], { type: "audio/wav" }) })
@@ -43,10 +42,14 @@ describe("FileChip / PreviewBody / fileUrl", () => {
       { wrapper: LocaleProvider },
     )
     await waitFor(() => expect(container.querySelector("audio")).not.toBeNull())
+    // src 必须是 blob（不是端点直连）：<audio src> 带不了自定义头，故一律 fetch→blob→object URL。
     expect(container.querySelector("audio")?.getAttribute("src")).toBe("blob:mock")
-    // 鉴权头随 files 抓取上 wire（生产鉴权开启后必需）。
-    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
-    expect((init.headers as Record<string, string>).authorization).toBe("Bearer tok123")
+    const [reqUrl, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(reqUrl).toBe("http://s.local/f.wav")
+    // 冻结当前鉴权形态（AUTH-P0）：同源 httpOnly 信封 cookie 自动携带 —— 前端不再持 token、
+    // 不再手挂 Authorization 头。若哪天又出现 Bearer 头，即是把 token 漏回前端的回归。
+    expect(init.headers).toBeUndefined()
+    expect(init.cache).toBe("no-store")
   })
 
   it("未知类型：下载兜底文案", () => {

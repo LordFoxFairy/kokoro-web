@@ -93,15 +93,15 @@ export function DevDebugPanel({
         <span className={styles.dot} aria-hidden />
         <span className={styles.title}>dev</span>
         <span className={styles.spacer} />
-        <button type="button" className={styles.iconBtn} onClick={refresh} title="刷新" aria-label="刷新">
+        <button type="button" className={styles.iconBtn} onClick={refresh} title="refresh" aria-label="refresh">
           ↻
         </button>
         <button
           type="button"
           className={styles.iconBtn}
           onClick={() => setCollapsed((v) => !v)}
-          title={collapsed ? "展开" : "收起"}
-          aria-label={collapsed ? "展开" : "收起"}
+          title={collapsed ? "expand" : "collapse"}
+          aria-label={collapsed ? "expand" : "collapse"}
         >
           {collapsed ? "▸" : "▾"}
         </button>
@@ -109,13 +109,13 @@ export function DevDebugPanel({
       {collapsed ? null : (
         <dl className={styles.body}>
           <Row label="namespace" value={namespace === undefined ? "…" : (namespace ?? "—")} mono />
-          <Row label="余额" value={balance === null ? "—" : `${formatCredits(balance)} 积分`} />
-          <Row label="相位" value={snapshot.machine.phase} />
+          <Row label="credits" value={balance === null ? "—" : formatCredits(balance)} />
+          <Row label="phase" value={snapshot.machine.phase} />
           <Row label="run" value={snapshot.machine.runId ?? "—"} mono />
-          <Row label="会话" value={snapshot.store?.activeId ?? "—"} mono />
-          <Row label="模式" value={MODE_LABEL[snapshot.pendingMode] ?? snapshot.pendingMode} />
+          <Row label="session" value={snapshot.store?.activeId ?? "—"} mono />
+          <Row label="mode" value={MODE_LABEL[snapshot.pendingMode] ?? snapshot.pendingMode} />
           {snapshot.machine.error !== null ? (
-            <Row label="错误" value={snapshot.machine.error} danger />
+            <Row label="error" value={snapshot.machine.error} danger />
           ) : null}
         </dl>
       )}

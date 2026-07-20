@@ -1,9 +1,9 @@
-// en 覆盖（Partial）：未译的 key 在解析层回退中文源——绝不裸露 key，绝不半中半英崩溃。
+// en 覆盖(MT 生成,可人工精修;`npx tsx scripts/i18n-translate.ts en` 只补缺失键)。
+// 未译键在解析层回退中文源——绝不裸露 key。
 
 import type { MessageKey } from "./messages"
 
 export const en: Partial<Record<MessageKey, string>> = {
-  // rail
   "rail.brandSub": "kokoro",
   "rail.railAria": "Chat navigation",
   "rail.searchAria": "Search chats",
@@ -14,6 +14,7 @@ export const en: Partial<Record<MessageKey, string>> = {
   "rail.expandAria": "Expand sidebar",
   "rail.collapseAria": "Collapse sidebar",
   "rail.newChat": "New chat",
+  "rail.newChatShortcut": "⇧⌘O",
   "rail.navChat": "Chats",
   "rail.recentAria": "Recent chats",
   "rail.recent": "Recent",
@@ -30,11 +31,11 @@ export const en: Partial<Record<MessageKey, string>> = {
   "rail.renamePlaceholder": "Chat title",
   "rail.renameSave": "Save title",
   "rail.renameCancel": "Cancel rename",
-  // shell
   "shell.resizeAria": "Resize sidebar",
   "shell.openNav": "Open chat navigation",
   "shell.heading": "What would you like to do today?",
   "shell.subhead": "Pick a starting point, or just tell me your idea",
+  "shell.backToLatest": "Back to latest",
   "scenario.writeTitle": "Write an article",
   "scenario.writeDesc": "Draft, polish, and rewrite any copy",
   "scenario.writePrompt": "Write an article about [topic] — professional tone, clear structure.",
@@ -53,8 +54,6 @@ export const en: Partial<Record<MessageKey, string>> = {
   "scenario.summaryTitle": "Summarize",
   "scenario.summaryDesc": "Turn messy input into clarity",
   "scenario.summaryPrompt": "Summarize this into clear key points and action items:",
-  "shell.backToLatest": "Back to latest",
-  // composer
   "composer.editArea": "Message editor",
   "composer.inputAria": "Chat input",
   "composer.placeholder": "Tell me what's on your mind.",
@@ -69,11 +68,9 @@ export const en: Partial<Record<MessageKey, string>> = {
   "composer.stop": "Stop generating",
   "composer.send": "Send message",
   "composer.sendSteer": "Send interjection",
-  // expand
   "expand.collapseAria": "Collapse editor",
   "expand.inputAria": "Expanded editor input",
   "expand.hint": "⌘ / Ctrl + Enter to send · Esc to collapse",
-  // hitl
   "hitl.approvalTitle": "Tool call awaiting approval",
   "hitl.reviewTitle": "Tool result awaiting review",
   "hitl.replaceAria": "Replace result",
@@ -106,7 +103,6 @@ export const en: Partial<Record<MessageKey, string>> = {
   "hitl.inputJsonHint": "No form could be generated for this request. Edit the JSON directly.",
   "hitl.inputJsonAria": "JSON input",
   "hitl.inputJsonInvalid": "Invalid JSON. Please fix it and retry.",
-  // canvas
   "canvas.closePreview": "Close preview",
   "canvas.close": "Close",
   "canvas.download": "Download",
@@ -124,15 +120,12 @@ export const en: Partial<Record<MessageKey, string>> = {
   "canvas.toolArgs": "Arguments",
   "canvas.toolResult": "Result",
   "canvas.toolNoDetail": "No arguments or result for this call yet.",
-  // delivery
   "delivery.heading": "Deliveries",
   "delivery.openAria": "Open delivery {title}",
-  // artifact
   "artifact.loadingPreview": "Loading preview…",
   "artifact.cannotPreview": "Cannot preview — please download.",
   "artifact.truncated": "Preview truncated (first 64KB); download for full content.",
   "artifact.unsupported": "Inline preview unsupported for this format — please download.",
-  // thread
   "thread.recordAria": "Conversation log",
   "thread.toolCall": "Tool call",
   "thread.subagent": "Subagent",
@@ -169,7 +162,6 @@ export const en: Partial<Record<MessageKey, string>> = {
   "fail.generic": "This turn didn't finish. Please try again.",
   "fail.internalHint": "If retrying still fails, please share these details with us.",
   "fail.showDetail": "View error details",
-  // mode
   "mode.labelFast": "Fast",
   "mode.labelThinking": "Thinking",
   "mode.hintFast": "Faster responses",
@@ -188,11 +180,8 @@ export const en: Partial<Record<MessageKey, string>> = {
   "mode.tStarting": "{mode} · starting this turn",
   "mode.tReconnecting": "{mode} · reconnecting this turn",
   "mode.tConnected": "{mode} · live session connected",
-  // 引擎瞬态通知（steer 投递失败）
   "steer.sendFailed": "Failed to send interjection: {detail}. Please retry.",
-  // todo
   "todo.plan": "Plan",
-  // lang
   "lang.switchAria": "Interface language",
   "lang.zh": "中文",
   "lang.en": "English",
@@ -212,7 +201,6 @@ export const en: Partial<Record<MessageKey, string>> = {
   "auth.sentBody": "A sign-in link is on its way. Open it in your email to finish signing in.",
   "auth.devLink": "Dev mode: open the sign-in link",
   "auth.resend": "Use a different email",
-  // skills
   "rail.navSkills": "Skills",
   "skills.title": "Skills",
   "skills.subtitle": "Manage the skills available in this workspace, or upload your own.",
@@ -259,7 +247,6 @@ export const en: Partial<Record<MessageKey, string>> = {
   "skills.statusFailed": "Failed",
   "composer.pinnedAria": "Pinned skills",
   "composer.pinnedRemove": "Unpin {name}",
-  // billing
   "rail.navBilling": "Balance",
   "billing.title": "Balance & billing",
   "billing.close": "Close balance panel",
@@ -267,6 +254,16 @@ export const en: Partial<Record<MessageKey, string>> = {
   "billing.loadError": "Failed to load, try again later",
   "billing.balance": "Available balance",
   "billing.held": "On hold",
+  "billing.creditUnit": "credits",
+  "mockPay.badge": "DEV · Mock checkout",
+  "mockPay.title": "Confirm payment",
+  "mockPay.order": "Order",
+  "mockPay.confirm": "Confirm payment (DEV mock)",
+  "mockPay.paying": "Paying…",
+  "mockPay.paid": "Payment successful — credits added.",
+  "mockPay.back": "Back to workspace",
+  "mockPay.error": "Payment failed. Please try again or go back.",
+  "mockPay.cancel": "Cancel and go back",
   "billing.ledgerTitle": "Transactions",
   "billing.ledgerEmpty": "No transactions yet",
   "billing.loadMore": "Load more",
@@ -275,11 +272,26 @@ export const en: Partial<Record<MessageKey, string>> = {
   "billing.reasonSubscription": "Subscription",
   "billing.reasonRefund": "Refund",
   "billing.reasonAdjustment": "Manual adjustment",
+  "billing.quotaLabel": "Quota this cycle",
+  "billing.quotaPeriodMonthly": "Monthly",
+  "billing.trendTitle": "Balance trend",
+  "billing.trendHint": "Balance after the last {count} entries",
+  "billing.byModelTitle": "Spending by model this month",
+  "billing.byModelEmpty": "No model spending this month",
+  "billing.byModelRuns": "{count} conversations",
+  "billing.filterAll": "All",
+  "billing.filterSpend": "Spending",
+  "billing.filterCredit": "Top-ups",
+  "billing.filterEmpty": "No records under this filter",
+  "billing.dayNet": "Daily net",
+  "billing.runTag": "Run {id}",
+  "billing.lowBalanceTitle": "Balance is low",
+  "billing.lowBalanceBody": "Your balance may not cover further conversations. Top up soon.",
+  "billing.lowBalanceCta": "Top up",
   "billing.creditRejected": "Not enough balance — this message couldn't start.",
   "billing.creditPricing": "See pricing or contact us about topping up.",
   "billing.viewBalance": "View balance",
   "billing.viewPricing": "View plans",
-  // pricing / purchase (PAY-2)
   "pricing.title": "Choose a plan",
   "pricing.close": "Close plans panel",
   "pricing.loading": "Loading plans…",
@@ -293,7 +305,6 @@ export const en: Partial<Record<MessageKey, string>> = {
   "pricing.buying": "Redirecting…",
   "pricing.buyUnavailable": "Payments unavailable",
   "pricing.loginRequired": "Please sign in before purchasing.",
-  // team (TEAM-1)
   "rail.navTeams": "Teams",
   "team.title": "Teams",
   "team.subtitle": "Switch teams, handle invites, and manage members.",
@@ -327,7 +338,6 @@ export const en: Partial<Record<MessageKey, string>> = {
   "team.errInviteStale": "This invite is no longer valid.",
   "team.errForbidden": "You don't have permission to do that.",
   "team.errGeneric": "Something went wrong — please try again.",
-  // Connections panel (MCP-UX)
   "rail.navMcp": "Connections",
   "mcp.title": "Tool connections",
   "mcp.subtitle": "Register and manage this workspace's MCP servers and the credentials they use.",
@@ -391,14 +401,12 @@ export const en: Partial<Record<MessageKey, string>> = {
   "mcp.errNotFound": "That connection wasn't found.",
   "mcp.errInvalid": "Something's off: check the name, URL and transport.",
   "mcp.errGeneric": "Something went wrong — please try again.",
-  // Composer model selector (MODEL-UX)
   "composer.modelSwitch": "Switch model",
   "composer.modelLocked": "Model: {model} (locked this turn)",
   "composer.modelLockedTitle": "Model is locked for this turn; start a new chat to change it",
   "composer.agentSwitch": "Switch agent",
   "composer.agentLocked": "Agent: {agent} (locked this turn)",
   "composer.agentLockedTitle": "Agent is locked for this turn; start a new chat to change it",
-  // Artifact library (ARTIFACT-LIB)
   "rail.navLibrary": "Work",
   "library.title": "Artifact library",
   "library.close": "Close library",
@@ -408,7 +416,6 @@ export const en: Partial<Record<MessageKey, string>> = {
   "library.loadMore": "Load more",
   "library.downloadAria": "Download {title}",
   "library.openSource": "Open source session",
-  // Share (SHARE-1)
   "share.button": "Share",
   "share.creating": "Creating…",
   "share.title": "Share this session",
@@ -419,12 +426,10 @@ export const en: Partial<Record<MessageKey, string>> = {
   "share.revoke": "Revoke share",
   "share.done": "Done",
   "share.error": "Share failed",
-  // Public shared page (SHARE-1)
   "shared.loading": "Loading…",
   "shared.notFound": "This share isn't available",
   "shared.notFoundHint": "The link may have been revoked, or the session deleted.",
   "shared.readonlyBadge": "Read-only share",
-  // Marketing landing (WEB-FACE face 1)
   "marketing.navCaps": "Capabilities",
   "marketing.navFaq": "FAQ",
   "marketing.navPricing": "Pricing",
@@ -476,7 +481,6 @@ export const en: Partial<Record<MessageKey, string>> = {
   "marketing.footLinkFaq": "FAQ",
   "marketing.footLinkLogin": "Sign in",
   "marketing.footRights": "All rights reserved.",
-  // Login rework (WEB-FACE face 2)
   "auth.sentChangeEmail": "Use a different email",
   "auth.sentResendNow": "Resend",
   "auth.sentResendIn": "Resend in {seconds}s",
@@ -485,7 +489,6 @@ export const en: Partial<Record<MessageKey, string>> = {
   "auth.emailLabel": "Email",
   "auth.orDivider": "or",
   "auth.oauthSoon": "More sign-in options coming soon",
-  // User settings (WEB-FACE face 3, /settings)
   "rail.navSettings": "Settings",
   "settings.title": "Settings",
   "settings.backToApp": "Back to workspace",
@@ -507,6 +510,7 @@ export const en: Partial<Record<MessageKey, string>> = {
   "settings.defaultModel": "Default model",
   "settings.defaultAgent": "Default agent",
   "settings.followProfile": "Follow workspace default",
+  "settings.creditsTitle": "Credits & usage",
   "settings.subTitle": "Subscription & balance",
   "settings.subViewLedger": "View ledger",
   "settings.capsTitle": "Capabilities",
