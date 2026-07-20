@@ -2,7 +2,9 @@
    卡片外壳(bg/border/radius/shadow/max-height)由通用 Modal 提供,此处只排内部两栏。--k-* token。 */
 
 .layout {
-  flex: 1;
+  /* 固定高度:各 tab 内容多寡不改 modal 尺寸,避免切换时模态重定位「跳来跳去」+ 尺寸不统一。
+     内容超出在 .contentBody 内部滚动。窄屏由下方 media 退化。 */
+  height: min(72vh, 640px);
   min-height: 0;
   display: grid;
   grid-template-columns: 15.5rem minmax(0, 1fr);
@@ -147,17 +149,16 @@
   min-height: 0;
   overflow-y: auto;
   padding: clamp(1.25rem, 3vw, 2.25rem);
-  animation: contentIn 0.24s ease both;
+  /* 只淡入、不位移:切 tab 不再竖向「跳」。 */
+  animation: contentIn 0.18s ease both;
 }
 
 @keyframes contentIn {
   from {
     opacity: 0;
-    transform: translateY(6px);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
   }
 }
 

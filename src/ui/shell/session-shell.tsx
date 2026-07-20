@@ -291,7 +291,7 @@ export function SessionShell({ engine: injectedEngine, brandName }: SessionShell
             isReconnecting={isReconnecting}
             hasFailed={hasFailed}
             creditRejected={creditRejected}
-            onOpenBilling={() => openSettings("subscription")}
+            onOpenBilling={() => openSettings("credits")}
             onOpenPricing={() => openSettings("subscription")}
             onRetry={() => engine?.retry()}
             onScroll={handleThreadScroll}

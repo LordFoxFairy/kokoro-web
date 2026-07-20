@@ -222,7 +222,7 @@ export function SessionRail({
         <button
           type="button"
           className={styles.navItem}
-          onClick={() => onOpenSettings("subscription")}
+          onClick={() => onOpenSettings("credits")}
         >
           <CoinIcon className={styles.icon} />
           <span className={styles.navLabel}>{t("rail.navBilling")}</span>

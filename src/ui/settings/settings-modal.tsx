@@ -16,6 +16,7 @@ import {
   LibraryIcon,
   PlugIcon,
   SlidersIcon,
+  SparkleIcon,
   SunIcon,
   UserIcon,
   UsersIcon,
@@ -44,6 +45,7 @@ export type SettingsTab =
   | "account"
   | "appearance"
   | "chat"
+  | "credits"
   | "subscription"
   | "skills"
   | "mcp"
@@ -54,6 +56,7 @@ export const SETTINGS_TABS: readonly SettingsTab[] = [
   "account",
   "appearance",
   "chat",
+  "credits",
   "subscription",
   "skills",
   "mcp",
@@ -112,7 +115,8 @@ export function SettingsModal({ brandName, initialTab, onClose, onTabChange }: S
     { key: "account", label: t("settings.accountTitle"), Icon: UserIcon },
     { key: "appearance", label: t("settings.appearanceTitle"), Icon: SunIcon },
     { key: "chat", label: t("settings.chatTitle"), Icon: ChatsIcon },
-    { key: "subscription", label: t("settings.subTitle"), Icon: CoinIcon },
+    { key: "credits", label: t("settings.creditsTitle"), Icon: CoinIcon },
+    { key: "subscription", label: t("settings.subTitle"), Icon: SparkleIcon },
     { key: "skills", label: t("rail.navSkills"), Icon: SlidersIcon },
     { key: "mcp", label: t("rail.navMcp"), Icon: PlugIcon },
     { key: "library", label: t("rail.navLibrary"), Icon: LibraryIcon },
@@ -167,12 +171,15 @@ export function SettingsModal({ brandName, initialTab, onClose, onTabChange }: S
             {tab === "account" ? <AccountCard /> : null}
             {tab === "appearance" ? <AppearanceCard /> : null}
             {tab === "chat" ? <ChatPrefsCard /> : null}
-            {tab === "subscription" ? (
-              <>
-                <BillingContent client={browserBillingClient()} />
-                <PricingContent client={browserPricingClient()} />
-              </>
+            {/* 积分:余额 + 按模型消费 + 流水（用量透视）。低余额/查看套餐 → 跳订阅 tab。 */}
+            {tab === "credits" ? (
+              <BillingContent
+                client={browserBillingClient()}
+                onOpenPricing={() => selectTab("subscription")}
+              />
             ) : null}
+            {/* 订阅:充值套餐目录 + 购买。 */}
+            {tab === "subscription" ? <PricingContent client={browserPricingClient()} /> : null}
             {tab === "skills" ? (
               <SkillsContent
                 client={browserHubClient()}
