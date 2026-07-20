@@ -1,0 +1,98 @@
+/* DEV 调试面板：右下角浮层，暖纸皮肤对齐 --k- token；克制不抢戏，等宽读运行时事实。 */
+.panel {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 9000;
+  width: 264px;
+  border: 1px solid var(--k-border);
+  border-radius: 10px;
+  background: var(--k-bg-elevated);
+  box-shadow: 0 8px 28px rgb(0 0 0 / 18%);
+  font-size: 12px;
+  color: var(--k-text);
+  user-select: none;
+  overflow: hidden;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  cursor: grab;
+  background: var(--k-bg-hover);
+  border-bottom: 1px solid var(--k-border);
+  touch-action: none;
+}
+.head:active {
+  cursor: grabbing;
+}
+
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #14b86a;
+  box-shadow: 0 0 0 2px color-mix(in srgb, #14b86a 28%, transparent);
+}
+
+.title {
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--k-text-secondary);
+}
+
+.spacer {
+  flex: 1;
+}
+
+.iconBtn {
+  border: none;
+  background: transparent;
+  color: var(--k-text-muted);
+  cursor: pointer;
+  padding: 2px 5px;
+  border-radius: 5px;
+  line-height: 1;
+  font-size: 12px;
+}
+.iconBtn:hover {
+  background: var(--k-bg-container);
+  color: var(--k-text);
+}
+
+.body {
+  margin: 0;
+  padding: 8px;
+  display: grid;
+  gap: 5px;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 58px 1fr;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.key {
+  color: var(--k-text-muted);
+}
+
+.val {
+  margin: 0;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--k-text);
+}
+.val[data-mono="true"] {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+}
+.val[data-danger="true"] {
+  color: #d4453b;
+}

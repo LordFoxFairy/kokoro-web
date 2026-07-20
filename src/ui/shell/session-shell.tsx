@@ -35,7 +35,8 @@ import { CanvasPanel } from "@/ui/canvas/canvas-panel"
 import { useCanvasResize } from "@/ui/canvas/use-canvas-resize"
 import { SettingsModal, normalizeSettingsTab, type SettingsTab } from "@/ui/settings/settings-modal"
 
-import { browserEngine, browserListClient } from "./page-clients"
+import { browserBillingClient, browserEngine, browserListClient } from "./page-clients"
+import { DevDebugPanel } from "@/ui/dev/dev-debug-panel"
 import { useAwaitingNotify } from "./use-awaiting-notify"
 import { useCanvasWorkspace } from "./use-canvas-workspace"
 import { useComposerSelectors } from "./use-composer-selectors"
@@ -403,6 +404,9 @@ export function SessionShell({ engine: injectedEngine, brandName }: SessionShell
           onTabChange={syncSettingsUrl}
         />
       ) : null}
+
+      {/* dev 调试面板：自查 /api/dev/status 门控（生产恒 disabled → 不渲染），只读运行时事实浮层。 */}
+      <DevDebugPanel engine={engine} billing={browserBillingClient()} />
     </main>
   )
 }
