@@ -38,10 +38,6 @@ async function downloadFile(url: string, name: string): Promise<void> {
   URL.revokeObjectURL(objectUrl)
 }
 
-function isTextual(mime: string): boolean {
-  return mime.startsWith("text/") || mime === "application/json"
-}
-
 export function formatDeliveryTime(iso: string, locale: string): string {
   const date = new Date(iso)
   if (Number.isNaN(date.getTime())) return iso
@@ -280,21 +276,18 @@ function ContentBody({
     }
     case "delivery": {
       const { delivery } = content
-      // 成果预览：文本类直显（冻结字节）；其它格式给下载态，不做媒体内嵌。
+      // 成果预览：交 PreviewBody 按 mime 分派——文本(markdown/json/csv/code)直显、图片/音视频内嵌媒体，
+      // 真不支持的格式才回落 unsupported。冻结字节走 deliveryUrl。
       return (
         <div className={styles.deliveryBody}>
           {delivery.note !== undefined && delivery.note !== "" ? (
             <p className={styles.deliveryNote}>{delivery.note}</p>
           ) : null}
-          {isTextual(delivery.mime) ? (
-            <PreviewBody
-              url={deliveryUrl(sessionId, delivery.contentHash)}
-              mime={delivery.mime}
-              name={delivery.title}
-            />
-          ) : (
-            <p className={styles.meta}>{t("artifact.unsupported")}</p>
-          )}
+          <PreviewBody
+            url={deliveryUrl(sessionId, delivery.contentHash)}
+            mime={delivery.mime}
+            name={delivery.title}
+          />
         </div>
       )
     }

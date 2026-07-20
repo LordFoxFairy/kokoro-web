@@ -99,7 +99,8 @@ function formatJson(text: string): string {
 }
 
 function isTextual(mime: string): boolean {
-  return mime.startsWith("text/") || mime === "application/json"
+  // text/html 排除在外：交 MediaPreview 的 sandbox iframe 真渲染（否则被当纯文本显示源码）。
+  return (mime.startsWith("text/") && mime !== "text/html") || mime === "application/json"
 }
 
 function isMedia(mime: string): boolean {
