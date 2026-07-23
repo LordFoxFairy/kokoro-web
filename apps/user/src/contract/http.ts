@@ -130,9 +130,8 @@ export const modelCandidateSchema = z
   .object({
     provider: z.string().min(1),
     name: z.string().min(1),
-    // 面向用户的展示名（来自模型目录）；缺省时下拉回落 name。
-    display_name: z.string().min(1).optional(),
     is_default: z.boolean(),
+    display_name: z.string().min(1).optional(),
   })
   .strict()
 export type ModelCandidate = z.infer<typeof modelCandidateSchema>
@@ -164,7 +163,6 @@ export const billingSummarySchema = z
   .object({
     balance_micros: z.string().min(1),
     held_micros: z.string().min(1),
-    // 组织配额与周期口径；null=未设(不限)。供配额进度条与低余额预警。
     quota_micros: z.string().min(1).nullable(),
     quota_period: z.string().min(1).nullable(),
   })
@@ -175,10 +173,9 @@ export const billingLedgerEntrySchema = z
   .object({
     entry_id: z.string().min(1),
     delta_micros: z.string().min(1),
-    // 入账后余额快照（微单位）：余额趋势逐点重建。
-    balance_after_micros: z.string().min(1),
     reason: z.string().min(1),
     created_at: z.number().int(),
+    balance_after_micros: z.string().min(1),
     run_id: z.string().min(1).nullable().optional(),
   })
   .strict()
@@ -192,22 +189,22 @@ export const billingLedgerSchema = z
   .strict()
 export type BillingLedger = z.infer<typeof billingLedgerSchema>
 
-// 按模型消费分解（B1d）：model_name 已由 session 解析；model_binding_id=null→"未归属"。
 export const billingByModelItemSchema = z
   .object({
     model_binding_id: z.string().min(1).nullable(),
     model_name: z.string().min(1),
     spent_micros: z.string().min(1),
-    run_count: z.number().int().nonnegative(),
+    run_count: z.number().int(),
   })
   .strict()
+export type BillingByModelItem = z.infer<typeof billingByModelItemSchema>
+
 export const billingByModelSchema = z
   .object({
     period_start: z.string().min(1),
     items: z.array(billingByModelItemSchema),
   })
   .strict()
-export type BillingByModelItem = z.infer<typeof billingByModelItemSchema>
 export type BillingByModel = z.infer<typeof billingByModelSchema>
 
 export const sessionSnapshotSchema = z
