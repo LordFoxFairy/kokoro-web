@@ -198,7 +198,7 @@ export function ResourceTable({
   const [rowForm, setRowForm] = useState<{ actionId: string; label: string; form: RowActionForm; row: Row; paramName: string } | null>(null);
   // bespoke 技能上传两步流开关（文件+预览+逐项确认，通用表单覆盖不了）。
   const [uploadOpen, setUploadOpen] = useState(false);
-  const actionRef = useRef<ActionType>();
+  const actionRef = useRef<ActionType>(undefined);
 
   const mod = manifests.find((m) => m.id === moduleId);
   const online = manifests.length === 0 ? null : (mod?.online ?? false);

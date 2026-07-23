@@ -38,7 +38,7 @@ const STATUS_COLOR: Record<string, string> = {
 
 export default function ApprovalsPage(): React.ReactElement {
   const { message } = App.useApp();
-  const actionRef = useRef<ActionType>();
+  const actionRef = useRef<ActionType>(undefined);
   const [rejectId, setRejectId] = useState<string | null>(null);
 
   async function approve(id: string) {
