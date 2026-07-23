@@ -1,47 +1,14 @@
 {
-  "name": "kokoro-web",
+  "name": "@kokoro/web",
   "version": "0.1.0",
   "private": true,
+  "description": "Kokoro web monorepo：apps/user（面向用户）+ apps/admin（后台管理，后续迁入）+ packages/*（共享）。两 app 独立部署，共享层收敛。",
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "eslint .",
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run"
-  },
-  "dependencies": {
-    "@ant-design/cssinjs": "^2.1.2",
-    "@ant-design/nextjs-registry": "^1.3.0",
-    "antd": "^6.5.0",
-    "next": "16.2.6",
-    "react": "19.2.4",
-    "react-dom": "19.2.4",
-    "react-markdown": "^10.1.0",
-    "remark-gfm": "^4.0.1",
-    "zod": "^3.25.76"
-  },
-  "devDependencies": {
-    "@tailwindcss/postcss": "^4",
-    "@testing-library/jest-dom": "^6.9.1",
-    "@testing-library/react": "^16.3.2",
-    "@types/jsdom": "^28.0.3",
-    "@types/node": "^20",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
-    "eslint": "^9",
-    "eslint-config-next": "16.2.6",
-    "jsdom": "^29.1.1",
-    "tailwindcss": "^4",
-    "typescript": "^5",
-    "vitest": "^4.1.7"
-  },
-  "ignoreScripts": [
-    "sharp",
-    "unrs-resolver"
-  ],
-  "trustedDependencies": [
-    "sharp",
-    "unrs-resolver"
-  ]
+    "dev": "pnpm --filter @kokoro/web-user dev",
+    "build": "pnpm --filter @kokoro/web-user build",
+    "start": "pnpm --filter @kokoro/web-user start",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test"
+  }
 }

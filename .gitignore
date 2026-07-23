@@ -8,10 +8,10 @@ out/
 # production
 build/
 coverage/
-/docs/*
-!/docs/README.md
-!/docs/web/
-!/docs/web/**
+/apps/user/docs/*
+!/apps/user/docs/README.md
+!/apps/user/docs/web/
+!/apps/user/docs/web/**
 
 # local env files
 .env*
@@ -49,9 +49,8 @@ CLAUDE.md
 .playwright-mcp/
 .superpowers/
 
-# 包管理器以 npm/package-lock.json 为准；pnpm 锁是野生件，忽略以免多锁打架
-pnpm-lock.yaml
-pnpm-workspace.yaml
+# 包管理器：本仓已转 pnpm workspace（apps/* + packages/*，与 kokoro-platform 一致）。
+# pnpm-lock.yaml / pnpm-workspace.yaml 为正式锁与工作区声明，必须入库。npm package-lock 已废弃。
 
 # e2e 实证截图(会话产物,不入库)
 e2e-*.png
