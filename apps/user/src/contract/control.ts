@@ -74,6 +74,8 @@ export const runtimeContextSchema = z
   .strict()
 export type RuntimeContext = z.infer<typeof runtimeContextSchema>
 
+export type Backend = RuntimeConfig["backend"]
+
 const approveDecisionSchema = z.object({ type: z.literal("approve"), tool_id: z.string().min(1), args: z.record(z.unknown()).optional() }).strict()
 const editDecisionSchema = z.object({ type: z.literal("edit"), tool_id: z.string().min(1), args: z.record(z.unknown()) }).strict()
 const rejectDecisionSchema = z.object({ type: z.literal("reject"), tool_id: z.string().min(1), reason: z.string().optional() }).strict()
