@@ -1,6 +1,11 @@
-import "@testing-library/jest-dom/vitest"
+// jest-dom matchers 显式挂到本地 vitest 的 expect：pnpm isolated monorepo 下 jest-dom 的
+// /vitest 自动集成会解析到不同的 vitest 实例(matcher 静默不注册 → "Invalid Chai property")。
+// 从 /matchers 取纯 matcher(不 import vitest)+ 本 app 的 expect.extend,跨包管理器稳定。
+import * as jestDomMatchers from "@testing-library/jest-dom/matchers"
 
-import { afterEach } from "vitest"
+import { afterEach, expect } from "vitest"
+
+expect.extend(jestDomMatchers)
 
 import { __resetResourceStore } from "@/lib/query/resource-store"
 
