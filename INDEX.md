@@ -8,7 +8,7 @@ Kokoro 的 web 子仓。一个仓库承载**两个独立部署的 Next.js app** 
 ```
 apps/
   user/     @kokoro/web-user   面向用户的工作台。走 session BFF，从不直连 DB。Next16 / React19 / antd6。
-  admin/    @kokoro/admin-web  运营后台。NextAuth + Prisma 直连 DB，RBAC 特权面。Next15 / React18 / antd5。
+  admin/    @kokoro/admin-web  运营后台。NextAuth + Prisma 直连 DB，RBAC 特权面。Next16 / React19 / antd6。
 packages/
   tsconfig/ @kokoro/tsconfig   共享 TS 基线 base.json（app 各自 extends，只留 app 专属）。
   i18n/     @kokoro/i18n       framework-agnostic i18n 引擎（negotiate/translate/interpolate）。见其 INDEX。
@@ -27,9 +27,9 @@ packages/
 
 ## 运行时约束（踩过的坑，改动前必读）
 
-- **`.npmrc` 必须 `node-linker=isolated`**（非 hoisted）。两 app 版本全面分歧（React 18↔19 / Next 15↔16 /
-  antd 5↔6 / vitest 2↔4），只有 isolated 布局能让各 app 经 `.pnpm` 符号链接拿各自正确版本。
-  **切回 hoisted 扁平会 React 混版**——user 组件按 R18 渲染、UI 测试成片失败。
+- **`.npmrc` 当前使用 `node-linker=isolated`**（非 hoisted）。两个 app 已统一到 Next 16.2.6、React 19.2.4、
+  antd 6.5.0 和 Vitest 4.1.x；isolated 仍用于防止 app/private package 依赖被根级幽灵依赖掩盖。切换 linker 属于
+  根工具链迁移，必须以 clean install、两 app build/test 与 dependency-boundary evidence 证明，不能直接改。
 - **jest-dom matchers 挂载**（`apps/user/tests/setup.ts`）：必须 `import * as m from "@testing-library/jest-dom/matchers"`
   + `expect.extend(m)`。**不要**用 `import "@testing-library/jest-dom/vitest"`——isolated 下它解析到异 vitest 实例，
   matcher 静默不注册（报 "Invalid Chai property: toBeInTheDocument"）。
@@ -45,7 +45,8 @@ packages/
 
 ## 当前陷阱 / 欠账
 
-- **版本未对齐**：两 app 差着大版本，靠 isolated 共存（可跑可测），但未统一。对齐（admin → R19/Next16/antd6）归 phase-3。
+- **跨仓工具链仍未对齐**：Web 两 app 已统一，但 Session/Platform 的 TypeScript、Vitest、Node types、package manager
+  与 lockfile 仍分裂；目标版本与单根 lock 由 Wave 0 Spec 冻结，不在 Web 子仓局部升级。
 - **i18n 仍两套**：`apps/user/src/i18n`（自造引擎 + 消息）与 `packages/i18n`（`@kokoro/i18n`，admin 用）并存。
   统一（user 切共享引擎、引擎泛型化）归 phase-3。
 - **prod 构建上下文待 repoint**：`apps/user/Dockerfile` 随 app 迁深一层，生产 compose 的 build context/dockerfile 路径需更新（WS5）。
