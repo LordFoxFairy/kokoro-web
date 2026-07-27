@@ -1,13 +1,16 @@
-import { dirname } from "path";
-import { fileURLToPath } from "url";
-import { FlatCompat } from "@eslint/eslintrc";
+import { defineConfig, globalIgnores } from "eslint/config";
+import nextVitals from "eslint-config-next/core-web-vitals";
+import nextTs from "eslint-config-next/typescript";
 
-// eslint-config-next@15 仍导出 legacy .eslintrc 对象；FlatCompat 把它桥接进 ESLint 9 flat config。
-const compat = new FlatCompat({ baseDirectory: dirname(fileURLToPath(import.meta.url)) });
-
-const eslintConfig = [
-  { ignores: [".next/**", "out/**", "build/**", "generated/**", "next-env.d.ts", "tsconfig.tsbuildinfo"] },
-  ...compat.extends("next/core-web-vitals", "next/typescript"),
-];
-
-export default eslintConfig;
+export default defineConfig([
+  ...nextVitals,
+  ...nextTs,
+  globalIgnores([
+    ".next/**",
+    "out/**",
+    "build/**",
+    "generated/**",
+    "next-env.d.ts",
+    "tsconfig.tsbuildinfo",
+  ]),
+]);

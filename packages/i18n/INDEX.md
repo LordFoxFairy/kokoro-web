@@ -23,3 +23,12 @@
 
 - 新增消费方：各自建 `messages`（源）+ `overrides`（增量）+ 框架绑定，注入本引擎。引擎不持有任何具体词典。
 - 引擎保持纯函数、零依赖；React/DOM/存储等副作用留在消费方绑定层。
+
+## 验证与工具边界
+
+- `pnpm --filter @kokoro/i18n lint`
+- `pnpm --filter @kokoro/i18n typecheck`
+- `pnpm --filter @kokoro/i18n test`
+
+本包在 `node-linker=isolated` 下独立声明 TypeScript、Vitest 与 ESLint 工具链，不依赖其他 app 偶然
+hoist 的二进制或配置。这里的“零依赖”指运行时公开引擎，开发工具仍由本包显式拥有。

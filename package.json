@@ -2,6 +2,7 @@
   "name": "@kokoro/web",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@11.2.2",
   "description": "Kokoro web monorepo：apps/user（面向用户）+ apps/admin（后台管理，后续迁入）+ packages/*（共享）。两 app 独立部署，共享层收敛。",
   "scripts": {
     "dev": "pnpm --filter @kokoro/web-user dev",

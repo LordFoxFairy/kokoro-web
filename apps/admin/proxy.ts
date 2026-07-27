@@ -2,12 +2,12 @@ import NextAuth from "next-auth";
 import { NextResponse } from "next/server";
 import { authConfig } from "./auth.config";
 
-// edge：只用 edge-safe 的 authConfig（JWT 验签，不查 DB）。
+// Proxy 边界只用无 DB 的 authConfig（JWT 验签，不查业务数据库）。
 const { auth } = NextAuth(authConfig);
 
 const PROXY_SECRET = process.env.KOKORO_ADMIN_PROXY_SECRET ?? "";
 
-export default auth((req) => {
+const proxy = auth((req) => {
   const { pathname } = req.nextUrl;
   const isAuthPage = pathname.startsWith("/login") || pathname.startsWith("/auth/verify");
 
@@ -34,6 +34,8 @@ export default auth((req) => {
 
   return NextResponse.next();
 });
+
+export default proxy;
 
 export const config = {
   matcher: ["/((?!api/auth|_next/static|_next/image|favicon.ico).*)"],

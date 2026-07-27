@@ -282,7 +282,7 @@ export function ResourceTable({
         ],
       },
     ];
-  }, [baseCols, rowActions, rowFormActions, upsertAvailable, t]);
+  }, [baseCols, resourceForm?.createOnly, rowActions, rowFormActions, upsertAvailable, t]);
 
   async function dispatchAction(actionId: string, extra: { params?: Record<string, string>; body?: Record<string, unknown>; reason?: string }): Promise<boolean> {
     try {

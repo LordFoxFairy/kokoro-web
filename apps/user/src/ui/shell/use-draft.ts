@@ -25,7 +25,8 @@ function writeDraft(key: string, value: string): void {
   const all = draftStore.read() ?? {}
   if (value === "") {
     if (!(key in all)) return
-    const { [key]: _drop, ...rest } = all
+    const rest = { ...all }
+    delete rest[key]
     draftStore.write(rest)
   } else {
     draftStore.write({ ...all, [key]: value })
