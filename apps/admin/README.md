@@ -29,6 +29,7 @@ pnpm --filter @kokoro/admin-web test
 pnpm --filter @kokoro/admin-web lint
 pnpm --filter @kokoro/admin-web typecheck
 pnpm --filter @kokoro/admin-web build
+pnpm --filter @kokoro/admin-web compat:admin-auth # Root live-compatibility harness only
 ```
 
 ## Data Boundary

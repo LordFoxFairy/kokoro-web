@@ -7,7 +7,8 @@
     "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint",
-    "test": "vitest run",
+    "test": "vitest run --exclude lib/auth/live-compatibility.test.ts",
+    "compat:admin-auth": "vitest run lib/auth/client.test.ts lib/auth/live-compatibility.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
