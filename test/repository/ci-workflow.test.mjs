@@ -11,6 +11,8 @@ test("web CI installs and verifies with its pinned pnpm lock", async () => {
 
   assert.equal(packageJson.packageManager, "pnpm@11.2.2");
   assert.match(workflow, /node-version:\s*["']?22["']?/u);
+  assert.match(workflow, /cache:\s*pnpm/u);
+  assert.match(workflow, /cache-dependency-path:\s*pnpm-lock\.yaml/u);
   assert.match(workflow, /corepack enable/u);
   assert.match(workflow, /corepack prepare pnpm@11\.2\.2 --activate/u);
   assert.match(workflow, /pnpm install --frozen-lockfile/u);
