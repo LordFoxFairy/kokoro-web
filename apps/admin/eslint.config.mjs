@@ -9,7 +9,7 @@ export default defineConfig([
     ".next/**",
     "out/**",
     "build/**",
-    "generated/**",
+    "lib/generated/contracts/**",
     "next-env.d.ts",
     "tsconfig.tsbuildinfo",
   ]),

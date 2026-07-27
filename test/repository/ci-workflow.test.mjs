@@ -20,7 +20,7 @@ test("web CI installs and verifies with its pinned pnpm lock", async () => {
   assert.match(workflow, /pnpm --filter @kokoro\/web-user build/u);
   assert.match(workflow, /pnpm --filter @kokoro\/admin-web build/u);
   assert.match(workflow, /AUTH_SECRET:\s*example-/u);
-  assert.match(workflow, /DATABASE_URL_ADMIN:\s*mysql:\/\/example:/u);
+  assert.doesNotMatch(workflow, /DATABASE_URL_ADMIN/u);
   assert.match(workflow, /KOKORO_GATEWAY_URL:\s*http:\/\/127\.0\.0\.1:/u);
   assert.match(workflow, /KOKORO_ADMIN_PROXY_SECRET:\s*example-/u);
   assert.doesNotMatch(workflow, /npm ci/u);

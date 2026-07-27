@@ -27,7 +27,6 @@ jobs:
         run: pnpm --filter @kokoro/admin-web build
         env:
           AUTH_SECRET: example-ci-auth-secret
-          DATABASE_URL_ADMIN: mysql://example:example@127.0.0.1:3306/example
           KOKORO_GATEWAY_URL: http://127.0.0.1:4250
           KOKORO_ADMIN_PROXY_SECRET: example-ci-proxy-secret
           EMAIL_SERVER_HOST: 127.0.0.1

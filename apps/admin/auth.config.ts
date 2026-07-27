@@ -1,6 +1,6 @@
 import type { NextAuthConfig } from "next-auth";
 
-// edge-safe：不含 adapter/Nodemailer（Prisma 跑不了 edge）；middleware 与 auth.ts 都 import 它。
+// edge-safe：不含 Node-only Connect adapter/Nodemailer；proxy 与 auth.ts 都 import 它。
 export const authConfig = {
   pages: { signIn: "/login", verifyRequest: "/auth/verify", error: "/login" },
   // 会话 8h（dev 免频繁重登；生产可按需收紧）。

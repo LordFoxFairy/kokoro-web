@@ -1,8 +1,9 @@
 import { createTransport } from "nodemailer";
-import { assertSmtpConfigured, env } from "@/lib/env";
+import { assertSmtpConfigured, getEnv } from "@/lib/env";
 
 // 未配 SMTP（dev）时打 server console；配了则真发信。生产 env 校验已强制 SMTP 齐全。
 export async function sendVerificationRequest(params: { identifier: string; url: string }): Promise<void> {
+  const env = getEnv();
   assertSmtpConfigured(env);
   const minutes = Math.round(env.MAGIC_LINK_MAX_AGE / 60);
 

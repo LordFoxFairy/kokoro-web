@@ -2,22 +2,53 @@ import NextAuth from "next-auth";
 import Nodemailer from "next-auth/providers/nodemailer";
 import { authConfig } from "./auth.config";
 import { operatorAdapter } from "@/lib/auth/adapter";
+import {
+  createAdminAuthClient,
+  createAdminAuthTransport,
+  type AdminAuthClient,
+} from "@/lib/auth/client";
 import { sendVerificationRequest } from "@/lib/auth/email";
 import { logAuthEvent } from "@/lib/auth/events";
-import { prisma } from "@/lib/prisma";
-import { env } from "@/lib/env";
+import { getEnv } from "@/lib/env";
 
 const norm = (email: string): string => email.trim().toLowerCase();
+let concreteAdminAuthClient: AdminAuthClient | undefined;
 
-// Node runtime：叠加 Prisma adapter + Nodemailer magic-link 到 edge-safe 基础 config。
+function getAdminAuthClient(): AdminAuthClient {
+  if (concreteAdminAuthClient !== undefined) return concreteAdminAuthClient;
+  const env = getEnv();
+  concreteAdminAuthClient = createAdminAuthClient({
+    transport: createAdminAuthTransport({
+      gatewayUrl: env.KOKORO_GATEWAY_URL,
+      proxySecret: env.KOKORO_ADMIN_PROXY_SECRET,
+      environment: env.NODE_ENV,
+      timeoutMs: 5_000,
+    }),
+  });
+  return concreteAdminAuthClient;
+}
+
+const adminAuthClient: AdminAuthClient = {
+  findOperatorByEmail: (email) => getAdminAuthClient().findOperatorByEmail(email),
+  findOperatorById: (id) => getAdminAuthClient().findOperatorById(id),
+  createVerificationToken: (value) => getAdminAuthClient().createVerificationToken(value),
+  consumeVerificationToken: (value) => getAdminAuthClient().consumeVerificationToken(value),
+  recordAuthEvent: (value) => getAdminAuthClient().recordAuthEvent(value),
+};
+
+const configuredMaxAge = Number(process.env.MAGIC_LINK_MAX_AGE);
+const magicLinkMaxAge = Number.isSafeInteger(configuredMaxAge) && configuredMaxAge > 0 ? configuredMaxAge : 600;
+const emailFrom = process.env.EMAIL_FROM?.trim() || "no-reply@kokoro.local";
+
+// Node runtime：叠加 Platform Admin Auth Connect adapter + Nodemailer magic-link 到 edge-safe 基础 config。
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
-  adapter: operatorAdapter(),
+  adapter: operatorAdapter(adminAuthClient),
   providers: [
     Nodemailer({
       server: {},
-      from: env.EMAIL_FROM,
-      maxAge: env.MAGIC_LINK_MAX_AGE,
+      from: emailFrom,
+      maxAge: magicLinkMaxAge,
       sendVerificationRequest,
     }),
   ],
@@ -27,9 +58,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async signIn({ user }) {
       const email = norm(user.email ?? "");
       if (!email) return false;
-      const account = await prisma.operatorAccount.findUnique({ where: { email } });
+      const account = await adminAuthClient.findOperatorByEmail(email);
       if (!account || account.status !== "active") {
-        await logAuthEvent({ email, event: "denied", reason: account ? "inactive" : "unknown" });
+        await logAuthEvent(adminAuthClient, { email, event: "denied", reason: account ? "inactive" : "unknown" });
         return false;
       }
       return true;
@@ -37,11 +68,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   },
   events: {
     async signIn({ user }) {
-      if (user.email) await logAuthEvent({ email: norm(user.email), event: "signin" });
+      if (user.email) await logAuthEvent(adminAuthClient, { email: norm(user.email), event: "signin" });
     },
     async signOut(message) {
       const email = "token" in message ? message.token?.email : undefined;
-      if (email) await logAuthEvent({ email: norm(email), event: "signout" });
+      if (email) await logAuthEvent(adminAuthClient, { email: norm(email), event: "signout" });
     },
   },
 });

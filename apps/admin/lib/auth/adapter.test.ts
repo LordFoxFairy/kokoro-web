@@ -1,25 +1,22 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { AdminAuthClient } from "@/lib/auth/client";
+import { operatorAdapter } from "@/lib/auth/adapter";
 
-const findUnique = vi.fn();
-const vtCreate = vi.fn();
-const vtDelete = vi.fn();
-
-vi.mock("@/lib/prisma", () => ({
-  prisma: {
-    operatorAccount: { findUnique },
-    verificationToken: { create: vtCreate, delete: vtDelete },
-  },
-}));
-
-const { operatorAdapter } = await import("@/lib/auth/adapter");
-const adapter = operatorAdapter();
-const ACTIVE = { id: "op-1", email: "admin@kokoro.local", displayName: "Admin", status: "active" };
+const ACTIVE = { id: "op-1", email: "admin@kokoro.local", displayName: "Admin", status: "active" as const };
+const client = {
+  findOperatorByEmail: vi.fn(),
+  findOperatorById: vi.fn(),
+  createVerificationToken: vi.fn(),
+  consumeVerificationToken: vi.fn(),
+  recordAuthEvent: vi.fn(),
+} as unknown as AdminAuthClient;
+const adapter = operatorAdapter(client);
 
 beforeEach(() => vi.clearAllMocks());
 
 describe("getUserByEmail", () => {
   it("active account → AdapterUser（emailVerified 恒 null）", async () => {
-    findUnique.mockResolvedValue(ACTIVE);
+    vi.mocked(client.findOperatorByEmail).mockResolvedValue(ACTIVE);
     expect(await adapter.getUserByEmail!("admin@kokoro.local")).toEqual({
       id: "op-1",
       email: "admin@kokoro.local",
@@ -28,50 +25,28 @@ describe("getUserByEmail", () => {
     });
   });
 
-  it("邮箱规范化 trim+lowercase 后查询", async () => {
-    findUnique.mockResolvedValue(ACTIVE);
-    await adapter.getUserByEmail!("  Admin@KOKORO.local  ");
-    expect(findUnique).toHaveBeenCalledWith({ where: { email: "admin@kokoro.local" } });
-  });
-
-  it("非 active → null", async () => {
-    findUnique.mockResolvedValue({ ...ACTIVE, status: "disabled" });
-    expect(await adapter.getUserByEmail!("admin@kokoro.local")).toBeNull();
-  });
-
-  it("不存在 → null", async () => {
-    findUnique.mockResolvedValue(null);
-    expect(await adapter.getUserByEmail!("nobody@x.z")).toBeNull();
+  it("邮箱规范化后通过 RPC 查询，非 active → null", async () => {
+    vi.mocked(client.findOperatorByEmail).mockResolvedValue({ ...ACTIVE, status: "disabled" });
+    expect(await adapter.getUserByEmail!("  Admin@KOKORO.local  ")).toBeNull();
+    expect(client.findOperatorByEmail).toHaveBeenCalledWith("admin@kokoro.local");
   });
 });
 
-describe("createUser", () => {
-  it("陌生邮箱一律拒（AccessDenied）", async () => {
-    await expect(
-      adapter.createUser!({ id: "", email: "stranger@evil.com", emailVerified: null }),
-    ).rejects.toThrow("AccessDenied");
+describe("verification token", () => {
+  it("创建和原子消费均委托 Platform owner", async () => {
+    const token = { identifier: "admin@kokoro.local", token: "t", expires: new Date() };
+    vi.mocked(client.createVerificationToken).mockResolvedValue(token);
+    vi.mocked(client.consumeVerificationToken).mockResolvedValue(token);
+    await expect(adapter.createVerificationToken!({ ...token, identifier: "Admin@Kokoro.local" })).resolves.toEqual(token);
+    await expect(adapter.useVerificationToken!({ identifier: "Admin@Kokoro.local", token: "t" })).resolves.toEqual(token);
+    expect(client.createVerificationToken).toHaveBeenCalledWith({ ...token, identifier: "admin@kokoro.local" });
+    expect(client.consumeVerificationToken).toHaveBeenCalledWith({ identifier: "admin@kokoro.local", token: "t" });
   });
 });
 
-describe("useVerificationToken", () => {
-  it("原子取删成功 → 返回记录，identifier 已规范化", async () => {
-    const rec = { identifier: "admin@kokoro.local", token: "t", expires: new Date() };
-    vtDelete.mockResolvedValue(rec);
-    expect(await adapter.useVerificationToken!({ identifier: "Admin@Kokoro.local", token: "t" })).toEqual(rec);
-    expect(vtDelete).toHaveBeenCalledWith({
-      where: { identifier_token: { identifier: "admin@kokoro.local", token: "t" } },
-    });
-  });
-
-  it("不存在/已被消费 → null（吞 P2025）", async () => {
-    vtDelete.mockRejectedValue(new Error("P2025"));
-    expect(await adapter.useVerificationToken!({ identifier: "a@b.c", token: "t" })).toBeNull();
-  });
-});
-
-describe("updateUser（回归：next-auth 验证后传入仅 {id,emailVerified}）", () => {
-  it("必须回查返回完整 user，不能回显残缺入参", async () => {
-    findUnique.mockResolvedValue(ACTIVE);
+describe("updateUser", () => {
+  it("必须通过 RPC 回查完整 active user", async () => {
+    vi.mocked(client.findOperatorById).mockResolvedValue(ACTIVE);
     expect(await adapter.updateUser!({ id: "op-1", emailVerified: new Date() })).toEqual({
       id: "op-1",
       email: "admin@kokoro.local",
@@ -81,7 +56,7 @@ describe("updateUser（回归：next-auth 验证后传入仅 {id,emailVerified}�
   });
 
   it("账号消失/停用 → AccessDenied", async () => {
-    findUnique.mockResolvedValue(null);
+    vi.mocked(client.findOperatorById).mockResolvedValue(null);
     await expect(adapter.updateUser!({ id: "gone", emailVerified: new Date() })).rejects.toThrow("AccessDenied");
   });
 });

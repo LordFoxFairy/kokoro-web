@@ -8,6 +8,7 @@ Next.js BFF and Ant Design Pro operations console for Kokoro Platform.
 - `/api/auth/*` is handled by Auth.js.
 - Other `/api/*` requests are same-origin rewrites to `kokoro-platform-admin`.
 - Middleware injects `x-kokoro-operator` and `x-kokoro-proxy-secret`; platform-admin remains the authority for RBAC, tenant scope, approval, and audit.
+- Auth.js resolves operators, verification tokens, and auth events through the generated server-only `AdminAuthService` Connect client. This app has no Platform database credential or Prisma client.
 
 ## Environment
 
@@ -23,7 +24,6 @@ Important local defaults:
 ## Commands
 
 ```bash
-pnpm --filter @kokoro/admin-web db:generate
 pnpm --filter @kokoro/admin-web dev
 pnpm --filter @kokoro/admin-web test
 pnpm --filter @kokoro/admin-web lint
@@ -33,8 +33,4 @@ pnpm --filter @kokoro/admin-web build
 
 ## Data Boundary
 
-This package does not own business data or migrations. Its Prisma schema only maps admin DB tables needed for login:
-
-- `OperatorAccount` is read to allow only active operators.
-- `VerificationToken` stores one-time magic-link tokens.
-- `AuthEvent` records sign-in, sign-out, and denied login events.
+This package owns no Platform data or migrations. Platform Admin owns operator lookup, one-time verification-token lifecycle, command receipts, and auth-event persistence. Generated protobuf descriptors are checked in under `lib/generated/contracts`; application code must not import contract source or sibling repositories.

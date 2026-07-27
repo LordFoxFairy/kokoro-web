@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-// node 侧 env 单一契约：模块加载即校验，缺关键项 fail-fast，不拖到运行时神秘报错。
+// node 侧 env 单一契约：首次请求运行时校验，避免把 runtime secret 变成镜像构建输入。
 // 仅 node 运行时导入（auth.ts / email.ts）；edge middleware 另行直读 process.env。
 // SMTP 全可选：未配则 email.ts 退回 console。生产是否强制 SMTP 属部署编排关注，不在构建期硬卡。
 const optionalString = z.preprocess((value) => (value === "" ? undefined : value), z.string().optional());
@@ -11,7 +11,6 @@ const optionalPort = z.preprocess(
 
 const schema = z.object({
   AUTH_SECRET: z.string().min(1),
-  DATABASE_URL_ADMIN: z.string().min(1),
   KOKORO_GATEWAY_URL: z.string().url(),
   KOKORO_ADMIN_PROXY_SECRET: z.string().min(1),
   MAGIC_LINK_MAX_AGE: z.coerce.number().int().positive().default(600),
@@ -45,4 +44,6 @@ export function assertSmtpConfigured(value: AdminWebEnv): void {
   }
 }
 
-export const env = parseEnv(process.env);
+export function getEnv(source: Record<string, string | undefined> = process.env): AdminWebEnv {
+  return parseEnv(source);
+}

@@ -17,6 +17,11 @@ const nextConfig: NextConfig = {
   allowedDevOrigins: ["127.0.0.1"],
   // 共享窄包以 TS 源码分发（exports→src），需 Next 编译。
   transpilePackages: ["@kokoro/i18n"],
+  webpack(config) {
+    // Root-owned Protobuf-ES mirrors use ESM-correct `.js` specifiers while checking in TS sources.
+    config.resolve.extensionAlias = { ...config.resolve.extensionAlias, ".js": [".ts", ".tsx", ".js"] };
+    return config;
+  },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },
