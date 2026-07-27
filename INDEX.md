@@ -45,7 +45,7 @@ The repository currently contains one user app and one Admin app; production Fle
 
 ## Verification
 
-Run `pnpm -r lint`, `pnpm -r typecheck`, `pnpm -r test`, and production builds for every deployable app.
+Run `pnpm -r lint`, `pnpm -r typecheck`, `pnpm test`, and production builds for every deployable app.
 
 ## Detailed current map
 
@@ -64,7 +64,8 @@ packages/
 ```
 
 - 工作区声明：`pnpm-workspace.yaml`（`apps/*` + `packages/*`）。
-- 根 `package.json`（`@kokoro/web`）：`dev`/`build`/`start` 委派 `apps/user`；`lint`/`typecheck`/`test` 为 `-r` 全量。
+- 根 `package.json`（`@kokoro/web`）：`dev`/`build`/`start` 委派 `apps/user`；`lint`/`typecheck` 为 `-r` 全量；
+  `test` 先运行 repository contracts，再运行各 workspace package 测试。
 
 ## 关键协作者与边界
 
@@ -76,7 +77,7 @@ packages/
 
 ## 运行时约束（踩过的坑，改动前必读）
 
-- **`.npmrc` 当前使用 `node-linker=isolated`**（非 hoisted）。两个 app 已统一到 Next 16.2.6、React 19.2.4、
+- **`.npmrc` 当前使用 `node-linker=isolated`**（非 hoisted）。两个 app 已统一到 Next 16.2.12、React 19.2.8、
   antd 6.5.0 和 Vitest 4.1.x；isolated 仍用于防止 app/private package 依赖被根级幽灵依赖掩盖。切换 linker 属于
   根工具链迁移，必须以 clean install、两 app build/test 与 dependency-boundary evidence 证明，不能直接改。
 - **jest-dom matchers 挂载**（`apps/user/tests/setup.ts`）：必须 `import * as m from "@testing-library/jest-dom/matchers"`
@@ -94,8 +95,8 @@ packages/
 
 ## 当前陷阱 / 欠账
 
-- **跨仓工具链仍未对齐**：Web 两 app 已统一，但 Session/Platform 的 TypeScript、Vitest、Node types、package manager
-  与 lockfile 仍分裂；目标版本与单根 lock 由 Wave 0 Spec 冻结，不在 Web 子仓局部升级。
+- **跨仓工具链仍独立锁定**：Web 两 app 已统一，但 Session/Platform 分别拥有自己的 TypeScript、Vitest、Node types、
+  package manager 与 lockfile；Wave 0 保持子仓独立 lock，不在 Web 子仓修改或合并兄弟仓依赖。
 - **i18n 仍两套**：`apps/user/src/i18n`（自造引擎 + 消息）与 `packages/i18n`（`@kokoro/i18n`，admin 用）并存。
   统一（user 切共享引擎、引擎泛型化）归 phase-3。
 - **prod 构建上下文待 repoint**：`apps/user/Dockerfile` 随 app 迁深一层，生产 compose 的 build context/dockerfile 路径需更新（WS5）。
