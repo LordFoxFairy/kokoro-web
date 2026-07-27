@@ -34,6 +34,30 @@ test("workspace overrides close transitive production advisories", () => {
   assert.match(workspace, /^overrides:\n  "@auth\/core@0\.41\.3>nodemailer": 9\.0\.3\n  "next-auth@5\.0\.0-beta\.32>nodemailer": 9\.0\.3\n  brace-expansion@<1\.1\.16: 1\.1\.16\n  "brace-expansion@>=5\.0\.0 <5\.0\.8": 5\.0\.8\n  postcss: 8\.5\.23\n  path-to-regexp: 8\.4\.2\n  sharp: 0\.35\.3$/mu);
 });
 
+test("the reviewed Next security patch has narrow release-age exceptions", () => {
+  const expected = [
+    "@next/env@16.2.12",
+    "@next/eslint-plugin-next@16.2.12",
+    "@next/swc-darwin-arm64@16.2.12",
+    "@next/swc-darwin-x64@16.2.12",
+    "@next/swc-linux-arm64-gnu@16.2.12",
+    "@next/swc-linux-arm64-musl@16.2.12",
+    "@next/swc-linux-x64-gnu@16.2.12",
+    "@next/swc-linux-x64-musl@16.2.12",
+    "@next/swc-win32-arm64-msvc@16.2.12",
+    "@next/swc-win32-x64-msvc@16.2.12",
+    "eslint-config-next@16.2.12",
+    "next@16.2.12",
+  ];
+
+  const configured = workspace.match(/^minimumReleaseAgeExclude:\n((?:  - .+\n?)+)/mu);
+  assert.ok(configured, "minimumReleaseAgeExclude must be explicit");
+  assert.deepEqual(
+    configured[1].trim().split("\n").map((line) => line.trim().replace(/^- ["']?|["']$/gu, "")),
+    expected,
+  );
+});
+
 test("the shared i18n package uses the same supported test and lint majors", () => {
   assert.equal(i18nPackage.devDependencies.eslint, "9.39.5");
   assert.equal(i18nPackage.devDependencies["@eslint/js"], "9.39.5");
