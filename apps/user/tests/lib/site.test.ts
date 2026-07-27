@@ -26,6 +26,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals()
+  vi.unstubAllEnvs()
   __clearSiteResolveCache()
   for (const k of Object.keys(SITE_ENV)) delete process.env[k]
 })
@@ -110,6 +111,16 @@ describe("resolveSite", () => {
     expect(site).toBeNull()
     expect(warn).toHaveBeenCalled()
     delete process.env.KOKORO_SITE_STRICT
+  })
+
+  it("production fails closed for an unresolved host even when the strict flag is omitted", async () => {
+    vi.stubEnv("NODE_ENV", "production")
+    delete process.env.KOKORO_SITE_STRICT
+    const fetchMock = vi.fn().mockResolvedValue(new Response("not found", { status: 404 }))
+    vi.stubGlobal("fetch", fetchMock)
+    vi.spyOn(console, "warn").mockImplementation(() => {})
+    expect(await resolveSite("unbound.com")).toBeNull()
+    vi.unstubAllEnvs()
   })
 
   it("strict mode: still resolves normally when the site service resolves the host", async () => {

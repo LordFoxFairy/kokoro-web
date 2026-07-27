@@ -1,9 +1,9 @@
 // host→site 解析（SITE-REAL，服务端专用）：从请求 Host 经 kokoro-site 的 resolve 端点定 site_id + 品牌，
 // 替换 KOKORO_SITE_ID 单站点常量。**仅成功解析**按 host 短 TTL 缓存——解析失败/未命中不写缓存，
 // site 服务抖动即时恢复（不被 30s 旧值粘住）。
-// FALLBACK 语义（SITE-REAL-FALLBACK，Wave6 收紧）：
-//   - 缺省（KOKORO_SITE_STRICT 关）：解析失败 → 退回 env 缺省站点 + 默认品牌 + WARN（迁移期安全网）。
-//   - strict（KOKORO_SITE_STRICT 开且已配 KOKORO_SITE_BASE_URL）：解析失败 → fail-closed 回 null，
+// FALLBACK 语义（SITE-REAL-FALLBACK）：
+//   - 非生产且 KOKORO_SITE_STRICT 未开：解析失败 → 退回 env 缺省站点 + 默认品牌 + WARN（开发安全网）。
+//   - production 或显式 strict（且已配 KOKORO_SITE_BASE_URL）：解析失败 → fail-closed 回 null，
 //     上游渲染中性无品牌 404，不退默认品牌（防多租户品牌串味）。
 
 import { z } from "zod"
@@ -63,7 +63,7 @@ function fallbackSite(env: NodeJS.ProcessEnv): ResolvedSite {
 // strict 档开关：开启且已配 site 服务时，解析失败走 fail-closed（不退默认品牌）。
 function isStrictMode(env: NodeJS.ProcessEnv): boolean {
   const value = env.KOKORO_SITE_STRICT?.trim().toLowerCase()
-  return value === "1" || value === "true"
+  return env.NODE_ENV === "production" || value === "1" || value === "true"
 }
 
 async function fetchResolved(

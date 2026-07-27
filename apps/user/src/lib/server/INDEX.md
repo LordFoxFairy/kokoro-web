@@ -26,8 +26,9 @@
 - `site.ts`（host→site 解析，SITE-REAL）
   - `resolveSite(host, env?) → ResolvedSite | null`：Host 经 kokoro-site `/site-context/resolve` 定
     `{siteId, brand}`；**仅成功解析**按 host 短 TTL（30s）缓存（失败/未命中不写缓存，服务抖动即时恢复）。
-    缺省档：未配置 `KOKORO_SITE_BASE_URL`/host 缺失/未命中 → 退回 env 缺省站点（`KOKORO_SITE_ID`）+
-    默认品牌 Kokoro 并 WARN。strict 档（`KOKORO_SITE_STRICT` 开且已配 base URL）：解析失败 → 回 `null`
+    开发缺省档：未配置 `KOKORO_SITE_BASE_URL`/host 缺失/未命中 → 退回 env 缺省站点（`KOKORO_SITE_ID`）+
+    默认品牌 Kokoro 并 WARN。production 自动 strict；显式 strict 档（`KOKORO_SITE_STRICT` 开且已配 base URL）
+    同样在解析失败时 → 回 `null`
     fail-closed，`page.tsx` 渲染中性无品牌 404（防多租户品牌串味）。
   - `resolveSiteId(host, fallbackSiteId)`：仅取 site_id 供 auth 流（magic-link/callback/team-switch）
     密封进信封；解析失败/strict fail-closed 均退回 `fallbackSiteId`（auth 绑定本部署站点，不受品牌 404 影响）。
