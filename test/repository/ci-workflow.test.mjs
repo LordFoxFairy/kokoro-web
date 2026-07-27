@@ -16,7 +16,8 @@ test("web CI installs and verifies with its pinned pnpm lock", async () => {
   assert.match(workflow, /pnpm install --frozen-lockfile/u);
   assert.match(workflow, /pnpm -r typecheck/u);
   assert.match(workflow, /pnpm -r lint/u);
-  assert.match(workflow, /pnpm -r test/u);
+  assert.match(workflow, /pnpm audit --prod --audit-level high/u);
+  assert.match(workflow, /run:\s*pnpm test/u);
   assert.match(workflow, /pnpm --filter @kokoro\/web-user build/u);
   assert.match(workflow, /pnpm --filter @kokoro\/admin-web build/u);
   assert.match(workflow, /AUTH_SECRET:\s*example-/u);

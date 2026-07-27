@@ -1,0 +1,47 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
+import test from "node:test";
+
+const root = resolve(import.meta.dirname, "../..");
+
+async function readPackage(path) {
+  return JSON.parse(await readFile(resolve(root, path, "package.json"), "utf8"));
+}
+
+const rootPackage = await readPackage(".");
+const adminPackage = await readPackage("apps/admin");
+const userPackage = await readPackage("apps/user");
+const i18nPackage = await readPackage("packages/i18n");
+const workspace = await readFile(resolve(root, "pnpm-workspace.yaml"), "utf8");
+
+test("deployable apps pin the reviewed security patch line", () => {
+  for (const app of [adminPackage, userPackage]) {
+    assert.equal(app.dependencies.next, "16.2.12");
+    assert.equal(app.dependencies.react, "19.2.8");
+    assert.equal(app.dependencies["react-dom"], "19.2.8");
+    assert.equal(app.devDependencies["eslint-config-next"], "16.2.12");
+    assert.equal(app.devDependencies.eslint, "9.39.5");
+    assert.equal(app.devDependencies.vitest, "4.1.10");
+  }
+  assert.equal(adminPackage.dependencies["next-auth"], "5.0.0-beta.32");
+  assert.equal(adminPackage.dependencies["@ant-design/pro-components"], "3.1.14-5");
+  assert.equal(adminPackage.dependencies.nodemailer, "9.0.3");
+});
+
+test("workspace overrides close transitive production advisories", () => {
+  assert.equal(rootPackage.pnpm, undefined);
+  assert.match(workspace, /^overrides:\n  "@auth\/core@0\.41\.3>nodemailer": 9\.0\.3\n  "next-auth@5\.0\.0-beta\.32>nodemailer": 9\.0\.3\n  brace-expansion@<1\.1\.16: 1\.1\.16\n  "brace-expansion@>=5\.0\.0 <5\.0\.8": 5\.0\.8\n  postcss: 8\.5\.23\n  path-to-regexp: 8\.4\.2\n  sharp: 0\.35\.3$/mu);
+});
+
+test("the shared i18n package uses the same supported test and lint majors", () => {
+  assert.equal(i18nPackage.devDependencies.eslint, "9.39.5");
+  assert.equal(i18nPackage.devDependencies["@eslint/js"], "9.39.5");
+  assert.equal(i18nPackage.devDependencies["typescript-eslint"], "8.65.0");
+  assert.equal(i18nPackage.devDependencies.vitest, "4.1.10");
+});
+
+test("the normal root test command executes repository contracts", () => {
+  assert.equal(rootPackage.scripts["test:repository"], "node --test test/repository/*.test.mjs");
+  assert.equal(rootPackage.scripts.test, "pnpm run test:repository && pnpm -r test");
+});

@@ -123,7 +123,7 @@ export default function Page(): React.ReactElement {
       </StatisticCard.Group>
 
       {/* 计费总览（B2c）：营收 / 累计发放·消费 / 当前余额 / 订单 / 账户。模块离线段显 —。 */}
-      <ProCard title="计费总览" bordered headerBordered style={{ marginBottom: 16 }}>
+      <ProCard title="计费总览" variant="outlined" headerBordered style={{ marginBottom: 16 }}>
         <StatisticCard.Group direction="row">
           <StatisticCard
             statistic={{ title: "已支付营收", value: revenueText, description: <span style={{ color: "rgba(0,0,0,0.45)" }}>paid 订单合计</span> }}
@@ -164,11 +164,11 @@ export default function Page(): React.ReactElement {
         </StatisticCard.Group>
       </ProCard>
 
-      <ProCard title="快捷入口" bordered headerBordered>
+      <ProCard title="快捷入口" variant="outlined" headerBordered>
         <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))" }}>
           {ENTRIES.map((e) => (
             <Link key={e.href} href={e.href}>
-              <ProCard hoverable bordered size="small" style={{ height: "100%" }}>
+              <ProCard hoverable variant="outlined" size="small" style={{ height: "100%" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                   <span style={{ fontSize: 20, color: "#2f6b4f" }}>{e.icon}</span>
                   <div>

@@ -141,7 +141,7 @@ export default function UsersPage(): React.ReactElement {
         <Space direction="vertical" size={16} style={{ width: "100%" }}>
           <ProCard
             title="身份 & 积分"
-            bordered
+            variant="outlined"
             headerBordered
             extra={
               <Space>
@@ -180,7 +180,12 @@ export default function UsersPage(): React.ReactElement {
             </Descriptions>
           </ProCard>
 
-          <ProCard title={`订单（${result.orders.length}）`} bordered headerBordered bodyStyle={{ padding: 0 }}>
+          <ProCard
+            title={`订单（${result.orders.length}）`}
+            variant="outlined"
+            headerBordered
+            styles={{ body: { padding: 0 } }}
+          >
             <ProTable<Order>
               rowKey="id"
               columns={orderColumns}

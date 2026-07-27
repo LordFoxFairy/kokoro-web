@@ -10,6 +10,7 @@
     "start": "pnpm --filter @kokoro/web-user start",
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
-    "test": "pnpm -r test"
+    "test": "pnpm run test:repository && pnpm -r test",
+    "test:repository": "node --test test/repository/*.test.mjs"
   }
 }
