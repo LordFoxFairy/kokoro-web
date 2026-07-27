@@ -4,8 +4,23 @@ import { fileURLToPath } from "node:url";
 
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
+import { create } from "@bufbuild/protobuf";
+import { timestampFromDate } from "@bufbuild/protobuf/wkt";
 
 import { AdminAuthService } from "./contracts/kokoro/platform/admin/v1/admin_auth_pb";
+import {
+  ADMIN_AUTH_COMMAND_DIGEST_ALGORITHM,
+  consumeVerificationTokenEffectDigest,
+  createVerificationTokenEffectDigest,
+  recordAuthEventEffectDigest,
+} from "./contracts/admin-auth-effect-digest";
+import { CommandDigestAlgorithm } from "./contracts/kokoro/common/v1/receipt_pb";
+import {
+  AuthEventKind,
+  ConsumeVerificationTokenEffectSchema,
+  CreateVerificationTokenEffectSchema,
+  RecordAuthEventEffectSchema,
+} from "./contracts/kokoro/platform/admin/v1/admin_auth_pb";
 
 const libRoot = dirname(fileURLToPath(import.meta.url));
 const appRoot = resolve(libRoot, "../..");
@@ -134,5 +149,53 @@ describe("generated Admin Auth contract mirror", () => {
       .sort();
 
     expect(leaked).toEqual([]);
+  });
+
+  it("owns one domain-separated canonical protobuf digest algorithm", () => {
+    const expires = timestampFromDate(new Date("2030-01-02T03:04:05.000Z"));
+    const createEffect = create(CreateVerificationTokenEffectSchema, {
+      identifier: " Admin@Example.Test ",
+      token: "same-token",
+      expires,
+    });
+    const normalizedCreateEffect = create(CreateVerificationTokenEffectSchema, {
+      identifier: "admin@example.test",
+      token: "same-token",
+      expires,
+    });
+    const consumeEffect = create(ConsumeVerificationTokenEffectSchema, {
+      identifier: "admin@example.test",
+      token: "same-token",
+    });
+
+    expect(ADMIN_AUTH_COMMAND_DIGEST_ALGORITHM).toBe(CommandDigestAlgorithm.SHA256_PROTOBUF_V1);
+    expect(createVerificationTokenEffectDigest(createEffect)).toBe(
+      createVerificationTokenEffectDigest(normalizedCreateEffect),
+    );
+    expect(createVerificationTokenEffectDigest(createEffect)).toMatch(/^[0-9a-f]{64}$/);
+    expect(createVerificationTokenEffectDigest(createEffect)).not.toBe(
+      consumeVerificationTokenEffectDigest(consumeEffect),
+    );
+    expect(createVerificationTokenEffectDigest(createEffect)).not.toBe(
+      createVerificationTokenEffectDigest(
+        create(CreateVerificationTokenEffectSchema, {
+          identifier: "admin@example.test",
+          token: "changed-token",
+          expires,
+        }),
+      ),
+    );
+  });
+
+  it("canonicalizes an absent and empty auth-event reason identically", () => {
+    const base = {
+      email: "ADMIN@example.test",
+      event: AuthEventKind.SIGN_IN,
+      occurredAt: timestampFromDate(new Date("2030-01-02T03:04:05.000Z")),
+    };
+
+    expect(recordAuthEventEffectDigest(create(RecordAuthEventEffectSchema, base))).toBe(
+      recordAuthEventEffectDigest(create(RecordAuthEventEffectSchema, { ...base, reason: "" })),
+    );
   });
 });

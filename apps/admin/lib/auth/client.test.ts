@@ -4,6 +4,7 @@ import { Code, ConnectError, createRouterTransport } from "@connectrpc/connect";
 import { describe, expect, it, vi } from "vitest";
 
 import { KokoroErrorDetailSchema, RetryClass } from "@/lib/generated/contracts/kokoro/common/v1/error_pb";
+import { ADMIN_AUTH_COMMAND_DIGEST_ALGORITHM } from "@/lib/generated/contracts/admin-auth-effect-digest";
 import { CommandReceiptState } from "@/lib/generated/contracts/kokoro/common/v1/receipt_pb";
 import {
   AdminAuthService,
@@ -64,9 +65,9 @@ describe("Admin Auth generated Connect client", () => {
           createRequest(request);
           return {
             verificationToken: {
-              identifier: request.identifier,
-              token: request.token,
-              expires: request.expires,
+              identifier: request.effect!.identifier,
+              token: request.effect!.token,
+              expires: request.effect!.expires,
             },
             receipt: {
               identity: request.command,
@@ -88,26 +89,35 @@ describe("Admin Auth generated Connect client", () => {
       client.createVerificationToken({ identifier: " Admin@Kokoro.Local ", token: "token-1", expires: EXPIRES }),
     ).resolves.toEqual({ identifier: "admin@kokoro.local", token: "token-1", expires: EXPIRES });
     const created = createRequest.mock.calls[0]?.[0];
-    expect(created.command).toMatchObject({ commandId: "command-1", idempotencyKey: "command-1" });
+    expect(created.command).toMatchObject({
+      commandId: "command-1",
+      idempotencyKey: "command-1",
+      digestAlgorithm: ADMIN_AUTH_COMMAND_DIGEST_ALGORITHM,
+    });
     expect(created.command.requestDigest).toMatch(/^[a-f0-9]{64}$/);
-    expect(created.identifier).toBe("admin@kokoro.local");
+    expect(created.effect.identifier).toBe("admin@kokoro.local");
 
     await expect(
       client.consumeVerificationToken({ identifier: " Admin@Kokoro.Local ", token: "token-1" }),
     ).resolves.toBeNull();
     const consumed = consumeRequest.mock.calls[0]?.[0];
-    expect(consumed.command).toMatchObject({ commandId: "command-2", idempotencyKey: "command-2" });
+    expect(consumed.command).toMatchObject({
+      commandId: "command-2",
+      idempotencyKey: "command-2",
+      digestAlgorithm: ADMIN_AUTH_COMMAND_DIGEST_ALGORITHM,
+    });
     expect(consumed.command.requestDigest).toMatch(/^[a-f0-9]{64}$/);
   });
 
   it("reconciles a deadline with the same command identity and digest", async () => {
-    let attemptedCommand: { commandId: string; requestDigest: string } | undefined;
+    let attemptedCommand: { commandId: string; digestAlgorithm: number; requestDigest: string } | undefined;
     const receiptRequest = vi.fn();
     const transport = createRouterTransport((router) => {
       router.service(AdminAuthService, {
         createVerificationToken(request) {
           attemptedCommand = {
             commandId: request.command!.commandId,
+            digestAlgorithm: request.command!.digestAlgorithm,
             requestDigest: request.command!.requestDigest,
           };
           throw new ConnectError("response lost after commit", Code.DeadlineExceeded);
@@ -123,6 +133,7 @@ describe("Admin Auth generated Connect client", () => {
                 identity: {
                   commandId: request.commandId,
                   idempotencyKey: request.commandId,
+                  digestAlgorithm: request.digestAlgorithm,
                   requestDigest: request.requestDigest,
                 },
                 operation: "CreateVerificationToken",
@@ -136,6 +147,7 @@ describe("Admin Auth generated Connect client", () => {
               identity: {
                 commandId: request.commandId,
                 idempotencyKey: request.commandId,
+                digestAlgorithm: request.digestAlgorithm,
                 requestDigest: request.requestDigest,
               },
               operation: "admin_auth.create_verification_token",
@@ -170,13 +182,14 @@ describe("Admin Auth generated Connect client", () => {
     ["lookup unavailable", Code.Unavailable, undefined],
     ["accepted", undefined, CommandReceiptState.ACCEPTED],
   ] as const)("keeps the original receipt reference when reconciliation is %s", async (_name, code, state) => {
-    let attemptedCommand: { commandId: string; requestDigest: string } | undefined;
+    let attemptedCommand: { commandId: string; digestAlgorithm: number; requestDigest: string } | undefined;
     const receiptRequest = vi.fn();
     const transport = createRouterTransport((router) => {
       router.service(AdminAuthService, {
         createVerificationToken(request) {
           attemptedCommand = {
             commandId: request.command!.commandId,
+            digestAlgorithm: request.command!.digestAlgorithm,
             requestDigest: request.command!.requestDigest,
           };
           throw new ConnectError("effect deadline", Code.DeadlineExceeded);
@@ -189,6 +202,7 @@ describe("Admin Auth generated Connect client", () => {
               identity: {
                 commandId: request.commandId,
                 idempotencyKey: request.commandId,
+                digestAlgorithm: request.digestAlgorithm,
                 requestDigest: request.requestDigest,
               },
               operation: "CreateVerificationToken",
@@ -237,6 +251,7 @@ describe("Admin Auth generated Connect client", () => {
               identity: {
                 commandId: request.commandId,
                 idempotencyKey: request.commandId,
+                digestAlgorithm: request.digestAlgorithm,
                 requestDigest: request.requestDigest,
               },
               operation: "CreateVerificationToken",
@@ -294,7 +309,7 @@ describe("Admin Auth generated Connect client", () => {
     const client = createAdminAuthClient({ transport, newCommandId: commandIds(), now: () => NOW });
 
     await client.recordAuthEvent({ email: " Admin@Kokoro.Local ", event: "signin" });
-    expect(eventRequest.mock.calls[0]?.[0]).toMatchObject({
+    expect(eventRequest.mock.calls[0]?.[0].effect).toMatchObject({
       email: "admin@kokoro.local",
       event: AuthEventKind.SIGN_IN,
     });

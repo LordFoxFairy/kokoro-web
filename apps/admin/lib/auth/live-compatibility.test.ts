@@ -17,6 +17,7 @@ import {
   createAdminAuthTransport,
 } from "@/lib/auth/client";
 import { contractMetadata } from "@/lib/generated/contracts/contract-metadata";
+import { ADMIN_AUTH_COMMAND_DIGEST_ALGORITHM } from "@/lib/generated/contracts/admin-auth-effect-digest";
 import { KokoroErrorDetailSchema } from "@/lib/generated/contracts/kokoro/common/v1/error_pb";
 import { AdminAuthService } from "@/lib/generated/contracts/kokoro/platform/admin/v1/admin_auth_pb";
 
@@ -213,11 +214,14 @@ describe("Admin Auth live generated-client compatibility", () => {
         command: {
           commandId: `compat-invalid-${randomUUID()}`,
           idempotencyKey: `compat-invalid-${randomUUID()}`,
+          digestAlgorithm: ADMIN_AUTH_COMMAND_DIGEST_ALGORITHM,
           requestDigest: "0".repeat(64),
         },
-        identifier,
-        token: invalidDigestToken,
-        expires: timestampFromDate(expires),
+        effect: {
+          identifier,
+          token: invalidDigestToken,
+          expires: timestampFromDate(expires),
+        },
       }),
     );
     expect(invalidDigest.code).toBe(Code.InvalidArgument);

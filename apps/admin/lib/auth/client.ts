@@ -1,7 +1,8 @@
 import "server-only";
 
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 
+import { create } from "@bufbuild/protobuf";
 import { timestampDate, timestampFromDate } from "@bufbuild/protobuf/wkt";
 import {
   Code,
@@ -14,6 +15,15 @@ import { createConnectTransport } from "@connectrpc/connect-node";
 
 import { RetryClass, KokoroErrorDetailSchema } from "@/lib/generated/contracts/kokoro/common/v1/error_pb";
 import {
+  ADMIN_AUTH_COMMAND_DIGEST_ALGORITHM,
+  canonicalizeConsumeVerificationTokenEffect,
+  canonicalizeCreateVerificationTokenEffect,
+  canonicalizeRecordAuthEventEffect,
+  consumeVerificationTokenEffectDigest,
+  createVerificationTokenEffectDigest,
+  recordAuthEventEffectDigest,
+} from "@/lib/generated/contracts/admin-auth-effect-digest";
+import {
   CommandReceiptState,
   type CommandIdentity,
   type CommandReceipt,
@@ -21,7 +31,10 @@ import {
 import {
   AdminAuthService,
   AuthEventKind,
+  ConsumeVerificationTokenEffectSchema,
+  CreateVerificationTokenEffectSchema,
   OperatorStatus,
+  RecordAuthEventEffectSchema,
   type GetCommandReceiptResponse,
   type Operator,
   type VerificationToken,
@@ -125,18 +138,11 @@ export interface AdminAuthClientOptions {
   waitBeforeReceiptRetry?: (delayMs: number) => Promise<void>;
 }
 
-const OPERATION_CREATE_TOKEN = "admin_auth.create_verification_token";
-const OPERATION_CONSUME_TOKEN = "admin_auth.consume_verification_token";
-const OPERATION_RECORD_EVENT = "admin_auth.record_auth_event";
 const RECEIPT_LOOKUP_TIMEOUT_MS = 1_000;
 const RECEIPT_RECONCILE_DELAYS_MS = [0, 50, 150] as const;
 
 function normalizeEmail(value: string): string {
   return value.trim().toLowerCase();
-}
-
-function requestDigest(operation: string, payload: Record<string, string>): string {
-  return createHash("sha256").update(JSON.stringify({ operation, payload }), "utf8").digest("hex");
 }
 
 function errorFrom(reason: unknown): AdminAuthClientError {
@@ -218,6 +224,7 @@ function committedReceipt(receipt: CommandReceipt | undefined, identity: Command
   return (
     receipt?.state === CommandReceiptState.COMMITTED &&
     receipt.identity?.commandId === identity.commandId &&
+    receipt.identity.digestAlgorithm === identity.digestAlgorithm &&
     receipt.identity.requestDigest === identity.requestDigest
   );
 }
@@ -241,13 +248,14 @@ export function createAdminAuthClient(options: AdminAuthClientOptions): AdminAut
     options.waitBeforeReceiptRetry ??
     ((delayMs: number) => new Promise<void>((resolveDelay) => setTimeout(resolveDelay, delayMs)));
 
-  function command(operation: string, payload: Record<string, string>): CommandIdentity {
+  function command(requestDigest: string): CommandIdentity {
     const commandId = newCommandId();
     return {
       $typeName: "kokoro.common.v1.CommandIdentity",
       commandId,
       idempotencyKey: commandId,
-      requestDigest: requestDigest(operation, payload),
+      digestAlgorithm: ADMIN_AUTH_COMMAND_DIGEST_ALGORITHM,
+      requestDigest,
     };
   }
 
@@ -256,6 +264,7 @@ export function createAdminAuthClient(options: AdminAuthClientOptions): AdminAut
       return await rpc.getCommandReceipt(
         {
           commandId: identity.commandId,
+          digestAlgorithm: identity.digestAlgorithm,
           requestDigest: identity.requestDigest,
         },
         { timeoutMs: RECEIPT_LOOKUP_TIMEOUT_MS },
@@ -331,18 +340,18 @@ export function createAdminAuthClient(options: AdminAuthClientOptions): AdminAut
     },
 
     async createVerificationToken(value) {
-      const identifier = normalizeEmail(value.identifier);
-      const identity = command(OPERATION_CREATE_TOKEN, {
-        identifier,
-        token: value.token,
-        expires: value.expires.toISOString(),
-      });
+      const effect = canonicalizeCreateVerificationTokenEffect(
+        create(CreateVerificationTokenEffectSchema, {
+          identifier: value.identifier,
+          token: value.token,
+          expires: timestampFromDate(value.expires),
+        }),
+      );
+      const identity = command(createVerificationTokenEffectDigest(effect));
       try {
         const response = await rpc.createVerificationToken({
           command: identity,
-          identifier,
-          token: value.token,
-          expires: timestampFromDate(value.expires),
+          effect,
         });
         if (!committedReceipt(response.receipt, identity)) {
           throw new AdminAuthClientError({
@@ -362,10 +371,15 @@ export function createAdminAuthClient(options: AdminAuthClientOptions): AdminAut
     },
 
     async consumeVerificationToken(value) {
-      const identifier = normalizeEmail(value.identifier);
-      const identity = command(OPERATION_CONSUME_TOKEN, { identifier, token: value.token });
+      const effect = canonicalizeConsumeVerificationTokenEffect(
+        create(ConsumeVerificationTokenEffectSchema, {
+          identifier: value.identifier,
+          token: value.token,
+        }),
+      );
+      const identity = command(consumeVerificationTokenEffectDigest(effect));
       try {
-        const response = await rpc.consumeVerificationToken({ command: identity, identifier, token: value.token });
+        const response = await rpc.consumeVerificationToken({ command: identity, effect });
         if (!committedReceipt(response.receipt, identity)) {
           throw new AdminAuthClientError({
             connectCode: Code.Internal,
@@ -385,21 +399,20 @@ export function createAdminAuthClient(options: AdminAuthClientOptions): AdminAut
     },
 
     async recordAuthEvent(value) {
-      const email = normalizeEmail(value.email);
       const occurredAt = now();
-      const identity = command(OPERATION_RECORD_EVENT, {
-        email,
-        event: value.event,
-        reason: value.reason ?? "",
-        occurredAt: occurredAt.toISOString(),
-      });
-      try {
-        const response = await rpc.recordAuthEvent({
-          command: identity,
-          email,
+      const effect = canonicalizeRecordAuthEventEffect(
+        create(RecordAuthEventEffectSchema, {
+          email: value.email,
           event: eventKind(value.event),
           ...(value.reason === undefined ? {} : { reason: value.reason }),
           occurredAt: timestampFromDate(occurredAt),
+        }),
+      );
+      const identity = command(recordAuthEventEffectDigest(effect));
+      try {
+        const response = await rpc.recordAuthEvent({
+          command: identity,
+          effect,
         });
         if (!committedReceipt(response.receipt, identity)) {
           throw new AdminAuthClientError({
