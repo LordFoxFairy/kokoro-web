@@ -21,4 +21,4 @@ owners:
 - hero 输入回车/点开始 → 暂存 pending 草稿 → 跳 /login；登录回跳 `/` 后工作台 composer 读同键预填。
 - 回调失败 `?auth=link_unavailable` 落 `/` 时本页转投 `/login`（callback 机制不改），错误 UI 由登录页承载。
 - 页面路由内链一律 `next/link`（`/`、`/login`），页内锚用 `<a href="#…">`。
-- 布局陷阱（已修，勿回退）：`.page` 是 body（flex column，被钉视口高）的子项，须 `flex-shrink:0` 否则被压缩致内容溢出、顶栏被挤（高度抖动）；`.topbar` 亦 `flex-shrink:0` 保 4rem。`.page>*` 抬内容到纹理层时须 `:not(header):not(nav)`，否则覆盖顶栏 `position:sticky`。装饰光晕（如 `.hero::before`）横向 inset 不得为负，否则撑出全页横向滚动条。
+- 布局不变量（改样式前必读）：`.page` 是 body（flex column，被钉视口高）的子项，须 `flex-shrink:0`，否则被压缩致内容溢出、顶栏被挤（高度抖动）；`.topbar` 同样须 `flex-shrink:0` 保 4rem。`.page>*` 抬内容到纹理层时须带 `:not(header):not(nav)`，否则覆盖顶栏 `position:sticky`。装饰光晕（如 `.hero::before`）横向 inset 不得为负，否则撑出全页横向滚动条。

@@ -14,7 +14,7 @@ Web UI 的多语言:**中文(zh)是唯一源字典**,其余语言是增量覆盖
 - `messages.ts` — **源真相**:`zh = {...} as const`(全量键),`MessageKey = keyof typeof zh`;`Locale` 联合、`LOCALES`、`DEFAULT_LOCALE="zh"`、`LOCALE_STORAGE_KEY`、`LOCALE_NAMES`(母语显示名)。
 - `<locale>.ts`(en 手维,其余 MT 生成)— 各语言 `Partial<Record<MessageKey, string>>` 增量覆盖。
 - `overlays.ts` — `OVERLAYS: Record<Locale, Partial<...>>` 数据驱动查表(解析层据此按 locale 取词)。
-- `resolve.ts` — 纯解析层(无 DOM/React):`negotiateLocale`(存储偏好 > 浏览器语言前缀 > 默认 zh)+ `resolveMessage`(OVERLAYS[locale] → zh → key 三层 fallback + `{var}` 插值)。
+- `resolve.ts` — 纯解析层(无 DOM/React):`negotiateLocale`(存储偏好 > 浏览器语言前缀 > 默认 zh)+ `resolveMessage`(OVERLAYS[locale] → zh → key 三层 fallback + `{var}` 插值)。两者是薄封装,协商/fallback/插值实现在共享窄包 `@kokoro/i18n` 的 `createI18n<Locale, MessageKey>`(与 admin-web 同引擎);改解析行为改那里,改本 app 的绑定改这里。
 - `context.tsx` — React 绑定:`LocaleProvider`(SSR/水合首帧用默认、挂载后协商,避免注水不一致)、`useLocale`、`useT`。
 
 ## MT 翻译管线
@@ -31,5 +31,5 @@ Web UI 的多语言:**中文(zh)是唯一源字典**,其余语言是增量覆盖
 
 ## 陷阱
 - 新文案只在 `zh` 加一行 key;译文交 MT 管线补(别手写各语言)。en 是手维基线(可留精修),其余重跑 MT 幂等补缺。
-- 硬编码护栏 `tests/i18n/no-hardcoded-ui.test.ts` **只查中文字符**——英文硬编码不触发。已修的盲区:mode 的 `Fast`/`Thinking` 曾英文硬编码(`ui/composer/mode-options.ts`),现走 `mode.labelFast`/`mode.labelThinking` 键。新增英文硬编码仍可能漏网,评审留意。
+- 硬编码护栏 `tests/i18n/no-hardcoded-ui.test.ts` **只查中文字符**——英文字面量是护栏盲区,不会触发失败。凡 UI 文案(含纯英文,如 `ui/composer/mode-options.ts` 的 mode 标签走 `mode.labelFast`/`mode.labelThinking`)一律走 key,英文硬编码只能靠评审人工把关。
 - overlay 完整性由 `tests/i18n/resolve.test.ts` 守:每 overlay 的 key ⊆ zh 源、各语言覆盖率 ≥95%、`LOCALE_NAMES` 覆盖全 `LOCALES`。
