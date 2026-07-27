@@ -1,3 +1,10 @@
+---
+architectureIndex: 1
+rootId: web.user.ui.hitl
+owners:
+  - "@LordFoxFairy"
+---
+
 # ui/hitl — 人在环决策
 
 ## 职责

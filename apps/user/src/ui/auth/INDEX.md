@@ -1,3 +1,10 @@
+---
+architectureIndex: 1
+rootId: web.user.ui.auth
+owners:
+  - "@LordFoxFairy"
+---
+
 # ui/auth — 登录与会话态门面
 
 ## 职责

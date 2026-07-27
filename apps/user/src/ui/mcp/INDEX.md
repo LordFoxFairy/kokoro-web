@@ -1,3 +1,10 @@
+---
+architectureIndex: 1
+rootId: web.user.ui.mcp
+owners:
+  - "@LordFoxFairy"
+---
+
 # ui/mcp — 连接面板
 
 ## 职责

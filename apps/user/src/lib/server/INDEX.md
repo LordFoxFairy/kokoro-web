@@ -1,3 +1,10 @@
+---
+architectureIndex: 1
+rootId: web.user.server
+owners:
+  - "@LordFoxFairy"
+---
+
 # lib/server — BFF 鉴权边界（服务端专用）
 
 ## 职责

@@ -1,3 +1,10 @@
+---
+architectureIndex: 1
+rootId: web.user.ui.composer
+owners:
+  - "@LordFoxFairy"
+---
+
 # ui/composer — 输入区
 
 ## 职责

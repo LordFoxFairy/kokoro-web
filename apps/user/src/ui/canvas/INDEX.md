@@ -1,3 +1,10 @@
+---
+architectureIndex: 1
+rootId: web.user.ui.canvas
+owners:
+  - "@LordFoxFairy"
+---
+
 # ui/canvas — 工作区第三栏
 
 ## 职责

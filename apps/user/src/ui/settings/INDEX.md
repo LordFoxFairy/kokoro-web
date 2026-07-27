@@ -1,3 +1,10 @@
+---
+architectureIndex: 1
+rootId: web.user.ui.settings
+owners:
+  - "@LordFoxFairy"
+---
+
 # ui/settings — 用户设置中心（模态）
 
 ## 职责

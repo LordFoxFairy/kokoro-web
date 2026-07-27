@@ -1,3 +1,10 @@
+---
+architectureIndex: 1
+rootId: web.user.ui.team
+owners:
+  - "@LordFoxFairy"
+---
+
 # ui/team — 团队面板
 
 ## 职责

@@ -1,3 +1,10 @@
+---
+architectureIndex: 1
+rootId: web.user.i18n
+owners:
+  - "@LordFoxFairy"
+---
+
 # src/i18n — Web 界面静态 i18n
 
 ## 职责

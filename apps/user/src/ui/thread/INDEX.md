@@ -1,3 +1,10 @@
+---
+architectureIndex: 1
+rootId: web.user.ui.thread
+owners:
+  - "@LordFoxFairy"
+---
+
 # ui/thread — 会话线渲染
 
 ## 职责

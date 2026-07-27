@@ -1,3 +1,10 @@
+---
+architectureIndex: 1
+rootId: web.user.ui.marketing
+owners:
+  - "@LordFoxFairy"
+---
+
 # ui/marketing — 营销落地页
 
 ## 职责

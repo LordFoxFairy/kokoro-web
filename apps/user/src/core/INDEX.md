@@ -1,3 +1,10 @@
+---
+architectureIndex: 1
+rootId: web.user.core
+owners:
+  - "@LordFoxFairy"
+---
+
 # core — 纯状态模型与事件折叠（零 I/O 零 React）
 
 ## 职责

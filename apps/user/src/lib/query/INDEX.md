@@ -1,3 +1,10 @@
+---
+architectureIndex: 1
+rootId: web.user.query
+owners:
+  - "@LordFoxFairy"
+---
+
 # lib/query — 共享 server-state 层
 
 ## 职责

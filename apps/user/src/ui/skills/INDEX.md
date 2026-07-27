@@ -1,3 +1,10 @@
+---
+architectureIndex: 1
+rootId: web.user.ui.skills
+owners:
+  - "@LordFoxFairy"
+---
+
 # ui/skills — 技能面板
 
 ## 职责

@@ -1,3 +1,10 @@
+---
+architectureIndex: 1
+rootId: web.user.ui.shell
+owners:
+  - "@LordFoxFairy"
+---
+
 # ui/shell — 页面装配层
 
 ## 职责

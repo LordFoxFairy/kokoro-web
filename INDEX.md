@@ -1,4 +1,53 @@
+---
+architectureIndex: 1
+rootId: service.web
+owners:
+  - "@LordFoxFairy"
+---
+
 # kokoro-web（pnpm monorepo）
+
+## Responsibilities
+
+Own independently deployable user/admin Next.js applications and Web-only shared packages under one independently released Web repository.
+
+## Non-responsibilities
+
+Web does not execute Agent graphs, own Session/Platform business persistence, or share credentials/databases across service boundaries.
+
+## Public boundary
+
+`apps/user` is the Site user surface and BFF; `apps/admin` is the privileged operator surface; `packages/*` are repository-local shared Web packages.
+
+## Callers and dependencies
+
+Browsers call each app. User BFF calls Session HTTP/SSE; Admin server code calls Platform generated Connect services.
+
+## Data ownership and events
+
+Web owns cookies, rendering state, drafts, and client caches. Session owns conversations/events and Platform owns identity/commercial/admin facts.
+
+## Runtime and security
+
+Server-only credentials stay outside browser bundles, production hosts fail closed to trusted Site resolution, and Admin has no Platform database credential.
+
+## Idempotency, failure, and recovery
+
+Client commands carry stable identity; reconnect uses Session snapshots/cursors; Admin effects reconcile durable receipts after ambiguous timeouts.
+
+## Extension rules and forbidden dependencies
+
+Put app-specific behavior in its app and truly shared Web code in `packages/*`. Never import sibling repository source or combine user/admin trust boundaries.
+
+## Current gotchas
+
+The repository currently contains one user app and one Admin app; production Fleet still needs one independent product-named Web project/artifact per Site.
+
+## Verification
+
+Run `pnpm -r lint`, `pnpm -r typecheck`, `pnpm -r test`, and production builds for every deployable app.
+
+## Detailed current map
 
 Kokoro 的 web 子仓。一个仓库承载**两个独立部署的 Next.js app** + 共享包。收拢自
 "用户面 web + 后台管理 admin 两处分散"，是"一个 web 子仓、方便管理"的落点。

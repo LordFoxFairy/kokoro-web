@@ -1,3 +1,10 @@
+---
+architectureIndex: 1
+rootId: web.user.ui.billing
+owners:
+  - "@LordFoxFairy"
+---
+
 # ui/billing — 计费与价格面板
 
 ## 职责

@@ -1,3 +1,10 @@
+---
+architectureIndex: 1
+rootId: web.admin.generated
+owners:
+  - "@LordFoxFairy"
+---
+
 # Admin generated contracts
 
 ## Responsibility

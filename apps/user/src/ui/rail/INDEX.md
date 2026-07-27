@@ -1,3 +1,10 @@
+---
+architectureIndex: 1
+rootId: web.user.ui.rail
+owners:
+  - "@LordFoxFairy"
+---
+
 # ui/rail — 侧栏
 
 ## 职责

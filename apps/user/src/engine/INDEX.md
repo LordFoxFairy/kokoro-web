@@ -1,3 +1,10 @@
+---
+architectureIndex: 1
+rootId: web.user.engine
+owners:
+  - "@LordFoxFairy"
+---
+
 # engine — 会话引擎（状态机 + 浏览器 I/O 唯一编排者）
 
 ## 职责
