@@ -96,10 +96,9 @@ describe("resolveSessionWithRefresh", () => {
     expect(resolved!.setCookie).toBeNull()
   })
 
-  it("续期响应试图切换 Site → 保留原信封且绝不 set-cookie", async () => {
+  it("续期 issuer 返回跨 Site 成功响应 → 作为安全违规拒绝整个会话", async () => {
     const config = authConfig()!
-    const original = base()
-    const req = reqWith(original)
+    const req = reqWith(base())
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue(
@@ -119,8 +118,7 @@ describe("resolveSessionWithRefresh", () => {
     )
 
     const resolved = await resolveSessionWithRefresh(req, config, "site-a")
-    expect(resolved?.envelope).toEqual(original)
-    expect(resolved?.setCookie).toBeNull()
+    expect(resolved).toBeNull()
   })
 
   it("信封 Site 与 Host 权威 Site 不同 → 在 refresh issuer 前拒绝", async () => {

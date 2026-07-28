@@ -30,7 +30,8 @@ owners:
     `userConsumeMagicLink`（对 user 的 magic-link 调用，失败归一）。
   - `sameOriginOk`：变更类请求同源守卫（Origin 存在且 host 不符则拒）。
   - `resolveSessionWithRefresh(request, config, expectedSiteId)`：Site-scoped 代理会话入口；信封 Site
-    必须等于当前 Host 权威 Site，且在调用 refresh issuer 前拒绝跨 Site 信封；续期响应也必须保持该 Site。
+    必须等于当前 Host 权威 Site，且在调用 refresh issuer 前拒绝跨 Site 信封；续期响应也必须保持该 Site，
+    否则按安全违规拒绝整个会话（只有普通续期失败才允许回退仍有效的旧 access）。
   - magic-link consume 与 team-session issue 请求都携 Host 解析出的 `site_id`；权威响应也必须返回相同
     `site_id` 才能密封。refresh 响应不得改变原信封 Site。
 - `site.ts`（host→site 解析，SITE-REAL）

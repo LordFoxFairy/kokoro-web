@@ -352,6 +352,7 @@ export interface ResolvedSession {
 // - access 快过期 → 用信封里的 refresh 调 /auth/refresh 换新 access + 轮换 refresh，重新密封 → setCookie。
 // - 续期落空（多 tab 并发/refresh 失效）→ 返回当前信封（setCookie=null）：access 若仍有效上游照常，
 //   真过期上游 401、前端 session-state 复检送回登录——此处不强制登出（多 tab 并发不误踢）。
+// - issuer 返回结构有效但 Site 不符 → 安全违规，返回 null；绝不回退旧信封触达业务上游。
 export async function resolveSessionWithRefresh(
   request: Request,
   config: AuthConfig,
@@ -367,8 +368,11 @@ export async function resolveSessionWithRefresh(
     return { envelope, setCookie: null }
   }
   const refreshed = await userRefreshSession(config, envelope.refresh_token)
-  if (refreshed === null || refreshed.site_id !== expectedSiteId) {
+  if (refreshed === null) {
     return { envelope, setCookie: null }
+  }
+  if (refreshed.site_id !== expectedSiteId) {
+    return null
   }
   const newAccessExp = decodeJwtExp(refreshed.token) ?? nowSec + 3600
   const refreshExpMs = new Date(refreshed.refresh_expires_at).getTime()

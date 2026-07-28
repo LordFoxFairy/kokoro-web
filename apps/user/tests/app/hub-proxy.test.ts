@@ -200,4 +200,29 @@ describe("/api/hub/[...path] proxy", () => {
       "http://site.test/site-context/resolve?host=site-b.example",
     ])
   })
+
+  it("refresh issuer 返回跨 Site 成功响应时拒绝会话且不触达 hub upstream", async () => {
+    const fetchMock = vi.fn(async (target: string | URL) => {
+      const url = target.toString()
+      if (url.startsWith("http://site.test/")) return siteResponse("site-a")
+      if (url === "http://user.test/auth/refresh") return refreshResponse("site-b")
+      return new Response("{}", { status: 200 })
+    })
+    vi.stubGlobal("fetch", fetchMock)
+    const { GET } = await import("@/app/api/hub/[...path]/route")
+
+    const res = await GET(
+      new Request("http://localhost/api/hub/self/skills/pool", {
+        headers: { cookie: sessionCookie("site-a", nowSec() + 60), host: "site-a.example" },
+      }),
+      params(["self", "skills", "pool"]),
+    )
+
+    expect(res.status).toBe(401)
+    expect(res.headers.get("set-cookie")).toBeNull()
+    expect(fetchMock.mock.calls.map(([target]) => target.toString())).toEqual([
+      "http://site.test/site-context/resolve?host=site-a.example",
+      "http://user.test/auth/refresh",
+    ])
+  })
 })
