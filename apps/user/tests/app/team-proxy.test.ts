@@ -191,18 +191,19 @@ describe("/api/team/[...path] proxy", () => {
   })
 
   it("rejects a chunked Team JSON body after the 64 KiB hard cap", async () => {
-    const fetchMock = vi.fn(async (target: string | URL) =>
-      target.toString().startsWith("http://site.test/")
-        ? siteResponse("site-a")
-        : Response.json({ data: [] }),
-    )
+    const fetchMock = vi.fn(async (target: string | URL) => {
+      const url = target.toString()
+      if (url.startsWith("http://site.test/")) return siteResponse("site-a")
+      if (url === "http://user.test/auth/refresh") return refreshResponse("site-a")
+      return Response.json({ data: [] })
+    })
     vi.stubGlobal("fetch", fetchMock)
     const { POST } = await import("@/app/api/team/[...path]/route")
     const request = chunkedPost(
       "http://localhost/api/team/teams/team_1/invites",
       [new Uint8Array(64 * 1024), new Uint8Array(1)],
       {
-        cookie: sessionCookie(),
+        cookie: sessionCookie("site-a", nowSec() + 60),
         host: "site-a.example",
         origin: "http://site-a.example",
         "content-type": "application/json",
@@ -216,6 +217,7 @@ describe("/api/team/[...path] proxy", () => {
     expect(fetchMock.mock.calls.map(([target]) => target.toString())).toEqual([
       "http://site.test/site-context/resolve?host=site-a.example",
     ])
+    expect(res.headers.get("set-cookie")).toBeNull()
   })
 
   it("does not forward upstream Set-Cookie or Location headers", async () => {

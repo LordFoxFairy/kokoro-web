@@ -246,21 +246,23 @@ describe("/api/session/[...path] proxy", () => {
   })
 
   it("rejects a chunked session body after the 1 MiB hard cap without calling session", async () => {
-    const fetchMock = vi.fn(async (target: string | URL) =>
-      target.toString().startsWith("http://site.test/")
-        ? siteResponse("site-a")
-        : new Response("{}", { status: 200 }),
-    )
+    const fetchMock = vi.fn(async (target: string | URL) => {
+      const url = target.toString()
+      if (url.startsWith("http://site.test/")) return siteResponse("site-a")
+      if (url === "http://user.test/auth/refresh") return refreshResponse("site-a")
+      return new Response("{}", { status: 200 })
+    })
     vi.stubGlobal("fetch", fetchMock)
     const { POST } = await import("@/app/api/session/[...path]/route")
     const request = chunkedPost(
       "http://localhost/api/session/sessions/ses_1/messages",
       [new Uint8Array(1024 * 1024), new Uint8Array(1)],
       {
-        cookie: sessionCookie(),
+        cookie: sessionCookie("site-a", nowSec() + 60),
         host: "site-a.example",
         origin: "http://site-a.example",
         "content-type": "application/json",
+        "content-length": String(1024 * 1024),
       },
     )
 
@@ -268,6 +270,73 @@ describe("/api/session/[...path] proxy", () => {
 
     expect(res.status).toBe(413)
     expect(await res.json()).toEqual({ error: "request_body_too_large" })
+    expect(fetchMock.mock.calls.map(([target]) => target.toString())).toEqual([
+      "http://site.test/site-context/resolve?host=site-a.example",
+    ])
+    expect(res.headers.get("set-cookie")).toBeNull()
+  })
+
+  it("rejects malformed Content-Length before refresh", async () => {
+    const fetchMock = vi.fn(async (target: string | URL) =>
+      target.toString().startsWith("http://site.test/")
+        ? siteResponse("site-a")
+        : refreshResponse("site-a"),
+    )
+    vi.stubGlobal("fetch", fetchMock)
+    const { POST } = await import("@/app/api/session/[...path]/route")
+    const res = await POST(
+      new Request("http://localhost/api/session/sessions/ses_1/messages", {
+        method: "POST",
+        headers: {
+          cookie: sessionCookie("site-a", nowSec() + 60),
+          host: "site-a.example",
+          origin: "http://site-a.example",
+          "content-type": "application/json",
+          "content-length": "invalid",
+        },
+        body: "{}",
+      }),
+      params(["sessions", "ses_1", "messages"]),
+    )
+
+    expect(res.status).toBe(400)
+    expect(await res.json()).toEqual({ error: "invalid_request_body" })
+    expect(res.headers.get("set-cookie")).toBeNull()
+    expect(fetchMock.mock.calls.map(([target]) => target.toString())).toEqual([
+      "http://site.test/site-context/resolve?host=site-a.example",
+    ])
+  })
+
+  it("rejects an errored request stream before refresh", async () => {
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        controller.error(new DOMException("client aborted", "AbortError"))
+      },
+    })
+    const fetchMock = vi.fn(async (target: string | URL) =>
+      target.toString().startsWith("http://site.test/")
+        ? siteResponse("site-a")
+        : refreshResponse("site-a"),
+    )
+    vi.stubGlobal("fetch", fetchMock)
+    const { POST } = await import("@/app/api/session/[...path]/route")
+    const res = await POST(
+      new Request("http://localhost/api/session/sessions/ses_1/messages", {
+        method: "POST",
+        headers: {
+          cookie: sessionCookie("site-a", nowSec() + 60),
+          host: "site-a.example",
+          origin: "http://site-a.example",
+        },
+        body,
+        duplex: "half",
+      } as RequestInit & { duplex: "half" }),
+      params(["sessions", "ses_1", "messages"]),
+    )
+
+    expect(res.status).toBe(400)
+    expect(await res.json()).toEqual({ error: "invalid_request_body" })
+    expect(res.headers.get("set-cookie")).toBeNull()
     expect(fetchMock.mock.calls.map(([target]) => target.toString())).toEqual([
       "http://site.test/site-context/resolve?host=site-a.example",
     ])

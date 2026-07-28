@@ -4,7 +4,7 @@
 
 import { NextResponse } from "next/server"
 
-import { authConfig, resolveSessionWithRefresh, sameOriginOk } from "@/lib/server/auth"
+import { authConfig, preflightSession, resolveSessionWithRefresh, sameOriginOk } from "@/lib/server/auth"
 import { readBoundedRequestBody, SESSION_REQUEST_BODY_MAX_BYTES } from "@/lib/server/http-boundary"
 import { resolveSiteId } from "@/lib/server/site"
 
@@ -29,7 +29,25 @@ async function proxy(request: Request, context: { params: Promise<{ path: string
   if (siteId === null) {
     return NextResponse.json({ error: "site_unresolved" }, { status: 404 })
   }
-  const resolved = await resolveSessionWithRefresh(request, config, siteId)
+  const preflight = preflightSession(request, config, siteId)
+  if (preflight === null) {
+    return NextResponse.json({ error: "unauthenticated" }, { status: 401 })
+  }
+
+  const boundedBody = await readBoundedRequestBody(request, SESSION_REQUEST_BODY_MAX_BYTES)
+  if (!boundedBody.ok) {
+    return NextResponse.json(
+      { error: boundedBody.reason === "too_large" ? "request_body_too_large" : "invalid_request_body" },
+      { status: boundedBody.reason === "too_large" ? 413 : 400 },
+    )
+  }
+  // GET/HEAD/DELETE 不向上游带 body；若客户端违规携带，仍已在上面读取并受硬顶约束。
+  const body =
+    request.method === "GET" || request.method === "HEAD" || request.method === "DELETE"
+      ? undefined
+      : boundedBody.body
+
+  const resolved = await resolveSessionWithRefresh(request, config, siteId, preflight)
   if (resolved === null) {
     return NextResponse.json({ error: "unauthenticated" }, { status: 401 })
   }
@@ -47,19 +65,6 @@ async function proxy(request: Request, context: { params: Promise<{ path: string
       headers.set(name, value)
     }
   }
-
-  const boundedBody = await readBoundedRequestBody(request, SESSION_REQUEST_BODY_MAX_BYTES)
-  if (!boundedBody.ok) {
-    return NextResponse.json(
-      { error: boundedBody.reason === "too_large" ? "request_body_too_large" : "invalid_request_body" },
-      { status: boundedBody.reason === "too_large" ? 413 : 400 },
-    )
-  }
-  // GET/HEAD/DELETE 不向上游带 body；若客户端违规携带，仍已在上面读取并受硬顶约束。
-  const body =
-    request.method === "GET" || request.method === "HEAD" || request.method === "DELETE"
-      ? undefined
-      : boundedBody.body
 
   let upstream: Response
   try {

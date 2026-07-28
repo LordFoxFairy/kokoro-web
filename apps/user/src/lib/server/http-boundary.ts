@@ -38,6 +38,12 @@ function declaredLength(headers: Headers): bigint | null | "invalid" {
   }
 }
 
+function requestBodyPreflight(headers: Headers, maxBytes: number): "ok" | "too_large" | "invalid" {
+  const declared = declaredLength(headers)
+  if (declared === "invalid") return "invalid"
+  return declared !== null && declared > BigInt(maxBytes) ? "too_large" : "ok"
+}
+
 async function cancelQuietly(stream: ReadableStream<Uint8Array> | null): Promise<void> {
   await stream?.cancel().catch(() => undefined)
 }
@@ -137,4 +143,120 @@ export function hubRequestBodyLimit(path: readonly string[]): number {
     (path[3] === "preview" || path[3] === "confirm")
     ? HUB_UPLOAD_REQUEST_BODY_MAX_BYTES
     : HUB_REQUEST_BODY_MAX_BYTES
+}
+
+export function isHubUploadPath(path: readonly string[]): boolean {
+  return hubRequestBodyLimit(path) === HUB_UPLOAD_REQUEST_BODY_MAX_BYTES
+}
+
+class RequestBodyTooLargeError extends Error {}
+
+export type CountedBodyCompletion =
+  | { ok: true }
+  | { ok: false; reason: "too_large" | "invalid" | "aborted" }
+
+export type CountedRequestBodyResult =
+  | { ok: false; reason: "too_large" | "invalid" }
+  | {
+      ok: true
+      body: ReadableStream<Uint8Array> | undefined
+      completion: Promise<CountedBodyCompletion>
+      signal: AbortSignal
+      abort: (reason?: unknown) => void
+    }
+
+// 大上传只计数、绝不聚合进内存。pipeTo 受客户端 signal 与内部 abort 双重控制；只有源流完整 EOF
+// 才把 completion 标为 ok，供 route 在此之后执行 refresh rotation。
+export async function prepareCountedRequestBody(
+  request: Request,
+  maxBytes: number,
+): Promise<CountedRequestBodyResult> {
+  const preflight = requestBodyPreflight(request.headers, maxBytes)
+  if (preflight !== "ok") {
+    await cancelQuietly(request.body)
+    return { ok: false, reason: preflight }
+  }
+
+  const internalAbort = new AbortController()
+  const abort = (reason?: unknown): void => {
+    if (!internalAbort.signal.aborted) internalAbort.abort(reason)
+  }
+  if (request.body === null) {
+    return {
+      ok: true,
+      body: undefined,
+      completion: Promise.resolve({ ok: true }),
+      signal: internalAbort.signal,
+      abort,
+    }
+  }
+
+  let total = 0
+  const counted = new TransformStream<Uint8Array, Uint8Array>({
+    transform(chunk, controller) {
+      total += chunk.byteLength
+      if (total > maxBytes) throw new RequestBodyTooLargeError()
+      controller.enqueue(chunk)
+    },
+  })
+  const pipeSignal = AbortSignal.any([request.signal, internalAbort.signal])
+  const completion: Promise<CountedBodyCompletion> = request.body
+    .pipeTo(counted.writable, { signal: pipeSignal })
+    .then(() => ({ ok: true }) as const)
+    .catch((error: unknown) => {
+      abort(error)
+      if (error instanceof RequestBodyTooLargeError) return { ok: false, reason: "too_large" } as const
+      if (request.signal.aborted) return { ok: false, reason: "aborted" } as const
+      return { ok: false, reason: "invalid" } as const
+    })
+
+  return { ok: true, body: counted.readable, completion, signal: internalAbort.signal, abort }
+}
+
+const HUB_UPLOAD_MAX_CONCURRENT = 2
+const HUB_UPLOAD_MAX_RESERVED_BYTES = 128 * MiB
+const HUB_UPLOAD_BUSY_RETRY_SECONDS = 1
+const HUB_UPLOAD_CAPACITY_RETRY_SECONDS = 2
+
+let activeHubUploads = 0
+let reservedHubUploadBytes = 0
+
+export interface HubUploadLease {
+  release(): void
+}
+
+export type HubUploadAdmission =
+  | { ok: true; lease: HubUploadLease }
+  | { ok: false; status: 429 | 503; error: "hub_upload_busy" | "hub_upload_capacity_unavailable"; retryAfter: number }
+
+export function acquireHubUploadLease(headers: Headers): HubUploadAdmission {
+  if (activeHubUploads >= HUB_UPLOAD_MAX_CONCURRENT) {
+    return { ok: false, status: 429, error: "hub_upload_busy", retryAfter: HUB_UPLOAD_BUSY_RETRY_SECONDS }
+  }
+  const declared = declaredLength(headers)
+  const reservation =
+    declared === null || declared === "invalid" ? HUB_UPLOAD_REQUEST_BODY_MAX_BYTES : Number(declared)
+  if (reservedHubUploadBytes + reservation > HUB_UPLOAD_MAX_RESERVED_BYTES) {
+    return {
+      ok: false,
+      status: 503,
+      error: "hub_upload_capacity_unavailable",
+      retryAfter: HUB_UPLOAD_CAPACITY_RETRY_SECONDS,
+    }
+  }
+
+  activeHubUploads += 1
+  reservedHubUploadBytes += reservation
+  let released = false
+  return {
+    ok: true,
+    lease: {
+      release() {
+        if (released) return
+        released = true
+        activeHubUploads -= 1
+        reservedHubUploadBytes -= reservation
+      },
+    },
+  }
 }

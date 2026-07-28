@@ -7,6 +7,7 @@ import { NextResponse } from "next/server"
 import {
   authConfig,
   INTERNAL_SECRET_HEADER,
+  preflightSession,
   resolveSessionWithRefresh,
   sameOriginOk,
   SERVICE_HEADER,
@@ -37,11 +38,10 @@ async function proxy(
   if (siteId === null) {
     return NextResponse.json({ error: "site_unresolved" }, { status: 404 })
   }
-  const resolved = await resolveSessionWithRefresh(request, config, siteId)
-  if (resolved === null) {
+  const preflight = preflightSession(request, config, siteId)
+  if (preflight === null) {
     return NextResponse.json({ error: "unauthenticated" }, { status: 401 })
   }
-  const { envelope, setCookie } = resolved
 
   const { path } = await context.params
   const segments = path ?? []
@@ -51,14 +51,6 @@ async function proxy(
 
   const search = new URL(request.url).search
   const target = `${config.userBaseUrl.replace(/\/+$/, "")}/bff/${segments.join("/")}${search}`
-
-  const headers = new Headers()
-  headers.set(SERVICE_HEADER, SERVICE_VALUE)
-  if (config.internalSecret !== null) {
-    headers.set(INTERNAL_SECRET_HEADER, config.internalSecret)
-  }
-  // user principal 从信封派生（web 侧解封结果），浏览器无从伪造。
-  headers.set("x-user-id", envelope.user_id)
 
   const boundedBody = await readBoundedRequestBody(request, TEAM_REQUEST_BODY_MAX_BYTES)
   if (!boundedBody.ok) {
@@ -70,6 +62,20 @@ async function proxy(
   // 仅在确有 body 时透传 content-type：无 body 的 POST（accept/decline/remove-self）不能带
   // application/json，否则上游 fastify 对空体报 FST_ERR_CTP_EMPTY_JSON_BODY(400)。
   const body = boundedBody.body
+
+  const resolved = await resolveSessionWithRefresh(request, config, siteId, preflight)
+  if (resolved === null) {
+    return NextResponse.json({ error: "unauthenticated" }, { status: 401 })
+  }
+  const { envelope, setCookie } = resolved
+
+  const headers = new Headers()
+  headers.set(SERVICE_HEADER, SERVICE_VALUE)
+  if (config.internalSecret !== null) {
+    headers.set(INTERNAL_SECRET_HEADER, config.internalSecret)
+  }
+  // user principal 从信封派生（web 侧解封结果），浏览器无从伪造。
+  headers.set("x-user-id", envelope.user_id)
   if (body !== undefined) {
     headers.set("content-type", request.headers.get("content-type") ?? "application/json")
   }

@@ -355,6 +355,17 @@ export interface ResolvedSession {
   setCookie: string | null
 }
 
+// 纯只读准入：只解封并绑定 Host 权威 Site，不触达 refresh issuer。带 body 的 protected BFF 必须先用
+// 它完成本地 body/admission 检查，避免非法请求消耗 refresh rotation。
+export function preflightSession(
+  request: Request,
+  config: AuthConfig,
+  expectedSiteId: string,
+): EnvelopePayload | null {
+  const envelope = readEnvelope(request, config)
+  return envelope !== null && envelope.site_id === expectedSiteId ? envelope : null
+}
+
 // Site-scoped 代理统一入口：读信封 + 校验 Host 权威 Site + 按需静默续期。
 // null = 无信封，或信封 Site 与当前 Host 权威 Site 不符（均视为未认证）。
 // - access 尚新（剩余 ≥ 阈值）→ 返回当前信封，不续，setCookie=null。
@@ -366,8 +377,9 @@ export async function resolveSessionWithRefresh(
   request: Request,
   config: AuthConfig,
   expectedSiteId: string,
+  preflightEnvelope?: EnvelopePayload,
 ): Promise<ResolvedSession | null> {
-  const envelope = readEnvelope(request, config)
+  const envelope = preflightEnvelope ?? preflightSession(request, config, expectedSiteId)
   // 必须在调用 refresh issuer 前绑定 Host 权威 Site，避免跨站信封被续期或代理。
   if (envelope === null || envelope.site_id !== expectedSiteId) {
     return null

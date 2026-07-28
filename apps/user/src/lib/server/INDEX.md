@@ -29,9 +29,12 @@ owners:
   - 出站：`callerHeaders`（`x-kokoro-service: web-bff` + 可选内部凭据），`userRequestMagicLink`/
     `userConsumeMagicLink`（对 user 的 magic-link 调用，失败归一）。
   - `sameOriginOk`：变更类请求同源守卫（Origin 存在且 host 不符则拒）。
-  - `resolveSessionWithRefresh(request, config, expectedSiteId)`：Site-scoped 代理会话入口；信封 Site
-    必须等于当前 Host 权威 Site，且在调用 refresh issuer 前拒绝跨 Site 信封；续期响应也必须保持该 Site，
-    否则按安全违规拒绝整个会话（只有普通续期失败才允许回退仍有效的旧 access）。
+  - `preflightSession(request, config, expectedSiteId)`：只解封并校验 Host 权威 Site，不产生网络请求或
+    cookie 副作用。protected BFF 必须先做这个纯 preflight，再完成本地 body admission，最后才允许 refresh。
+  - `resolveSessionWithRefresh(request, config, expectedSiteId, preflightEnvelope?)`：Site-scoped 代理会话入口；
+    信封 Site 必须等于当前 Host 权威 Site，且在调用 refresh issuer 前拒绝跨 Site 信封；续期响应也必须
+    保持该 Site，否则按安全违规拒绝整个会话（只有普通续期失败才允许回退仍有效的旧 access）。传入
+    preflight 结果时仍会重验 Site，但不会重复解密 cookie。
   - magic-link consume 与 team-session issue 请求都携 Host 解析出的 `site_id`；权威响应也必须返回相同
     `site_id` 才能密封。refresh 响应不得改变原信封 Site。
 - `site.ts`（host→site 解析，SITE-REAL）
@@ -49,8 +52,13 @@ owners:
     再对 chunked 实读计数；超限取消流并返回稳定 413，不调用业务上游。
   - `readBoundedResponseJson`：仅供必须解析的 Site/Auth/Payment 小响应；代理的 SSE、文件和普通响应
     不解析，保持白名单响应头 + stream pass-through。
-  - 请求 cap：Auth 16 KiB、Team 64 KiB、Session 1 MiB、Hub 普通 256 KiB；Hub skill upload
-    96 MiB，精确对齐 Hub `UPLOAD_BODY_LIMIT`（zip 文件本身仍由 Hub 限制为 64 MiB）。
+  - `prepareCountedRequestBody`：Hub skill upload 专用的 counted stream；以 `TransformStream` 背压转发，
+    不把上传聚合进 Web 内存；声明长度与实读长度都受 96 MiB 限制，客户端中止或超限会中止上游。
+  - `acquireHubUploadLease`：进程内小型准入门；同时限制并发上传与在途声明容量，拒绝时稳定返回
+    `429 hub_upload_busy` 或 `503 hub_upload_capacity_unavailable`，并带 `Retry-After`；租约在成功、错误、
+    客户端中止三类终态都必须释放。
+  - 缓冲请求 cap：Auth 16 KiB、Team 64 KiB、Session 1 MiB、Hub 普通 256 KiB；Hub skill upload
+    是 96 MiB **流式计数上限**，精确对齐 Hub `UPLOAD_BODY_LIMIT`（zip 文件本身仍由 Hub 限制为 64 MiB）。
   - 解析响应 cap：Site 64 KiB、Auth 256 KiB、Payment 套餐目录 1 MiB。
 
 ## 关键协作者
@@ -69,6 +77,11 @@ owners:
 - 原文 magic-link token / nonce 原文绝不落日志。
 - protected BFF 对未知 Host 返回中性 `site_unresolved`，对跨 Site 信封按未认证处理；两者均不得 refresh、
   写 cookie 或触达业务上游。
+- Session/Team/Hub 普通写请求的顺序固定为 Host→Site → 纯 session preflight → body 校验/准入 → refresh
+  → 上游；本地 malformed/oversize/read-abort 不得消耗 refresh rotation、写 cookie 或调用业务上游。
+- Hub upload 因下游必须消费 multipart 才能形成背压，允许在纯 preflight 后打开到 Hub 的流；只有 body
+  完整 EOF 后才允许 refresh。任何超限/读取错误/客户端中止都必须中止该上游流且不得 refresh。Hub 的
+  持久化不变量是“完整读取 multipart 后才持久化”；跨进程 staging receipt 属于后续 W3，不在本层伪造。
 
 ## 扩展规则
 

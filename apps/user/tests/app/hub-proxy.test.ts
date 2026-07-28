@@ -70,6 +70,16 @@ function chunkedPost(url: string, chunks: Uint8Array[], headers: Record<string, 
   } as RequestInit & { duplex: "half" })
 }
 
+function uploadRequest(chunks: Uint8Array[], contentLength?: number): Request {
+  return chunkedPost("http://localhost/api/hub/self/skills/upload/preview", chunks, {
+    cookie: sessionCookie(),
+    host: "site-a.example",
+    origin: "http://site-a.example",
+    "content-type": "multipart/form-data; boundary=test",
+    ...(contentLength === undefined ? {} : { "content-length": String(contentLength) }),
+  })
+}
+
 beforeEach(() => {
   __clearSiteResolveCache()
   for (const [k, v] of Object.entries(ENV)) process.env[k] = v
@@ -137,11 +147,12 @@ describe("/api/hub/[...path] proxy", () => {
   })
 
   it("returns 401 when there is no envelope", async () => {
-    const fetchMock = vi.fn(async (target: string | URL) =>
-      target.toString().startsWith("http://site.test/")
-        ? siteResponse("site-a")
-        : new Response("{}", { status: 200 }),
-    )
+    const fetchMock = vi.fn(async (target: string | URL) => {
+      const url = target.toString()
+      if (url.startsWith("http://site.test/")) return siteResponse("site-a")
+      if (url === "http://user.test/auth/refresh") return refreshResponse("site-a")
+      return new Response("{}", { status: 200 })
+    })
     vi.stubGlobal("fetch", fetchMock)
     const { GET } = await import("@/app/api/hub/[...path]/route")
     const res = await GET(
@@ -262,7 +273,7 @@ describe("/api/hub/[...path] proxy", () => {
       "http://localhost/api/hub/self/mcp/secrets",
       [new Uint8Array(256 * 1024), new Uint8Array(1)],
       {
-        cookie: sessionCookie(),
+        cookie: sessionCookie("site-a", nowSec() + 60),
         host: "site-a.example",
         origin: "http://site-a.example",
         "content-type": "application/json",
@@ -276,6 +287,7 @@ describe("/api/hub/[...path] proxy", () => {
     expect(fetchMock.mock.calls.map(([target]) => target.toString())).toEqual([
       "http://site.test/site-context/resolve?host=site-a.example",
     ])
+    expect(res.headers.get("set-cookie")).toBeNull()
   })
 
   it("pre-rejects a declared Hub upload over the downstream 96 MiB HTTP limit", async () => {
@@ -293,7 +305,7 @@ describe("/api/hub/[...path] proxy", () => {
     const request = new Request("http://localhost/api/hub/self/skills/upload/preview", {
       method: "POST",
       headers: {
-        cookie: sessionCookie(),
+        cookie: sessionCookie("site-a", nowSec() + 60),
         host: "site-a.example",
         origin: "http://site-a.example",
         "content-type": "multipart/form-data; boundary=test",
@@ -302,11 +314,12 @@ describe("/api/hub/[...path] proxy", () => {
       body,
       duplex: "half",
     } as RequestInit & { duplex: "half" })
-    const fetchMock = vi.fn(async (target: string | URL) =>
-      target.toString().startsWith("http://site.test/")
-        ? siteResponse("site-a")
-        : new Response("{}", { status: 200 }),
-    )
+    const fetchMock = vi.fn(async (target: string | URL) => {
+      const url = target.toString()
+      if (url.startsWith("http://site.test/")) return siteResponse("site-a")
+      if (url === "http://user.test/auth/refresh") return refreshResponse("site-a")
+      return new Response("{}", { status: 200 })
+    })
     vi.stubGlobal("fetch", fetchMock)
     const { POST } = await import("@/app/api/hub/[...path]/route")
 
@@ -317,6 +330,174 @@ describe("/api/hub/[...path] proxy", () => {
     // Web Streams 可在构造后预拉一个 chunk；Content-Length 守卫不得继续消费请求体。
     expect(pulls).toBeLessThanOrEqual(1)
     expect(fetchMock).toHaveBeenCalledOnce()
+    expect(res.headers.get("set-cookie")).toBeNull()
+  })
+
+  it("rejects non-POST upload methods before refresh or Hub upstream", async () => {
+    const fetchMock = vi.fn(async (target: string | URL) =>
+      target.toString().startsWith("http://site.test/")
+        ? siteResponse("site-a")
+        : new Response("{}", { status: 200 }),
+    )
+    vi.stubGlobal("fetch", fetchMock)
+    const { PUT } = await import("@/app/api/hub/[...path]/route")
+    const request = new Request("http://localhost/api/hub/self/skills/upload/preview", {
+      method: "PUT",
+      headers: {
+        cookie: sessionCookie("site-a", nowSec() + 60),
+        host: "site-a.example",
+        origin: "http://site-a.example",
+        "content-type": "multipart/form-data; boundary=test",
+      },
+      body: new Uint8Array([1]),
+      duplex: "half",
+    } as RequestInit & { duplex: "half" })
+
+    const res = await PUT(request, params(["self", "skills", "upload", "preview"]))
+
+    expect(res.status).toBe(405)
+    expect(await res.json()).toEqual({ error: "method_not_allowed" })
+    expect(fetchMock.mock.calls.map(([target]) => target.toString())).toEqual([
+      "http://site.test/site-context/resolve?host=site-a.example",
+    ])
+  })
+
+  it("streams an admitted upload with duplex half and only succeeds after Hub fully consumes it", async () => {
+    const input = [new Uint8Array([0, 255, 1]), new TextEncoder().encode("你好")]
+    let fullyConsumed = false
+    const fetchMock = vi.fn(async (target: string | URL, init?: RequestInit) => {
+      const url = target.toString()
+      if (url.startsWith("http://site.test/")) return siteResponse("site-a")
+      expect(init?.body).toBeInstanceOf(ReadableStream)
+      expect((init as RequestInit & { duplex?: string }).duplex).toBe("half")
+      const received = new Uint8Array(await new Response(init!.body).arrayBuffer())
+      fullyConsumed = true
+      expect([...received]).toEqual([...input[0]!, ...input[1]!])
+      return new Response("{}", { status: 200 })
+    })
+    vi.stubGlobal("fetch", fetchMock)
+    const { POST } = await import("@/app/api/hub/[...path]/route")
+
+    const res = await POST(uploadRequest(input), params(["self", "skills", "upload", "preview"]))
+
+    expect(fullyConsumed).toBe(true)
+    expect(res.status).toBe(200)
+  })
+
+  it("returns stable 429 while two upload leases are active and releases them after success", async () => {
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    let hubCalls = 0
+    const fetchMock = vi.fn(async (target: string | URL, init?: RequestInit) => {
+      const url = target.toString()
+      if (url.startsWith("http://site.test/")) return siteResponse("site-a")
+      hubCalls += 1
+      await new Response(init!.body).arrayBuffer()
+      if (hubCalls <= 2) await gate
+      return new Response("{}", { status: 200 })
+    })
+    vi.stubGlobal("fetch", fetchMock)
+    const { POST } = await import("@/app/api/hub/[...path]/route")
+    const path = params(["self", "skills", "upload", "preview"])
+
+    const first = POST(uploadRequest([new Uint8Array([1])], 1), path)
+    const second = POST(uploadRequest([new Uint8Array([2])], 1), path)
+    await vi.waitFor(() => expect(hubCalls).toBe(2))
+    const rejected = await POST(uploadRequest([new Uint8Array([3])], 1), path)
+
+    expect(rejected.status).toBe(429)
+    expect(await rejected.json()).toEqual({ error: "hub_upload_busy" })
+    expect(rejected.headers.get("retry-after")).toBe("1")
+    release()
+    await Promise.all([first, second])
+    const afterRelease = await POST(uploadRequest([new Uint8Array([4])], 1), path)
+    expect(afterRelease.status).toBe(200)
+  })
+
+  it("returns stable 503 when aggregate upload reservation is exhausted and releases on upstream error", async () => {
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    let hubCalls = 0
+    let failNext = false
+    const fetchMock = vi.fn(async (target: string | URL, init?: RequestInit) => {
+      const url = target.toString()
+      if (url.startsWith("http://site.test/")) return siteResponse("site-a")
+      hubCalls += 1
+      await new Response(init!.body).arrayBuffer()
+      if (failNext) throw new Error("hub unavailable")
+      if (hubCalls === 1) await gate
+      return new Response("{}", { status: 200 })
+    })
+    vi.stubGlobal("fetch", fetchMock)
+    const { POST } = await import("@/app/api/hub/[...path]/route")
+    const path = params(["self", "skills", "upload", "preview"])
+
+    const first = POST(uploadRequest([new Uint8Array([1])], 96 * 1024 * 1024), path)
+    await vi.waitFor(() => expect(hubCalls).toBe(1))
+    const rejected = await POST(uploadRequest([new Uint8Array([2])], 64 * 1024 * 1024), path)
+    expect(rejected.status).toBe(503)
+    expect(await rejected.json()).toEqual({ error: "hub_upload_capacity_unavailable" })
+    expect(rejected.headers.get("retry-after")).toBe("2")
+
+    release()
+    await first
+    failNext = true
+    const failed = await POST(uploadRequest([new Uint8Array([3])], 1), path)
+    expect(failed.status).toBe(502)
+    failNext = false
+    const afterError = await POST(uploadRequest([new Uint8Array([4])], 1), path)
+    expect(afterError.status).toBe(200)
+  })
+
+  it("propagates client abort to the upload upstream, skips refresh, and releases the lease", async () => {
+    const client = new AbortController()
+    const source = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array([1]))
+      },
+    })
+    const abortedRequest = new Request("http://localhost/api/hub/self/skills/upload/preview", {
+      method: "POST",
+      headers: {
+        cookie: sessionCookie("site-a", nowSec() + 60),
+        host: "site-a.example",
+        origin: "http://site-a.example",
+        "content-type": "multipart/form-data; boundary=test",
+      },
+      body: source,
+      duplex: "half",
+      signal: client.signal,
+    } as RequestInit & { duplex: "half" })
+    const signalRef: { current: AbortSignal | null } = { current: null }
+    const fetchMock = vi.fn(async (target: string | URL, init?: RequestInit) => {
+      const url = target.toString()
+      if (url.startsWith("http://site.test/")) return siteResponse("site-a")
+      if (url === "http://user.test/auth/refresh") return refreshResponse("site-a")
+      signalRef.current = init?.signal ?? null
+      await new Response(init!.body).arrayBuffer()
+      return new Response("{}", { status: 200 })
+    })
+    vi.stubGlobal("fetch", fetchMock)
+    const { POST } = await import("@/app/api/hub/[...path]/route")
+    const path = params(["self", "skills", "upload", "preview"])
+
+    const pending = POST(abortedRequest, path)
+    await vi.waitFor(() => expect(signalRef.current).not.toBeNull())
+    client.abort()
+    const aborted = await pending
+
+    expect(aborted.status).toBe(400)
+    expect(signalRef.current).not.toBeNull()
+    expect(signalRef.current!.aborted).toBe(true)
+    expect(fetchMock.mock.calls.map(([target]) => target.toString())).not.toContain(
+      "http://user.test/auth/refresh",
+    )
+    const afterAbort = await POST(uploadRequest([new Uint8Array([2])], 1), path)
+    expect(afterAbort.status).toBe(200)
   })
 
   it("does not forward upstream Set-Cookie or Location headers", async () => {
