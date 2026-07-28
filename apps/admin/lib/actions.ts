@@ -27,7 +27,6 @@ export interface ActionContext {
   ownerKind: OwnerKind;
   ownerId: string;
   data: User360;
-  orderId?: string;
 }
 
 export interface ActionSpec {
@@ -46,7 +45,7 @@ export const ACTION_SPECS = {
     danger: false,
     fields: [
       { name: "amount", label: "积分数", required: true, type: "number" },
-      { name: "reason", label: "原因", required: true, type: "select", options: ["manual_adjustment", "refund", "subscription"] },
+      { name: "reason", label: "原因", required: true, type: "select", options: ["manual_adjustment"] },
     ],
     build: (v, ctx) => ({
       moduleId: "credit",
@@ -55,32 +54,6 @@ export const ACTION_SPECS = {
       siteId: ctx.siteId,
       reason: v.reason,
       body: { ownerKind: ctx.ownerKind, ownerId: ctx.ownerId, amountMicros: microsFromAmount(v.amount ?? "0"), reason: v.reason ?? "" },
-    }),
-  },
-  grantPlan: {
-    title: "授予套餐",
-    danger: false,
-    fields: [{ name: "planId", label: "套餐 planId", required: true, type: "text" }],
-    build: (v, ctx) => ({
-      moduleId: "payment",
-      resourceId: "plans",
-      actionId: "grant-to-team",
-      siteId: ctx.siteId,
-      body: { teamId: ctx.ownerId, planId: v.planId ?? "" },
-    }),
-  },
-  refund: {
-    title: "退款",
-    danger: true,
-    fields: [{ name: "reason", label: "退款原因", required: true, type: "text" }],
-    build: (v, ctx) => ({
-      moduleId: "payment",
-      resourceId: "orders",
-      actionId: "refund",
-      siteId: ctx.siteId,
-      params: { id: ctx.orderId ?? "" },
-      reason: v.reason,
-      body: {},
     }),
   },
   disableUser: {

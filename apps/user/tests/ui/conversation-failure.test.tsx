@@ -1,6 +1,6 @@
 // ERROR-UX（Wave5）：run.failed 分类文案 + 恢复引导 + message 原文折叠。
 import { cleanup, fireEvent, render, screen } from "@testing-library/react"
-import { createRef } from "react"
+import { createRef, type ComponentType } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { createSessionStreamState, type RunErrorCode, type SessionStreamState } from "@/core/state"
@@ -8,6 +8,10 @@ import { LocaleProvider } from "@/i18n/context"
 import { zh, type MessageKey } from "@/i18n/messages"
 import { negotiateLocale, resolveMessage } from "@/i18n/resolve"
 import { ConversationThread, failureCopyKey } from "@/ui/thread/conversation-thread"
+
+const LegacyConversationThread = ConversationThread as ComponentType<
+  React.ComponentProps<typeof ConversationThread> & { onOpenPricing?: () => void }
+>
 
 // LocaleProvider 水合后按 navigator.languages 协商语言（jsdom 通常 en）——按同一协商取译文断言，
 // 不写死语言，避免测试与运行环境语言绑定。
@@ -38,17 +42,21 @@ function failedThread(code: RunErrorCode, message: string): SessionStreamState {
   }
 }
 
-function renderFailure(thread: SessionStreamState, onRetry = vi.fn()) {
+function renderFailure(
+  thread: SessionStreamState,
+  onRetry = vi.fn(),
+  options: { creditRejected?: boolean; onOpenPricing?: () => void } = {},
+) {
   return render(
-    <ConversationThread
+    <LegacyConversationThread
       sessionId="ses_1"
       thread={thread}
       isStreaming={false}
       isReconnecting={false}
       hasFailed
-      creditRejected={false}
+      creditRejected={options.creditRejected ?? false}
       onOpenBilling={vi.fn()}
-      onOpenPricing={vi.fn()}
+      onOpenPricing={options.onOpenPricing}
       onRetry={onRetry}
       onScroll={vi.fn()}
       threadEndRef={createRef()}
@@ -117,5 +125,16 @@ describe("ConversationThread 失败卡渲染", () => {
     renderFailure(failedThread("dispatch_exhausted", "boom"), onRetry)
     fireEvent.click(screen.getByText(tr("thread.retry")))
     expect(onRetry).toHaveBeenCalledTimes(1)
+  })
+
+  it("余额不足只提供余额入口，不渲染套餐购买导航", () => {
+    const onOpenPricing = vi.fn()
+    renderFailure(failedThread("internal_error", "credit_insufficient"), vi.fn(), {
+      creditRejected: true,
+      onOpenPricing,
+    })
+    const alert = screen.getByRole("alert")
+    for (const button of alert.querySelectorAll("button")) fireEvent.click(button)
+    expect(onOpenPricing).not.toHaveBeenCalled()
   })
 })

@@ -18,15 +18,6 @@ export const creditAccountSchema = z.object({
 });
 export type CreditAccount = z.infer<typeof creditAccountSchema>;
 
-export const orderSchema = z.object({
-  id: z.string(),
-  planId: z.string().nullish(),
-  amountMinor: z.union([z.string(), z.number()]).nullish(),
-  currency: z.string().nullish(),
-  status: z.string().nullish(),
-});
-export type Order = z.infer<typeof orderSchema>;
-
 export const identitySchema = z.object({
   id: z.string(),
   email: z.string().nullish(),
@@ -37,7 +28,6 @@ export type Identity = z.infer<typeof identitySchema>;
 
 export const user360Schema = z.object({
   creditAccount: creditAccountSchema.nullable(),
-  orders: z.array(orderSchema),
   identity: identitySchema.nullable(),
 });
 export type User360 = z.infer<typeof user360Schema>;

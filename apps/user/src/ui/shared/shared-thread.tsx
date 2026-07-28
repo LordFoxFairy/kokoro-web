@@ -46,7 +46,6 @@ export function SharedThread({ snapshot }: { snapshot: SessionSnapshot }) {
       hasFailed={false}
       creditRejected={false}
       onOpenBilling={() => {}}
-      onOpenPricing={() => {}}
       onRetry={() => {}}
       onScroll={() => {}}
       threadEndRef={threadEndRef}

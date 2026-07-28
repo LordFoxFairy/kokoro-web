@@ -1,4 +1,4 @@
-/* 价格/购买面板（PAY-2）：居中模态浮层，暖纸感（--k-* token）。套餐卡网格 + 诚实未开通态。 */
+/* Site-scoped 套餐目录：居中模态浮层，暖纸感（--k-* token）。 */
 
 .overlay {
   position: fixed;
@@ -64,7 +64,7 @@
   text-align: center;
 }
 
-/* 诚实未开通态：状态真来自后端（payment 未配置 / checkout 501），显式说明 + 不放假按钮。 */
+/* 目录服务未配置时显式说明。 */
 .unavailable {
   padding: 1.1rem 1.25rem;
   margin-bottom: 1rem;
@@ -137,25 +137,4 @@
   content: "✓";
   color: var(--k-success);
   font-size: 0.8rem;
-}
-
-.buy {
-  margin-top: auto;
-  padding: 0.6rem;
-  font-size: 0.9rem;
-  font-weight: 600;
-  color: var(--k-bg-container);
-  background: var(--k-brand);
-  border-radius: 10px;
-}
-
-.buy:hover:not(:disabled) {
-  background: var(--k-brand-strong, var(--k-brand));
-}
-
-.buy:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-  color: var(--k-text-tertiary);
-  background: var(--k-bg-hover);
 }

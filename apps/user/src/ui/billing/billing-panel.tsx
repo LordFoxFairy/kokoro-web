@@ -1,6 +1,6 @@
 "use client"
 
-// 计费面板（WEB-BILLING + B1 用量透视）：低余额预警条 + 余额卡（余额/冻结/配额）+ 余额走势
+// 计费面板（WEB-BILLING + B1 用量透视）：只读低余额预警 + 余额卡（余额/冻结/配额）+ 余额走势
 // sparkline + 流水（按天分组、消费/入账筛选、run 标记、±着色）。金额全程 BigInt 换算展示
 // （sparkline 几何除外，见 creditsToNumber）。billing off 档 → 零额空流水（session 不 503）。
 
@@ -39,8 +39,6 @@ type LedgerFilter = "all" | "spend" | "credit"
 type BillingPanelProps = {
   client: BillingClient
   onClose: () => void
-  // PAY-2：余额卡下的「查看套餐」购买入口（原充值入口留白位）；缺省不渲染（兼容未接 payment 的档）。
-  onOpenPricing?: () => void
 }
 
 // 已知 credit reason → 本地化 key；未知 reason 回退原文（绝不裸露 key，也不吞未知类别）。
@@ -140,11 +138,9 @@ function BalanceSparkline({ values }: { values: number[] }): React.JSX.Element |
 
 type BillingContentProps = {
   client: BillingClient
-  // PAY-2：余额卡下的「查看套餐」购买入口；缺省不渲染（兼容未接 payment 的档）。
-  onOpenPricing?: () => void
 }
 
-export function BillingContent({ client, onOpenPricing }: BillingContentProps) {
+export function BillingContent({ client }: BillingContentProps) {
   const t = useT()
   const [ledger, setLedger] = useState<LedgerState>({ kind: "loading" })
   const [filter, setFilter] = useState<LedgerFilter>("all")
@@ -221,18 +217,13 @@ export function BillingContent({ client, onOpenPricing }: BillingContentProps) {
 
   return (
     <div className={styles.body}>
-      {/* B1c 低余额预警：可用余额低于阈值即引导充值（有购买入口时才给按钮）。 */}
+      {/* B1c 低余额预警：只陈述账户事实，不提供购买或支付入口。 */}
       {lowBalance ? (
         <section className={styles.lowBalance} data-testid="billing-low-balance">
           <div className={styles.lowBalanceText}>
             <strong className={styles.lowBalanceTitle}>{t("billing.lowBalanceTitle")}</strong>
             <span className={styles.lowBalanceBody}>{t("billing.lowBalanceBody")}</span>
           </div>
-          {onOpenPricing ? (
-            <button type="button" className={styles.lowBalanceCta} onClick={onOpenPricing}>
-              {t("billing.lowBalanceCta")}
-            </button>
-          ) : null}
         </section>
       ) : null}
 
@@ -315,12 +306,6 @@ export function BillingContent({ client, onOpenPricing }: BillingContentProps) {
         </section>
       ) : null}
 
-      {onOpenPricing ? (
-        <button type="button" className={styles.more} onClick={onOpenPricing}>
-          {t("billing.viewPricing")}
-        </button>
-      ) : null}
-
       <div className={styles.ledgerHeadRow}>
         <h3 className={styles.ledgerHead}>{t("billing.ledgerTitle")}</h3>
         {ledger.kind === "ready" && ledger.entries.length > 0 ? (
@@ -398,7 +383,7 @@ export function BillingContent({ client, onOpenPricing }: BillingContentProps) {
   )
 }
 
-export function BillingPanel({ client, onClose, onOpenPricing }: BillingPanelProps) {
+export function BillingPanel({ client, onClose }: BillingPanelProps) {
   const t = useT()
 
   return (
@@ -418,7 +403,7 @@ export function BillingPanel({ client, onClose, onOpenPricing }: BillingPanelPro
           </button>
         </header>
 
-        <BillingContent client={client} onOpenPricing={onOpenPricing} />
+        <BillingContent client={client} />
       </div>
     </div>
   )

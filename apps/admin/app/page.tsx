@@ -7,7 +7,6 @@ import { PageContainer, ProCard, StatisticCard } from "@ant-design/pro-component
 import {
   UserOutlined,
   WalletOutlined,
-  CreditCardOutlined,
   GlobalOutlined,
   ApiOutlined,
   CheckCircleOutlined,
@@ -25,9 +24,8 @@ import {
 import { useAdmin } from "@/components/shell/app-shell";
 
 const ENTRIES = [
-  { label: "用户 360", href: "/users", icon: <UserOutlined />, desc: "查身份 · 积分 · 订单，并操作" },
+  { label: "用户 360", href: "/users", icon: <UserOutlined />, desc: "查身份 · 积分，并操作" },
   { label: "积分", href: "/credit", icon: <WalletOutlined />, desc: "账户 · 流水 · 定价" },
-  { label: "支付", href: "/payment", icon: <CreditCardOutlined />, desc: "订单 · 套餐 · 退款" },
   { label: "站点", href: "/sites", icon: <GlobalOutlined />, desc: "站点 · 域名 · 策略" },
   { label: "模型", href: "/models", icon: <ApiOutlined />, desc: "目录 · 绑定" },
   { label: "审批", href: "/approvals", icon: <CheckCircleOutlined />, desc: "maker-checker 队列" },
@@ -37,9 +35,8 @@ const ENTRIES = [
 
 const pendingSchema = z.array(z.object({ status: z.string() }).passthrough());
 
-// 微单位 → 积分（÷10000）；最小货币单位 → 金额（÷100）。仅展示用（admin 量级 Number 足够）。
+// 微单位 → 积分（÷10000）。仅展示用（admin 量级 Number 足够）。
 const toCredits = (micros: string): string => (Number(micros) / 10000).toLocaleString(undefined, { maximumFractionDigits: 2 });
-const toMoney = (minor: string): string => (Number(minor) / 100).toFixed(2);
 
 export default function Page(): React.ReactElement {
   const { me, sites, siteId, can } = useAdmin();
@@ -65,11 +62,6 @@ export default function Page(): React.ReactElement {
     () => startBillingOverviewRequest({ siteId, canRead: canReadBilling }, setSettledBilling),
     [siteId, canReadBilling],
   );
-
-  const revenueText =
-    billing?.payment && billing.payment.revenueByCurrency.length > 0
-      ? billing.payment.revenueByCurrency.map((r) => `${toMoney(r.amountMinor)} ${r.currency}`).join(" · ")
-      : "—";
 
   const scope = me?.scopeSites?.includes("*") ? "全部站点" : `${me?.scopeSites?.length ?? 0} 个站点`;
 
@@ -105,21 +97,9 @@ export default function Page(): React.ReactElement {
         <StatisticCard statistic={{ title: "我的角色", value: me?.roleKey ?? "—" }} />
       </StatisticCard.Group>
 
-      {/* 计费总览（B2c）：营收 / 累计发放·消费 / 当前余额 / 订单 / 账户。模块离线段显 —。 */}
-      <ProCard title="计费总览" variant="outlined" headerBordered style={{ marginBottom: 16 }}>
+      {/* 积分总览：累计发放·消费 / 当前余额 / 账户。模块离线段显 —。 */}
+      <ProCard title="积分总览" variant="outlined" headerBordered style={{ marginBottom: 16 }}>
         <StatisticCard.Group direction="row">
-          <StatisticCard
-            statistic={{ title: "已支付营收", value: revenueText, description: <span style={{ color: "rgba(0,0,0,0.45)" }}>paid 订单合计</span> }}
-          />
-          <StatisticCard.Divider />
-          <StatisticCard
-            statistic={{
-              title: "订单",
-              value: billing?.payment ? `${billing.payment.ordersPaid}/${billing.payment.ordersTotal}` : "—",
-              description: <span style={{ color: "rgba(0,0,0,0.45)" }}>已付/总 · 待付 {billing?.payment?.ordersPending ?? "—"}</span>,
-            }}
-          />
-          <StatisticCard.Divider />
           <StatisticCard
             statistic={{ title: "累计发放", value: billing?.credit ? toCredits(billing.credit.grantedTotalMicros) : "—", suffix: "积分" }}
           />

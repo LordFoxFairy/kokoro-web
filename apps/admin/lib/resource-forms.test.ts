@@ -2,6 +2,19 @@ import { describe, expect, it } from "vitest";
 
 import { RESOURCE_FORMS, ROW_ACTION_FORMS } from "./resource-forms";
 
+describe("redeem-only Admin resource forms", () => {
+  it("does not register payment resource forms", () => {
+    expect(Object.keys(RESOURCE_FORMS).filter((key) => key.startsWith("payment:"))).toEqual([]);
+  });
+
+  it("credit actions expose manual adjustment only", () => {
+    for (const key of ["credit:credit-accounts:grant", "credit:credit-accounts:reset"]) {
+      const reason = ROW_ACTION_FORMS[key]?.fields.find((field) => field.name === "reason");
+      expect(reason?.options).toEqual([{ label: "手动调整 manual_adjustment", value: "manual_adjustment" }]);
+    }
+  });
+});
+
 // 官方 MCP 注册 body 构造(纯函数):坐实与 hub registerMcpServerBodySchema 对齐。
 describe("RESOURCE_FORMS hub:mcp-servers buildBody", () => {
   const form = RESOURCE_FORMS["hub:mcp-servers"]!;

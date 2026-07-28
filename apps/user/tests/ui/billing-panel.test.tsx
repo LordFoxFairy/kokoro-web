@@ -2,11 +2,16 @@
 // + B1 用量透视（配额行 / 余额走势 / 消费-入账筛选 / 低余额预警）。
 // billing 客户端为注入 fake（不打网络）；新功能断言走 data-testid/role，不耦合译文。
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import type { ComponentType } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 import type { BillingClient } from "@/billing/client"
 import { LocaleProvider } from "@/i18n/context"
 import { BillingPanel } from "@/ui/billing/billing-panel"
+
+const LegacyBillingPanel = BillingPanel as ComponentType<React.ComponentProps<typeof BillingPanel> & {
+  onOpenPricing?: () => void
+}>
 
 // 真实契约形状：summary 含 quota_micros/quota_period；ledger 分录含 balance_after_micros。
 // created_at 为 epoch **毫秒**（credit getTime() 直透）。
@@ -118,6 +123,25 @@ describe("BillingPanel", () => {
     renderPanel(makeClient())
     await screen.findByTestId("billing-balance")
     expect(screen.queryByTestId("billing-low-balance")).toBeNull()
+  })
+
+  it("低余额只读告警不渲染购买入口，即使注入旧导航回调", async () => {
+    const onOpenPricing = vi.fn()
+    render(
+      <LegacyBillingPanel
+        client={makeClient({
+          summary: vi
+            .fn()
+            .mockResolvedValue({ balance_micros: "100000", held_micros: "0", quota_micros: null, quota_period: null }),
+        })}
+        onClose={vi.fn()}
+        onOpenPricing={onOpenPricing}
+      />,
+      { wrapper: LocaleProvider },
+    )
+    const warning = await screen.findByTestId("billing-low-balance")
+    expect(warning.querySelector("button")).toBeNull()
+    expect(onOpenPricing).not.toHaveBeenCalled()
   })
 
   it("filters to spend-only, hiding credit entries", async () => {

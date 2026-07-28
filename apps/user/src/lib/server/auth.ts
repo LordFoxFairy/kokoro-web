@@ -26,12 +26,10 @@ export interface AuthConfig {
   sessionBaseUrl: string
   siteId: string
   hubBaseUrl: string | null
-  // payment 服务面（经网关到 kokoro-payment）；未配置=预览档（PAY-2 价格页据此降级为诚实未开通态）。
+  // payment 只读套餐目录面；未配置=预览档（套餐目录据此降级为不可用态）。
   paymentBaseUrl: string | null
   // web-bff 出站内部凭据；未配置=直通（TRUST 合流前）。
   internalSecret: string | null
-  // 仅 dev：mock 支付网关 webhook 签名密钥（模拟收银台 BFF 据此签发支付成功回调驱动到账）。生产为 null。
-  mockWebhookSecret: string | null
   secureCookies: boolean
   // 仅非生产：把 user 的 response 投递档 link_token 变成可点开发链接回给前端。
   revealDevLink: boolean
@@ -61,7 +59,6 @@ export function authConfig(env: NodeJS.ProcessEnv = process.env): AuthConfig | n
     hubBaseUrl: env.KOKORO_HUB_BASE_URL?.trim() || null,
     paymentBaseUrl: env.KOKORO_PAYMENT_BASE_URL?.trim() || null,
     internalSecret: env.KOKORO_INTERNAL_SECRET_WEB_BFF?.trim() || null,
-    mockWebhookSecret: env.KOKORO_PAYMENT_MOCK_WEBHOOK_SECRET?.trim() || null,
     secureCookies: env.NODE_ENV === "production",
     revealDevLink: env.NODE_ENV !== "production",
   }

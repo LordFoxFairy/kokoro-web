@@ -1,6 +1,6 @@
-// PAY-2 BFF：/api/billing/plans（目录读面）+ /api/billing/checkout（收银台意图）。
+// 套餐目录 BFF：只保留 /api/billing/plans 读面。
 // 断言：未登录 401、payment 未配置 503、site/team 从信封派生（浏览器无从伪造）、
-// payment {data}+camelCase → web {plans}+snake_case、checkout 501 诚实态透传。
+// payment {data}+camelCase → web {plans}+snake_case。Web 不注册 checkout/mock-pay 写路由。
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -82,48 +82,6 @@ describe("GET /api/billing/plans", () => {
     const { GET } = await import("@/app/api/billing/plans/route")
     const res = await GET(new Request("http://localhost/api/billing/plans", { headers: { cookie: sessionCookie() } }))
     expect(res.status).toBe(503)
-    expect(fetchMock).not.toHaveBeenCalled()
-  })
-})
-
-describe("POST /api/billing/checkout", () => {
-  it("site/team 从信封派生（浏览器 body 只带 plan_id，不接受伪造身份）", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(501, { error: { code: "payment.checkout_unavailable" } }))
-    vi.stubGlobal("fetch", fetchMock)
-    const { POST } = await import("@/app/api/billing/checkout/route")
-
-    const res = await POST(
-      new Request("http://localhost/api/billing/checkout", {
-        method: "POST",
-        headers: { cookie: sessionCookie(), "content-type": "application/json", origin: "http://localhost", host: "localhost" },
-        // 浏览器试图夹带 teamId/siteId：一律被无视，身份只从信封派生。
-        body: JSON.stringify({ plan_id: "p1", teamId: "team_evil", siteId: "site-evil" }),
-      }),
-    )
-    // 诚实态：payment 501 原样透传（支付渠道未开通）。
-    expect(res.status).toBe(501)
-
-    const [target, init] = fetchMock.mock.calls[0] as [string, RequestInit]
-    expect(target).toBe("http://payment.test/orders/checkout")
-    const sent = JSON.parse(init.body as string) as { teamId: string; planId: string }
-    expect(sent).toEqual({ teamId: "team_1", planId: "p1" })
-    const headers = init.headers as Headers
-    expect(headers.get("x-kokoro-site-id")).toBe("site-a")
-    expect(headers.get("x-kokoro-service")).toBe("web-bff")
-  })
-
-  it("未登录 → 401（购买要求登录，不触达 payment）", async () => {
-    const fetchMock = vi.fn()
-    vi.stubGlobal("fetch", fetchMock)
-    const { POST } = await import("@/app/api/billing/checkout/route")
-    const res = await POST(
-      new Request("http://localhost/api/billing/checkout", {
-        method: "POST",
-        headers: { "content-type": "application/json", origin: "http://localhost", host: "localhost" },
-        body: JSON.stringify({ plan_id: "p1" }),
-      }),
-    )
-    expect(res.status).toBe(401)
     expect(fetchMock).not.toHaveBeenCalled()
   })
 })

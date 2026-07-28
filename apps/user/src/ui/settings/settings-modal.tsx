@@ -171,14 +171,9 @@ export function SettingsModal({ brandName, initialTab, onClose, onTabChange }: S
             {tab === "account" ? <AccountCard /> : null}
             {tab === "appearance" ? <AppearanceCard /> : null}
             {tab === "chat" ? <ChatPrefsCard /> : null}
-            {/* 积分:余额 + 按模型消费 + 流水（用量透视）。低余额/查看套餐 → 跳订阅 tab。 */}
-            {tab === "credits" ? (
-              <BillingContent
-                client={browserBillingClient()}
-                onOpenPricing={() => selectTab("subscription")}
-              />
-            ) : null}
-            {/* 订阅:充值套餐目录 + 购买。 */}
+            {/* 积分：余额 + 按模型消费 + 流水（只读用量透视）。 */}
+            {tab === "credits" ? <BillingContent client={browserBillingClient()} /> : null}
+            {/* 订阅：Site-scoped 套餐目录，只读展示。 */}
             {tab === "subscription" ? <PricingContent client={browserPricingClient()} /> : null}
             {tab === "skills" ? (
               <SkillsContent

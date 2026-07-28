@@ -16,7 +16,7 @@ function deferred<T>(): {
   return { promise, resolve };
 }
 
-const emptyOverview: BillingOverview = { credit: null, payment: null };
+const emptyOverview: BillingOverview = { credit: null };
 
 describe("billing overview page request", () => {
   it("requires billing.read and a selected Site", () => {

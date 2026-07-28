@@ -26,7 +26,7 @@ import { SkillUploadModal } from "@/components/shell/skill-upload-modal";
 
 // 资源/动作文案一律取自 manifest 声明的 labelKey（经 i18n 解析），前端不再维护标签映射表。
 // 本集合只做「行内单目标动作 vs 走表单的写动作」的行为分类，与显示文案无关。
-const SIMPLE_ACTIONS = new Set(["enable", "disable", "toggle", "refund", "revoke", "approve", "publish", "delete", "restore"]);
+const SIMPLE_ACTIONS = new Set(["enable", "disable", "toggle", "revoke", "approve", "publish", "delete", "restore"]);
 
 type Row = Record<string, unknown>;
 type Translate = (key: MessageKey, vars?: Readonly<Record<string, string | number>>) => string;
@@ -56,7 +56,6 @@ const STATUS_COLOR: Record<string, string> = {
   suspended: "orange",
   rejected: "default",
   archived: "default",
-  refunded: "default",
   offline: "default",
   failed: "red",
   error: "red",

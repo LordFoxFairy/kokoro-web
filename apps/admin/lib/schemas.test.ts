@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { manifestsSchema } from "./schemas";
+import { manifestsSchema, user360Schema } from "./schemas";
+
+describe("redeem-only user 360 wire", () => {
+  it("does not expose payment orders", () => {
+    const parsed = user360Schema.parse({ creditAccount: null, identity: null, orders: [{ id: "ord_1" }] });
+    expect(parsed).not.toHaveProperty("orders");
+  });
+});
 
 function nestedManifest(siteScopeField: unknown, includeField = true): unknown {
   const resource = {

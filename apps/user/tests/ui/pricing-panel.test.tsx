@@ -1,6 +1,5 @@
-// PAY-2 价格面板：套餐卡渲染（价格/积分格式化）+ 诚实未开通态（catalog not_configured / checkout 501
-// → 显式说明 + 禁用购买，绝不假成功）。
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+// Acquisition shutdown：套餐卡只读展示；无购买按钮、跳转或注入 checkout 能力。
+import { cleanup, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 import type { PricingClient } from "@/billing/pricing"
@@ -18,10 +17,12 @@ const PLAN = {
   billing_interval: "month" as const,
 }
 
-function makeClient(over: Partial<PricingClient> = {}): PricingClient {
+type LegacyPricingClient = PricingClient & { checkout: ReturnType<typeof vi.fn> }
+
+function makeClient(over: Partial<LegacyPricingClient> = {}): LegacyPricingClient {
   return {
     plans: async () => ({ plans: [PLAN] }),
-    checkout: async () => ({ status: "unavailable" }),
+    checkout: vi.fn(),
     ...over,
   }
 }
@@ -52,15 +53,11 @@ describe("PricingPanel", () => {
     expect(screen.queryByTestId("pricing-card")).toBeNull()
   })
 
-  it("购买 → checkout 501 → 显式未开通说明 + 购买按钮禁用（状态真来自后端）", async () => {
-    const checkout = vi.fn(async () => ({ status: "unavailable" as const }))
+  it("套餐卡是只读信息，即使注入旧 checkout 能力也没有购买控件", async () => {
+    const checkout = vi.fn()
     renderPanel(makeClient({ checkout }))
     const card = await screen.findByTestId("pricing-card")
-    const buyBtn = card.querySelector("button")!
-    fireEvent.click(buyBtn)
-    await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy())
-    expect(checkout).toHaveBeenCalledWith("p1")
-    // 禁用态来自真实 501 响应，非预置假按钮。
-    expect((card.querySelector("button") as HTMLButtonElement).disabled).toBe(true)
+    expect(card.querySelector("button")).toBeNull()
+    expect(checkout).not.toHaveBeenCalled()
   })
 })

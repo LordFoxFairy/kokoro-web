@@ -8,13 +8,11 @@ export const en: Partial<Record<MessageKey, string>> = {
   "admin.modules.user": "Users & Teams",
   "admin.modules.model": "Models",
   "admin.modules.credit": "Credits",
-  "admin.modules.payment": "Payments",
   "admin.modules.hub": "Capability Hub",
   "platform.modules.site": "Sites",
   "platform.modules.user": "Users & Teams",
   "platform.modules.model": "Models",
   "platform.modules.credit": "Credits",
-  "platform.modules.payment": "Payments",
   "platform.modules.hub": "Capability Hub",
 
   // site
@@ -81,22 +79,6 @@ export const en: Partial<Record<MessageKey, string>> = {
   "admin.credit.actions.deletePricingRule": "Delete Pricing Rule",
   "admin.credit.actions.restorePricingRule": "Restore Pricing Rule",
 
-  // payment
-  "admin.payment.resources.orders": "Orders",
-  "admin.payment.resources.plans": "Plans",
-  "admin.payment.resources.refunds": "Refunds",
-  "admin.payment.resources.providers": "Providers",
-  "admin.payment.resources.subscriptions": "Subscriptions",
-  "admin.payment.resources.paymentEvents": "Payment Events",
-  "admin.payment.actions.upsertPlan": "Save Plan",
-  "admin.payment.actions.deletePlan": "Delete Plan",
-  "admin.payment.actions.restorePlan": "Restore Plan",
-  "admin.payment.actions.grantPlanToTeam": "Grant Plan",
-  "admin.payment.actions.refundOrder": "Refund",
-  "admin.payment.actions.upsertProvider": "Save Provider",
-  "admin.payment.actions.deleteProvider": "Delete Provider",
-  "admin.payment.actions.replayPaymentEvent": "Replay Event",
-
   // hub
   "admin.hub.resources.skills": "Skill Pool",
   "admin.hub.resources.skillUploads": "Skill Uploads",
@@ -152,7 +134,6 @@ export const en: Partial<Record<MessageKey, string>> = {
   "nav.users": "Users",
   "nav.teams": "Teams",
   "nav.credit": "Credits",
-  "nav.payment": "Payments",
   "nav.sites": "Sites",
   "nav.models": "Models",
   "nav.hub": "Capability Hub",

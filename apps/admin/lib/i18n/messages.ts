@@ -16,13 +16,11 @@ export const zh = {
   "admin.modules.user": "用户与团队",
   "admin.modules.model": "模型",
   "admin.modules.credit": "积分",
-  "admin.modules.payment": "支付",
   "admin.modules.hub": "能力枢纽",
   "platform.modules.site": "站点",
   "platform.modules.user": "用户与团队",
   "platform.modules.model": "模型",
   "platform.modules.credit": "积分",
-  "platform.modules.payment": "支付",
   "platform.modules.hub": "能力枢纽",
 
   // ── site 资源/动作 ──
@@ -89,22 +87,6 @@ export const zh = {
   "admin.credit.actions.deletePricingRule": "删除定价规则",
   "admin.credit.actions.restorePricingRule": "恢复定价规则",
 
-  // ── payment 资源/动作 ──
-  "admin.payment.resources.orders": "订单",
-  "admin.payment.resources.plans": "套餐",
-  "admin.payment.resources.refunds": "退款",
-  "admin.payment.resources.providers": "支付渠道",
-  "admin.payment.resources.subscriptions": "订阅",
-  "admin.payment.resources.paymentEvents": "支付事件",
-  "admin.payment.actions.upsertPlan": "保存套餐",
-  "admin.payment.actions.deletePlan": "删除套餐",
-  "admin.payment.actions.restorePlan": "恢复套餐",
-  "admin.payment.actions.grantPlanToTeam": "授予套餐",
-  "admin.payment.actions.refundOrder": "退款",
-  "admin.payment.actions.upsertProvider": "保存渠道",
-  "admin.payment.actions.deleteProvider": "删除渠道",
-  "admin.payment.actions.replayPaymentEvent": "重放事件",
-
   // ── hub 资源/动作 ──
   "admin.hub.resources.skills": "技能池",
   "admin.hub.resources.skillUploads": "技能上传",
@@ -130,7 +112,6 @@ export const zh = {
   "nav.users": "用户",
   "nav.teams": "团队",
   "nav.credit": "积分",
-  "nav.payment": "支付",
   "nav.sites": "站点",
   "nav.models": "模型",
   "nav.hub": "能力枢纽",

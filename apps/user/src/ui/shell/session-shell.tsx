@@ -133,7 +133,7 @@ export function SessionShell({ engine: injectedEngine, brandName }: SessionShell
   // 失败双源：client/机器错误态（machine.error）与 agent 裁决的 run.failed 终态，都显式呈现。
   const hasFailed = !isStreaming && (machine.phase === "error" || thread.runStatus === "failed")
   // 402：run 被 credit_insufficient 拒——错误码由 client 从错误体取出，落在 machine.error。据此给计费
-  // 专用说明 + 价格/联系入口（不复用通用失败文案）。
+  // 专用说明 + 余额入口（不复用通用失败文案）。
   const creditRejected = hasFailed && isCreditInsufficient(machine.error)
 
   const mode = store ? activeMode(store) : pendingMode
@@ -293,7 +293,6 @@ export function SessionShell({ engine: injectedEngine, brandName }: SessionShell
             hasFailed={hasFailed}
             creditRejected={creditRejected}
             onOpenBilling={() => openSettings("credits")}
-            onOpenPricing={() => openSettings("subscription")}
             onRetry={() => engine?.retry()}
             onScroll={handleThreadScroll}
             threadEndRef={threadEndRef}

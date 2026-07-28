@@ -2,8 +2,8 @@
 
 // DEV 调试面板（仅 dev）：浮在工作台右下角的可拖拽/可折叠卡片，一眼看清「我此刻是谁、在哪、有多少额度、
 // 引擎在什么相位」——把调 kokoro 时最常反复查的运行时事实聚成一处，替代四处翻 devtools/日志。
-// 门控：自查 /api/dev/status(enabled 靠 prod 结构性缺失的 mockWebhookSecret 信号,与 mock-pay 同源),
-// 生产恒 disabled → 永不渲染。全部只读、皆非机密(用户自己的 namespace/余额/会话 id)；无新写入攻击面。
+// 门控：自查 /api/dev/status；生产恒 disabled → 永不渲染。全部只读、皆非机密
+// （用户自己的 namespace/余额/会话 id）；无业务密钥或写入攻击面。
 
 import { useEffect, useRef, useState } from "react"
 
@@ -14,7 +14,7 @@ import { useSessionEngine } from "@/engine/use-session-engine"
 
 import styles from "./dev-debug-panel.module.css"
 
-type DevStatus = { enabled: boolean; mockPayAvailable?: boolean; paymentConfigured?: boolean }
+type DevStatus = { enabled: boolean }
 
 const MODE_LABEL: Record<string, string> = { fast: "fast", thinking: "thinking" }
 

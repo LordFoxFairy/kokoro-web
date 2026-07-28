@@ -17,7 +17,7 @@ The app does not own conversation persistence, execute Agent runs, decide credit
 Next.js routes are the browser boundary; `src/lib/server` is the server-only BFF and `src/core`/`engine` define client state/event folding.
 
 ## Callers and dependencies
-Site users call this app. Its BFF calls Session; shared translation behavior comes from repository-local packages where adopted.
+Site users call this app. Its BFF calls Session and the Site-scoped plan catalogue read endpoint; shared translation behavior comes from repository-local packages where adopted.
 
 ## Data ownership and events
 The app owns drafts, presentation state, and caches. Session owns messages/runs/replay and Platform owns Site/account/entitlement facts.
@@ -33,6 +33,7 @@ Add UI under focused `src/ui` components and remote access behind `src/lib/serve
 
 ## Current gotchas
 This source is shared capability code; each production Site still requires an independent product-named project, lock, artifact, release, and rollback authority.
+Web acquisition is intentionally shut down: there are no checkout/mock-pay routes, payment-provider secrets, purchase CTAs, or payment SDK initialization. Keep credit/account and plan catalogue views read-only; do not invent a redeem endpoint or generic commerce proxy.
 
 ## Verification
 Run user tests, lint, typecheck, production build, and Web-to-Session HTTP/SSE compatibility.

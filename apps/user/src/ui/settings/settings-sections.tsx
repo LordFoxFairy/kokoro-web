@@ -243,7 +243,7 @@ export function ChatPrefsCard() {
   )
 }
 
-// —— 卡四：订阅与余额 —— 余额摘要（billing summary 复用）+ 查看流水/价格页入口。
+// —— 卡四：订阅与余额 —— 余额摘要（billing summary 复用）+ 查看流水/只读套餐目录入口。
 export function SubscriptionCard() {
   const t = useT()
   const [summary, setSummary] = useState<BillingSummary | null | "error">(null)
@@ -283,7 +283,7 @@ export function SubscriptionCard() {
           {t("settings.subViewLedger")}
         </Link>
         <Link className={styles.secondaryBtn} href="/?panel=pricing">
-          {t("billing.viewPricing")}
+          {t("pricing.title")}
         </Link>
       </div>
     </section>

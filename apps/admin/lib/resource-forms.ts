@@ -44,11 +44,6 @@ const ONOFF = [
   { label: "启用 active", value: "active" },
   { label: "停用 disabled", value: "disabled" },
 ];
-const BILLING = [
-  { label: "一次性 once", value: "once" },
-  { label: "按月 month", value: "month" },
-  { label: "按年 year", value: "year" },
-];
 const TRANSPORT = [
   { label: "litellm", value: "litellm" },
   { label: "direct", value: "direct" },
@@ -62,8 +57,6 @@ function creditsToMicros(v: unknown): string {
 }
 const CREDIT_REASONS = [
   { label: "手动调整 manual_adjustment", value: "manual_adjustment" },
-  { label: "退款 refund", value: "refund" },
-  { label: "订阅 subscription", value: "subscription" },
 ];
 
 function str(v: unknown): string {
@@ -165,32 +158,6 @@ export const RESOURCE_FORMS: Record<string, ResourceForm> = {
       { name: "enabled", label: "开启", type: "switch" },
     ],
     buildBody: (v, ctx) => ({ siteId: ctx.siteId, key: str(v.key), enabled: Boolean(v.enabled) }),
-  },
-
-  // ── L2/L3 供给·变现 ──
-  "payment:plans": {
-    actionId: "upsert",
-    createLabel: "新建套餐",
-    keyField: "key",
-    fields: [
-      { name: "key", label: "套餐标识 (key)", type: "text", required: true, placeholder: "如 pro-monthly", editable: false },
-      { name: "name", label: "套餐名称", type: "text", required: true },
-      { name: "currency", label: "币种 (3 位)", type: "text", required: true, placeholder: "CNY / USD" },
-      { name: "amountMinor", label: "金额 (分)", type: "number", required: true, tip: "最小货币单位，9900=99.00" },
-      { name: "creditMicros", label: "赠送积分 (micros)", type: "number", tip: "1e6=1 积分；>0 才到账" },
-      { name: "billingInterval", label: "计费周期", type: "select", required: true, options: BILLING },
-    ],
-    buildBody: (v) => {
-      const b: Record<string, unknown> = {
-        key: str(v.key),
-        name: str(v.name),
-        currency: str(v.currency).toUpperCase(),
-        amountMinor: str(v.amountMinor),
-        billingInterval: str(v.billingInterval),
-      };
-      if (has(v.creditMicros)) b.creditMicros = str(v.creditMicros);
-      return b;
-    },
   },
 
   // 定价规则新建（B3 定价治理）：(featureKey × labelKey? × unit) → 定额 amountMicros(每单位价,微单位)。

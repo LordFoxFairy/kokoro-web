@@ -71,6 +71,7 @@ Put app-specific behavior in its app and truly shared Web code in `packages/*`. 
 
 ## Current gotchas
 
+- **Acquisition shutdown**：User Web 仅保留 Site-scoped 套餐目录与 credit/account 只读展示；checkout/mock-pay/refund BFF、购买 CTA、provider secret/SDK 均禁止。Admin 不暴露 Payment 页面、导航、provider/order/refund/subscription surface 或动作。当前没有 Web redeem 实现，也不得用任意 commerce proxy 伪造闭环。
 - **每 Site 一个独立 Web 项目**：仓内是共享能力源码（一个 user app + 一个 admin app）；生产 Fleet 仍需为每个 Site
   提供独立产品命名的 project、artifact、release 与 rollback 权。
 - **`.npmrc` 使用 `node-linker=isolated`**（非 hoisted），防止 app/private package 依赖被根级幽灵依赖掩盖。切换

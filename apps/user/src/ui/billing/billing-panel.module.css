@@ -130,21 +130,6 @@
   color: var(--k-text-secondary);
 }
 
-.lowBalanceCta {
-  flex-shrink: 0;
-  padding: 0.45rem 0.9rem;
-  font-size: 0.83rem;
-  font-weight: 600;
-  color: var(--k-brand-on);
-  background: var(--k-brand);
-  border-radius: 10px;
-  white-space: nowrap;
-}
-
-.lowBalanceCta:hover {
-  background: var(--k-brand-hover);
-}
-
 /* 余额走势 sparkline 区。 */
 .trend {
   margin-top: 0.85rem;

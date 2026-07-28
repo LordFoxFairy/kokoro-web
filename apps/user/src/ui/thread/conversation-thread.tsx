@@ -29,8 +29,6 @@ type ConversationThreadProps = {
   // 402：run 被 credit_insufficient 拒——失败处改给计费专用说明 + 查看余额入口（不用通用失败文案）。
   creditRejected: boolean
   onOpenBilling: () => void
-  // PAY-2：402 说明处的「查看套餐」入口——闭环 Wave3 留的价格入口，打开购买面板。
-  onOpenPricing: () => void
   onRetry: () => void
   onScroll: (event: UIEvent<HTMLDivElement>) => void
   threadEndRef: RefObject<HTMLDivElement | null>
@@ -78,7 +76,6 @@ export function ConversationThread({
   hasFailed,
   creditRejected,
   onOpenBilling,
-  onOpenPricing,
   onRetry,
   onScroll,
   threadEndRef,
@@ -173,10 +170,7 @@ export function ConversationThread({
         {hasFailed && creditRejected ? (
           <div className={styles.error} role="alert">
             <span>{t("billing.creditRejected")}</span>
-            <span>{t("billing.creditPricing")}</span>
-            <button className={styles.retry} type="button" onClick={onOpenPricing}>
-              {t("billing.viewPricing")}
-            </button>
+            <span>{t("billing.creditHelp")}</span>
             <button className={styles.retry} type="button" onClick={onOpenBilling}>
               {t("billing.viewBalance")}
             </button>

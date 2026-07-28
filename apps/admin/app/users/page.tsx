@@ -1,35 +1,25 @@
 "use client";
 
-// manifest 外专属页：用户 360 聚合视图（跨模块身份+积分+订单 + 专属运营动作），
+// manifest 外专属页：用户 360 聚合视图（跨模块身份+积分 + 专属运营动作），
 // 非通用列表/动作可表达，故不走 ResourceTable 通用渲染。
 import { useState } from "react";
 import { App, Button, Descriptions, Empty, Input, Segmented, Space, Tag } from "antd";
 import {
   PageContainer,
   ProCard,
-  ProTable,
   ModalForm,
   ProFormText,
   ProFormDigit,
   ProFormSelect,
-  type ProColumns,
 } from "@ant-design/pro-components";
 import { SearchOutlined } from "@ant-design/icons";
-import { z } from "zod";
 import { apiGet, apiPost, queryString } from "@/lib/api";
 import { ACTION_SPECS, type ActionContext, type ActionKey } from "@/lib/actions";
-import { actionResultSchema, user360Schema, type Order, type OwnerKind, type User360 } from "@/lib/schemas";
+import { actionResultSchema, user360Schema, type OwnerKind, type User360 } from "@/lib/schemas";
 import { useAdmin } from "@/components/shell/app-shell";
 
-const ORDER_STATUS_COLOR: Record<string, string> = {
-  paid: "green",
-  pending: "gold",
-  refunded: "default",
-  failed: "red",
-};
-
 export default function UsersPage(): React.ReactElement {
-  const { siteId, can, manifests } = useAdmin();
+  const { siteId, can } = useAdmin();
   const { message } = App.useApp();
   const [ownerKind, setOwnerKind] = useState<OwnerKind>("team");
   const [ownerId, setOwnerId] = useState("");
@@ -37,7 +27,6 @@ export default function UsersPage(): React.ReactElement {
   const [resultOwner, setResultOwner] = useState<{ ownerKind: OwnerKind; ownerId: string } | null>(null);
   const [loading, setLoading] = useState(false);
   const [openKey, setOpenKey] = useState<ActionKey | null>(null);
-  const [orderId, setOrderId] = useState<string | undefined>(undefined);
 
   async function lookup() {
     if (!siteId) return message.error("请先在右上角选择站点");
@@ -69,46 +58,12 @@ export default function UsersPage(): React.ReactElement {
         : "enableUser"
       : null;
 
-  function start(key: ActionKey, oid?: string) {
-    setOrderId(oid);
+  function start(key: ActionKey) {
     setOpenKey(key);
   }
 
-  const orderColumns: ProColumns<Order>[] = [
-    { title: "订单", dataIndex: "id", copyable: true, ellipsis: true },
-    { title: "套餐", dataIndex: "planId", render: (_, r) => r.planId ?? "—" },
-    {
-      title: "金额",
-      align: "right",
-      render: (_, r) => (
-        <span style={{ fontVariantNumeric: "tabular-nums" }}>
-          {r.amountMinor ?? "—"} {r.currency ?? ""}
-        </span>
-      ),
-    },
-    {
-      title: "状态",
-      dataIndex: "status",
-      width: 100,
-      render: (_, r) => (r.status ? <Tag color={ORDER_STATUS_COLOR[r.status] ?? "default"}>{r.status}</Tag> : "—"),
-    },
-    {
-      title: "操作",
-      valueType: "option",
-      width: 90,
-      render: (_, r) =>
-        r.status === "paid" && can("payment.order.refund")
-          ? [
-              <a key="refund" style={{ color: "#c2410c" }} onClick={() => start("refund", r.id)}>
-                退款
-              </a>,
-            ]
-          : [<span key="none" style={{ color: "rgba(0,0,0,0.35)" }}>—</span>],
-    },
-  ];
-
   return (
-    <PageContainer header={{ title: "用户 360" }} content="按 owner 查询身份、积分与订单，并执行运营操作。">
+    <PageContainer header={{ title: "用户 360" }} content="按 owner 查询身份与积分，并执行运营操作。">
       <ProCard style={{ marginBottom: 16 }}>
         <Space size="middle" wrap align="end">
           <Segmented
@@ -150,9 +105,6 @@ export default function UsersPage(): React.ReactElement {
                     发积分
                   </Button>
                 ) : null}
-                {resultOwner.ownerKind === "team" && can("payment.plan.grant") ? (
-                  <Button onClick={() => start("grantPlan")}>授予套餐</Button>
-                ) : null}
                 {userToggleKey === "disableUser" ? (
                   <Button danger onClick={() => start("disableUser")}>
                     禁用用户
@@ -180,22 +132,6 @@ export default function UsersPage(): React.ReactElement {
             </Descriptions>
           </ProCard>
 
-          <ProCard
-            title={`订单（${result.orders.length}）`}
-            variant="outlined"
-            headerBordered
-            styles={{ body: { padding: 0 } }}
-          >
-            <ProTable<Order>
-              rowKey="id"
-              columns={orderColumns}
-              dataSource={result.orders}
-              search={false}
-              options={false}
-              pagination={false}
-              locale={{ emptyText: <Empty description="无订单" image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
-            />
-          </ProCard>
         </Space>
       )}
 
@@ -212,7 +148,6 @@ export default function UsersPage(): React.ReactElement {
             ownerKind: resultOwner.ownerKind,
             ownerId: resultOwner.ownerId,
             data: result,
-            ...(orderId === undefined ? {} : { orderId }),
           };
           try {
             const res = await apiPost(
@@ -231,29 +166,7 @@ export default function UsersPage(): React.ReactElement {
         }}
       >
         {(spec?.fields ?? []).map((f) =>
-          f.name === "planId" ? (
-            <ProFormSelect
-              key={f.name}
-              name={f.name}
-              label={f.label}
-              rules={f.required ? [{ required: true }] : undefined}
-              placeholder="选择本站套餐"
-              request={async () => {
-                if (!siteId) return [];
-                const route = manifests
-                  .find((m) => m.id === "payment")
-                  ?.manifest?.resources?.find((r) => r.id === "plans")?.route;
-                if (!route) return [];
-                const rows = await apiGet(
-                  `/api/resource?${queryString({ moduleId: "payment", route, siteId })}`,
-                  z.array(z.record(z.unknown())),
-                );
-                return rows
-                  .filter((r) => r.siteId === siteId)
-                  .map((r) => ({ label: `${String(r.name ?? r.key)} · ${String(r.key)}`, value: String(r.id) }));
-              }}
-            />
-          ) : f.type === "select" ? (
+          f.type === "select" ? (
             <ProFormSelect
               key={f.name}
               name={f.name}

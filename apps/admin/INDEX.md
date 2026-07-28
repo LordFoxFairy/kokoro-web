@@ -11,7 +11,7 @@ owners:
 Render operator workflows, own Auth.js Web sessions, and call privileged Platform APIs through a server-only generated client.
 
 ## Non-responsibilities
-Admin Web does not own Platform tables, migrations, business transactions, public Site sessions, or Agent execution.
+Admin Web does not own Platform tables, migrations, business transactions, public Site sessions, Agent execution, or acquisition/payment operations.
 
 ## Public boundary
 Next.js routes/components are browser-facing; `lib/auth/client.ts` and Auth.js adapters are the server-only Platform boundary.
@@ -33,6 +33,7 @@ Add control-plane UI here and Platform behavior behind generated service methods
 
 ## Current gotchas
 Only Admin Auth uses generated Connect today; other resource screens must not imply stub data is production-complete.
+The Admin payment control surface is intentionally absent: no Payment navigation/page, provider/order/refund/subscription UI, plan-grant action, or payment metrics. Credit/account operations remain, with operator grants restricted to `manual_adjustment`.
 
 ## Verification
 Run Admin tests, lint, typecheck, build, and the live Admin Auth compatibility command.
