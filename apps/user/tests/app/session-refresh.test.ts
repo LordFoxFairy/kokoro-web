@@ -52,7 +52,7 @@ describe("resolveSessionWithRefresh", () => {
     const req = reqWith({ ...base(), access_exp: nowSec() + 3600 })
     const fetchSpy = vi.fn()
     vi.stubGlobal("fetch", fetchSpy)
-    const resolved = await resolveSessionWithRefresh(req, config)
+    const resolved = await resolveSessionWithRefresh(req, config, "site-a")
     expect(resolved).not.toBeNull()
     expect(resolved!.setCookie).toBeNull()
     expect(resolved!.envelope.runtime_jwt).toBe("old-rt")
@@ -80,7 +80,7 @@ describe("resolveSessionWithRefresh", () => {
         ),
       ),
     )
-    const resolved = await resolveSessionWithRefresh(req, config)
+    const resolved = await resolveSessionWithRefresh(req, config, "site-a")
     expect(resolved!.envelope.runtime_jwt).toBe(newJwt)
     expect(resolved!.envelope.refresh_token).toBe("r2")
     expect(resolved!.setCookie).toContain("kokoro_session=")
@@ -91,7 +91,7 @@ describe("resolveSessionWithRefresh", () => {
     const config = authConfig()!
     const req = reqWith(base())
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("{}", { status: 401 })))
-    const resolved = await resolveSessionWithRefresh(req, config)
+    const resolved = await resolveSessionWithRefresh(req, config, "site-a")
     expect(resolved!.envelope.runtime_jwt).toBe("old-rt")
     expect(resolved!.setCookie).toBeNull()
   })
@@ -118,15 +118,30 @@ describe("resolveSessionWithRefresh", () => {
       ),
     )
 
-    const resolved = await resolveSessionWithRefresh(req, config)
+    const resolved = await resolveSessionWithRefresh(req, config, "site-a")
     expect(resolved?.envelope).toEqual(original)
     expect(resolved?.setCookie).toBeNull()
+  })
+
+  it("信封 Site 与 Host 权威 Site 不同 → 在 refresh issuer 前拒绝", async () => {
+    const config = authConfig()!
+    const fetchSpy = vi.fn()
+    vi.stubGlobal("fetch", fetchSpy)
+
+    const resolved = await resolveSessionWithRefresh(
+      reqWith({ ...base(), site_id: "site-b" }),
+      config,
+      "site-a",
+    )
+
+    expect(resolved).toBeNull()
+    expect(fetchSpy).not.toHaveBeenCalled()
   })
 
   it("无信封 → null（未认证）", async () => {
     const config = authConfig()!
     const req = new Request("http://localhost/api/session/x")
-    const resolved = await resolveSessionWithRefresh(req, config)
+    const resolved = await resolveSessionWithRefresh(req, config, "site-a")
     expect(resolved).toBeNull()
   })
 })

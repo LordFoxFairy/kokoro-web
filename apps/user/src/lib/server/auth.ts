@@ -346,7 +346,8 @@ export interface ResolvedSession {
   setCookie: string | null
 }
 
-// 代理统一入口：读信封 + 按需静默续期。null = 无信封（未认证）。
+// Site-scoped 代理统一入口：读信封 + 校验 Host 权威 Site + 按需静默续期。
+// null = 无信封，或信封 Site 与当前 Host 权威 Site 不符（均视为未认证）。
 // - access 尚新（剩余 ≥ 阈值）→ 返回当前信封，不续，setCookie=null。
 // - access 快过期 → 用信封里的 refresh 调 /auth/refresh 换新 access + 轮换 refresh，重新密封 → setCookie。
 // - 续期落空（多 tab 并发/refresh 失效）→ 返回当前信封（setCookie=null）：access 若仍有效上游照常，
@@ -354,9 +355,11 @@ export interface ResolvedSession {
 export async function resolveSessionWithRefresh(
   request: Request,
   config: AuthConfig,
+  expectedSiteId: string,
 ): Promise<ResolvedSession | null> {
   const envelope = readEnvelope(request, config)
-  if (envelope === null) {
+  // 必须在调用 refresh issuer 前绑定 Host 权威 Site，避免跨站信封被续期或代理。
+  if (envelope === null || envelope.site_id !== expectedSiteId) {
     return null
   }
   const nowSec = Math.floor(Date.now() / 1000)
@@ -364,7 +367,7 @@ export async function resolveSessionWithRefresh(
     return { envelope, setCookie: null }
   }
   const refreshed = await userRefreshSession(config, envelope.refresh_token)
-  if (refreshed === null || refreshed.site_id !== envelope.site_id) {
+  if (refreshed === null || refreshed.site_id !== expectedSiteId) {
     return { envelope, setCookie: null }
   }
   const newAccessExp = decodeJwtExp(refreshed.token) ?? nowSec + 3600

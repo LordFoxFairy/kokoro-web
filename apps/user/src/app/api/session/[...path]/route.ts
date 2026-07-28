@@ -5,6 +5,7 @@
 import { NextResponse } from "next/server"
 
 import { authConfig, resolveSessionWithRefresh, sameOriginOk } from "@/lib/server/auth"
+import { resolveSiteId } from "@/lib/server/site"
 
 export const runtime = "nodejs"
 // 每请求实时求值：绝不静态化/缓存代理响应（SSE、鉴权头随信封变）。
@@ -23,7 +24,11 @@ async function proxy(request: Request, context: { params: Promise<{ path: string
   if (MUTATION_METHODS.has(request.method) && !sameOriginOk(request)) {
     return NextResponse.json({ error: "forbidden_origin" }, { status: 403 })
   }
-  const resolved = await resolveSessionWithRefresh(request, config)
+  const siteId = await resolveSiteId(request.headers.get("host"), config.siteId)
+  if (siteId === null) {
+    return NextResponse.json({ error: "site_unresolved" }, { status: 404 })
+  }
+  const resolved = await resolveSessionWithRefresh(request, config, siteId)
   if (resolved === null) {
     return NextResponse.json({ error: "unauthenticated" }, { status: 401 })
   }

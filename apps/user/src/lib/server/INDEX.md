@@ -29,6 +29,8 @@ owners:
   - 出站：`callerHeaders`（`x-kokoro-service: web-bff` + 可选内部凭据），`userRequestMagicLink`/
     `userConsumeMagicLink`（对 user 的 magic-link 调用，失败归一）。
   - `sameOriginOk`：变更类请求同源守卫（Origin 存在且 host 不符则拒）。
+  - `resolveSessionWithRefresh(request, config, expectedSiteId)`：Site-scoped 代理会话入口；信封 Site
+    必须等于当前 Host 权威 Site，且在调用 refresh issuer 前拒绝跨 Site 信封；续期响应也必须保持该 Site。
   - magic-link consume 与 team-session issue 请求都携 Host 解析出的 `site_id`；权威响应也必须返回相同
     `site_id` 才能密封。refresh 响应不得改变原信封 Site。
 - `site.ts`（host→site 解析，SITE-REAL）
@@ -45,7 +47,8 @@ owners:
 ## 关键协作者
 
 - 上游：`src/app/api/auth/*`（request/callback/logout/session-state）、`src/app/api/team/switch`、
-  `src/app/page.tsx`（rail 品牌注入）、`src/app/api/session/[...path]`（代理）、`src/app/api/hub/[...path]`（骨架）。
+  `src/app/page.tsx`（rail 品牌注入）、`src/app/api/session/[...path]`、`src/app/api/hub/[...path]`、
+  `src/app/api/team/[...path]`（三类 protected BFF 都先解析 Host Site，再续期/代理）。
 - 下游：kokoro-user（`/auth/magic-links`、`/auth/magic-links/consume`）、kokoro-session（代理目标）、
   kokoro-site（`/site-context/resolve`，出站 `x-kokoro-service: web-bff`；`KOKORO_SITE_BASE_URL`）。
 
@@ -55,6 +58,8 @@ owners:
 - 信封 exp 对齐 runtime_jwt exp，cookie Max-Age 据此设定。
 - nonce 一次性：申请设 cookie，回调用毕即清；跨设备无 nonce → 统一 link_unavailable。
 - 原文 magic-link token / nonce 原文绝不落日志。
+- protected BFF 对未知 Host 返回中性 `site_unresolved`，对跨 Site 信封按未认证处理；两者均不得 refresh、
+  写 cookie 或触达业务上游。
 
 ## 扩展规则
 

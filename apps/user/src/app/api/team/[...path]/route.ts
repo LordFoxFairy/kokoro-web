@@ -12,6 +12,7 @@ import {
   SERVICE_HEADER,
   SERVICE_VALUE,
 } from "@/lib/server/auth"
+import { resolveSiteId } from "@/lib/server/site"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -31,7 +32,11 @@ async function proxy(
   if (MUTATION_METHODS.has(request.method) && !sameOriginOk(request)) {
     return NextResponse.json({ error: "forbidden_origin" }, { status: 403 })
   }
-  const resolved = await resolveSessionWithRefresh(request, config)
+  const siteId = await resolveSiteId(request.headers.get("host"), config.siteId)
+  if (siteId === null) {
+    return NextResponse.json({ error: "site_unresolved" }, { status: 404 })
+  }
+  const resolved = await resolveSessionWithRefresh(request, config, siteId)
   if (resolved === null) {
     return NextResponse.json({ error: "unauthenticated" }, { status: 401 })
   }
