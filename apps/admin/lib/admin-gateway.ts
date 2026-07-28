@@ -7,6 +7,12 @@ const MAX_GATEWAY_RESPONSE_BYTES = 8 * 1024 * 1024;
 const MAX_OPENAPI_RESPONSE_BYTES = 2 * 1024 * 1024;
 const OPENAPI_GATEWAY_TIMEOUT_MS = 5_000;
 const OPENAPI_MODULE_IDS = new Set(["site", "user", "model", "credit", "hub"]);
+const OPENAPI_UPSTREAM_ERROR_CODES = new Map<number, ReadonlySet<string>>([
+  [401, new Set(["operator.auth"])],
+  [403, new Set(["operator.auth"])],
+  [502, new Set(["gateway.openapi_upstream", "gateway.openapi_invalid", "gateway.openapi_too_large"])],
+  [504, new Set(["gateway.openapi_timeout"])],
+]);
 
 const ACQUISITION_DISABLED = {
   error: { code: "ACQUISITION_CHANNEL_DISABLED", message: "Acquisition channel is disabled" },
@@ -267,6 +273,18 @@ function normalizedError(upstream: Response, raw: unknown): Response {
   return new Response(JSON.stringify(body), { status: upstream.status, headers });
 }
 
+function normalizedOpenApiError(upstream: Response, raw: unknown): Response {
+  const parsed = errorEnvelopeSchema.safeParse(raw);
+  const allowedCodes = OPENAPI_UPSTREAM_ERROR_CODES.get(upstream.status);
+  if (parsed.success && allowedCodes?.has(parsed.data.error.code) === true) {
+    return normalizedError(upstream, parsed.data);
+  }
+  return Response.json(
+    { error: { code: "gateway.error", message: "Admin gateway request failed" } },
+    { status: 502 },
+  );
+}
+
 async function parsedUpstream(upstream: Response): Promise<{ kind: "ok"; raw: unknown } | { kind: "response"; response: Response }> {
   const read = await readUpstreamJson(upstream);
   if (read.kind === "too_large") return { kind: "response", response: responseTooLarge() };
@@ -332,7 +350,7 @@ export async function getFilteredOpenApi(request: Request, moduleId: string): Pr
     if (timedOut) return gatewayTimeout();
     if (read.kind === "too_large") return responseTooLarge();
     if (read.kind === "read_error") return badGateway();
-    if (!upstream.ok) return normalizedError(upstream, read.raw);
+    if (!upstream.ok) return normalizedOpenApiError(upstream, read.raw);
 
     const document = openApiDocumentSchema.safeParse(read.raw);
     if (!document.success) return badGateway();

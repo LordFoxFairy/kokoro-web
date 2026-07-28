@@ -126,6 +126,60 @@ describe("Admin OpenAPI BFF boundary", () => {
     });
   });
 
+  it.each([
+    [401, "operator.auth"],
+    [403, "operator.auth"],
+    [502, "gateway.openapi_upstream"],
+    [502, "gateway.openapi_invalid"],
+    [502, "gateway.openapi_too_large"],
+    [504, "gateway.openapi_timeout"],
+  ] as const)("preserves the declared Platform error %i %s", async (status, code) => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        jsonResponse(status, {
+          error: { code, message: `typed ${code}`, details: { private: true } },
+          requestId: "request-typed",
+          private: "must-not-cross",
+        }),
+      ),
+    );
+    const { getFilteredOpenApi } = await import("./admin-gateway");
+
+    const response = await getFilteredOpenApi(trustedRequest("site"), "site");
+
+    expect(response.status).toBe(status);
+    expect(await response.json()).toEqual({
+      error: { code, message: `typed ${code}` },
+      requestId: "request-typed",
+    });
+  });
+
+  it.each([
+    [404, { error: { code: "operator.auth", message: "wrong status" } }],
+    [409, { error: { code: "gateway.error", message: "undeclared conflict" } }],
+    [418, { error: { code: "gateway.openapi_invalid", message: "undeclared status" } }],
+    [429, { error: { code: "gateway.error", message: "rate limited" } }],
+    [500, { error: { code: "gateway.error", message: "internal failure" } }],
+    [503, { error: { code: "gateway.error", message: "unavailable" } }],
+    [403, { error: { code: "gateway.error", message: "wrong code" } }],
+    [502, { error: { code: "gateway.error", message: "generic catch leaked an internal exception" }, requestId: "must-drop" }],
+    [502, { error: { code: "operator.auth", message: "wrong code" } }],
+    [504, { error: { code: "gateway.error", message: "wrong code" } }],
+    [500, { statusCode: 500, error: "Internal Server Error", message: "Fastify default" }],
+    [502, { error: { code: "gateway.openapi_upstream" } }],
+  ] as const)("normalizes undeclared Platform error %i instead of leaking it", async (status, body) => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(status, body)));
+    const { getFilteredOpenApi } = await import("./admin-gateway");
+
+    const response = await getFilteredOpenApi(trustedRequest("site"), "site");
+
+    expect(response.status).toBe(502);
+    expect(await response.json()).toEqual({
+      error: { code: "gateway.error", message: "Admin gateway request failed" },
+    });
+  });
+
   it("fails closed on a declared oversized document and cancels its body", async () => {
     const cancel = vi.fn();
     vi.stubGlobal(
