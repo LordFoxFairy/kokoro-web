@@ -44,6 +44,14 @@ owners:
     与 Site-scoped BFF；仅显式 development fallback 允许 `fallbackSiteId`，其余环境保持 `null`，禁止未知 Host
     签发/换签信封或触达业务上游。
   - `SiteBrand`/`ResolvedSite`/`DEFAULT_BRAND`；`__clearSiteResolveCache()` 仅测试用。
+- `http-boundary.ts`（浏览器/内部 HTTP 内存边界）
+  - `readBoundedRequestBody` / `readBoundedRequestJson`：先按可信度最低的 `Content-Length` 预拒，
+    再对 chunked 实读计数；超限取消流并返回稳定 413，不调用业务上游。
+  - `readBoundedResponseJson`：仅供必须解析的 Site/Auth/Payment 小响应；代理的 SSE、文件和普通响应
+    不解析，保持白名单响应头 + stream pass-through。
+  - 请求 cap：Auth 16 KiB、Team 64 KiB、Session 1 MiB、Hub 普通 256 KiB；Hub skill upload
+    96 MiB，精确对齐 Hub `UPLOAD_BODY_LIMIT`（zip 文件本身仍由 Hub 限制为 64 MiB）。
+  - 解析响应 cap：Site 64 KiB、Auth 256 KiB、Payment 套餐目录 1 MiB。
 
 ## 关键协作者
 

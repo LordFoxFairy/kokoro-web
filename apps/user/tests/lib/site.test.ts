@@ -208,6 +208,29 @@ describe("resolveSite", () => {
     const [, init] = fetchMock.mock.calls[0] as [URL, RequestInit]
     expect(init.signal?.aborted).toBe(true)
   })
+
+  it("cancels a chunked resolver response once it exceeds the 64 KiB parse cap", async () => {
+    let emitted = 0
+    let cancelled = false
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (emitted >= 100) {
+          controller.close()
+          return
+        }
+        emitted += 1
+        controller.enqueue(new Uint8Array(40 * 1024))
+      },
+      cancel() {
+        cancelled = true
+      },
+    })
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(body, { status: 200 })))
+    vi.spyOn(console, "warn").mockImplementation(() => {})
+
+    expect(await resolveSite("oversized.example")).toBeNull()
+    expect(cancelled).toBe(true)
+  })
 })
 
 describe("resolveSiteId", () => {

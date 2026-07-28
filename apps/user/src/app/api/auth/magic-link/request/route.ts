@@ -14,6 +14,7 @@ import {
   sameOriginOk,
   userRequestMagicLink,
 } from "@/lib/server/auth"
+import { AUTH_REQUEST_BODY_MAX_BYTES, readBoundedRequestJson } from "@/lib/server/http-boundary"
 import { resolveSiteId } from "@/lib/server/site"
 
 export const runtime = "nodejs"
@@ -29,7 +30,11 @@ export async function POST(request: Request): Promise<NextResponse> {
   if (!sameOriginOk(request)) {
     return NextResponse.json({ error: "forbidden_origin" }, { status: 403 })
   }
-  const parsed = bodySchema.safeParse(await request.json().catch(() => null))
+  const requestBody = await readBoundedRequestJson(request, AUTH_REQUEST_BODY_MAX_BYTES)
+  if (!requestBody.ok && requestBody.reason === "too_large") {
+    return NextResponse.json({ error: "request_body_too_large" }, { status: 413 })
+  }
+  const parsed = bodySchema.safeParse(requestBody.ok ? requestBody.value : null)
   if (!parsed.success) {
     return NextResponse.json({ error: "invalid_email" }, { status: 400 })
   }

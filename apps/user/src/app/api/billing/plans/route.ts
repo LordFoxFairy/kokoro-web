@@ -8,6 +8,7 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 
 import { authConfig, INTERNAL_SECRET_HEADER, readEnvelope, SERVICE_HEADER, SERVICE_VALUE } from "@/lib/server/auth"
+import { PAYMENT_RESPONSE_BODY_MAX_BYTES, readBoundedResponseJson } from "@/lib/server/http-boundary"
 import { resolveSiteId } from "@/lib/server/site"
 
 export const runtime = "nodejs"
@@ -68,12 +69,7 @@ export async function GET(request: Request): Promise<Response> {
   if (!upstream.ok) {
     return NextResponse.json({ error: "payment_error" }, { status: 502 })
   }
-  let raw: unknown
-  try {
-    raw = await upstream.json()
-  } catch {
-    return NextResponse.json({ error: "payment_bad_response" }, { status: 502 })
-  }
+  const raw = await readBoundedResponseJson(upstream, PAYMENT_RESPONSE_BODY_MAX_BYTES)
   const parsed = paymentPlansEnvelopeSchema.safeParse(raw)
   if (!parsed.success) {
     return NextResponse.json({ error: "payment_bad_response" }, { status: 502 })

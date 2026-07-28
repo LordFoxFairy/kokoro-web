@@ -12,6 +12,7 @@ import {
   SERVICE_HEADER,
   SERVICE_VALUE,
 } from "@/lib/server/auth"
+import { readBoundedRequestBody, TEAM_REQUEST_BODY_MAX_BYTES } from "@/lib/server/http-boundary"
 import { resolveSiteId } from "@/lib/server/site"
 
 export const runtime = "nodejs"
@@ -59,11 +60,16 @@ async function proxy(
   // user principal 从信封派生（web 侧解封结果），浏览器无从伪造。
   headers.set("x-user-id", envelope.user_id)
 
+  const boundedBody = await readBoundedRequestBody(request, TEAM_REQUEST_BODY_MAX_BYTES)
+  if (!boundedBody.ok) {
+    return NextResponse.json(
+      { error: boundedBody.reason === "too_large" ? "request_body_too_large" : "invalid_request_body" },
+      { status: boundedBody.reason === "too_large" ? 413 : 400 },
+    )
+  }
   // 仅在确有 body 时透传 content-type：无 body 的 POST（accept/decline/remove-self）不能带
   // application/json，否则上游 fastify 对空体报 FST_ERR_CTP_EMPTY_JSON_BODY(400)。
-  const rawBody =
-    request.method === "GET" || request.method === "HEAD" ? "" : await request.text()
-  const body = rawBody.length > 0 ? rawBody : undefined
+  const body = boundedBody.body
   if (body !== undefined) {
     headers.set("content-type", request.headers.get("content-type") ?? "application/json")
   }

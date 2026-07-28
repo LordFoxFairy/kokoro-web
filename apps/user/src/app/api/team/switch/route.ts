@@ -14,6 +14,7 @@ import {
   readEnvelope,
   userIssueTeamSession,
 } from "@/lib/server/auth"
+import { readBoundedRequestJson, TEAM_REQUEST_BODY_MAX_BYTES } from "@/lib/server/http-boundary"
 import { sealEnvelope } from "@/lib/server/session-envelope"
 import { resolveSiteId } from "@/lib/server/site"
 
@@ -34,7 +35,11 @@ export async function POST(request: Request): Promise<NextResponse> {
   if (envelope === null) {
     return NextResponse.json({ error: "unauthenticated" }, { status: 401 })
   }
-  const parsed = bodySchema.safeParse(await request.json().catch(() => null))
+  const requestBody = await readBoundedRequestJson(request, TEAM_REQUEST_BODY_MAX_BYTES)
+  if (!requestBody.ok && requestBody.reason === "too_large") {
+    return NextResponse.json({ error: "request_body_too_large" }, { status: 413 })
+  }
+  const parsed = bodySchema.safeParse(requestBody.ok ? requestBody.value : null)
   if (!parsed.success) {
     return NextResponse.json({ error: "invalid_request" }, { status: 400 })
   }

@@ -5,6 +5,7 @@
 import { createHash, randomBytes } from "node:crypto"
 import { z } from "zod"
 
+import { AUTH_RESPONSE_BODY_MAX_BYTES, readBoundedResponseJson } from "./http-boundary"
 import { openEnvelope, sealEnvelope, type EnvelopePayload } from "./session-envelope"
 
 // 信封 cookie（httpOnly，浏览器 JS 读不到）与一次性 nonce cookie（绑定申请设备）。
@@ -236,7 +237,9 @@ export async function userRequestMagicLink(
   if (!response.ok) {
     return { kind: "unavailable" }
   }
-  const parsed = requestResponseSchema.safeParse(await response.json().catch(() => null))
+  const parsed = requestResponseSchema.safeParse(
+    await readBoundedResponseJson(response, AUTH_RESPONSE_BODY_MAX_BYTES),
+  )
   if (!parsed.success) {
     return { kind: "unavailable" }
   }
@@ -272,7 +275,9 @@ export async function userIssueTeamSession(
   if (!response.ok) {
     return { kind: "unavailable" }
   }
-  const parsed = consumeResponseSchema.safeParse(await response.json().catch(() => null))
+  const parsed = consumeResponseSchema.safeParse(
+    await readBoundedResponseJson(response, AUTH_RESPONSE_BODY_MAX_BYTES),
+  )
   if (!parsed.success) {
     return { kind: "unavailable" }
   }
@@ -295,7 +300,9 @@ export async function userConsumeMagicLink(
   if (response === null || !response.ok) {
     return null
   }
-  const parsed = consumeResponseSchema.safeParse(await response.json().catch(() => null))
+  const parsed = consumeResponseSchema.safeParse(
+    await readBoundedResponseJson(response, AUTH_RESPONSE_BODY_MAX_BYTES),
+  )
   if (!parsed.success) {
     return null
   }
@@ -318,7 +325,9 @@ export async function userRefreshSession(
   if (response === null || !response.ok) {
     return null
   }
-  const parsed = refreshResponseSchema.safeParse(await response.json().catch(() => null))
+  const parsed = refreshResponseSchema.safeParse(
+    await readBoundedResponseJson(response, AUTH_RESPONSE_BODY_MAX_BYTES),
+  )
   if (!parsed.success) {
     return null
   }

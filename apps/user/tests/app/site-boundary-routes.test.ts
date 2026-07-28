@@ -59,6 +59,26 @@ function requestedUrls(fetchMock: ReturnType<typeof vi.fn>): string[] {
   return fetchMock.mock.calls.map(([target]) => target.toString())
 }
 
+function chunkedPost(url: string, chunks: Uint8Array[], headers: Record<string, string>): Request {
+  let index = 0
+  const body = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      const chunk = chunks[index++]
+      if (chunk === undefined) {
+        controller.close()
+      } else {
+        controller.enqueue(chunk)
+      }
+    },
+  })
+  return new Request(url, {
+    method: "POST",
+    headers,
+    body,
+    duplex: "half",
+  } as RequestInit & { duplex: "half" })
+}
+
 beforeEach(() => {
   __clearSiteResolveCache()
   for (const [key, value] of Object.entries(ENV)) process.env[key] = value
@@ -206,6 +226,51 @@ describe("production Host to Site admission", () => {
     expect(await response.json()).toEqual({ error: "site_unresolved" })
     expect(response.headers.get("set-cookie")).toBeNull()
     expect(requestedUrls(fetchMock)).toEqual(["http://site.test/site-context/resolve?host=site-a.example"])
+  })
+})
+
+describe("auth browser request body limits", () => {
+  it("rejects a chunked magic-link request after the 16 KiB cap", async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal("fetch", fetchMock)
+    const { POST } = await import("@/app/api/auth/magic-link/request/route")
+    const request = chunkedPost(
+      "https://site-a.example/api/auth/magic-link/request",
+      [new Uint8Array(16 * 1024), new Uint8Array(1)],
+      {
+        host: "site-a.example",
+        origin: "https://site-a.example",
+        "content-type": "application/json",
+      },
+    )
+
+    const response = await POST(request)
+
+    expect(response.status).toBe(413)
+    expect(await response.json()).toEqual({ error: "request_body_too_large" })
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it("rejects a chunked team-switch request after the 64 KiB cap", async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal("fetch", fetchMock)
+    const { POST } = await import("@/app/api/team/switch/route")
+    const request = chunkedPost(
+      "https://site-a.example/api/team/switch",
+      [new Uint8Array(64 * 1024), new Uint8Array(1)],
+      {
+        host: "site-a.example",
+        origin: "https://site-a.example",
+        cookie: sessionCookie(),
+        "content-type": "application/json",
+      },
+    )
+
+    const response = await POST(request)
+
+    expect(response.status).toBe(413)
+    expect(await response.json()).toEqual({ error: "request_body_too_large" })
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 })
 

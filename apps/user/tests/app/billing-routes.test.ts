@@ -98,4 +98,41 @@ describe("GET /api/billing/plans", () => {
     expect(res.status).toBe(503)
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
+
+  it("cancels a chunked payment catalogue response after the 1 MiB parse cap", async () => {
+    let emitted = 0
+    let cancelled = false
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (emitted >= 100) {
+          controller.close()
+          return
+        }
+        emitted += 1
+        controller.enqueue(new Uint8Array(512 * 1024))
+      },
+      cancel() {
+        cancelled = true
+      },
+    })
+    const fetchMock = vi.fn(async (target: URL | string) =>
+      target.toString().startsWith("http://site.test/")
+        ? jsonResponse(200, {
+            data: { context: { siteId: "site-a", brand: { name: "Site A", logoUrl: null, themeColor: null } } },
+          })
+        : new Response(body, { status: 200, headers: { "content-type": "application/json" } }),
+    )
+    vi.stubGlobal("fetch", fetchMock)
+    const { GET } = await import("@/app/api/billing/plans/route")
+
+    const res = await GET(
+      new Request("http://localhost/api/billing/plans", {
+        headers: { host: "site-a.example", cookie: sessionCookie() },
+      }),
+    )
+
+    expect(res.status).toBe(502)
+    expect(await res.json()).toEqual({ error: "payment_bad_response" })
+    expect(cancelled).toBe(true)
+  })
 })

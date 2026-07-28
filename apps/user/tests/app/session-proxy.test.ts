@@ -48,6 +48,26 @@ function params(path: string[]): { params: Promise<{ path: string[] }> } {
   return { params: Promise.resolve({ path }) }
 }
 
+function chunkedPost(url: string, chunks: Uint8Array[], headers: Record<string, string>): Request {
+  let index = 0
+  const body = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      const chunk = chunks[index++]
+      if (chunk === undefined) {
+        controller.close()
+      } else {
+        controller.enqueue(chunk)
+      }
+    },
+  })
+  return new Request(url, {
+    method: "POST",
+    headers,
+    body,
+    duplex: "half",
+  } as RequestInit & { duplex: "half" })
+}
+
 beforeEach(() => {
   __clearSiteResolveCache()
   for (const [k, v] of Object.entries(ENV)) process.env[k] = v
@@ -223,5 +243,60 @@ describe("/api/session/[...path] proxy", () => {
       "http://site.test/site-context/resolve?host=site-a.example",
       "http://user.test/auth/refresh",
     ])
+  })
+
+  it("rejects a chunked session body after the 1 MiB hard cap without calling session", async () => {
+    const fetchMock = vi.fn(async (target: string | URL) =>
+      target.toString().startsWith("http://site.test/")
+        ? siteResponse("site-a")
+        : new Response("{}", { status: 200 }),
+    )
+    vi.stubGlobal("fetch", fetchMock)
+    const { POST } = await import("@/app/api/session/[...path]/route")
+    const request = chunkedPost(
+      "http://localhost/api/session/sessions/ses_1/messages",
+      [new Uint8Array(1024 * 1024), new Uint8Array(1)],
+      {
+        cookie: sessionCookie(),
+        host: "site-a.example",
+        origin: "http://site-a.example",
+        "content-type": "application/json",
+      },
+    )
+
+    const res = await POST(request, params(["sessions", "ses_1", "messages"]))
+
+    expect(res.status).toBe(413)
+    expect(await res.json()).toEqual({ error: "request_body_too_large" })
+    expect(fetchMock.mock.calls.map(([target]) => target.toString())).toEqual([
+      "http://site.test/site-context/resolve?host=site-a.example",
+    ])
+  })
+
+  it("does not forward upstream Set-Cookie or Location headers", async () => {
+    const fetchMock = vi.fn(async (target: string | URL) =>
+      target.toString().startsWith("http://site.test/")
+        ? siteResponse("site-a")
+        : new Response("{}", {
+            status: 200,
+            headers: {
+              "content-type": "application/json",
+              "set-cookie": "attacker=1",
+              location: "https://attacker.example",
+            },
+          }),
+    )
+    vi.stubGlobal("fetch", fetchMock)
+    const { GET } = await import("@/app/api/session/[...path]/route")
+
+    const res = await GET(
+      new Request("http://localhost/api/session/sessions/ses_1", {
+        headers: { cookie: sessionCookie(), host: "site-a.example" },
+      }),
+      params(["sessions", "ses_1"]),
+    )
+
+    expect(res.headers.get("set-cookie")).toBeNull()
+    expect(res.headers.get("location")).toBeNull()
   })
 })

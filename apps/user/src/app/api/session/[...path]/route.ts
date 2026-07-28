@@ -5,6 +5,7 @@
 import { NextResponse } from "next/server"
 
 import { authConfig, resolveSessionWithRefresh, sameOriginOk } from "@/lib/server/auth"
+import { readBoundedRequestBody, SESSION_REQUEST_BODY_MAX_BYTES } from "@/lib/server/http-boundary"
 import { resolveSiteId } from "@/lib/server/site"
 
 export const runtime = "nodejs"
@@ -47,11 +48,18 @@ async function proxy(request: Request, context: { params: Promise<{ path: string
     }
   }
 
-  // JSON body 体积小，缓冲即可；GET/DELETE 无体。SSE 是 GET，走响应流式。
+  const boundedBody = await readBoundedRequestBody(request, SESSION_REQUEST_BODY_MAX_BYTES)
+  if (!boundedBody.ok) {
+    return NextResponse.json(
+      { error: boundedBody.reason === "too_large" ? "request_body_too_large" : "invalid_request_body" },
+      { status: boundedBody.reason === "too_large" ? 413 : 400 },
+    )
+  }
+  // GET/HEAD/DELETE 不向上游带 body；若客户端违规携带，仍已在上面读取并受硬顶约束。
   const body =
     request.method === "GET" || request.method === "HEAD" || request.method === "DELETE"
       ? undefined
-      : await request.arrayBuffer()
+      : boundedBody.body
 
   let upstream: Response
   try {

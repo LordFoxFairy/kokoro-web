@@ -8,6 +8,8 @@
 
 import { z } from "zod"
 
+import { readBoundedResponseJson, SITE_RESPONSE_BODY_MAX_BYTES } from "./http-boundary"
+
 export interface SiteBrand {
   name: string
   logoUrl: string | null
@@ -102,7 +104,9 @@ async function fetchResolved(
   if (response === null || !response.ok) {
     return null
   }
-  const parsed = resolveResponseSchema.safeParse(await response.json().catch(() => null))
+  const parsed = resolveResponseSchema.safeParse(
+    await readBoundedResponseJson(response, SITE_RESPONSE_BODY_MAX_BYTES),
+  )
   if (!parsed.success) {
     return null
   }

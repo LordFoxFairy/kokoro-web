@@ -16,6 +16,7 @@ import {
   SERVICE_HEADER,
   SERVICE_VALUE,
 } from "@/lib/server/auth"
+import { hubRequestBodyLimit, readBoundedRequestBody } from "@/lib/server/http-boundary"
 import { resolveSiteId } from "@/lib/server/site"
 
 export const runtime = "nodejs"
@@ -54,8 +55,9 @@ async function proxy(request: Request, context: { params: Promise<{ path: string
   const { envelope, setCookie } = resolved
 
   const { path } = await context.params
+  const segments = path ?? []
   const search = new URL(request.url).search
-  const target = `${config.hubBaseUrl.replace(/\/+$/, "")}/hub/${(path ?? []).join("/")}${search}`
+  const target = `${config.hubBaseUrl.replace(/\/+$/, "")}/hub/${segments.join("/")}${search}`
 
   const headers = new Headers()
   headers.set(SERVICE_HEADER, SERVICE_VALUE)
@@ -72,10 +74,17 @@ async function proxy(request: Request, context: { params: Promise<{ path: string
     }
   }
 
+  const boundedBody = await readBoundedRequestBody(request, hubRequestBodyLimit(segments))
+  if (!boundedBody.ok) {
+    return NextResponse.json(
+      { error: boundedBody.reason === "too_large" ? "request_body_too_large" : "invalid_request_body" },
+      { status: boundedBody.reason === "too_large" ? 413 : 400 },
+    )
+  }
   const body =
     request.method === "GET" || request.method === "HEAD" || request.method === "DELETE"
       ? undefined
-      : await request.arrayBuffer()
+      : boundedBody.body
 
   let upstream: Response
   try {

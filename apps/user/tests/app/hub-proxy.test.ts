@@ -50,6 +50,26 @@ function params(path: string[]): { params: Promise<{ path: string[] }> } {
   return { params: Promise.resolve({ path }) }
 }
 
+function chunkedPost(url: string, chunks: Uint8Array[], headers: Record<string, string>): Request {
+  let index = 0
+  const body = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      const chunk = chunks[index++]
+      if (chunk === undefined) {
+        controller.close()
+      } else {
+        controller.enqueue(chunk)
+      }
+    },
+  })
+  return new Request(url, {
+    method: "POST",
+    headers,
+    body,
+    duplex: "half",
+  } as RequestInit & { duplex: "half" })
+}
+
 beforeEach(() => {
   __clearSiteResolveCache()
   for (const [k, v] of Object.entries(ENV)) process.env[k] = v
@@ -117,7 +137,11 @@ describe("/api/hub/[...path] proxy", () => {
   })
 
   it("returns 401 when there is no envelope", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(siteResponse("site-a"))
+    const fetchMock = vi.fn(async (target: string | URL) =>
+      target.toString().startsWith("http://site.test/")
+        ? siteResponse("site-a")
+        : new Response("{}", { status: 200 }),
+    )
     vi.stubGlobal("fetch", fetchMock)
     const { GET } = await import("@/app/api/hub/[...path]/route")
     const res = await GET(
@@ -224,5 +248,101 @@ describe("/api/hub/[...path] proxy", () => {
       "http://site.test/site-context/resolve?host=site-a.example",
       "http://user.test/auth/refresh",
     ])
+  })
+
+  it("rejects a chunked non-upload Hub body after the 256 KiB hard cap", async () => {
+    const fetchMock = vi.fn(async (target: string | URL) =>
+      target.toString().startsWith("http://site.test/")
+        ? siteResponse("site-a")
+        : new Response("{}", { status: 200 }),
+    )
+    vi.stubGlobal("fetch", fetchMock)
+    const { POST } = await import("@/app/api/hub/[...path]/route")
+    const request = chunkedPost(
+      "http://localhost/api/hub/self/mcp/secrets",
+      [new Uint8Array(256 * 1024), new Uint8Array(1)],
+      {
+        cookie: sessionCookie(),
+        host: "site-a.example",
+        origin: "http://site-a.example",
+        "content-type": "application/json",
+      },
+    )
+
+    const res = await POST(request, params(["self", "mcp", "secrets"]))
+
+    expect(res.status).toBe(413)
+    expect(await res.json()).toEqual({ error: "request_body_too_large" })
+    expect(fetchMock.mock.calls.map(([target]) => target.toString())).toEqual([
+      "http://site.test/site-context/resolve?host=site-a.example",
+    ])
+  })
+
+  it("pre-rejects a declared Hub upload over the downstream 96 MiB HTTP limit", async () => {
+    let pulls = 0
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulls += 1
+        if (pulls >= 100) {
+          controller.close()
+          return
+        }
+        controller.enqueue(new Uint8Array([1]))
+      },
+    })
+    const request = new Request("http://localhost/api/hub/self/skills/upload/preview", {
+      method: "POST",
+      headers: {
+        cookie: sessionCookie(),
+        host: "site-a.example",
+        origin: "http://site-a.example",
+        "content-type": "multipart/form-data; boundary=test",
+        "content-length": String(96 * 1024 * 1024 + 1),
+      },
+      body,
+      duplex: "half",
+    } as RequestInit & { duplex: "half" })
+    const fetchMock = vi.fn(async (target: string | URL) =>
+      target.toString().startsWith("http://site.test/")
+        ? siteResponse("site-a")
+        : new Response("{}", { status: 200 }),
+    )
+    vi.stubGlobal("fetch", fetchMock)
+    const { POST } = await import("@/app/api/hub/[...path]/route")
+
+    const res = await POST(request, params(["self", "skills", "upload", "preview"]))
+
+    expect(res.status).toBe(413)
+    expect(await res.json()).toEqual({ error: "request_body_too_large" })
+    // Web Streams 可在构造后预拉一个 chunk；Content-Length 守卫不得继续消费请求体。
+    expect(pulls).toBeLessThanOrEqual(1)
+    expect(fetchMock).toHaveBeenCalledOnce()
+  })
+
+  it("does not forward upstream Set-Cookie or Location headers", async () => {
+    const fetchMock = vi.fn(async (target: string | URL) =>
+      target.toString().startsWith("http://site.test/")
+        ? siteResponse("site-a")
+        : new Response("{}", {
+            status: 200,
+            headers: {
+              "content-type": "application/json",
+              "set-cookie": "attacker=1",
+              location: "https://attacker.example",
+            },
+          }),
+    )
+    vi.stubGlobal("fetch", fetchMock)
+    const { GET } = await import("@/app/api/hub/[...path]/route")
+
+    const res = await GET(
+      new Request("http://localhost/api/hub/self/skills/pool", {
+        headers: { cookie: sessionCookie(), host: "site-a.example" },
+      }),
+      params(["self", "skills", "pool"]),
+    )
+
+    expect(res.headers.get("set-cookie")).toBeNull()
+    expect(res.headers.get("location")).toBeNull()
   })
 })
