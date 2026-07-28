@@ -16,6 +16,12 @@ import {
 } from "@ant-design/icons";
 import { z } from "zod";
 import { apiGet } from "@/lib/api";
+import {
+  billingOverviewRequestKey,
+  startBillingOverviewRequest,
+  type BillingOverview,
+  type SettledBillingOverview,
+} from "@/lib/billing-overview";
 import { useAdmin } from "@/components/shell/app-shell";
 
 const ENTRIES = [
@@ -31,39 +37,18 @@ const ENTRIES = [
 
 const pendingSchema = z.array(z.object({ status: z.string() }).passthrough());
 
-// 运营台计费总览（B2c）：网关聚合 credit + payment stats；某模块离线段为 null。
-const billingOverviewSchema = z.object({
-  credit: z
-    .object({
-      accountsTotal: z.number(),
-      accountsActive: z.number(),
-      balanceSumMicros: z.string(),
-      heldSumMicros: z.string(),
-      grantedTotalMicros: z.string(),
-      spentTotalMicros: z.string(),
-    })
-    .nullable(),
-  payment: z
-    .object({
-      ordersTotal: z.number(),
-      ordersPaid: z.number(),
-      ordersPending: z.number(),
-      ordersRefunded: z.number(),
-      ordersCanceled: z.number(),
-      revenueByCurrency: z.array(z.object({ currency: z.string(), amountMinor: z.string() })),
-    })
-    .nullable(),
-});
-type BillingOverview = z.infer<typeof billingOverviewSchema>;
-
 // 微单位 → 积分（÷10000）；最小货币单位 → 金额（÷100）。仅展示用（admin 量级 Number 足够）。
 const toCredits = (micros: string): string => (Number(micros) / 10000).toLocaleString(undefined, { maximumFractionDigits: 2 });
 const toMoney = (minor: string): string => (Number(minor) / 100).toFixed(2);
 
 export default function Page(): React.ReactElement {
-  const { me, sites } = useAdmin();
+  const { me, sites, siteId, can } = useAdmin();
   const [pending, setPending] = useState<number | null>(null);
-  const [billing, setBilling] = useState<BillingOverview | null>(null);
+  const [settledBilling, setSettledBilling] = useState<SettledBillingOverview | null>(null);
+  const canReadBilling = can("billing.read");
+  const billingSiteId = billingOverviewRequestKey({ siteId, canRead: canReadBilling });
+  const billing: BillingOverview | null =
+    billingSiteId !== null && settledBilling?.siteId === billingSiteId ? settledBilling.data : null;
 
   useEffect(() => {
     (async () => {
@@ -74,14 +59,12 @@ export default function Page(): React.ReactElement {
         setPending(null);
       }
     })();
-    (async () => {
-      try {
-        setBilling(await apiGet("/api/billing-overview", billingOverviewSchema));
-      } catch {
-        setBilling(null);
-      }
-    })();
   }, []);
+
+  useEffect(
+    () => startBillingOverviewRequest({ siteId, canRead: canReadBilling }, setSettledBilling),
+    [siteId, canReadBilling],
+  );
 
   const revenueText =
     billing?.payment && billing.payment.revenueByCurrency.length > 0
