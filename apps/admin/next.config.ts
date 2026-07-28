@@ -4,8 +4,8 @@ import type { NextConfig } from "next";
 const gatewayUrl = process.env.KOKORO_GATEWAY_URL ?? "http://127.0.0.1:4290";
 
 // 被反代到网关的浏览器面路径，逐条枚举（不再用 /api/:path* catch-all 无差别反代）。
-// 这里只列无需响应过滤的透明代理。manifests/billing-overview/user360/resource/action 由本地 Route Handler
-// 做 acquisition 边界过滤后再请求网关，绝不能放回 external rewrite 绕开过滤。
+// 这里只列无需响应过滤的透明代理。manifests/openapi/billing-overview/user360/resource/action 由本地
+// Route Handler 做 acquisition/模块 allowlist 边界过滤后再请求网关，绝不能放回 external rewrite 绕开过滤。
 // 路径参数用 Next 语法：契约的 {id} → :id。
 const GATEWAY_PROXY_PATHS = [
   "/api/me",

@@ -4,6 +4,9 @@ import { z } from "zod";
 
 const MAX_ACTION_REQUEST_BYTES = 16 * 1024 * 1024;
 const MAX_GATEWAY_RESPONSE_BYTES = 8 * 1024 * 1024;
+const MAX_OPENAPI_RESPONSE_BYTES = 2 * 1024 * 1024;
+const OPENAPI_GATEWAY_TIMEOUT_MS = 5_000;
+const OPENAPI_MODULE_IDS = new Set(["site", "user", "model", "credit", "hub"]);
 
 const ACQUISITION_DISABLED = {
   error: { code: "ACQUISITION_CHANNEL_DISABLED", message: "Acquisition channel is disabled" },
@@ -76,6 +79,7 @@ const errorEnvelopeSchema = z.object({
   requestId: z.string().optional(),
 });
 const actionBoundarySchema = z.object({ moduleId: z.unknown().optional(), route: z.unknown().optional() }).passthrough();
+const openApiDocumentSchema = z.object({ openapi: z.string().min(1) }).passthrough();
 
 type BoundedRead =
   | { kind: "ok"; text: string }
@@ -108,6 +112,20 @@ function requestTooLarge(): Response {
   return Response.json(
     { error: { code: "request.too_large", message: "Admin action request exceeds the size limit" } },
     { status: 413 },
+  );
+}
+
+function invalidModule(): Response {
+  return Response.json(
+    { error: { code: "request.invalid", message: "Invalid OpenAPI module" } },
+    { status: 400 },
+  );
+}
+
+function gatewayTimeout(): Response {
+  return Response.json(
+    { error: { code: "gateway.timeout", message: "Admin gateway request timed out" } },
+    { status: 504 },
   );
 }
 
@@ -194,6 +212,11 @@ function gatewayTarget(request: Request, path: string): URL {
   return target;
 }
 
+function fixedGatewayTarget(path: string): URL {
+  const baseUrl = process.env.KOKORO_GATEWAY_URL?.trim() || "http://127.0.0.1:4290";
+  return new URL(path, baseUrl);
+}
+
 async function fetchGateway(request: Request, path: string, headers: Headers, body?: string): Promise<Response | null> {
   try {
     return await fetch(gatewayTarget(request, path), {
@@ -216,14 +239,21 @@ function unavailable(): Response {
   );
 }
 
-async function readUpstreamJson(upstream: Response): Promise<{ kind: "ok"; raw: unknown } | Exclude<BoundedRead, { kind: "ok" }>> {
-  const read = await readTextBounded(upstream, MAX_GATEWAY_RESPONSE_BYTES);
+async function readUpstreamJsonWithLimit(
+  upstream: Response,
+  limit: number,
+): Promise<{ kind: "ok"; raw: unknown } | Exclude<BoundedRead, { kind: "ok" }>> {
+  const read = await readTextBounded(upstream, limit);
   if (read.kind !== "ok") return read;
   try {
     return { kind: "ok", raw: JSON.parse(read.text) as unknown };
   } catch {
     return { kind: "read_error" };
   }
+}
+
+async function readUpstreamJson(upstream: Response): Promise<{ kind: "ok"; raw: unknown } | Exclude<BoundedRead, { kind: "ok" }>> {
+  return readUpstreamJsonWithLimit(upstream, MAX_GATEWAY_RESPONSE_BYTES);
 }
 
 function normalizedError(upstream: Response, raw: unknown): Response {
@@ -261,6 +291,61 @@ export async function getFilteredManifests(request: Request): Promise<Response> 
   const parsed = manifestsEnvelopeSchema.safeParse(read.raw);
   if (!parsed.success) return badGateway();
   return Response.json({ ...parsed.data, data: parsed.data.data.filter((module) => !isPaymentModule(module.id)) });
+}
+
+export async function getFilteredOpenApi(request: Request, moduleId: string): Promise<Response> {
+  const headers = trustedGatewayHeaders(request, false);
+  if (headers === null) return trustUnavailable();
+  if (isPaymentModule(moduleId)) return disabled();
+  if (!OPENAPI_MODULE_IDS.has(moduleId)) return invalidModule();
+
+  const controller = new AbortController();
+  let timedOut = false;
+  const abortForRequest = (): void => controller.abort(request.signal.reason);
+  if (request.signal.aborted) abortForRequest();
+  else request.signal.addEventListener("abort", abortForRequest, { once: true });
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    controller.abort(new DOMException("Admin gateway request timed out", "TimeoutError"));
+  }, OPENAPI_GATEWAY_TIMEOUT_MS);
+
+  try {
+    const upstream = await fetch(fixedGatewayTarget(`/api/openapi/${moduleId}`), {
+      method: "GET",
+      headers,
+      cache: "no-store",
+      redirect: "manual",
+      signal: controller.signal,
+    });
+    if (timedOut) {
+      await cancelBody(upstream);
+      return gatewayTimeout();
+    }
+
+    const contentType = upstream.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase();
+    if (contentType !== "application/json" && contentType !== "application/openapi+json") {
+      await cancelBody(upstream);
+      return badGateway();
+    }
+
+    const read = await readUpstreamJsonWithLimit(upstream, MAX_OPENAPI_RESPONSE_BYTES);
+    if (timedOut) return gatewayTimeout();
+    if (read.kind === "too_large") return responseTooLarge();
+    if (read.kind === "read_error") return badGateway();
+    if (!upstream.ok) return normalizedError(upstream, read.raw);
+
+    const document = openApiDocumentSchema.safeParse(read.raw);
+    if (!document.success) return badGateway();
+    return Response.json(document.data, {
+      status: 200,
+      headers: { "content-disposition": `inline; filename="${moduleId}-openapi.json"` },
+    });
+  } catch {
+    return timedOut ? gatewayTimeout() : unavailable();
+  } finally {
+    clearTimeout(timeout);
+    request.signal.removeEventListener("abort", abortForRequest);
+  }
 }
 
 export async function getCreditBillingOverview(request: Request): Promise<Response> {

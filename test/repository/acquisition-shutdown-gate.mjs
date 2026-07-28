@@ -32,6 +32,7 @@ const ADMIN_FILTERED_ROUTES = new Map([
   ["apps/admin/app/api/manifests/route.ts", { method: "GET", handler: "getFilteredManifests" }],
   ["apps/admin/app/api/billing-overview/route.ts", { method: "GET", handler: "getCreditBillingOverview" }],
   ["apps/admin/app/api/user360/route.ts", { method: "GET", handler: "getAccountUser360" }],
+  ["apps/admin/app/api/openapi/[moduleId]/route.ts", { method: "GET", handler: "getFilteredOpenApi" }],
   ["apps/admin/app/api/resource/route.ts", { method: "GET", handler: "getFilteredResource" }],
   ["apps/admin/app/api/action/route.ts", { method: "POST", handler: "postFilteredAction" }],
 ]);
