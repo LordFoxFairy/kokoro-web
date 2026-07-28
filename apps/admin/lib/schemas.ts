@@ -114,6 +114,7 @@ export const moduleManifestSchema = z.object({
             id: z.string(),
             labelKey: z.string(),
             route: z.string(),
+            siteScopeField: z.enum(["siteId", "id"]).nullable(),
             actions: z.array(actionMetaSchema).optional(),
           }),
         )
