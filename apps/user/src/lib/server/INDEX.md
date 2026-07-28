@@ -18,7 +18,7 @@ owners:
   - `sealEnvelope(payload, secrets)`：AES-256-GCM 密封，secrets[0]=current；三段 base64url `iv.ct.tag`。
   - `openEnvelope(token, secrets, nowSec)`：解封+验 exp；结构错/篡改/过期/全钥失败 → null。依次尝试
     全部 secrets = 双钥轮换（旧信封在窗口内仍可解）。
-  - `envelopePayloadSchema` / `EnvelopePayload`：`{runtime_jwt,user_id,namespace,site_id,exp}`。
+  - `envelopePayloadSchema` / `EnvelopePayload`：`{runtime_jwt,access_exp,refresh_token,user_id,namespace,site_id,exp}`。
   - `safeEqual(a,b)`：常量时间比对。
 - `auth.ts`（Next 感知装配）
   - `authConfig(env?)`：四项 env（`KOKORO_WEB_SESSION_SECRET` 逗号分隔 / `KOKORO_USER_BASE_URL` /
@@ -31,6 +31,8 @@ owners:
   - `sameOriginOk`：变更类请求同源守卫（Origin 存在且 host 不符则拒）。
   - `preflightSession(request, config, expectedSiteId)`：只解封并校验 Host 权威 Site，不产生网络请求或
     cookie 副作用。protected BFF 必须先做这个纯 preflight，再完成本地 body admission，最后才允许 refresh。
+  - `hasSufficientAccessWindow(accessExp, nowSec, minimum?)`：纯 access 窗口判定；effectful streaming 路径
+    必须在打开下游前调用，不得在已开始的副作后 inline rotate refresh。
   - `resolveSessionWithRefresh(request, config, expectedSiteId, preflightEnvelope?)`：Site-scoped 代理会话入口；
     信封 Site 必须等于当前 Host 权威 Site，且在调用 refresh issuer 前拒绝跨 Site 信封；续期响应也必须
     保持该 Site，否则按安全违规拒绝整个会话（只有普通续期失败才允许回退仍有效的旧 access）。传入
@@ -53,10 +55,12 @@ owners:
   - `readBoundedResponseJson`：仅供必须解析的 Site/Auth/Payment 小响应；代理的 SSE、文件和普通响应
     不解析，保持白名单响应头 + stream pass-through。
   - `prepareCountedRequestBody`：Hub skill upload 专用的 counted stream；以 `TransformStream` 背压转发，
-    不把上传聚合进 Web 内存；声明长度与实读长度都受 96 MiB 限制，客户端中止或超限会中止上游。
-  - `acquireHubUploadLease`：进程内小型准入门；同时限制并发上传与在途声明容量，拒绝时稳定返回
-    `429 hub_upload_busy` 或 `503 hub_upload_capacity_unavailable`，并带 `Retry-After`；租约在成功、错误、
-    客户端中止三类终态都必须释放。
+    不把上传聚合进 Web 内存；声明长度与实读长度都受 96 MiB 限制。其幂等 `dispose()`
+    同时中止 source/transform/upstream 所有权边，无消费者的提前响应也不得卡死 completion。
+  - `acquireHubUploadLease`：进程内准入门；直接上传不信任 `Content-Length`，每个均保守预留
+    96 MiB，在 128 MiB aggregate 限制下第二个直传稳定返回
+    `503 hub_upload_capacity_unavailable + Retry-After`。租约 release 幂等，在成功、错误、早响应、
+    客户端中止所有终态释放；更小预留只能由后续可信 staging receipt 引入。
   - 缓冲请求 cap：Auth 16 KiB、Team 64 KiB、Session 1 MiB、Hub 普通 256 KiB；Hub skill upload
     是 96 MiB **流式计数上限**，精确对齐 Hub `UPLOAD_BODY_LIMIT`（zip 文件本身仍由 Hub 限制为 64 MiB）。
   - 解析响应 cap：Site 64 KiB、Auth 256 KiB、Payment 套餐目录 1 MiB。
@@ -72,16 +76,18 @@ owners:
 ## 运行时约束
 
 - 路由 `export const runtime = "nodejs"`（node:crypto + 流式代理）。
-- 信封 exp 对齐 runtime_jwt exp，cookie Max-Age 据此设定。
+- 信封 `access_exp` 对齐 runtime JWT；信封 `exp` 与 cookie Max-Age 对齐 refresh 寿命。
 - nonce 一次性：申请设 cookie，回调用毕即清；跨设备无 nonce → 统一 link_unavailable。
 - 原文 magic-link token / nonce 原文绝不落日志。
 - protected BFF 对未知 Host 返回中性 `site_unresolved`，对跨 Site 信封按未认证处理；两者均不得 refresh、
   写 cookie 或触达业务上游。
 - Session/Team/Hub 普通写请求的顺序固定为 Host→Site → 纯 session preflight → body 校验/准入 → refresh
   → 上游；本地 malformed/oversize/read-abort 不得消耗 refresh rotation、写 cookie 或调用业务上游。
-- Hub upload 因下游必须消费 multipart 才能形成背压，允许在纯 preflight 后打开到 Hub 的流；只有 body
-  完整 EOF 后才允许 refresh。任何超限/读取错误/客户端中止都必须中止该上游流且不得 refresh。Hub 的
-  持久化不变量是“完整读取 multipart 后才持久化”；跨进程 staging receipt 属于后续 W3，不在本层伪造。
+- Hub upload 因下游必须消费 multipart 才能形成背压，只允许 access 剩余窗口足够的信封打开流；
+  临界/过期返回 `428 session_refresh_required`，浏览器先调用 Host/Site-bound 零 body
+  `/api/auth/session-state` 刷新 cookie，再最多重试一次。upload 本身永不 inline refresh；任何超限/读取错误/
+  客户端中止/上游提前响应都必须中止整条流。Hub 的持久化不变量仍是“完整读取 multipart 后才持久化”；
+  跨进程 staging receipt 属于后续 W3。
 
 ## 扩展规则
 

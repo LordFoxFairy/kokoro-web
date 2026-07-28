@@ -10,6 +10,7 @@ import { NextResponse } from "next/server"
 
 import {
   authConfig,
+  hasSufficientAccessWindow,
   INTERNAL_SECRET_HEADER,
   preflightSession,
   resolveSessionWithRefresh,
@@ -48,6 +49,18 @@ function bodyError(reason: "too_large" | "invalid" | "aborted"): Response {
   )
 }
 
+function sessionRefreshRequired(): Response {
+  return NextResponse.json(
+    {
+      error: {
+        code: "session_refresh_required",
+        message: "Refresh the browser session before retrying this upload",
+      },
+    },
+    { status: 428, headers: { "retry-after": "1" } },
+  )
+}
+
 function upstreamResponse(upstream: Response, setCookie: string | null): Response {
   const responseHeaders = new Headers()
   for (const name of ["content-type", "cache-control", "content-length"]) {
@@ -60,9 +73,6 @@ function upstreamResponse(upstream: Response, setCookie: string | null): Respons
 
 async function proxyUpload(
   request: Request,
-  config: NonNullable<ReturnType<typeof authConfig>>,
-  siteId: string,
-  preflight: NonNullable<ReturnType<typeof preflightSession>>,
   target: string,
   headers: Headers,
 ): Promise<Response> {
@@ -71,60 +81,55 @@ async function proxyUpload(
 
   const admission = acquireHubUploadLease(request.headers)
   if (!admission.ok) {
-    prepared.abort(new Error(admission.error))
+    await prepared.dispose(new Error(admission.error))
     return NextResponse.json(
       { error: admission.error },
       { status: admission.status, headers: { "retry-after": String(admission.retryAfter) } },
     )
   }
 
-  const signal = AbortSignal.any([request.signal, prepared.signal])
-  const init = {
-    method: request.method,
-    headers,
-    ...(prepared.body !== undefined ? { body: prepared.body, duplex: "half" as const } : {}),
-    cache: "no-store" as const,
-    signal,
-  }
-  const upstreamPromise = fetch(target, init).then(
-    (response) => ({ ok: true, response }) as const,
-    (error: unknown) => ({ ok: false, error }) as const,
-  )
-
   try {
+    const signal = AbortSignal.any([request.signal, prepared.signal])
+    const init = {
+      method: request.method,
+      headers,
+      ...(prepared.body !== undefined ? { body: prepared.body, duplex: "half" as const } : {}),
+      cache: "no-store" as const,
+      signal,
+    }
+    const upstreamPromise = Promise.resolve()
+      .then(() => fetch(target, init))
+      .then(
+        (response) => ({ ok: true, response }) as const,
+        (error: unknown) => ({ ok: false, error }) as const,
+      )
     const first = await Promise.race([
       prepared.completion.then((completion) => ({ kind: "body", completion }) as const),
       upstreamPromise.then((outcome) => ({ kind: "upstream", outcome }) as const),
     ])
 
-    let completion: CountedBodyCompletion
-    if (first.kind === "upstream" && !first.outcome.ok) {
-      if (request.signal.aborted || prepared.signal.aborted) {
-        completion = await prepared.completion
-        return bodyError(completion.ok ? "aborted" : completion.reason)
+    if (first.kind === "upstream") {
+      const outcome = first.outcome
+      if (!outcome.ok) {
+        await prepared.dispose(outcome.error)
+        if (request.signal.aborted) return bodyError("aborted")
+        return NextResponse.json({ error: "hub_unreachable" }, { status: 502 })
       }
-      prepared.abort(first.outcome.error)
-      await prepared.completion
-      return NextResponse.json({ error: "hub_unreachable" }, { status: 502 })
+      await prepared.dispose(new Error(`hub responded before upload EOF (${outcome.response.status})`))
+      if (outcome.response.ok) {
+        return NextResponse.json({ error: "hub_upload_protocol_error" }, { status: 502 })
+      }
+      return new Response(null, { status: outcome.response.status })
     }
-    completion = first.kind === "body" ? first.completion : await prepared.completion
+    const completion: CountedBodyCompletion = first.completion
     if (!completion.ok) {
-      prepared.abort(new Error(completion.reason))
-      await upstreamPromise
+      await prepared.dispose(new Error(completion.reason))
       return bodyError(completion.reason)
     }
 
-    // Hub upload invariant：下游完整读取 multipart 后才进入持久化；因此只有 counted body EOF 后才允许
-    // refresh rotation。本轮不增加 staging receipt，长期跨进程恢复列入 W3。
-    const resolved = await resolveSessionWithRefresh(request, config, siteId, preflight)
-    if (resolved === null) {
-      prepared.abort(new Error("unauthenticated"))
-      await upstreamPromise
-      return NextResponse.json({ error: "unauthenticated" }, { status: 401 })
-    }
     const outcome = await upstreamPromise
     if (!outcome.ok) return NextResponse.json({ error: "hub_unreachable" }, { status: 502 })
-    return upstreamResponse(outcome.response, resolved.setCookie)
+    return upstreamResponse(outcome.response, null)
   } finally {
     admission.lease.release()
   }
@@ -177,7 +182,11 @@ async function proxy(request: Request, context: { params: Promise<{ path: string
       await request.body?.cancel().catch(() => undefined)
       return NextResponse.json({ error: "method_not_allowed" }, { status: 405 })
     }
-    return proxyUpload(request, config, siteId, preflight, target, headers)
+    if (!hasSufficientAccessWindow(preflight.access_exp, Math.floor(Date.now() / 1000))) {
+      await request.body?.cancel().catch(() => undefined)
+      return sessionRefreshRequired()
+    }
+    return proxyUpload(request, target, headers)
   }
 
   const boundedBody = await readBoundedRequestBody(request, hubRequestBodyLimit(segments))

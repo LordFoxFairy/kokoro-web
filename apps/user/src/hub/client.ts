@@ -1,7 +1,8 @@
 // hub self 面 HTTP 客户端：同源 `/api/hub/*` BFF 代理（注入 web-bff 凭据 + 信封 scope/user）。
 // 入站过 Zod，失败以类型化错误上抛；错误体尽力取 hub 错误码（如 hub.skill_required）供 UI 本地化。
+// upload 遇到 BFF 428 时只调一次零 body session-state refresh，且最多重试一次原 FormData。
 
-import { ZodError, type ZodTypeAny, type z } from "zod"
+import { z, ZodError, type ZodTypeAny } from "zod"
 
 import {
   HUB_BASE,
@@ -96,6 +97,7 @@ async function requestData<T extends ZodTypeAny>(
   path: string,
   inner: T,
   init?: RequestInit,
+  refreshUploadOnce = false,
 ): Promise<z.infer<T>> {
   let response: Response
   try {
@@ -104,9 +106,27 @@ async function requestData<T extends ZodTypeAny>(
     throw new HubClientError("network", describeUnknown(error), null, null)
   }
   if (!response.ok) {
-    throw await readError(response)
+    const failure = await readError(response)
+    if (
+      refreshUploadOnce &&
+      failure.status === 428 &&
+      failure.code === "session_refresh_required" &&
+      (await refreshBrowserSession())
+    ) {
+      return requestData(path, inner, init, false)
+    }
+    throw failure
   }
   return parseData(response, inner)
+}
+
+const sessionStateSchema = z.object({ state: z.enum(["authenticated", "preview", "anonymous"]) }).strict()
+
+async function refreshBrowserSession(): Promise<boolean> {
+  const response = await fetch("/api/auth/session-state", { cache: "no-store" }).catch(() => null)
+  if (response === null || !response.ok) return false
+  const parsed = sessionStateSchema.safeParse(await response.json().catch(() => null))
+  return parsed.success && parsed.data.state === "authenticated"
 }
 
 export type HubClient = {
@@ -174,12 +194,12 @@ export function createHubClient(): HubClient {
       requestData(skillUploadPreviewPath, uploadPreviewSchema, {
         method: "POST",
         body: uploadForm(zip, null),
-      }),
+      }, true),
     confirmUpload: (zip, names) =>
       requestData(skillUploadConfirmPath, uploadConfirmSchema, {
         method: "POST",
         body: uploadForm(zip, names),
-      }),
+      }, true),
     listMcpServers: async () => (await requestData(mcpServersPath, mcpServerPoolSchema)).servers,
     registerMcpServer: async (input) =>
       (

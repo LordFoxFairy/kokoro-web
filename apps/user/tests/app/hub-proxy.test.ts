@@ -86,6 +86,7 @@ beforeEach(() => {
   vi.stubEnv("NODE_ENV", "production")
 })
 afterEach(() => {
+  vi.restoreAllMocks()
   vi.unstubAllGlobals()
   vi.unstubAllEnvs()
   __clearSiteResolveCache()
@@ -261,6 +262,79 @@ describe("/api/hub/[...path] proxy", () => {
     ])
   })
 
+  it("requires a zero-body refresh before a near-expiry upload and never calls Hub", async () => {
+    let hubPersisted = false
+    const fetchMock = vi.fn(async (target: string | URL, init?: RequestInit) => {
+      const url = target.toString()
+      if (url.startsWith("http://site.test/")) return siteResponse("site-a")
+      if (url === "http://user.test/auth/refresh") return refreshResponse("site-b")
+      await new Response(init?.body).arrayBuffer()
+      hubPersisted = true
+      return new Response("{}", { status: 200 })
+    })
+    vi.stubGlobal("fetch", fetchMock)
+    const { POST } = await import("@/app/api/hub/[...path]/route")
+
+    const request = chunkedPost(
+      "http://localhost/api/hub/self/skills/upload/confirm",
+      [new Uint8Array([1])],
+      {
+        cookie: sessionCookie("site-a", nowSec() + 60),
+        host: "site-a.example",
+        origin: "http://site-a.example",
+        "content-type": "multipart/form-data; boundary=test",
+      },
+    )
+    const res = await POST(request, params(["self", "skills", "upload", "confirm"]))
+
+    expect(res.status).toBe(428)
+    expect(await res.json()).toEqual({
+      error: { code: "session_refresh_required", message: expect.any(String) },
+    })
+    expect(res.headers.get("retry-after")).toBe("1")
+    expect(res.headers.get("set-cookie")).toBeNull()
+    expect(hubPersisted).toBe(false)
+    expect(fetchMock.mock.calls.map(([target]) => target.toString())).toEqual([
+      "http://site.test/site-context/resolve?host=site-a.example",
+    ])
+  })
+
+  it("never rotates refresh after an admitted upload crosses the access safety threshold", async () => {
+    const startedAtMs = 2_000_000_000_000
+    const clock = vi.spyOn(Date, "now").mockReturnValue(startedAtMs)
+    const startedAtSec = Math.floor(startedAtMs / 1000)
+    const fetchMock = vi.fn(async (target: string | URL, init?: RequestInit) => {
+      const url = target.toString()
+      if (url.startsWith("http://site.test/")) return siteResponse("site-a")
+      if (url === "http://user.test/auth/refresh") return refreshResponse("site-b")
+      await new Response(init?.body).arrayBuffer()
+      clock.mockReturnValue(startedAtMs + 2_000)
+      return new Response("{}", { status: 200 })
+    })
+    vi.stubGlobal("fetch", fetchMock)
+    const { POST } = await import("@/app/api/hub/[...path]/route")
+
+    const request = chunkedPost(
+      "http://localhost/api/hub/self/skills/upload/confirm",
+      [new Uint8Array([1])],
+      {
+        cookie: sessionCookie("site-a", startedAtSec + 301),
+        host: "site-a.example",
+        origin: "http://site-a.example",
+        "content-type": "multipart/form-data; boundary=test",
+      },
+    )
+    const res = await POST(request, params(["self", "skills", "upload", "confirm"]))
+
+    expect(res.status).toBe(200)
+    expect(res.headers.get("set-cookie")).toBeNull()
+    expect(fetchMock.mock.calls.map(([target]) => target.toString())).toEqual([
+      "http://site.test/site-context/resolve?host=site-a.example",
+      "http://hub.test/hub/self/skills/upload/confirm",
+    ])
+    clock.mockRestore()
+  })
+
   it("rejects a chunked non-upload Hub body after the 256 KiB hard cap", async () => {
     const fetchMock = vi.fn(async (target: string | URL) =>
       target.toString().startsWith("http://site.test/")
@@ -305,7 +379,7 @@ describe("/api/hub/[...path] proxy", () => {
     const request = new Request("http://localhost/api/hub/self/skills/upload/preview", {
       method: "POST",
       headers: {
-        cookie: sessionCookie("site-a", nowSec() + 60),
+        cookie: sessionCookie("site-a", nowSec() + 3600),
         host: "site-a.example",
         origin: "http://site-a.example",
         "content-type": "multipart/form-data; boundary=test",
@@ -384,7 +458,195 @@ describe("/api/hub/[...path] proxy", () => {
     expect(res.status).toBe(200)
   })
 
-  it("returns stable 429 while two upload leases are active and releases them after success", async () => {
+  it("disposes the request stream when upload admission rejects it", async () => {
+    const { acquireHubUploadLease } = await import("@/lib/server/http-boundary")
+    const held = acquireHubUploadLease(new Headers())
+    expect(held.ok).toBe(true)
+    if (!held.ok) return
+
+    const client = new AbortController()
+    let sourceCancelled = false
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        controller.enqueue(new Uint8Array(64 * 1024))
+      },
+      cancel() {
+        sourceCancelled = true
+      },
+    })
+    const fetchMock = vi.fn(async (target: string | URL) => {
+      if (target.toString().startsWith("http://site.test/")) return siteResponse("site-a")
+      throw new Error("Hub must not be called after admission rejection")
+    })
+    vi.stubGlobal("fetch", fetchMock)
+    const { POST } = await import("@/app/api/hub/[...path]/route")
+    const request = new Request("http://localhost/api/hub/self/skills/upload/preview", {
+      method: "POST",
+      headers: {
+        cookie: sessionCookie(),
+        host: "site-a.example",
+        origin: "http://site-a.example",
+        "content-type": "multipart/form-data; boundary=test",
+        "content-length": "1",
+      },
+      body,
+      duplex: "half",
+      signal: client.signal,
+    } as RequestInit & { duplex: "half" })
+
+    const response = await POST(request, params(["self", "skills", "upload", "preview"]))
+    held.lease.release()
+    if (!sourceCancelled) client.abort()
+
+    expect(response.status).toBe(503)
+    expect(await response.json()).toEqual({ error: "hub_upload_capacity_unavailable" })
+    expect(response.headers.get("retry-after")).toBe("2")
+    expect(response.headers.get("set-cookie")).toBeNull()
+    expect(sourceCancelled).toBe(true)
+    expect(fetchMock.mock.calls.map(([target]) => target.toString())).toEqual([
+      "http://site.test/site-context/resolve?host=site-a.example",
+    ])
+  })
+
+  it("settles and releases admission when Hub rejects before consuming the upload body", async () => {
+    const client = new AbortController()
+    let sourceCancelled = false
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        controller.enqueue(new Uint8Array(64 * 1024))
+      },
+      cancel() {
+        sourceCancelled = true
+      },
+    })
+    let upstreamSignal: AbortSignal | null = null
+    const fetchMock = vi.fn(async (target: string | URL, init?: RequestInit) => {
+      if (target.toString().startsWith("http://site.test/")) return siteResponse("site-a")
+      upstreamSignal = init?.signal ?? null
+      return new Response("forbidden", { status: 403 })
+    })
+    vi.stubGlobal("fetch", fetchMock)
+    const { POST } = await import("@/app/api/hub/[...path]/route")
+    const request = new Request("http://localhost/api/hub/self/skills/upload/confirm", {
+      method: "POST",
+      headers: {
+        cookie: sessionCookie(),
+        host: "site-a.example",
+        origin: "http://site-a.example",
+        "content-type": "multipart/form-data; boundary=test",
+      },
+      body,
+      duplex: "half",
+      signal: client.signal,
+    } as RequestInit & { duplex: "half" })
+
+    const pending = POST(request, params(["self", "skills", "upload", "confirm"]))
+    const timeout = Symbol("timeout")
+    const outcome = await Promise.race([
+      pending,
+      new Promise<typeof timeout>((resolve) => setTimeout(() => resolve(timeout), 100)),
+    ])
+    if (outcome === timeout) {
+      client.abort()
+    }
+
+    expect(outcome).not.toBe(timeout)
+    if (outcome === timeout) return
+    expect(outcome.status).toBe(403)
+    expect(sourceCancelled).toBe(true)
+    expect(upstreamSignal).not.toBeNull()
+    expect(upstreamSignal!.aborted).toBe(true)
+    expect(fetchMock.mock.calls.map(([target]) => target.toString())).toEqual([
+      "http://site.test/site-context/resolve?host=site-a.example",
+      "http://hub.test/hub/self/skills/upload/confirm",
+    ])
+
+    const { acquireHubUploadLease } = await import("@/lib/server/http-boundary")
+    const afterEarlyResponse = acquireHubUploadLease(new Headers())
+    expect(afterEarlyResponse.ok).toBe(true)
+    if (afterEarlyResponse.ok) afterEarlyResponse.lease.release()
+  })
+
+  it("treats a successful Hub response before upload EOF as a protocol error", async () => {
+    let sourceCancelled = false
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        controller.enqueue(new Uint8Array(64 * 1024))
+      },
+      cancel() {
+        sourceCancelled = true
+      },
+    })
+    const fetchMock = vi.fn(async (target: string | URL) =>
+      target.toString().startsWith("http://site.test/")
+        ? siteResponse("site-a")
+        : new Response("{}", { status: 200 }),
+    )
+    vi.stubGlobal("fetch", fetchMock)
+    const { POST } = await import("@/app/api/hub/[...path]/route")
+    const request = new Request("http://localhost/api/hub/self/skills/upload/preview", {
+      method: "POST",
+      headers: {
+        cookie: sessionCookie(),
+        host: "site-a.example",
+        origin: "http://site-a.example",
+        "content-type": "multipart/form-data; boundary=test",
+      },
+      body,
+      duplex: "half",
+    } as RequestInit & { duplex: "half" })
+
+    const response = await POST(request, params(["self", "skills", "upload", "preview"]))
+
+    expect(response.status).toBe(502)
+    expect(await response.json()).toEqual({ error: "hub_upload_protocol_error" })
+    expect(sourceCancelled).toBe(true)
+    expect(fetchMock.mock.calls.map(([target]) => target.toString())).toEqual([
+      "http://site.test/site-context/resolve?host=site-a.example",
+      "http://hub.test/hub/self/skills/upload/preview",
+    ])
+  })
+
+  it("normalizes an upstream failure before upload EOF and still releases the source", async () => {
+    let sourceCancelled = false
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        controller.enqueue(new Uint8Array(64 * 1024))
+      },
+      cancel() {
+        sourceCancelled = true
+      },
+    })
+    const fetchMock = vi.fn(async (target: string | URL) => {
+      if (target.toString().startsWith("http://site.test/")) return siteResponse("site-a")
+      throw new Error("connection refused")
+    })
+    vi.stubGlobal("fetch", fetchMock)
+    const { POST } = await import("@/app/api/hub/[...path]/route")
+    const request = new Request("http://localhost/api/hub/self/skills/upload/preview", {
+      method: "POST",
+      headers: {
+        cookie: sessionCookie(),
+        host: "site-a.example",
+        origin: "http://site-a.example",
+        "content-type": "multipart/form-data; boundary=test",
+      },
+      body,
+      duplex: "half",
+    } as RequestInit & { duplex: "half" })
+
+    const response = await POST(request, params(["self", "skills", "upload", "preview"]))
+
+    expect(response.status).toBe(502)
+    expect(await response.json()).toEqual({ error: "hub_unreachable" })
+    expect(sourceCancelled).toBe(true)
+    const { acquireHubUploadLease } = await import("@/lib/server/http-boundary")
+    const afterFailure = acquireHubUploadLease(new Headers())
+    expect(afterFailure.ok).toBe(true)
+    if (afterFailure.ok) afterFailure.lease.release()
+  })
+
+  it("conservatively rejects a second direct upload and releases capacity after success", async () => {
     let release!: () => void
     const gate = new Promise<void>((resolve) => {
       release = resolve
@@ -395,7 +657,7 @@ describe("/api/hub/[...path] proxy", () => {
       if (url.startsWith("http://site.test/")) return siteResponse("site-a")
       hubCalls += 1
       await new Response(init!.body).arrayBuffer()
-      if (hubCalls <= 2) await gate
+      if (hubCalls === 1) await gate
       return new Response("{}", { status: 200 })
     })
     vi.stubGlobal("fetch", fetchMock)
@@ -403,16 +665,15 @@ describe("/api/hub/[...path] proxy", () => {
     const path = params(["self", "skills", "upload", "preview"])
 
     const first = POST(uploadRequest([new Uint8Array([1])], 1), path)
-    const second = POST(uploadRequest([new Uint8Array([2])], 1), path)
-    await vi.waitFor(() => expect(hubCalls).toBe(2))
-    const rejected = await POST(uploadRequest([new Uint8Array([3])], 1), path)
+    await vi.waitFor(() => expect(hubCalls).toBe(1))
+    const rejected = await POST(uploadRequest([new Uint8Array([2])], 1), path)
 
-    expect(rejected.status).toBe(429)
-    expect(await rejected.json()).toEqual({ error: "hub_upload_busy" })
-    expect(rejected.headers.get("retry-after")).toBe("1")
+    expect(rejected.status).toBe(503)
+    expect(await rejected.json()).toEqual({ error: "hub_upload_capacity_unavailable" })
+    expect(rejected.headers.get("retry-after")).toBe("2")
     release()
-    await Promise.all([first, second])
-    const afterRelease = await POST(uploadRequest([new Uint8Array([4])], 1), path)
+    await first
+    const afterRelease = await POST(uploadRequest([new Uint8Array([3])], 1), path)
     expect(afterRelease.status).toBe(200)
   })
 
@@ -463,7 +724,7 @@ describe("/api/hub/[...path] proxy", () => {
     const abortedRequest = new Request("http://localhost/api/hub/self/skills/upload/preview", {
       method: "POST",
       headers: {
-        cookie: sessionCookie("site-a", nowSec() + 60),
+        cookie: sessionCookie("site-a", nowSec() + 3600),
         host: "site-a.example",
         origin: "http://site-a.example",
         "content-type": "multipart/form-data; boundary=test",

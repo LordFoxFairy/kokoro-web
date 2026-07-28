@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest"
 
-import { prepareCountedRequestBody, readBoundedRequestBody } from "@/lib/server/http-boundary"
+import {
+  acquireHubUploadLease,
+  prepareCountedRequestBody,
+  readBoundedRequestBody,
+} from "@/lib/server/http-boundary"
 
 function streamedRequest(chunks: Uint8Array[], headers: Record<string, string> = {}): Request {
   let index = 0
@@ -68,5 +72,27 @@ describe("HTTP body boundary", () => {
     await expect(new Response(prepared.body).arrayBuffer()).rejects.toBeInstanceOf(Error)
     expect(await prepared.completion).toEqual({ ok: false, reason: "too_large" })
     expect(prepared.signal.aborted).toBe(true)
+  })
+
+  it("does not let two underdeclared uploads exceed the aggregate reservation", () => {
+    const first = acquireHubUploadLease(new Headers({ "content-length": "1" }))
+    const second = acquireHubUploadLease(new Headers({ "content-length": "1" }))
+    if (first.ok) first.lease.release()
+    if (second.ok) second.lease.release()
+
+    expect(first.ok).toBe(true)
+    expect(second).toEqual({
+      ok: false,
+      status: 503,
+      error: "hub_upload_capacity_unavailable",
+      retryAfter: 2,
+    })
+
+    const afterRelease = acquireHubUploadLease(new Headers({ "content-length": "1" }))
+    expect(afterRelease.ok).toBe(true)
+    if (afterRelease.ok) {
+      afterRelease.lease.release()
+      afterRelease.lease.release()
+    }
   })
 })

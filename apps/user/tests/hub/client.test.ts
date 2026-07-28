@@ -53,6 +53,66 @@ describe("hub client", () => {
     expect(form.get("file")).toBeInstanceOf(Blob)
   })
 
+  it("refreshes through the zero-body session probe and retries an upload once", async () => {
+    let uploadCalls = 0
+    const fetchMock = vi.fn(async (target: string | URL) => {
+      const url = target.toString()
+      if (url === "/api/auth/session-state") {
+        return jsonResponse({ state: "authenticated" })
+      }
+      uploadCalls += 1
+      return uploadCalls === 1
+        ? jsonResponse(
+            {
+              error: {
+                code: "session_refresh_required",
+                message: "refresh before retry",
+              },
+            },
+            428,
+          )
+        : jsonResponse({ data: { namespace: "team_1", candidates: [] } })
+    })
+    vi.stubGlobal("fetch", fetchMock)
+
+    const preview = await createHubClient().previewUpload(new Blob(["zip"]))
+
+    expect(preview).toEqual({ namespace: "team_1", candidates: [] })
+    expect(fetchMock.mock.calls.map(([target]) => target.toString())).toEqual([
+      "/api/hub/self/skills/upload/preview",
+      "/api/auth/session-state",
+      "/api/hub/self/skills/upload/preview",
+    ])
+    expect(fetchMock).toHaveBeenNthCalledWith(2, "/api/auth/session-state", { cache: "no-store" })
+  })
+
+  it("does not loop when the single upload retry still requires refresh", async () => {
+    let uploadCalls = 0
+    let probeCalls = 0
+    const fetchMock = vi.fn(async (target: string | URL) => {
+      if (target.toString() === "/api/auth/session-state") {
+        probeCalls += 1
+        return jsonResponse({ state: "authenticated" })
+      }
+      uploadCalls += 1
+      if (uploadCalls <= 2) {
+        return jsonResponse(
+          { error: { code: "session_refresh_required", message: "refresh before retry" } },
+          428,
+        )
+      }
+      return jsonResponse({ data: { namespace: "team_1", candidates: [] } })
+    })
+    vi.stubGlobal("fetch", fetchMock)
+
+    await expect(createHubClient().previewUpload(new Blob(["zip"]))).rejects.toMatchObject({
+      code: "session_refresh_required",
+      status: 428,
+    })
+    expect(uploadCalls).toBe(2)
+    expect(probeCalls).toBe(1)
+  })
+
   it("fails loud (parse) when the pool payload violates the schema", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ data: { skills: [{ name: "x" }] } })))
     await expect(createHubClient().listSkillPool()).rejects.toBeInstanceOf(HubClientError)

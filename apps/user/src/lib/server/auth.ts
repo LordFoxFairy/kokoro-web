@@ -349,6 +349,16 @@ export async function userRevokeSession(config: AuthConfig, refreshToken: string
 // access 剩余寿命低于此阈值即提前静默续期（趁 access 还有效换新，续失败也不影响本次请求）。
 const REFRESH_THRESHOLD_SECONDS = 300
 
+// Effectful streaming requests cannot rotate refresh after the downstream has started. Callers use this pure
+// predicate before opening the stream and ask the browser to refresh through a zero-body endpoint when needed.
+export function hasSufficientAccessWindow(
+  accessExp: number,
+  nowEpochSec: number,
+  minimumRemainingSeconds: number = REFRESH_THRESHOLD_SECONDS,
+): boolean {
+  return accessExp - nowEpochSec >= minimumRemainingSeconds
+}
+
 export interface ResolvedSession {
   envelope: EnvelopePayload
   // 续期成功才有：重新密封的信封 cookie 的 Set-Cookie 头值，各代理在响应上 append 写回浏览器。

@@ -163,10 +163,11 @@ export type CountedRequestBodyResult =
       completion: Promise<CountedBodyCompletion>
       signal: AbortSignal
       abort: (reason?: unknown) => void
+      dispose: (reason?: unknown) => Promise<void>
     }
 
 // 大上传只计数、绝不聚合进内存。pipeTo 受客户端 signal 与内部 abort 双重控制；只有源流完整 EOF
-// 才把 completion 标为 ok，供 route 在此之后执行 refresh rotation。
+// 才把 completion 标为 ok。dispose 是异常终态的唯一收口，必须收回无消费者的 readable 和原请求流。
 export async function prepareCountedRequestBody(
   request: Request,
   maxBytes: number,
@@ -182,12 +183,18 @@ export async function prepareCountedRequestBody(
     if (!internalAbort.signal.aborted) internalAbort.abort(reason)
   }
   if (request.body === null) {
+    let disposed = false
     return {
       ok: true,
       body: undefined,
       completion: Promise.resolve({ ok: true }),
       signal: internalAbort.signal,
       abort,
+      dispose: async (reason?: unknown) => {
+        if (disposed) return
+        disposed = true
+        abort(reason)
+      },
     }
   }
 
@@ -210,7 +217,22 @@ export async function prepareCountedRequestBody(
       return { ok: false, reason: "invalid" } as const
     })
 
-  return { ok: true, body: counted.readable, completion, signal: internalAbort.signal, abort }
+  let disposal: Promise<void> | null = null
+  const dispose = (reason?: unknown): Promise<void> => {
+    if (disposal !== null) return disposal
+    abort(reason)
+    disposal = (async () => {
+      // If fetch never took ownership (admission rejection / early response mock), aborting pipeTo alone can
+      // remain backpressured forever. Cancelling the readable releases that ownership edge; pipeTo then cancels
+      // the original request source through its AbortSignal.
+      await counted.readable.cancel(reason).catch(() => undefined)
+      await completion
+      await cancelQuietly(request.body)
+    })()
+    return disposal
+  }
+
+  return { ok: true, body: counted.readable, completion, signal: internalAbort.signal, abort, dispose }
 }
 
 const HUB_UPLOAD_MAX_CONCURRENT = 2
@@ -229,13 +251,14 @@ export type HubUploadAdmission =
   | { ok: true; lease: HubUploadLease }
   | { ok: false; status: 429 | 503; error: "hub_upload_busy" | "hub_upload_capacity_unavailable"; retryAfter: number }
 
-export function acquireHubUploadLease(headers: Headers): HubUploadAdmission {
+export function acquireHubUploadLease(_headers: Headers): HubUploadAdmission {
+  void _headers
   if (activeHubUploads >= HUB_UPLOAD_MAX_CONCURRENT) {
     return { ok: false, status: 429, error: "hub_upload_busy", retryAfter: HUB_UPLOAD_BUSY_RETRY_SECONDS }
   }
-  const declared = declaredLength(headers)
-  const reservation =
-    declared === null || declared === "invalid" ? HUB_UPLOAD_REQUEST_BODY_MAX_BYTES : Number(declared)
+  // Content-Length is attacker-controlled at this boundary. Every direct upload reserves its full admissible
+  // size; a future staged/trusted receipt may introduce smaller reservations without reopening underdeclaration.
+  const reservation = HUB_UPLOAD_REQUEST_BODY_MAX_BYTES
   if (reservedHubUploadBytes + reservation > HUB_UPLOAD_MAX_RESERVED_BYTES) {
     return {
       ok: false,
