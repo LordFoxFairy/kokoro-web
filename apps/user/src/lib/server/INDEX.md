@@ -33,12 +33,12 @@ owners:
 - `site.ts`（host→site 解析，SITE-REAL）
   - `resolveSite(host, env?) → ResolvedSite | null`：Host 经 kokoro-site `/site-context/resolve` 定
     `{siteId, brand}`；**仅成功解析**按 host 短 TTL（30s）缓存（失败/未命中不写缓存，服务抖动即时恢复）。
-    开发缺省档：未配置 `KOKORO_SITE_BASE_URL`/host 缺失/未命中 → 退回 env 缺省站点（`KOKORO_SITE_ID`）+
-    默认品牌 Kokoro 并 WARN。production 自动 strict；显式 strict 档（`KOKORO_SITE_STRICT` 开且已配 base URL）
-    同样在解析失败时 → 回 `null`
-    fail-closed，`page.tsx` 渲染中性无品牌 404（防多租户品牌串味）。
+    显式非生产开发档：未配置 `KOKORO_SITE_BASE_URL`/Host 缺失/未命中 → 退回 env 缺省站点
+    （`KOKORO_SITE_ID`）+ 默认品牌 Kokoro 并 WARN。production 自动 strict；显式 strict 档在 resolver 缺失、
+    Host 缺失、未知 Host 或上游故障时均回 `null` fail-closed。
   - `resolveSiteId(host, fallbackSiteId)`：仅取 site_id 供 auth 流（magic-link/callback/team-switch）
-    密封进信封；解析失败/strict fail-closed 均退回 `fallbackSiteId`（auth 绑定本部署站点，不受品牌 404 影响）。
+    与 Site-scoped BFF；仅开发档允许 `fallbackSiteId`，strict/production 保持 `null`，禁止未知 Host
+    签发/换签信封或触达业务上游。
   - `SiteBrand`/`ResolvedSite`/`DEFAULT_BRAND`；`__clearSiteResolveCache()` 仅测试用。
 
 ## 关键协作者

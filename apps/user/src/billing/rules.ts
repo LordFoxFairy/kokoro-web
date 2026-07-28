@@ -6,7 +6,7 @@ import { CREDIT_INSUFFICIENT } from "./client"
 import type { MessageKey } from "@/i18n/messages"
 
 // run 被 credit_insufficient 拒（session 受理挂点余额不足 → 402）：错误码由 client 从错误体取出、
-// 落在 machine.error。据此给计费专用说明 + 价格入口（不复用通用失败文案）。null/其它码=非 402。
+// 落在 machine.error。据此给计费专用说明 + 余额入口（不复用通用失败文案）。null/其它码=非 402。
 export function isCreditInsufficient(errorCode: string | null): boolean {
   return errorCode === CREDIT_INSUFFICIENT
 }

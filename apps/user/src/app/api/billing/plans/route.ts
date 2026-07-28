@@ -1,12 +1,14 @@
-// 套餐目录 BFF（PAY-2）：读信封 → 注入 web-bff caller 凭据 + x-kokoro-site-id（信封派生，浏览器无从伪造）
+// 套餐目录 BFF：读信封 → 将当前 Host 重新解析并与信封 Site 绑定 → 注入 web-bff caller 凭据
+// + x-kokoro-site-id（浏览器无从伪造）
 // → 转发到 kokoro-payment 的 GET /plans（在售套餐读面）。payment 属外部边界：校验其响应形状，
 // 把 camelCase + {data} 信封归一成 web 面 snake_case {plans}，浏览器只见同源 `/api/billing/plans`。
-// paymentBaseUrl 未配置（预览档）→ 503，展示层据此渲染「支付暂未开通」诚实态。
+// paymentBaseUrl 未配置（预览档）→ 503，展示层据此渲染「套餐目录不可用」诚实态。
 
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
 import { authConfig, INTERNAL_SECRET_HEADER, readEnvelope, SERVICE_HEADER, SERVICE_VALUE } from "@/lib/server/auth"
+import { resolveSiteId } from "@/lib/server/site"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -39,6 +41,10 @@ export async function GET(request: Request): Promise<Response> {
   if (envelope === null) {
     return NextResponse.json({ error: "unauthenticated" }, { status: 401 })
   }
+  const siteId = await resolveSiteId(request.headers.get("host"), config.siteId)
+  if (siteId === null || siteId !== envelope.site_id) {
+    return NextResponse.json({ error: "site_unresolved" }, { status: 404 })
+  }
   if (config.paymentBaseUrl === null) {
     // 未接 payment 服务（预览档）：价格目录不可用，展示层据此降级为未开通态。
     return NextResponse.json({ error: "payment_not_configured" }, { status: 503 })
@@ -50,7 +56,7 @@ export async function GET(request: Request): Promise<Response> {
     headers.set(INTERNAL_SECRET_HEADER, config.internalSecret)
   }
   // 站点身份从信封派生（web 侧解封结果），浏览器无从伪造。
-  headers.set(SITE_ID_HEADER, envelope.site_id)
+  headers.set(SITE_ID_HEADER, siteId)
 
   const target = `${config.paymentBaseUrl.replace(/\/+$/, "")}/plans`
   let upstream: Response

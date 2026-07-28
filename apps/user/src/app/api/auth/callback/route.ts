@@ -51,6 +51,13 @@ export async function GET(request: Request): Promise<NextResponse> {
     return failRedirect(config)
   }
 
+  // Host→Site 是认证签发的前置准入：strict/production 解析失败时不得先消费一次性 token，
+  // 更不得把身份静默绑定到部署缺省 Site。
+  const siteId = await resolveSiteId(request.headers.get("host"), config.siteId)
+  if (siteId === null) {
+    return failRedirect(config)
+  }
+
   const consumed = await userConsumeMagicLink(config, token, hashNonce(nonce))
   if (consumed === null) {
     return failRedirect(config)
@@ -63,8 +70,6 @@ export async function GET(request: Request): Promise<NextResponse> {
   const refreshExpMs = new Date(consumed.refresh_expires_at).getTime()
   const refreshExp = Number.isFinite(refreshExpMs) ? Math.floor(refreshExpMs / 1000) : nowSec + 2_592_000
   const maxAge = Math.max(0, refreshExp - nowSec)
-  // 按请求 Host 定站点（SITE-REAL）：未接 site 服务时回退 config 的 env 缺省站点。
-  const siteId = await resolveSiteId(request.headers.get("host"), config.siteId)
   const sealed = sealEnvelope(
     {
       runtime_jwt: consumed.token,

@@ -3,7 +3,7 @@
 // site 服务抖动即时恢复（不被 30s 旧值粘住）。
 // FALLBACK 语义（SITE-REAL-FALLBACK）：
 //   - 非生产且 KOKORO_SITE_STRICT 未开：解析失败 → 退回 env 缺省站点 + 默认品牌 + WARN（开发安全网）。
-//   - production 或显式 strict（且已配 KOKORO_SITE_BASE_URL）：解析失败 → fail-closed 回 null，
+//   - production 或显式 strict：resolver 未配置、Host 缺失或解析失败 → fail-closed 回 null，
 //     上游渲染中性无品牌 404，不退默认品牌（防多租户品牌串味）。
 
 import { z } from "zod"
@@ -91,7 +91,7 @@ async function fetchResolved(
   return { siteId: context.siteId, brand: context.brand }
 }
 
-// 按请求 Host 解析站点。未配置 KOKORO_SITE_BASE_URL 或 host 缺失 → 直接退回 env 缺省（不发网络）。
+// 按请求 Host 解析站点。仅显式非生产开发档允许 resolver 未配置或 Host 缺失时退回 env 缺省。
 // 返回 null 仅在 strict 档解析失败时出现（fail-closed），上游据此渲染中性无品牌 404。
 export async function resolveSite(
   host: string | null | undefined,
@@ -100,7 +100,11 @@ export async function resolveSite(
   const baseUrl = env.KOKORO_SITE_BASE_URL?.trim()
   const normalizedHost = normalizeHost(host)
   if (!baseUrl || !normalizedHost) {
-    // 未接 site 服务或无 host：退回 env 缺省站点，不阻断渲染（strict 不生效——无可解析对象）。
+    if (isStrictMode(env)) {
+      console.warn("[site-resolve] resolver or Host unavailable; strict mode → fail-closed 404")
+      return null
+    }
+    // 显式开发档：未接 Site 服务或无 Host 时才允许回退，方便单站点本地调试。
     return fallbackSite(env)
   }
 
@@ -126,14 +130,17 @@ export async function resolveSite(
   return resolved
 }
 
-// 仅取 site_id（auth 流用）：解析失败/strict fail-closed 均退回传入的 env 缺省 site_id
-// （auth 绑定本部署自有站点，不受品牌 fail-closed 影响；品牌串味风险只在页面品牌渲染面）。
+// 仅取 site_id（auth/BFF 流用）：strict/production 解析失败必须保持 null，禁止把未知 Host
+// 签发到部署缺省 Site。fallbackSiteId 只服务显式非生产开发档。
 export async function resolveSiteId(
   host: string | null | undefined,
   fallbackSiteId: string,
-): Promise<string> {
+): Promise<string | null> {
   const site = await resolveSite(host)
-  return site?.siteId || fallbackSiteId
+  if (site?.siteId) {
+    return site.siteId
+  }
+  return isStrictMode(process.env) ? null : fallbackSiteId
 }
 
 // 便于测试重置进程内缓存。

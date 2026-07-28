@@ -23,5 +23,5 @@ owners:
 - 金额全程 BigInt 十进制换算，绝不过 Number（余额可能超 2^53）。`format.creditsToNumber` 仅供 sparkline 几何（相对定位），绝不用于精算/展示金额。
 - `created_at` 是 epoch **毫秒**（credit `getTime()` 直透）；日期/时间格式化直接按 ms，勿再 ×1000。
 - 流水/目录中的分页列表是本地 accumulator（同 use-session-list 范式），不走 query 层。
-- `paymentBaseUrl` 仅供 `/api/billing/plans` 目录读取；缺失时显式「目录不可用」。禁止恢复 checkout/mock-pay/refund BFF、provider secret 或 SDK 初始化。
+- `paymentBaseUrl` 仅供 `/api/billing/plans` 目录读取；该 BFF 会把当前 Host 重新解析并与密封信封 Site 比对，解析失败/不一致不触达 payment。缺失时显式「目录不可用」。禁止恢复 checkout/mock-pay/refund BFF、provider secret 或 SDK 初始化。
 - 低余额阈值 = 50 积分（`LOW_BALANCE_MICROS`）；配额进度未做（周期已用量需后端聚合，见 B1 挂点）。

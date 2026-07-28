@@ -34,9 +34,11 @@ export async function POST(request: Request): Promise<NextResponse> {
     return NextResponse.json({ error: "invalid_email" }, { status: 400 })
   }
 
-  const nonce = newNonce()
-  // 按请求 Host 定站点（SITE-REAL）：未接 site 服务时回退 config 的 env 缺省站点。
   const siteId = await resolveSiteId(request.headers.get("host"), config.siteId)
+  if (siteId === null) {
+    return NextResponse.json({ error: "site_unresolved" }, { status: 404 })
+  }
+  const nonce = newNonce()
   const outcome = await userRequestMagicLink(config, parsed.data.email, hashNonce(nonce), siteId)
 
   if (outcome.kind === "rate_limited") {

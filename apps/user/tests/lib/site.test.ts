@@ -123,6 +123,25 @@ describe("resolveSite", () => {
     vi.unstubAllEnvs()
   })
 
+  it("production fails closed without a configured Site resolver", async () => {
+    vi.stubEnv("NODE_ENV", "production")
+    delete process.env.KOKORO_SITE_BASE_URL
+    const fetchMock = vi.fn()
+    vi.stubGlobal("fetch", fetchMock)
+
+    expect(await resolveSite("brand-a.com")).toBeNull()
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it("strict mode fails closed when the request Host is missing", async () => {
+    process.env.KOKORO_SITE_STRICT = "1"
+    const fetchMock = vi.fn()
+    vi.stubGlobal("fetch", fetchMock)
+
+    expect(await resolveSite(null)).toBeNull()
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   it("strict mode: still resolves normally when the site service resolves the host", async () => {
     process.env.KOKORO_SITE_STRICT = "true"
     const fetchMock = vi.fn().mockResolvedValue(
@@ -153,13 +172,22 @@ describe("resolveSiteId", () => {
     expect(await resolveSiteId("brandco.com", "site-fallback")).toBe("site-fallback")
   })
 
-  it("returns the provided fallback site_id under strict fail-closed (auth binds own site, not cross-tenant brand)", async () => {
+  it("returns null under strict fail-closed instead of binding auth to a fallback Site", async () => {
     process.env.KOKORO_SITE_STRICT = "1"
     const fetchMock = vi.fn().mockResolvedValue(new Response("not found", { status: 404 }))
     vi.stubGlobal("fetch", fetchMock)
     vi.spyOn(console, "warn").mockImplementation(() => {})
 
-    expect(await resolveSiteId("unbound.com", "site-fallback")).toBe("site-fallback")
+    expect(await resolveSiteId("unbound.com", "site-fallback")).toBeNull()
     delete process.env.KOKORO_SITE_STRICT
+  })
+
+  it("returns null when the Site resolver is unavailable in production", async () => {
+    vi.stubEnv("NODE_ENV", "production")
+    const fetchMock = vi.fn().mockRejectedValue(new Error("site resolver unavailable"))
+    vi.stubGlobal("fetch", fetchMock)
+    vi.spyOn(console, "warn").mockImplementation(() => {})
+
+    expect(await resolveSiteId("brand-a.com", "site-fallback")).toBeNull()
   })
 })

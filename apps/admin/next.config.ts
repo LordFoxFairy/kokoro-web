@@ -4,21 +4,15 @@ import type { NextConfig } from "next";
 const gatewayUrl = process.env.KOKORO_GATEWAY_URL ?? "http://127.0.0.1:4290";
 
 // 被反代到网关的浏览器面路径，逐条枚举（不再用 /api/:path* catch-all 无差别反代）。
-// 必须与根仓契约 contract/openapi/admin-web-v1.yaml 的 paths 保持一致：14 条 path item / 16 个
-// operation，顺序也照抄契约文档，便于逐条比对。契约增删 path 时必须同步改这里，否则新路由在浏览器面
-// 直接 404（这是有意的：代理面可审计，后端加路由不会被前端无声吸收）。
+// 这里只列无需响应过滤的透明代理。manifests/billing-overview/user360/resource/action 由本地 Route Handler
+// 做 acquisition 边界过滤后再请求网关，绝不能放回 external rewrite 绕开过滤。
 // 路径参数用 Next 语法：契约的 {id} → :id。
 const GATEWAY_PROXY_PATHS = [
   "/api/me",
-  "/api/manifests",
   "/api/operators",
   "/api/operators/:id/status",
   "/api/roles",
   "/api/sites",
-  "/api/billing-overview",
-  "/api/user360",
-  "/api/resource",
-  "/api/action",
   "/api/approvals",
   "/api/approvals/:id/approve",
   "/api/approvals/:id/reject",

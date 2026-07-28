@@ -6,7 +6,7 @@ Next.js BFF and Ant Design Pro operations console for Kokoro Platform.
 
 - Next.js App Router renders the console and owns Auth.js magic-link login.
 - `/api/auth/*` is handled by Auth.js.
-- Other `/api/*` requests are same-origin rewrites to `kokoro-platform-admin`.
+- Transparent `/api/*` requests use enumerated same-origin rewrites to `kokoro-platform-admin`; manifests, billing overview, user360, generic resources, and generic actions use local Route Handlers so acquisition policy is enforced before gateway egress.
 - Middleware injects `x-kokoro-operator` and `x-kokoro-proxy-secret`; platform-admin remains the authority for RBAC, tenant scope, approval, and audit.
 - Auth.js resolves operators, verification tokens, and auth events through the generated server-only `AdminAuthService` Connect client. This app has no Platform database credential or Prisma client.
 

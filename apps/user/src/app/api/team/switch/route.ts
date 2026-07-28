@@ -39,6 +39,12 @@ export async function POST(request: Request): Promise<NextResponse> {
     return NextResponse.json({ error: "invalid_request" }, { status: 400 })
   }
 
+  // 换签前重新绑定当前 Host。Site 不可解析时不触达 user issuer，也不覆盖现有可信信封。
+  const siteId = await resolveSiteId(request.headers.get("host"), config.siteId)
+  if (siteId === null || siteId !== envelope.site_id) {
+    return NextResponse.json({ error: "site_unresolved" }, { status: 404 })
+  }
+
   const outcome = await userIssueTeamSession(config, envelope.user_id, parsed.data.team_id)
   if (outcome.kind === "forbidden") {
     return NextResponse.json({ error: "forbidden" }, { status: 403 })
@@ -53,8 +59,6 @@ export async function POST(request: Request): Promise<NextResponse> {
   const refreshExpMs = new Date(outcome.result.refresh_expires_at).getTime()
   const refreshExp = Number.isFinite(refreshExpMs) ? Math.floor(refreshExpMs / 1000) : nowSec + 2_592_000
   const maxAge = Math.max(0, refreshExp - nowSec)
-  // 按请求 Host 定站点（SITE-REAL）：未接 site 服务时回退 config 的 env 缺省站点。
-  const siteId = await resolveSiteId(request.headers.get("host"), config.siteId)
   const sealed = sealEnvelope(
     {
       runtime_jwt: outcome.result.token,
