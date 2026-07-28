@@ -28,6 +28,11 @@ import {
   type CountedBodyCompletion,
 } from "@/lib/server/http-boundary"
 import { resolveSiteId } from "@/lib/server/site"
+import {
+  createUpstreamDeadline,
+  isUpstreamTimeoutError,
+  withUpstreamDeadline,
+} from "@/lib/server/upstream"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -75,6 +80,7 @@ async function proxyUpload(
   request: Request,
   target: string,
   headers: Headers,
+  upstreamTimeoutMs: number,
 ): Promise<Response> {
   const prepared = await prepareCountedRequestBody(request, HUB_UPLOAD_REQUEST_BODY_MAX_BYTES)
   if (!prepared.ok) return bodyError(prepared.reason)
@@ -88,8 +94,9 @@ async function proxyUpload(
     )
   }
 
+  const deadline = createUpstreamDeadline(request.signal, upstreamTimeoutMs, { startImmediately: false })
   try {
-    const signal = AbortSignal.any([request.signal, prepared.signal])
+    const signal = AbortSignal.any([deadline.signal, prepared.signal])
     const init = {
       method: request.method,
       headers,
@@ -127,10 +134,19 @@ async function proxyUpload(
       return bodyError(completion.reason)
     }
 
+    // 96MiB ingress 可以合法地超过普通 JSON deadline；只在完整 body EOF 后限制 Hub 处理到 headers。
+    deadline.start()
     const outcome = await upstreamPromise
-    if (!outcome.ok) return NextResponse.json({ error: "hub_unreachable" }, { status: 502 })
+    if (!outcome.ok) {
+      if (deadline.didTimeout()) {
+        await prepared.dispose(outcome.error)
+        return NextResponse.json({ error: "upstream_timeout" }, { status: 504 })
+      }
+      return NextResponse.json({ error: "hub_unreachable" }, { status: 502 })
+    }
     return upstreamResponse(outcome.response, null)
   } finally {
+    deadline.finish()
     admission.lease.release()
   }
 }
@@ -147,7 +163,15 @@ async function proxy(request: Request, context: { params: Promise<{ path: string
   if (MUTATION_METHODS.has(request.method) && !sameOriginOk(request)) {
     return NextResponse.json({ error: "forbidden_origin" }, { status: 403 })
   }
-  const siteId = await resolveSiteId(request.headers.get("host"), config.siteId)
+  let siteId: string | null
+  try {
+    siteId = await resolveSiteId(request.headers.get("host"), config.siteId, request.signal)
+  } catch (error) {
+    if (isUpstreamTimeoutError(error)) {
+      return NextResponse.json({ error: "upstream_timeout" }, { status: 504 })
+    }
+    throw error
+  }
   if (siteId === null) {
     return NextResponse.json({ error: "site_unresolved" }, { status: 404 })
   }
@@ -186,7 +210,7 @@ async function proxy(request: Request, context: { params: Promise<{ path: string
       await request.body?.cancel().catch(() => undefined)
       return sessionRefreshRequired()
     }
-    return proxyUpload(request, target, headers)
+    return proxyUpload(request, target, headers, config.upstreamTimeoutMs)
   }
 
   const boundedBody = await readBoundedRequestBody(request, hubRequestBodyLimit(segments))
@@ -198,7 +222,15 @@ async function proxy(request: Request, context: { params: Promise<{ path: string
       ? undefined
       : boundedBody.body
 
-  const resolved = await resolveSessionWithRefresh(request, config, siteId, preflight)
+  let resolved: Awaited<ReturnType<typeof resolveSessionWithRefresh>>
+  try {
+    resolved = await resolveSessionWithRefresh(request, config, siteId, preflight)
+  } catch (error) {
+    if (isUpstreamTimeoutError(error)) {
+      return NextResponse.json({ error: "upstream_timeout" }, { status: 504 })
+    }
+    throw error
+  }
   if (resolved === null) {
     return NextResponse.json({ error: "unauthenticated" }, { status: 401 })
   }
@@ -208,14 +240,19 @@ async function proxy(request: Request, context: { params: Promise<{ path: string
 
   let upstream: Response
   try {
-    upstream = await fetch(target, {
-      method: request.method,
-      headers,
-      ...(body !== undefined ? { body } : {}),
-      cache: "no-store",
-      signal: request.signal,
-    })
-  } catch {
+    upstream = await withUpstreamDeadline(request.signal, config.upstreamTimeoutMs, (signal) =>
+      fetch(target, {
+        method: request.method,
+        headers,
+        ...(body !== undefined ? { body } : {}),
+        cache: "no-store",
+        signal,
+      }),
+    )
+  } catch (error) {
+    if (isUpstreamTimeoutError(error)) {
+      return NextResponse.json({ error: "upstream_timeout" }, { status: 504 })
+    }
     return NextResponse.json({ error: "hub_unreachable" }, { status: 502 })
   }
 

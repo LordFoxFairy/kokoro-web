@@ -6,6 +6,7 @@ import { NextResponse } from "next/server"
 
 import { authConfig, preflightSession, resolveSessionWithRefresh } from "@/lib/server/auth"
 import { resolveSiteId } from "@/lib/server/site"
+import { isUpstreamTimeoutError } from "@/lib/server/upstream"
 
 export const runtime = "nodejs"
 
@@ -14,7 +15,15 @@ export async function GET(request: Request): Promise<NextResponse> {
   if (config === null) {
     return NextResponse.json({ state: "preview" })
   }
-  const siteId = await resolveSiteId(request.headers.get("host"), config.siteId)
+  let siteId: string | null
+  try {
+    siteId = await resolveSiteId(request.headers.get("host"), config.siteId, request.signal)
+  } catch (error) {
+    if (isUpstreamTimeoutError(error)) {
+      return NextResponse.json({ error: "upstream_timeout" }, { status: 504 })
+    }
+    throw error
+  }
   if (siteId === null) {
     return NextResponse.json({ state: "anonymous" })
   }
@@ -22,7 +31,15 @@ export async function GET(request: Request): Promise<NextResponse> {
   if (preflight === null) {
     return NextResponse.json({ state: "anonymous" })
   }
-  const resolved = await resolveSessionWithRefresh(request, config, siteId, preflight)
+  let resolved: Awaited<ReturnType<typeof resolveSessionWithRefresh>>
+  try {
+    resolved = await resolveSessionWithRefresh(request, config, siteId, preflight)
+  } catch (error) {
+    if (isUpstreamTimeoutError(error)) {
+      return NextResponse.json({ error: "upstream_timeout" }, { status: 504 })
+    }
+    throw error
+  }
   if (resolved === null) {
     return NextResponse.json({ state: "anonymous" })
   }

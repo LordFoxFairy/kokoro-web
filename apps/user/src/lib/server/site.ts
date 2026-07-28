@@ -9,6 +9,7 @@
 import { z } from "zod"
 
 import { readBoundedResponseJson, SITE_RESPONSE_BODY_MAX_BYTES } from "./http-boundary"
+import { isUpstreamTimeoutError, withUpstreamDeadline } from "./upstream"
 
 export interface SiteBrand {
   name: string
@@ -79,17 +80,28 @@ function allowsDevelopmentFallback(env: NodeJS.ProcessEnv): boolean {
 }
 
 export function parseSiteResolveTimeoutMs(raw: string | undefined): number {
-  const parsed = Number(raw)
-  if (!Number.isFinite(parsed)) {
-    return DEFAULT_RESOLVE_TIMEOUT_MS
+  if (raw === undefined) return DEFAULT_RESOLVE_TIMEOUT_MS
+  const normalized = raw.trim()
+  if (!/^\d+$/.test(normalized)) {
+    throw new Error(
+      `KOKORO_SITE_RESOLVE_TIMEOUT_MS must be an integer between ${MIN_RESOLVE_TIMEOUT_MS} and ${MAX_RESOLVE_TIMEOUT_MS}`,
+    )
   }
-  return Math.min(MAX_RESOLVE_TIMEOUT_MS, Math.max(MIN_RESOLVE_TIMEOUT_MS, Math.trunc(parsed)))
+  const parsed = Number(normalized)
+  if (!Number.isSafeInteger(parsed) || parsed < MIN_RESOLVE_TIMEOUT_MS || parsed > MAX_RESOLVE_TIMEOUT_MS) {
+    throw new Error(
+      `KOKORO_SITE_RESOLVE_TIMEOUT_MS must be an integer between ${MIN_RESOLVE_TIMEOUT_MS} and ${MAX_RESOLVE_TIMEOUT_MS}`,
+    )
+  }
+  return parsed
 }
 
 async function fetchResolved(
   baseUrl: string,
   host: string,
   env: NodeJS.ProcessEnv,
+  requestSignal?: AbortSignal,
+  propagateTimeout = false,
 ): Promise<ResolvedSite | null> {
   const url = new URL("/site-context/resolve", baseUrl)
   url.searchParams.set("host", host)
@@ -99,19 +111,25 @@ async function fetchResolved(
   if (secret) {
     headers["x-kokoro-internal-secret"] = secret
   }
-  const signal = AbortSignal.timeout(parseSiteResolveTimeoutMs(env.KOKORO_SITE_RESOLVE_TIMEOUT_MS))
-  const response = await fetch(url, { headers, cache: "no-store", signal }).catch(() => null)
-  if (response === null || !response.ok) {
+  try {
+    return await withUpstreamDeadline(
+      requestSignal,
+      parseSiteResolveTimeoutMs(env.KOKORO_SITE_RESOLVE_TIMEOUT_MS),
+      async (signal) => {
+        const response = await fetch(url, { headers, cache: "no-store", signal })
+        if (!response.ok) return null
+        const parsed = resolveResponseSchema.safeParse(
+          await readBoundedResponseJson(response, SITE_RESPONSE_BODY_MAX_BYTES),
+        )
+        if (!parsed.success) return null
+        const { context } = parsed.data.data
+        return { siteId: context.siteId, brand: context.brand }
+      },
+    )
+  } catch (error) {
+    if (propagateTimeout && isUpstreamTimeoutError(error)) throw error
     return null
   }
-  const parsed = resolveResponseSchema.safeParse(
-    await readBoundedResponseJson(response, SITE_RESPONSE_BODY_MAX_BYTES),
-  )
-  if (!parsed.success) {
-    return null
-  }
-  const { context } = parsed.data.data
-  return { siteId: context.siteId, brand: context.brand }
 }
 
 // 按请求 Host 解析站点。仅显式 development+allow flag 允许 resolver 未配置或 Host 缺失时回退。
@@ -119,6 +137,8 @@ async function fetchResolved(
 export async function resolveSite(
   host: string | null | undefined,
   env: NodeJS.ProcessEnv = process.env,
+  requestSignal?: AbortSignal,
+  propagateTimeout = false,
 ): Promise<ResolvedSite | null> {
   const baseUrl = env.KOKORO_SITE_BASE_URL?.trim()
   const normalizedHost = normalizeHost(host)
@@ -136,7 +156,7 @@ export async function resolveSite(
     return cached.value
   }
 
-  const resolved = await fetchResolved(baseUrl, normalizedHost, env)
+  const resolved = await fetchResolved(baseUrl, normalizedHost, env, requestSignal, propagateTimeout)
   if (resolved === null) {
     // 未命中/解析失败：**不写缓存**（site 服务抖动即时恢复，不被 30s 旧值粘住）。
     if (allowsDevelopmentFallback(env)) {
@@ -155,8 +175,9 @@ export async function resolveSite(
 export async function resolveSiteId(
   host: string | null | undefined,
   fallbackSiteId: string,
+  requestSignal?: AbortSignal,
 ): Promise<string | null> {
-  const site = await resolveSite(host)
+  const site = await resolveSite(host, process.env, requestSignal, true)
   if (site?.siteId) {
     return site.siteId
   }

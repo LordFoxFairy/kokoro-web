@@ -17,6 +17,7 @@ import {
 import { readBoundedRequestJson, TEAM_REQUEST_BODY_MAX_BYTES } from "@/lib/server/http-boundary"
 import { sealEnvelope } from "@/lib/server/session-envelope"
 import { resolveSiteId } from "@/lib/server/site"
+import { isUpstreamTimeoutError } from "@/lib/server/upstream"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -45,12 +46,34 @@ export async function POST(request: Request): Promise<NextResponse> {
   }
 
   // 换签前重新绑定当前 Host。Site 不可解析时不触达 user issuer，也不覆盖现有可信信封。
-  const siteId = await resolveSiteId(request.headers.get("host"), config.siteId)
+  let siteId: string | null
+  try {
+    siteId = await resolveSiteId(request.headers.get("host"), config.siteId, request.signal)
+  } catch (error) {
+    if (isUpstreamTimeoutError(error)) {
+      return NextResponse.json({ error: "upstream_timeout" }, { status: 504 })
+    }
+    throw error
+  }
   if (siteId === null || siteId !== envelope.site_id) {
     return NextResponse.json({ error: "site_unresolved" }, { status: 404 })
   }
 
-  const outcome = await userIssueTeamSession(config, envelope.user_id, parsed.data.team_id, siteId)
+  let outcome: Awaited<ReturnType<typeof userIssueTeamSession>>
+  try {
+    outcome = await userIssueTeamSession(
+      config,
+      envelope.user_id,
+      parsed.data.team_id,
+      siteId,
+      request.signal,
+    )
+  } catch (error) {
+    if (isUpstreamTimeoutError(error)) {
+      return NextResponse.json({ error: "upstream_timeout" }, { status: 504 })
+    }
+    throw error
+  }
   if (outcome.kind === "forbidden") {
     return NextResponse.json({ error: "forbidden" }, { status: 403 })
   }

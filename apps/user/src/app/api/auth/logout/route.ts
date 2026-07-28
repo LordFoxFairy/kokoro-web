@@ -16,7 +16,7 @@ export async function POST(request: Request): Promise<NextResponse> {
   if (config !== null) {
     const envelope = readEnvelope(request, config)
     if (envelope !== null) {
-      await userRevokeSession(config, envelope.refresh_token)
+      await userRevokeSession(config, envelope.refresh_token, request.signal)
     }
   }
   const response = NextResponse.json({ status: "logged_out" })

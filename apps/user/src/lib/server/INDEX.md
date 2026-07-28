@@ -20,9 +20,11 @@ owners:
     全部 secrets = 双钥轮换（旧信封在窗口内仍可解）。
   - `envelopePayloadSchema` / `EnvelopePayload`：`{runtime_jwt,access_exp,refresh_token,user_id,namespace,site_id,exp}`。
   - `safeEqual(a,b)`：常量时间比对。
-- `auth.ts`（Next 感知装配）
+  - `auth.ts`（Next 感知装配）
   - `authConfig(env?)`：四项 env（`KOKORO_WEB_SESSION_SECRET` 逗号分隔 / `KOKORO_USER_BASE_URL` /
     `KOKORO_SESSION_BASE_URL` / `KOKORO_SITE_ID`）齐备才返配置，缺任一 → null（预览档）。
+    `KOKORO_WEB_UPSTREAM_TIMEOUT_MS`（默认 10000，严格 100..60000）或 Site timeout 非法时显式抛出
+    装配错误，禁止把错误部署伪装成 preview。
   - cookie：`SESSION_COOKIE`/`NONCE_COOKIE` 名，`sessionCookieOptions`/`nonceCookieOptions`
     （httpOnly+SameSite=Lax+prod Secure），`readCookie`/`readEnvelope`。
   - nonce：`newNonce`/`hashNonce`（sha256 hex）；`decodeJwtExp`（仅解不验签）。
@@ -44,7 +46,8 @@ owners:
     `{siteId, brand}`；**仅成功解析**按 host 短 TTL（30s）缓存（失败/未命中不写缓存，服务抖动即时恢复）。
     只有 `NODE_ENV=development` 且 `KOKORO_SITE_ALLOW_DEV_FALLBACK=true` 才可退回 env 缺省站点；
     test/未知环境/staging/production 以及显式 strict 均 fail-closed。resolver 使用内置有界超时
-    `KOKORO_SITE_RESOLVE_TIMEOUT_MS`（默认 1500ms，钳制 100..5000ms），超时会中止请求并回 `null`。
+    `KOKORO_SITE_RESOLVE_TIMEOUT_MS`（默认 1500ms，严格 100..5000ms），超时会中止请求；BFF 请求将
+    timeout 与 unresolved 分开并稳定映射 504，页面解析仍保持 fail-closed。
   - `resolveSiteId(host, fallbackSiteId)`：仅取 site_id 供 auth 流（magic-link/callback/team-switch）
     与 Site-scoped BFF；仅显式 development fallback 允许 `fallbackSiteId`，其余环境保持 `null`，禁止未知 Host
     签发/换签信封或触达业务上游。
@@ -64,6 +67,13 @@ owners:
   - 缓冲请求 cap：Auth 16 KiB、Team 64 KiB、Session 1 MiB、Hub 普通 256 KiB；Hub skill upload
     是 96 MiB **流式计数上限**，精确对齐 Hub `UPLOAD_BODY_LIMIT`（zip 文件本身仍由 Hub 限制为 64 MiB）。
   - 解析响应 cap：Site 64 KiB、Auth 256 KiB、Payment 套餐目录 1 MiB。
+- `upstream.ts`（User BFF 出站 deadline）
+  - `withUpstreamDeadline`：统一可清理 timer + `AbortController`/`AbortSignal.any`，只把本端 deadline
+    映射为 timeout，客户端 request abort 不得误报 504；成功、异常、abort 都在 `finally` 清 timer。
+  - Session SSE 仅限制 fetch 到 headers，headers 到达即清 timer；组合 signal 仍绑定 request abort，
+    所以长流可超过 deadline，但客户端断开仍级联取消上游。
+  - Hub upload 使用 deferred deadline：96 MiB ingress 不计入普通 deadline，body EOF 后才限制 Hub
+    处理到响应 headers；timeout 仍走 P1 `dispose()` 与 lease `finally`。
 
 ## 关键协作者
 

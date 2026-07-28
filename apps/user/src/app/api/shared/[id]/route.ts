@@ -5,12 +5,13 @@
 import { NextResponse } from "next/server"
 
 import { authConfig } from "@/lib/server/auth"
+import { isUpstreamTimeoutError, withUpstreamDeadline } from "@/lib/server/upstream"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
 export async function GET(
-  _request: Request,
+  request: Request,
   context: { params: Promise<{ id: string }> },
 ): Promise<Response> {
   const config = authConfig()
@@ -26,8 +27,13 @@ export async function GET(
 
   let upstream: Response
   try {
-    upstream = await fetch(target, { cache: "no-store" })
-  } catch {
+    upstream = await withUpstreamDeadline(request.signal, config.upstreamTimeoutMs, (signal) =>
+      fetch(target, { cache: "no-store", signal }),
+    )
+  } catch (error) {
+    if (isUpstreamTimeoutError(error)) {
+      return NextResponse.json({ error: "upstream_timeout" }, { status: 504 })
+    }
     return NextResponse.json({ error: "session_unreachable" }, { status: 502 })
   }
 

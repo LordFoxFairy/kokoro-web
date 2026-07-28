@@ -458,6 +458,38 @@ describe("/api/hub/[...path] proxy", () => {
     expect(res.status).toBe(200)
   })
 
+  it("starts the Hub upload response deadline only after body EOF and releases the lease on 504", async () => {
+    process.env.KOKORO_WEB_UPSTREAM_TIMEOUT_MS = "100"
+    let fullyConsumed = false
+    let upstreamSignal: AbortSignal | null = null
+    const fetchMock = vi.fn(async (target: string | URL, init?: RequestInit) => {
+      if (target.toString().startsWith("http://site.test/")) return siteResponse("site-a")
+      await new Response(init?.body).arrayBuffer()
+      fullyConsumed = true
+      upstreamSignal = init?.signal ?? null
+      return new Promise<Response>((_resolve, reject) => {
+        upstreamSignal?.addEventListener("abort", () => reject(upstreamSignal?.reason), { once: true })
+      })
+    })
+    vi.stubGlobal("fetch", fetchMock)
+    const { POST } = await import("@/app/api/hub/[...path]/route")
+
+    const response = await POST(
+      uploadRequest([new Uint8Array([1, 2, 3])], 3),
+      params(["self", "skills", "upload", "preview"]),
+    )
+
+    expect(response.status).toBe(504)
+    expect(await response.json()).toEqual({ error: "upstream_timeout" })
+    expect(fullyConsumed).toBe(true)
+    expect(upstreamSignal).not.toBeNull()
+    expect(upstreamSignal!.aborted).toBe(true)
+    const { acquireHubUploadLease } = await import("@/lib/server/http-boundary")
+    const afterTimeout = acquireHubUploadLease(new Headers())
+    expect(afterTimeout.ok).toBe(true)
+    if (afterTimeout.ok) afterTimeout.lease.release()
+  })
+
   it("disposes the request stream when upload admission rejects it", async () => {
     const { acquireHubUploadLease } = await import("@/lib/server/http-boundary")
     const held = acquireHubUploadLease(new Headers())

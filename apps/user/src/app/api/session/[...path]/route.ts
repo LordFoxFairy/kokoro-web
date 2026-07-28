@@ -7,6 +7,7 @@ import { NextResponse } from "next/server"
 import { authConfig, preflightSession, resolveSessionWithRefresh, sameOriginOk } from "@/lib/server/auth"
 import { readBoundedRequestBody, SESSION_REQUEST_BODY_MAX_BYTES } from "@/lib/server/http-boundary"
 import { resolveSiteId } from "@/lib/server/site"
+import { isUpstreamTimeoutError, withUpstreamDeadline } from "@/lib/server/upstream"
 
 export const runtime = "nodejs"
 // 每请求实时求值：绝不静态化/缓存代理响应（SSE、鉴权头随信封变）。
@@ -25,7 +26,15 @@ async function proxy(request: Request, context: { params: Promise<{ path: string
   if (MUTATION_METHODS.has(request.method) && !sameOriginOk(request)) {
     return NextResponse.json({ error: "forbidden_origin" }, { status: 403 })
   }
-  const siteId = await resolveSiteId(request.headers.get("host"), config.siteId)
+  let siteId: string | null
+  try {
+    siteId = await resolveSiteId(request.headers.get("host"), config.siteId, request.signal)
+  } catch (error) {
+    if (isUpstreamTimeoutError(error)) {
+      return NextResponse.json({ error: "upstream_timeout" }, { status: 504 })
+    }
+    throw error
+  }
   if (siteId === null) {
     return NextResponse.json({ error: "site_unresolved" }, { status: 404 })
   }
@@ -47,7 +56,15 @@ async function proxy(request: Request, context: { params: Promise<{ path: string
       ? undefined
       : boundedBody.body
 
-  const resolved = await resolveSessionWithRefresh(request, config, siteId, preflight)
+  let resolved: Awaited<ReturnType<typeof resolveSessionWithRefresh>>
+  try {
+    resolved = await resolveSessionWithRefresh(request, config, siteId, preflight)
+  } catch (error) {
+    if (isUpstreamTimeoutError(error)) {
+      return NextResponse.json({ error: "upstream_timeout" }, { status: 504 })
+    }
+    throw error
+  }
   if (resolved === null) {
     return NextResponse.json({ error: "unauthenticated" }, { status: 401 })
   }
@@ -68,15 +85,20 @@ async function proxy(request: Request, context: { params: Promise<{ path: string
 
   let upstream: Response
   try {
-    upstream = await fetch(target, {
-      method: request.method,
-      headers,
-      ...(body !== undefined ? { body } : {}),
-      cache: "no-store",
-      // 客户端断开（关流/切会话）级联中止上游。
-      signal: request.signal,
-    })
-  } catch {
+    upstream = await withUpstreamDeadline(request.signal, config.upstreamTimeoutMs, (signal) =>
+      fetch(target, {
+        method: request.method,
+        headers,
+        ...(body !== undefined ? { body } : {}),
+        cache: "no-store",
+        // deadline 只包到响应 headers；返回后 timer 已清，signal 仍保留 request abort 绑定长流。
+        signal,
+      }),
+    )
+  } catch (error) {
+    if (isUpstreamTimeoutError(error)) {
+      return NextResponse.json({ error: "upstream_timeout" }, { status: 504 })
+    }
     return NextResponse.json({ error: "session_unreachable" }, { status: 502 })
   }
 

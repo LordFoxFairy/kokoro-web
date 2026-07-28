@@ -74,6 +74,7 @@ beforeEach(() => {
   vi.stubEnv("NODE_ENV", "production")
 })
 afterEach(() => {
+  vi.useRealTimers()
   vi.unstubAllGlobals()
   vi.unstubAllEnvs()
   __clearSiteResolveCache()
@@ -125,6 +126,108 @@ describe("/api/session/[...path] proxy", () => {
     )
     expect(res.headers.get("content-type")).toBe("text/event-stream")
     expect(await res.text()).toBe("data: hello\n\n")
+  })
+
+  it("returns a stable 504 when the Session response headers miss the deadline", async () => {
+    process.env.KOKORO_WEB_UPSTREAM_TIMEOUT_MS = "100"
+    let sessionSignal: AbortSignal | null = null
+    const fetchMock = vi.fn(async (target: string | URL, init?: RequestInit) => {
+      if (target.toString().startsWith("http://site.test/")) return siteResponse("site-a")
+      sessionSignal = init?.signal ?? null
+      return new Promise<Response>((_resolve, reject) => {
+        sessionSignal?.addEventListener("abort", () => reject(sessionSignal?.reason), { once: true })
+      })
+    })
+    vi.stubGlobal("fetch", fetchMock)
+    const { GET } = await import("@/app/api/session/[...path]/route")
+
+    const response = await GET(
+      new Request("http://localhost/api/session/sessions/ses_1", {
+        headers: { cookie: sessionCookie(), host: "site-a.example" },
+      }),
+      params(["sessions", "ses_1"]),
+    )
+
+    expect(response.status).toBe(504)
+    expect(await response.json()).toEqual({ error: "upstream_timeout" })
+    expect(sessionSignal).not.toBeNull()
+    expect(sessionSignal!.aborted).toBe(true)
+  })
+
+  it("does not relabel a client-aborted Session request as timeout", async () => {
+    const client = new AbortController()
+    let sessionSignal: AbortSignal | null = null
+    const fetchMock = vi.fn(async (target: string | URL, init?: RequestInit) => {
+      if (target.toString().startsWith("http://site.test/")) return siteResponse("site-a")
+      sessionSignal = init?.signal ?? null
+      return new Promise<Response>((_resolve, reject) => {
+        sessionSignal?.addEventListener("abort", () => reject(sessionSignal?.reason), { once: true })
+      })
+    })
+    vi.stubGlobal("fetch", fetchMock)
+    const { GET } = await import("@/app/api/session/[...path]/route")
+    const pending = GET(
+      new Request("http://localhost/api/session/sessions/ses_1", {
+        headers: { cookie: sessionCookie(), host: "site-a.example" },
+        signal: client.signal,
+      }),
+      params(["sessions", "ses_1"]),
+    )
+    await vi.waitFor(() => expect(sessionSignal).not.toBeNull())
+
+    client.abort(new DOMException("client disconnected", "AbortError"))
+    const response = await pending
+
+    expect(response.status).toBe(502)
+    expect(await response.json()).toEqual({ error: "session_unreachable" })
+    expect(sessionSignal!.aborted).toBe(true)
+  })
+
+  it("clears only the SSE handshake deadline and keeps client cancellation bound to the long stream", async () => {
+    vi.useFakeTimers()
+    process.env.KOKORO_WEB_UPSTREAM_TIMEOUT_MS = "100"
+    const client = new AbortController()
+    let sessionSignal: AbortSignal | null = null
+    let streamController: ReadableStreamDefaultController<Uint8Array> | null = null
+    const fetchMock = vi.fn(async (target: string | URL, init?: RequestInit) => {
+      if (target.toString().startsWith("http://site.test/")) return siteResponse("site-a")
+      sessionSignal = init?.signal ?? null
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          streamController = controller
+          controller.enqueue(new TextEncoder().encode("data: one\n\n"))
+          sessionSignal?.addEventListener(
+            "abort",
+            () => controller.error(sessionSignal?.reason ?? new DOMException("aborted", "AbortError")),
+            { once: true },
+          )
+        },
+      })
+      return new Response(body, { headers: { "content-type": "text/event-stream" } })
+    })
+    vi.stubGlobal("fetch", fetchMock)
+    const { GET } = await import("@/app/api/session/[...path]/route")
+
+    const response = await GET(
+      new Request("http://localhost/api/session/sessions/ses_1/events", {
+        headers: { cookie: sessionCookie(), host: "site-a.example", accept: "text/event-stream" },
+        signal: client.signal,
+      }),
+      params(["sessions", "ses_1", "events"]),
+    )
+    const reader = response.body!.getReader()
+    expect(new TextDecoder().decode((await reader.read()).value)).toBe("data: one\n\n")
+
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(sessionSignal).not.toBeNull()
+    expect(sessionSignal!.aborted).toBe(false)
+    streamController!.enqueue(new TextEncoder().encode("data: two\n\n"))
+    expect(new TextDecoder().decode((await reader.read()).value)).toBe("data: two\n\n")
+
+    const abortedRead = reader.read()
+    client.abort(new DOMException("client disconnected", "AbortError"))
+    await expect(abortedRead).rejects.toMatchObject({ name: "AbortError" })
+    expect(sessionSignal!.aborted).toBe(true)
   })
 
   it("forwards the SSE resume header (last-event-id) upstream", async () => {

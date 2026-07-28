@@ -7,6 +7,8 @@ import { z } from "zod"
 
 import { AUTH_RESPONSE_BODY_MAX_BYTES, readBoundedResponseJson } from "./http-boundary"
 import { openEnvelope, sealEnvelope, type EnvelopePayload } from "./session-envelope"
+import { parseSiteResolveTimeoutMs } from "./site"
+import { isUpstreamTimeoutError, parseUpstreamTimeoutMs, withUpstreamDeadline } from "./upstream"
 
 // 信封 cookie（httpOnly，浏览器 JS 读不到）与一次性 nonce cookie（绑定申请设备）。
 export const SESSION_COOKIE = "kokoro_session"
@@ -34,10 +36,14 @@ export interface AuthConfig {
   secureCookies: boolean
   // 仅非生产：把 user 的 response 投递档 link_token 变成可点开发链接回给前端。
   revealDevLink: boolean
+  upstreamTimeoutMs: number
 }
 
 // 四项齐备才算「已接 platform」；缺任一 = 预览档（纯前端），路由回 503/preview，登录闸放行。
 export function authConfig(env: NodeJS.ProcessEnv = process.env): AuthConfig | null {
+  // timeout 配错是部署错误，必须先于 preview 判定显式失败。
+  const upstreamTimeoutMs = parseUpstreamTimeoutMs(env.KOKORO_WEB_UPSTREAM_TIMEOUT_MS)
+  parseSiteResolveTimeoutMs(env.KOKORO_SITE_RESOLVE_TIMEOUT_MS)
   const secretRaw = env.KOKORO_WEB_SESSION_SECRET?.trim()
   const userBaseUrl = env.KOKORO_USER_BASE_URL?.trim()
   const sessionBaseUrl = env.KOKORO_SESSION_BASE_URL?.trim()
@@ -62,6 +68,7 @@ export function authConfig(env: NodeJS.ProcessEnv = process.env): AuthConfig | n
     internalSecret: env.KOKORO_INTERNAL_SECRET_WEB_BFF?.trim() || null,
     secureCookies: env.NODE_ENV === "production",
     revealDevLink: env.NODE_ENV !== "production",
+    upstreamTimeoutMs,
   }
 }
 
@@ -221,29 +228,30 @@ export async function userRequestMagicLink(
   email: string,
   nonceHash: string,
   siteId: string = config.siteId,
+  requestSignal?: AbortSignal,
 ): Promise<MagicLinkRequestOutcome> {
-  const response = await fetch(new URL("/auth/magic-links", config.userBaseUrl), {
-    method: "POST",
-    headers: callerHeaders(config),
-    body: JSON.stringify({ site_id: siteId, email, nonce_hash: nonceHash }),
-    cache: "no-store",
-  }).catch(() => null)
-  if (response === null) {
+  try {
+    return await withUpstreamDeadline(requestSignal, config.upstreamTimeoutMs, async (signal) => {
+      const response = await fetch(new URL("/auth/magic-links", config.userBaseUrl), {
+        method: "POST",
+        headers: callerHeaders(config),
+        body: JSON.stringify({ site_id: siteId, email, nonce_hash: nonceHash }),
+        cache: "no-store",
+        signal,
+      })
+      if (response.status === 429) return { kind: "rate_limited" } as const
+      if (!response.ok) return { kind: "unavailable" } as const
+      const parsed = requestResponseSchema.safeParse(
+        await readBoundedResponseJson(response, AUTH_RESPONSE_BODY_MAX_BYTES),
+      )
+      return parsed.success
+        ? { kind: "ok", linkToken: parsed.data.data.link_token ?? null } as const
+        : { kind: "unavailable" } as const
+    })
+  } catch (error) {
+    if (isUpstreamTimeoutError(error)) throw error
     return { kind: "unavailable" }
   }
-  if (response.status === 429) {
-    return { kind: "rate_limited" }
-  }
-  if (!response.ok) {
-    return { kind: "unavailable" }
-  }
-  const parsed = requestResponseSchema.safeParse(
-    await readBoundedResponseJson(response, AUTH_RESPONSE_BODY_MAX_BYTES),
-  )
-  if (!parsed.success) {
-    return { kind: "unavailable" }
-  }
-  return { kind: "ok", linkToken: parsed.data.data.link_token ?? null }
 }
 
 export type TeamSessionOutcome =
@@ -259,29 +267,30 @@ export async function userIssueTeamSession(
   userId: string,
   teamId: string,
   siteId: string,
+  requestSignal?: AbortSignal,
 ): Promise<TeamSessionOutcome> {
-  const response = await fetch(new URL("/bff/auth/team-sessions", config.userBaseUrl), {
-    method: "POST",
-    headers: { ...callerHeaders(config), "x-user-id": userId },
-    body: JSON.stringify({ team_id: teamId, site_id: siteId }),
-    cache: "no-store",
-  }).catch(() => null)
-  if (response === null) {
+  try {
+    return await withUpstreamDeadline(requestSignal, config.upstreamTimeoutMs, async (signal) => {
+      const response = await fetch(new URL("/bff/auth/team-sessions", config.userBaseUrl), {
+        method: "POST",
+        headers: { ...callerHeaders(config), "x-user-id": userId },
+        body: JSON.stringify({ team_id: teamId, site_id: siteId }),
+        cache: "no-store",
+        signal,
+      })
+      if (response.status === 403) return { kind: "forbidden" } as const
+      if (!response.ok) return { kind: "unavailable" } as const
+      const parsed = consumeResponseSchema.safeParse(
+        await readBoundedResponseJson(response, AUTH_RESPONSE_BODY_MAX_BYTES),
+      )
+      return parsed.success
+        ? { kind: "ok", result: parsed.data.data } as const
+        : { kind: "unavailable" } as const
+    })
+  } catch (error) {
+    if (isUpstreamTimeoutError(error)) throw error
     return { kind: "unavailable" }
   }
-  if (response.status === 403) {
-    return { kind: "forbidden" }
-  }
-  if (!response.ok) {
-    return { kind: "unavailable" }
-  }
-  const parsed = consumeResponseSchema.safeParse(
-    await readBoundedResponseJson(response, AUTH_RESPONSE_BODY_MAX_BYTES),
-  )
-  if (!parsed.success) {
-    return { kind: "unavailable" }
-  }
-  return { kind: "ok", result: parsed.data.data }
 }
 
 // 消费：带回同一 nonce 哈希。任何失败都归一为 null（跨设备/无效/已用/过期不区分）。
@@ -290,23 +299,27 @@ export async function userConsumeMagicLink(
   token: string,
   nonceHash: string,
   siteId: string,
+  requestSignal?: AbortSignal,
 ): Promise<ConsumeResult | null> {
-  const response = await fetch(new URL("/auth/magic-links/consume", config.userBaseUrl), {
-    method: "POST",
-    headers: callerHeaders(config),
-    body: JSON.stringify({ token, nonce_hash: nonceHash, site_id: siteId }),
-    cache: "no-store",
-  }).catch(() => null)
-  if (response === null || !response.ok) {
+  try {
+    return await withUpstreamDeadline(requestSignal, config.upstreamTimeoutMs, async (signal) => {
+      const response = await fetch(new URL("/auth/magic-links/consume", config.userBaseUrl), {
+        method: "POST",
+        headers: callerHeaders(config),
+        body: JSON.stringify({ token, nonce_hash: nonceHash, site_id: siteId }),
+        cache: "no-store",
+        signal,
+      })
+      if (!response.ok) return null
+      const parsed = consumeResponseSchema.safeParse(
+        await readBoundedResponseJson(response, AUTH_RESPONSE_BODY_MAX_BYTES),
+      )
+      return parsed.success ? parsed.data.data : null
+    })
+  } catch (error) {
+    if (isUpstreamTimeoutError(error)) throw error
     return null
   }
-  const parsed = consumeResponseSchema.safeParse(
-    await readBoundedResponseJson(response, AUTH_RESPONSE_BODY_MAX_BYTES),
-  )
-  if (!parsed.success) {
-    return null
-  }
-  return parsed.data.data
 }
 
 // 静默续期（web BFF → user /auth/refresh）：拿信封里的 refresh 换新 access + 轮换新 refresh。
@@ -315,35 +328,46 @@ export async function userConsumeMagicLink(
 export async function userRefreshSession(
   config: AuthConfig,
   refreshToken: string,
+  requestSignal?: AbortSignal,
 ): Promise<RefreshResult | null> {
-  const response = await fetch(new URL("/auth/refresh", config.userBaseUrl), {
-    method: "POST",
-    headers: callerHeaders(config),
-    body: JSON.stringify({ refresh_token: refreshToken }),
-    cache: "no-store",
-  }).catch(() => null)
-  if (response === null || !response.ok) {
+  try {
+    return await withUpstreamDeadline(requestSignal, config.upstreamTimeoutMs, async (signal) => {
+      const response = await fetch(new URL("/auth/refresh", config.userBaseUrl), {
+        method: "POST",
+        headers: callerHeaders(config),
+        body: JSON.stringify({ refresh_token: refreshToken }),
+        cache: "no-store",
+        signal,
+      })
+      if (!response.ok) return null
+      const parsed = refreshResponseSchema.safeParse(
+        await readBoundedResponseJson(response, AUTH_RESPONSE_BODY_MAX_BYTES),
+      )
+      return parsed.success ? parsed.data.data : null
+    })
+  } catch (error) {
+    if (isUpstreamTimeoutError(error)) throw error
     return null
   }
-  const parsed = refreshResponseSchema.safeParse(
-    await readBoundedResponseJson(response, AUTH_RESPONSE_BODY_MAX_BYTES),
-  )
-  if (!parsed.success) {
-    return null
-  }
-  return parsed.data.data
 }
 
 // 登出吊销（web BFF → user /auth/refresh/revoke）：作废该 refresh 所属 namespace 全部活 refresh，
 // 让被盗/其他持有的 refresh 立即失效，不等 exp 自然到期。best-effort：user 不可达/失败都不抛，
 // 登出体验优先（清 cookie 已断本浏览器，服务端 refresh 最坏也靠 exp 兜底）。
-export async function userRevokeSession(config: AuthConfig, refreshToken: string): Promise<void> {
-  await fetch(new URL("/auth/refresh/revoke", config.userBaseUrl), {
-    method: "POST",
-    headers: callerHeaders(config),
-    body: JSON.stringify({ refresh_token: refreshToken }),
-    cache: "no-store",
-  }).catch(() => null)
+export async function userRevokeSession(
+  config: AuthConfig,
+  refreshToken: string,
+  requestSignal?: AbortSignal,
+): Promise<void> {
+  await withUpstreamDeadline(requestSignal, config.upstreamTimeoutMs, (signal) =>
+    fetch(new URL("/auth/refresh/revoke", config.userBaseUrl), {
+      method: "POST",
+      headers: callerHeaders(config),
+      body: JSON.stringify({ refresh_token: refreshToken }),
+      cache: "no-store",
+      signal,
+    }),
+  ).catch(() => null)
 }
 
 // access 剩余寿命低于此阈值即提前静默续期（趁 access 还有效换新，续失败也不影响本次请求）。
@@ -398,7 +422,7 @@ export async function resolveSessionWithRefresh(
   if (envelope.access_exp - nowSec >= REFRESH_THRESHOLD_SECONDS) {
     return { envelope, setCookie: null }
   }
-  const refreshed = await userRefreshSession(config, envelope.refresh_token)
+  const refreshed = await userRefreshSession(config, envelope.refresh_token, request.signal)
   if (refreshed === null) {
     return { envelope, setCookie: null }
   }

@@ -10,6 +10,7 @@ import { z } from "zod"
 import { authConfig, INTERNAL_SECRET_HEADER, readEnvelope, SERVICE_HEADER, SERVICE_VALUE } from "@/lib/server/auth"
 import { PAYMENT_RESPONSE_BODY_MAX_BYTES, readBoundedResponseJson } from "@/lib/server/http-boundary"
 import { resolveSiteId } from "@/lib/server/site"
+import { isUpstreamTimeoutError, withUpstreamDeadline } from "@/lib/server/upstream"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -42,7 +43,15 @@ export async function GET(request: Request): Promise<Response> {
   if (envelope === null) {
     return NextResponse.json({ error: "unauthenticated" }, { status: 401 })
   }
-  const siteId = await resolveSiteId(request.headers.get("host"), config.siteId)
+  let siteId: string | null
+  try {
+    siteId = await resolveSiteId(request.headers.get("host"), config.siteId, request.signal)
+  } catch (error) {
+    if (isUpstreamTimeoutError(error)) {
+      return NextResponse.json({ error: "upstream_timeout" }, { status: 504 })
+    }
+    throw error
+  }
   if (siteId === null || siteId !== envelope.site_id) {
     return NextResponse.json({ error: "site_unresolved" }, { status: 404 })
   }
@@ -61,15 +70,26 @@ export async function GET(request: Request): Promise<Response> {
 
   const target = `${config.paymentBaseUrl.replace(/\/+$/, "")}/plans`
   let upstream: Response
+  let raw: unknown
   try {
-    upstream = await fetch(target, { method: "GET", headers, cache: "no-store", signal: request.signal })
-  } catch {
+    const result = await withUpstreamDeadline(request.signal, config.upstreamTimeoutMs, async (signal) => {
+      const response = await fetch(target, { method: "GET", headers, cache: "no-store", signal })
+      const body = response.ok
+        ? await readBoundedResponseJson(response, PAYMENT_RESPONSE_BODY_MAX_BYTES)
+        : null
+      return { upstream: response, raw: body }
+    })
+    upstream = result.upstream
+    raw = result.raw
+  } catch (error) {
+    if (isUpstreamTimeoutError(error)) {
+      return NextResponse.json({ error: "upstream_timeout" }, { status: 504 })
+    }
     return NextResponse.json({ error: "payment_unreachable" }, { status: 502 })
   }
   if (!upstream.ok) {
     return NextResponse.json({ error: "payment_error" }, { status: 502 })
   }
-  const raw = await readBoundedResponseJson(upstream, PAYMENT_RESPONSE_BODY_MAX_BYTES)
   const parsed = paymentPlansEnvelopeSchema.safeParse(raw)
   if (!parsed.success) {
     return NextResponse.json({ error: "payment_bad_response" }, { status: 502 })

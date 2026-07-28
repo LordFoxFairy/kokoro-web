@@ -15,6 +15,7 @@ import {
 } from "@/lib/server/auth"
 import { readBoundedRequestBody, TEAM_REQUEST_BODY_MAX_BYTES } from "@/lib/server/http-boundary"
 import { resolveSiteId } from "@/lib/server/site"
+import { isUpstreamTimeoutError, withUpstreamDeadline } from "@/lib/server/upstream"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -34,7 +35,15 @@ async function proxy(
   if (MUTATION_METHODS.has(request.method) && !sameOriginOk(request)) {
     return NextResponse.json({ error: "forbidden_origin" }, { status: 403 })
   }
-  const siteId = await resolveSiteId(request.headers.get("host"), config.siteId)
+  let siteId: string | null
+  try {
+    siteId = await resolveSiteId(request.headers.get("host"), config.siteId, request.signal)
+  } catch (error) {
+    if (isUpstreamTimeoutError(error)) {
+      return NextResponse.json({ error: "upstream_timeout" }, { status: 504 })
+    }
+    throw error
+  }
   if (siteId === null) {
     return NextResponse.json({ error: "site_unresolved" }, { status: 404 })
   }
@@ -63,7 +72,15 @@ async function proxy(
   // application/json，否则上游 fastify 对空体报 FST_ERR_CTP_EMPTY_JSON_BODY(400)。
   const body = boundedBody.body
 
-  const resolved = await resolveSessionWithRefresh(request, config, siteId, preflight)
+  let resolved: Awaited<ReturnType<typeof resolveSessionWithRefresh>>
+  try {
+    resolved = await resolveSessionWithRefresh(request, config, siteId, preflight)
+  } catch (error) {
+    if (isUpstreamTimeoutError(error)) {
+      return NextResponse.json({ error: "upstream_timeout" }, { status: 504 })
+    }
+    throw error
+  }
   if (resolved === null) {
     return NextResponse.json({ error: "unauthenticated" }, { status: 401 })
   }
@@ -82,14 +99,19 @@ async function proxy(
 
   let upstream: Response
   try {
-    upstream = await fetch(target, {
-      method: request.method,
-      headers,
-      ...(body !== undefined ? { body } : {}),
-      cache: "no-store",
-      signal: request.signal,
-    })
-  } catch {
+    upstream = await withUpstreamDeadline(request.signal, config.upstreamTimeoutMs, (signal) =>
+      fetch(target, {
+        method: request.method,
+        headers,
+        ...(body !== undefined ? { body } : {}),
+        cache: "no-store",
+        signal,
+      }),
+    )
+  } catch (error) {
+    if (isUpstreamTimeoutError(error)) {
+      return NextResponse.json({ error: "upstream_timeout" }, { status: 504 })
+    }
     return NextResponse.json({ error: "user_unreachable" }, { status: 502 })
   }
 

@@ -183,11 +183,13 @@ describe("resolveSite", () => {
     expect(await resolveSite("brand-a.com")).toBeNull()
   })
 
-  it("uses a bounded resolver timeout parser", () => {
+  it("uses a strict bounded resolver timeout parser", () => {
     expect(parseSiteResolveTimeoutMs(undefined)).toBe(1_500)
-    expect(parseSiteResolveTimeoutMs("not-a-number")).toBe(1_500)
-    expect(parseSiteResolveTimeoutMs("1")).toBe(100)
-    expect(parseSiteResolveTimeoutMs("999999")).toBe(5_000)
+    expect(() => parseSiteResolveTimeoutMs("not-a-number")).toThrow(/KOKORO_SITE_RESOLVE_TIMEOUT_MS/)
+    expect(() => parseSiteResolveTimeoutMs("1")).toThrow(/KOKORO_SITE_RESOLVE_TIMEOUT_MS/)
+    expect(() => parseSiteResolveTimeoutMs("999999")).toThrow(/KOKORO_SITE_RESOLVE_TIMEOUT_MS/)
+    expect(parseSiteResolveTimeoutMs("100")).toBe(100)
+    expect(parseSiteResolveTimeoutMs("5000")).toBe(5_000)
     expect(parseSiteResolveTimeoutMs("750")).toBe(750)
   })
 

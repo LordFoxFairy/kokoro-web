@@ -17,6 +17,7 @@ import {
 } from "@/lib/server/auth"
 import { sealEnvelope } from "@/lib/server/session-envelope"
 import { resolveSiteId } from "@/lib/server/site"
+import { isUpstreamTimeoutError } from "@/lib/server/upstream"
 
 export const runtime = "nodejs"
 
@@ -53,12 +54,28 @@ export async function GET(request: Request): Promise<NextResponse> {
 
   // Host→Site 是认证签发的前置准入：strict/production 解析失败时不得先消费一次性 token，
   // 更不得把身份静默绑定到部署缺省 Site。
-  const siteId = await resolveSiteId(request.headers.get("host"), config.siteId)
+  let siteId: string | null
+  try {
+    siteId = await resolveSiteId(request.headers.get("host"), config.siteId, request.signal)
+  } catch (error) {
+    if (isUpstreamTimeoutError(error)) {
+      return NextResponse.json({ error: "upstream_timeout" }, { status: 504 })
+    }
+    throw error
+  }
   if (siteId === null) {
     return failRedirect(config)
   }
 
-  const consumed = await userConsumeMagicLink(config, token, hashNonce(nonce), siteId)
+  let consumed: Awaited<ReturnType<typeof userConsumeMagicLink>>
+  try {
+    consumed = await userConsumeMagicLink(config, token, hashNonce(nonce), siteId, request.signal)
+  } catch (error) {
+    if (isUpstreamTimeoutError(error)) {
+      return NextResponse.json({ error: "upstream_timeout" }, { status: 504 })
+    }
+    throw error
+  }
   if (consumed === null || consumed.site_id !== siteId) {
     return failRedirect(config)
   }

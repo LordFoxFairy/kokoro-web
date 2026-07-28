@@ -16,6 +16,7 @@ import {
 } from "@/lib/server/auth"
 import { AUTH_REQUEST_BODY_MAX_BYTES, readBoundedRequestJson } from "@/lib/server/http-boundary"
 import { resolveSiteId } from "@/lib/server/site"
+import { isUpstreamTimeoutError } from "@/lib/server/upstream"
 
 export const runtime = "nodejs"
 
@@ -39,12 +40,28 @@ export async function POST(request: Request): Promise<NextResponse> {
     return NextResponse.json({ error: "invalid_email" }, { status: 400 })
   }
 
-  const siteId = await resolveSiteId(request.headers.get("host"), config.siteId)
+  let siteId: string | null
+  try {
+    siteId = await resolveSiteId(request.headers.get("host"), config.siteId, request.signal)
+  } catch (error) {
+    if (isUpstreamTimeoutError(error)) {
+      return NextResponse.json({ error: "upstream_timeout" }, { status: 504 })
+    }
+    throw error
+  }
   if (siteId === null) {
     return NextResponse.json({ error: "site_unresolved" }, { status: 404 })
   }
   const nonce = newNonce()
-  const outcome = await userRequestMagicLink(config, parsed.data.email, hashNonce(nonce), siteId)
+  let outcome: Awaited<ReturnType<typeof userRequestMagicLink>>
+  try {
+    outcome = await userRequestMagicLink(config, parsed.data.email, hashNonce(nonce), siteId, request.signal)
+  } catch (error) {
+    if (isUpstreamTimeoutError(error)) {
+      return NextResponse.json({ error: "upstream_timeout" }, { status: 504 })
+    }
+    throw error
+  }
 
   if (outcome.kind === "rate_limited") {
     return NextResponse.json({ error: "rate_limited" }, { status: 429 })
