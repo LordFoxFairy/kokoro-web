@@ -2,8 +2,8 @@
 // 替换 KOKORO_SITE_ID 单站点常量。**仅成功解析**按 host 短 TTL 缓存——解析失败/未命中不写缓存，
 // site 服务抖动即时恢复（不被 30s 旧值粘住）。
 // FALLBACK 语义（SITE-REAL-FALLBACK）：
-//   - 非生产且 KOKORO_SITE_STRICT 未开：解析失败 → 退回 env 缺省站点 + 默认品牌 + WARN（开发安全网）。
-//   - production 或显式 strict：resolver 未配置、Host 缺失或解析失败 → fail-closed 回 null，
+//   - 仅 NODE_ENV=development 且 KOKORO_SITE_ALLOW_DEV_FALLBACK=true：解析失败才允许退回 env 缺省站点。
+//   - 其他环境、未显式开启或显式 strict：resolver 未配置、Host 缺失或解析失败 → fail-closed 回 null，
 //     上游渲染中性无品牌 404，不退默认品牌（防多租户品牌串味）。
 
 import { z } from "zod"
@@ -23,6 +23,9 @@ export interface ResolvedSite {
 export const DEFAULT_BRAND: SiteBrand = { name: "Kokoro", logoUrl: null, themeColor: null }
 
 const CACHE_TTL_MS = 30_000
+const DEFAULT_RESOLVE_TIMEOUT_MS = 1_500
+const MIN_RESOLVE_TIMEOUT_MS = 100
+const MAX_RESOLVE_TIMEOUT_MS = 5_000
 
 const resolveResponseSchema = z.object({
   data: z.object({
@@ -60,10 +63,25 @@ function fallbackSite(env: NodeJS.ProcessEnv): ResolvedSite {
   return { siteId: env.KOKORO_SITE_ID?.trim() ?? "", brand: DEFAULT_BRAND }
 }
 
-// strict 档开关：开启且已配 site 服务时，解析失败走 fail-closed（不退默认品牌）。
-function isStrictMode(env: NodeJS.ProcessEnv): boolean {
+function isExplicitStrictMode(env: NodeJS.ProcessEnv): boolean {
   const value = env.KOKORO_SITE_STRICT?.trim().toLowerCase()
-  return env.NODE_ENV === "production" || value === "1" || value === "true"
+  return value === "1" || value === "true"
+}
+
+function allowsDevelopmentFallback(env: NodeJS.ProcessEnv): boolean {
+  return (
+    env.NODE_ENV === "development" &&
+    env.KOKORO_SITE_ALLOW_DEV_FALLBACK?.trim().toLowerCase() === "true" &&
+    !isExplicitStrictMode(env)
+  )
+}
+
+export function parseSiteResolveTimeoutMs(raw: string | undefined): number {
+  const parsed = Number(raw)
+  if (!Number.isFinite(parsed)) {
+    return DEFAULT_RESOLVE_TIMEOUT_MS
+  }
+  return Math.min(MAX_RESOLVE_TIMEOUT_MS, Math.max(MIN_RESOLVE_TIMEOUT_MS, Math.trunc(parsed)))
 }
 
 async function fetchResolved(
@@ -79,7 +97,8 @@ async function fetchResolved(
   if (secret) {
     headers["x-kokoro-internal-secret"] = secret
   }
-  const response = await fetch(url, { headers, cache: "no-store" }).catch(() => null)
+  const signal = AbortSignal.timeout(parseSiteResolveTimeoutMs(env.KOKORO_SITE_RESOLVE_TIMEOUT_MS))
+  const response = await fetch(url, { headers, cache: "no-store", signal }).catch(() => null)
   if (response === null || !response.ok) {
     return null
   }
@@ -91,8 +110,8 @@ async function fetchResolved(
   return { siteId: context.siteId, brand: context.brand }
 }
 
-// 按请求 Host 解析站点。仅显式非生产开发档允许 resolver 未配置或 Host 缺失时退回 env 缺省。
-// 返回 null 仅在 strict 档解析失败时出现（fail-closed），上游据此渲染中性无品牌 404。
+// 按请求 Host 解析站点。仅显式 development+allow flag 允许 resolver 未配置或 Host 缺失时回退。
+// 其他所有运行环境均 fail-closed，上游据此渲染中性无品牌 404。
 export async function resolveSite(
   host: string | null | undefined,
   env: NodeJS.ProcessEnv = process.env,
@@ -100,12 +119,11 @@ export async function resolveSite(
   const baseUrl = env.KOKORO_SITE_BASE_URL?.trim()
   const normalizedHost = normalizeHost(host)
   if (!baseUrl || !normalizedHost) {
-    if (isStrictMode(env)) {
-      console.warn("[site-resolve] resolver or Host unavailable; strict mode → fail-closed 404")
-      return null
+    if (allowsDevelopmentFallback(env)) {
+      return fallbackSite(env)
     }
-    // 显式开发档：未接 Site 服务或无 Host 时才允许回退，方便单站点本地调试。
-    return fallbackSite(env)
+    console.warn("[site-resolve] resolver or Host unavailable; fail-closed 404")
+    return null
   }
 
   const now = Date.now()
@@ -117,21 +135,19 @@ export async function resolveSite(
   const resolved = await fetchResolved(baseUrl, normalizedHost, env)
   if (resolved === null) {
     // 未命中/解析失败：**不写缓存**（site 服务抖动即时恢复，不被 30s 旧值粘住）。
-    if (isStrictMode(env)) {
-      // fail-closed：strict 档不退默认品牌，回 null → 上游渲染中性无品牌 404，防多租户品牌串味。
-      console.warn(`[site-resolve] host=${normalizedHost} unresolved; strict mode → fail-closed 404`)
-      return null
+    if (allowsDevelopmentFallback(env)) {
+      console.warn(`[site-resolve] host=${normalizedHost} unresolved; explicit development fallback`)
+      return fallbackSite(env)
     }
-    console.warn(`[site-resolve] host=${normalizedHost} unresolved; falling back to env default site`)
-    return fallbackSite(env)
+    console.warn(`[site-resolve] host=${normalizedHost} unresolved; fail-closed 404`)
+    return null
   }
   // 仅缓存成功解析。
   cache.set(normalizedHost, { value: resolved, expiresAt: now + CACHE_TTL_MS })
   return resolved
 }
 
-// 仅取 site_id（auth/BFF 流用）：strict/production 解析失败必须保持 null，禁止把未知 Host
-// 签发到部署缺省 Site。fallbackSiteId 只服务显式非生产开发档。
+// 仅取 site_id（auth/BFF 流用）：解析失败必须保持 null；fallbackSiteId 只服务显式开发 fallback。
 export async function resolveSiteId(
   host: string | null | undefined,
   fallbackSiteId: string,
@@ -140,7 +156,7 @@ export async function resolveSiteId(
   if (site?.siteId) {
     return site.siteId
   }
-  return isStrictMode(process.env) ? null : fallbackSiteId
+  return allowsDevelopmentFallback(process.env) ? fallbackSiteId : null
 }
 
 // 便于测试重置进程内缓存。

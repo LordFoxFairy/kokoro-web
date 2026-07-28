@@ -25,11 +25,12 @@ function siteResponse(siteId: string): Response {
   })
 }
 
-function issuedSessionResponse(): Response {
+function issuedSessionResponse(siteId = "site-a"): Response {
   return jsonResponse(200, {
     data: {
       token: "runtime.jwt.signature",
       namespace: "team-1",
+      site_id: siteId,
       refresh_token: "refresh-1",
       refresh_expires_at: new Date(Date.now() + 86_400_000).toISOString(),
       user: { id: "user-1" },
@@ -72,6 +73,59 @@ afterEach(() => {
 })
 
 describe("production Host to Site admission", () => {
+  it("passes the resolved Site to consume and rejects an authoritative wrong-Site response without a session cookie", async () => {
+    const fetchMock = vi.fn(async (target: URL | string) => {
+      const url = target.toString()
+      if (url.startsWith("http://site.test/")) return siteResponse("site-a")
+      if (url.endsWith("/auth/magic-links/consume")) return issuedSessionResponse("site-b")
+      throw new Error(`unexpected target: ${url}`)
+    })
+    vi.stubGlobal("fetch", fetchMock)
+    const { GET } = await import("@/app/api/auth/callback/route")
+
+    const response = await GET(
+      new Request("https://site-a.example/api/auth/callback?token=link-token", {
+        headers: { host: "site-a.example", cookie: "kokoro_auth_nonce=device-nonce" },
+      }),
+    )
+
+    expect(response.status).toBe(303)
+    expect(response.headers.get("location")).toBe("/?auth=link_unavailable")
+    expect(response.headers.get("set-cookie") ?? "").not.toContain("kokoro_session=")
+    const [, consumeInit] = fetchMock.mock.calls[1] as unknown as [URL, RequestInit]
+    expect(JSON.parse(consumeInit.body as string)).toMatchObject({ site_id: "site-a", token: "link-token" })
+  })
+
+  it("passes the resolved Site to team issuance and rejects a wrong-Site response without replacing the envelope", async () => {
+    const fetchMock = vi.fn(async (target: URL | string) => {
+      const url = target.toString()
+      if (url.startsWith("http://site.test/")) return siteResponse("site-a")
+      if (url.endsWith("/bff/auth/team-sessions")) return issuedSessionResponse("site-b")
+      throw new Error(`unexpected target: ${url}`)
+    })
+    vi.stubGlobal("fetch", fetchMock)
+    const { POST } = await import("@/app/api/team/switch/route")
+
+    const response = await POST(
+      new Request("https://site-a.example/api/team/switch", {
+        method: "POST",
+        headers: {
+          host: "site-a.example",
+          origin: "https://site-a.example",
+          cookie: sessionCookie(),
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ team_id: "team-2" }),
+      }),
+    )
+
+    expect(response.status).toBe(502)
+    expect(await response.json()).toEqual({ error: "unavailable" })
+    expect(response.headers.get("set-cookie")).toBeNull()
+    const [, issueInit] = fetchMock.mock.calls[1] as unknown as [URL, RequestInit]
+    expect(JSON.parse(issueInit.body as string)).toEqual({ team_id: "team-2", site_id: "site-a" })
+  })
+
   it("does not request a magic link for an unknown Host", async () => {
     const fetchMock = vi.fn(async (target: URL | string) => {
       const url = target.toString()

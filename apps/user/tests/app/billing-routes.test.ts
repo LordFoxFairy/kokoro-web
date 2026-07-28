@@ -5,12 +5,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { sealEnvelope } from "@/lib/server/session-envelope"
+import { __clearSiteResolveCache } from "@/lib/server/site"
 
 const ENV = {
   KOKORO_WEB_SESSION_SECRET: "test-session-secret",
   KOKORO_USER_BASE_URL: "http://user.test",
   KOKORO_SESSION_BASE_URL: "http://session.test",
   KOKORO_SITE_ID: "site-a",
+  KOKORO_SITE_BASE_URL: "http://site.test",
   KOKORO_PAYMENT_BASE_URL: "http://payment.test",
   KOKORO_INTERNAL_SECRET_WEB_BFF: "svc-secret",
 }
@@ -30,35 +32,43 @@ function jsonResponse(status: number, body: unknown): Response {
 }
 
 beforeEach(() => {
+  __clearSiteResolveCache()
   for (const [k, v] of Object.entries(ENV)) process.env[k] = v
+  vi.stubEnv("NODE_ENV", "production")
 })
 afterEach(() => {
   vi.unstubAllGlobals()
+  vi.unstubAllEnvs()
+  __clearSiteResolveCache()
   for (const k of Object.keys(ENV)) delete process.env[k]
 })
 
 describe("GET /api/billing/plans", () => {
   it("注入 site_id（信封派生）+ web-bff 凭据，camelCase{data} → snake_case{plans}", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      jsonResponse(200, {
-        data: {
-          plans: [
-            { id: "p1", key: "studio", name: "Studio", currency: "USD", amountMinor: "4900", creditMicros: "1000000", billingInterval: "month" },
-          ],
-        },
-      }),
+    const fetchMock = vi.fn(async (target: URL | string) =>
+      target.toString().startsWith("http://site.test/")
+        ? jsonResponse(200, {
+            data: { context: { siteId: "site-a", brand: { name: "Site A", logoUrl: null, themeColor: null } } },
+          })
+        : jsonResponse(200, {
+            data: {
+              plans: [
+                { id: "p1", key: "studio", name: "Studio", currency: "USD", amountMinor: "4900", creditMicros: "1000000", billingInterval: "month" },
+              ],
+            },
+          }),
     )
     vi.stubGlobal("fetch", fetchMock)
     const { GET } = await import("@/app/api/billing/plans/route")
 
-    const res = await GET(new Request("http://localhost/api/billing/plans", { headers: { cookie: sessionCookie() } }))
+    const res = await GET(new Request("http://localhost/api/billing/plans", { headers: { host: "site-a.example", cookie: sessionCookie() } }))
     expect(res.status).toBe(200)
     const body = (await res.json()) as { plans: Array<Record<string, unknown>> }
     expect(body.plans).toEqual([
       { id: "p1", key: "studio", name: "Studio", currency: "USD", amount_minor: "4900", credit_micros: "1000000", billing_interval: "month" },
     ])
 
-    const [target, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    const [target, init] = fetchMock.mock.calls[1] as unknown as [string, RequestInit]
     expect(target).toBe("http://payment.test/plans")
     const headers = init.headers as Headers
     expect(headers.get("x-kokoro-service")).toBe("web-bff")
@@ -77,11 +87,15 @@ describe("GET /api/billing/plans", () => {
 
   it("payment 未配置 → 503（预览档诚实态）", async () => {
     delete process.env.KOKORO_PAYMENT_BASE_URL
-    const fetchMock = vi.fn()
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse(200, {
+        data: { context: { siteId: "site-a", brand: { name: "Site A", logoUrl: null, themeColor: null } } },
+      }),
+    )
     vi.stubGlobal("fetch", fetchMock)
     const { GET } = await import("@/app/api/billing/plans/route")
-    const res = await GET(new Request("http://localhost/api/billing/plans", { headers: { cookie: sessionCookie() } }))
+    const res = await GET(new Request("http://localhost/api/billing/plans", { headers: { host: "site-a.example", cookie: sessionCookie() } }))
     expect(res.status).toBe(503)
-    expect(fetchMock).not.toHaveBeenCalled()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 })

@@ -9,6 +9,20 @@ const SCAN_ROOTS = [
 ];
 
 const USER_PLANS_ROUTE = "apps/user/src/app/api/billing/plans/route.ts";
+const USER_API_ROUTES = new Set([
+  "apps/user/src/app/api/auth/callback/route.ts",
+  "apps/user/src/app/api/auth/logout/route.ts",
+  "apps/user/src/app/api/auth/magic-link/request/route.ts",
+  "apps/user/src/app/api/auth/session-state/route.ts",
+  USER_PLANS_ROUTE,
+  "apps/user/src/app/api/dev/status/route.ts",
+  "apps/user/src/app/api/hub/[...path]/route.ts",
+  "apps/user/src/app/api/session/[...path]/route.ts",
+  "apps/user/src/app/api/shared/[id]/route.ts",
+  "apps/user/src/app/api/team/[...path]/route.ts",
+  "apps/user/src/app/api/team/context/route.ts",
+  "apps/user/src/app/api/team/switch/route.ts",
+]);
 const ALLOWED_USER_CATCH_ALL_ROUTES = new Set([
   "apps/user/src/app/api/hub/[...path]/route.ts",
   "apps/user/src/app/api/session/[...path]/route.ts",
@@ -21,6 +35,46 @@ const ADMIN_FILTERED_ROUTES = new Map([
   ["apps/admin/app/api/resource/route.ts", { method: "GET", handler: "getFilteredResource" }],
   ["apps/admin/app/api/action/route.ts", { method: "POST", handler: "postFilteredAction" }],
 ]);
+const ADMIN_API_ROUTES = new Set([
+  ...ADMIN_FILTERED_ROUTES.keys(),
+  "apps/admin/app/api/auth/[...nextauth]/route.ts",
+]);
+const ADMIN_GATEWAY_REWRITE_PATHS = new Set([
+  "/api/me",
+  "/api/operators",
+  "/api/operators/:id/status",
+  "/api/roles",
+  "/api/sites",
+  "/api/approvals",
+  "/api/approvals/:id/approve",
+  "/api/approvals/:id/reject",
+  "/api/audit",
+]);
+
+function foldStaticStringConcatenations(source) {
+  let folded = source;
+  for (let pass = 0; pass < 8; pass += 1) {
+    const next = folded.replace(
+      /(["'])([^"'\\]*)\1\s*\+\s*(["'])([^"'\\]*)\3/gu,
+      (_match, _leftQuote, left, _rightQuote, right) => JSON.stringify(left + right),
+    );
+    if (next === folded) break;
+    folded = next;
+  }
+  return folded;
+}
+
+function sameSet(left, right) {
+  return left.size === right.size && [...left].every((value) => right.has(value));
+}
+
+export function isNextRouteSource(path) {
+  return /(?:^|\/)route\.[cm]?[jt]sx?$/u.test(path);
+}
+
+function withoutComments(source) {
+  return source.replace(/\/\*[\s\S]*?\*\//gu, "").replace(/^\s*\/\/.*$/gmu, "");
+}
 
 async function filesUnder(path) {
   let entries;
@@ -182,7 +236,8 @@ const RULES = [
     rejects(path, source) {
       return (
         path === USER_PLANS_ROUTE &&
-        /export\s*\{[^}]*\b(?:POST|PUT|PATCH|DELETE|OPTIONS)\b[^}]*\}/u.test(source)
+        (/export\s*\{[^}]*\b(?:POST|PUT|PATCH|DELETE|OPTIONS)\b[^}]*\}/u.test(source) ||
+          /export\s*\*/u.test(source))
       );
     },
   },
@@ -193,6 +248,12 @@ const RULES = [
         /^apps\/admin\/(?:next\.config|proxy)\.[cm]?[jt]s$/u.test(path) &&
         /["'`]\/api\/(?:manifests|billing-overview|user360|resource|action)["'`]/u.test(source)
       );
+    },
+  },
+  {
+    id: "admin-proxy-egress",
+    rejects(path, source) {
+      return path === "apps/admin/proxy.ts" && /(?:\bfetch\s*\(|KOKORO_(?:GATEWAY|PAYMENT)_BASE_URL|destination\s*:|https?:\/\/)/u.test(source);
     },
   },
 ];
@@ -210,7 +271,7 @@ export async function acquisitionShutdownViolations(root) {
   const violations = [];
   for (const file of files) {
     const path = relative(root, file).replaceAll("\\", "/");
-    const source = await readFile(file, "utf8");
+    const source = foldStaticStringConcatenations(await readFile(file, "utf8"));
     for (const rule of RULES) {
       if (rule.rejects(path, source)) violations.push({ rule: rule.id, path });
     }
@@ -220,6 +281,20 @@ export async function acquisitionShutdownViolations(root) {
 
 export async function acquisitionShutdownTopologyViolations(root) {
   const violations = [];
+  const userRouteFiles = (await filesUnder(resolve(root, "apps/user/src/app/api")))
+    .filter(isNextRouteSource)
+    .map((path) => relative(root, path).replaceAll("\\", "/"));
+  if (!sameSet(new Set(userRouteFiles), USER_API_ROUTES)) {
+    violations.push({ rule: "user-api-route-inventory", path: "apps/user/src/app/api" });
+  }
+
+  const adminRouteFiles = (await filesUnder(resolve(root, "apps/admin/app/api")))
+    .filter(isNextRouteSource)
+    .map((path) => relative(root, path).replaceAll("\\", "/"));
+  if (!sameSet(new Set(adminRouteFiles), ADMIN_API_ROUTES)) {
+    violations.push({ rule: "admin-api-route-inventory", path: "apps/admin/app/api" });
+  }
+
   const billingFiles = (await filesUnder(resolve(root, "apps/user/src/app/api/billing")))
     .filter((path) => SOURCE_EXTENSIONS.test(path))
     .map((path) => relative(root, path).replaceAll("\\", "/"))
@@ -237,7 +312,8 @@ export async function acquisitionShutdownTopologyViolations(root) {
   if (
     !/export\s+async\s+function\s+GET\b/u.test(plansSource) ||
     /export\s+(?:async\s+function|const)\s+(?:POST|PUT|PATCH|DELETE|OPTIONS)\b/u.test(plansSource) ||
-    /export\s*\{[^}]*\b(?:POST|PUT|PATCH|DELETE|OPTIONS)\b[^}]*\}/u.test(plansSource)
+    /export\s*\{[^}]*\b(?:POST|PUT|PATCH|DELETE|OPTIONS)\b[^}]*\}/u.test(plansSource) ||
+    /export\s*\*/u.test(plansSource)
   ) {
     violations.push({ rule: "user-plans-get-only", path: USER_PLANS_ROUTE });
   }
@@ -257,6 +333,35 @@ export async function acquisitionShutdownTopologyViolations(root) {
     ) {
       violations.push({ rule: "admin-filtered-route-shape", path });
     }
+    const importSources = new Set(
+      [...source.matchAll(/^\s*(?:import|export)\b[^"']*\bfrom\s*["']([^"']+)["']/gmu)].map((match) => match[1]),
+    );
+    if (!sameSet(importSources, new Set(["@/lib/admin-gateway"])) || /export\s*\*/u.test(source)) {
+      violations.push({ rule: "admin-filtered-route-import-graph", path });
+    }
+  }
+
+  let adminNextConfig = "";
+  try {
+    adminNextConfig = foldStaticStringConcatenations(
+      withoutComments(await readFile(resolve(root, "apps/admin/next.config.ts"), "utf8")),
+    );
+  } catch {
+    // Missing configuration is an invalid closed topology too.
+  }
+  const rewriteBlock = adminNextConfig.match(/const\s+GATEWAY_PROXY_PATHS\s*=\s*\[([\s\S]*?)\]\s*as\s+const/u)?.[1] ?? "";
+  const declaredRewrites = new Set(
+    [...rewriteBlock.matchAll(/["'](\/api\/[^"']+)["']/gu)].map((match) => match[1]),
+  );
+  const allAdminApiLiterals = new Set(
+    [...adminNextConfig.matchAll(/["'](\/api\/[^"']+)["']/gu)].map((match) => match[1]),
+  );
+  if (
+    !sameSet(declaredRewrites, ADMIN_GATEWAY_REWRITE_PATHS) ||
+    !sameSet(allAdminApiLiterals, ADMIN_GATEWAY_REWRITE_PATHS) ||
+    !/GATEWAY_PROXY_PATHS\.map\s*\(\s*\(source\)\s*=>\s*\(\{\s*source\s*,\s*destination\s*:/u.test(adminNextConfig)
+  ) {
+    violations.push({ rule: "admin-rewrite-allowlist", path: "apps/admin/next.config.ts" });
   }
 
   return violations.sort((left, right) => `${left.rule}:${left.path}`.localeCompare(`${right.rule}:${right.path}`));

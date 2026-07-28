@@ -58,8 +58,8 @@ export async function GET(request: Request): Promise<NextResponse> {
     return failRedirect(config)
   }
 
-  const consumed = await userConsumeMagicLink(config, token, hashNonce(nonce))
-  if (consumed === null) {
+  const consumed = await userConsumeMagicLink(config, token, hashNonce(nonce), siteId)
+  if (consumed === null || consumed.site_id !== siteId) {
     return failRedirect(config)
   }
 

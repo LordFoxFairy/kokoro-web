@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import {
   DEFAULT_BRAND,
   __clearSiteResolveCache,
+  parseSiteResolveTimeoutMs,
   resolveSite,
   resolveSiteId,
 } from "@/lib/server/site"
@@ -29,10 +30,19 @@ afterEach(() => {
   vi.unstubAllEnvs()
   __clearSiteResolveCache()
   for (const k of Object.keys(SITE_ENV)) delete process.env[k]
+  delete process.env.KOKORO_SITE_ALLOW_DEV_FALLBACK
+  delete process.env.KOKORO_SITE_RESOLVE_TIMEOUT_MS
+  delete process.env.KOKORO_SITE_STRICT
 })
+
+function enableDevelopmentFallback(): void {
+  vi.stubEnv("NODE_ENV", "development")
+  process.env.KOKORO_SITE_ALLOW_DEV_FALLBACK = "true"
+}
 
 describe("resolveSite", () => {
   it("returns env default site + default brand without a network call when base URL is unset", async () => {
+    enableDevelopmentFallback()
     delete process.env.KOKORO_SITE_BASE_URL
     const fetchMock = vi.fn()
     vi.stubGlobal("fetch", fetchMock)
@@ -44,6 +54,7 @@ describe("resolveSite", () => {
   })
 
   it("falls back to env default when the host is missing", async () => {
+    enableDevelopmentFallback()
     const fetchMock = vi.fn()
     vi.stubGlobal("fetch", fetchMock)
 
@@ -79,6 +90,7 @@ describe("resolveSite", () => {
   })
 
   it("falls back to env default + default brand and warns when the host is unresolved (non-200)", async () => {
+    enableDevelopmentFallback()
     const fetchMock = vi.fn().mockResolvedValue(new Response("not found", { status: 404 }))
     vi.stubGlobal("fetch", fetchMock)
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
@@ -91,6 +103,7 @@ describe("resolveSite", () => {
   })
 
   it("does not cache a failed resolution — retries the site service on the next call", async () => {
+    enableDevelopmentFallback()
     const fetchMock = vi.fn().mockResolvedValue(new Response("not found", { status: 404 }))
     vi.stubGlobal("fetch", fetchMock)
     vi.spyOn(console, "warn").mockImplementation(() => {})
@@ -102,6 +115,7 @@ describe("resolveSite", () => {
   })
 
   it("strict mode: fail-closed to null on unresolved host (no default-brand fallback)", async () => {
+    enableDevelopmentFallback()
     process.env.KOKORO_SITE_STRICT = "1"
     const fetchMock = vi.fn().mockResolvedValue(new Response("not found", { status: 404 }))
     vi.stubGlobal("fetch", fetchMock)
@@ -134,6 +148,7 @@ describe("resolveSite", () => {
   })
 
   it("strict mode fails closed when the request Host is missing", async () => {
+    enableDevelopmentFallback()
     process.env.KOKORO_SITE_STRICT = "1"
     const fetchMock = vi.fn()
     vi.stubGlobal("fetch", fetchMock)
@@ -153,6 +168,46 @@ describe("resolveSite", () => {
     expect(site).toEqual({ siteId: "site-brandco", brand: { name: "Brand Co", logoUrl: null, themeColor: null } })
     delete process.env.KOKORO_SITE_STRICT
   })
+
+  it.each(["test", "staging", ""])("%s environment fails closed even when the dev fallback flag is true", async (nodeEnv) => {
+    vi.stubEnv("NODE_ENV", nodeEnv)
+    process.env.KOKORO_SITE_ALLOW_DEV_FALLBACK = "true"
+    delete process.env.KOKORO_SITE_BASE_URL
+    expect(await resolveSite("brand-a.com")).toBeNull()
+  })
+
+  it("development also fails closed unless fallback is explicitly enabled", async () => {
+    vi.stubEnv("NODE_ENV", "development")
+    delete process.env.KOKORO_SITE_ALLOW_DEV_FALLBACK
+    delete process.env.KOKORO_SITE_BASE_URL
+    expect(await resolveSite("brand-a.com")).toBeNull()
+  })
+
+  it("uses a bounded resolver timeout parser", () => {
+    expect(parseSiteResolveTimeoutMs(undefined)).toBe(1_500)
+    expect(parseSiteResolveTimeoutMs("not-a-number")).toBe(1_500)
+    expect(parseSiteResolveTimeoutMs("1")).toBe(100)
+    expect(parseSiteResolveTimeoutMs("999999")).toBe(5_000)
+    expect(parseSiteResolveTimeoutMs("750")).toBe(750)
+  })
+
+  it("aborts a hung resolver at the configured timeout and returns null", async () => {
+    vi.stubEnv("NODE_ENV", "production")
+    process.env.KOKORO_SITE_RESOLVE_TIMEOUT_MS = "100"
+    const fetchMock = vi.fn((_input: URL, init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")))
+      }),
+    )
+    vi.stubGlobal("fetch", fetchMock)
+    vi.spyOn(console, "warn").mockImplementation(() => {})
+
+    const startedAt = Date.now()
+    expect(await resolveSite("hung.example")).toBeNull()
+    expect(Date.now() - startedAt).toBeLessThan(1_000)
+    const [, init] = fetchMock.mock.calls[0] as [URL, RequestInit]
+    expect(init.signal?.aborted).toBe(true)
+  })
 })
 
 describe("resolveSiteId", () => {
@@ -166,6 +221,7 @@ describe("resolveSiteId", () => {
   })
 
   it("returns the provided fallback site_id when the service is unconfigured", async () => {
+    enableDevelopmentFallback()
     delete process.env.KOKORO_SITE_ID
     delete process.env.KOKORO_SITE_BASE_URL
 

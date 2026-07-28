@@ -176,6 +176,7 @@ const consumeResponseSchema = z.object({
   data: z.object({
     token: z.string().min(1),
     namespace: z.string().min(1),
+    site_id: z.string().min(1),
     refresh_token: z.string().min(1),
     refresh_expires_at: z.string().min(1),
     user: z.object({ id: z.string().min(1) }).passthrough(),
@@ -254,11 +255,12 @@ export async function userIssueTeamSession(
   config: AuthConfig,
   userId: string,
   teamId: string,
+  siteId: string,
 ): Promise<TeamSessionOutcome> {
   const response = await fetch(new URL("/bff/auth/team-sessions", config.userBaseUrl), {
     method: "POST",
     headers: { ...callerHeaders(config), "x-user-id": userId },
-    body: JSON.stringify({ team_id: teamId }),
+    body: JSON.stringify({ team_id: teamId, site_id: siteId }),
     cache: "no-store",
   }).catch(() => null)
   if (response === null) {
@@ -282,11 +284,12 @@ export async function userConsumeMagicLink(
   config: AuthConfig,
   token: string,
   nonceHash: string,
+  siteId: string,
 ): Promise<ConsumeResult | null> {
   const response = await fetch(new URL("/auth/magic-links/consume", config.userBaseUrl), {
     method: "POST",
     headers: callerHeaders(config),
-    body: JSON.stringify({ token, nonce_hash: nonceHash }),
+    body: JSON.stringify({ token, nonce_hash: nonceHash, site_id: siteId }),
     cache: "no-store",
   }).catch(() => null)
   if (response === null || !response.ok) {
@@ -361,7 +364,7 @@ export async function resolveSessionWithRefresh(
     return { envelope, setCookie: null }
   }
   const refreshed = await userRefreshSession(config, envelope.refresh_token)
-  if (refreshed === null) {
+  if (refreshed === null || refreshed.site_id !== envelope.site_id) {
     return { envelope, setCookie: null }
   }
   const newAccessExp = decodeJwtExp(refreshed.token) ?? nowSec + 3600

@@ -96,6 +96,33 @@ describe("resolveSessionWithRefresh", () => {
     expect(resolved!.setCookie).toBeNull()
   })
 
+  it("续期响应试图切换 Site → 保留原信封且绝不 set-cookie", async () => {
+    const config = authConfig()!
+    const original = base()
+    const req = reqWith(original)
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            data: {
+              token: jwtWithExp(nowSec() + 3600),
+              namespace: "team_other",
+              site_id: "site-b",
+              refresh_token: "r-cross-site",
+              refresh_expires_at: new Date((nowSec() + 2_592_000) * 1000).toISOString(),
+            },
+          }),
+          { status: 200 },
+        ),
+      ),
+    )
+
+    const resolved = await resolveSessionWithRefresh(req, config)
+    expect(resolved?.envelope).toEqual(original)
+    expect(resolved?.setCookie).toBeNull()
+  })
+
   it("无信封 → null（未认证）", async () => {
     const config = authConfig()!
     const req = new Request("http://localhost/api/session/x")

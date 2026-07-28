@@ -29,15 +29,16 @@ owners:
   - 出站：`callerHeaders`（`x-kokoro-service: web-bff` + 可选内部凭据），`userRequestMagicLink`/
     `userConsumeMagicLink`（对 user 的 magic-link 调用，失败归一）。
   - `sameOriginOk`：变更类请求同源守卫（Origin 存在且 host 不符则拒）。
-  - `userRequestMagicLink` 第 4 参 `siteId` 由调用方按 Host 解析后传入（缺省回退 `config.siteId`）。
+  - magic-link consume 与 team-session issue 请求都携 Host 解析出的 `site_id`；权威响应也必须返回相同
+    `site_id` 才能密封。refresh 响应不得改变原信封 Site。
 - `site.ts`（host→site 解析，SITE-REAL）
   - `resolveSite(host, env?) → ResolvedSite | null`：Host 经 kokoro-site `/site-context/resolve` 定
     `{siteId, brand}`；**仅成功解析**按 host 短 TTL（30s）缓存（失败/未命中不写缓存，服务抖动即时恢复）。
-    显式非生产开发档：未配置 `KOKORO_SITE_BASE_URL`/Host 缺失/未命中 → 退回 env 缺省站点
-    （`KOKORO_SITE_ID`）+ 默认品牌 Kokoro 并 WARN。production 自动 strict；显式 strict 档在 resolver 缺失、
-    Host 缺失、未知 Host 或上游故障时均回 `null` fail-closed。
+    只有 `NODE_ENV=development` 且 `KOKORO_SITE_ALLOW_DEV_FALLBACK=true` 才可退回 env 缺省站点；
+    test/未知环境/staging/production 以及显式 strict 均 fail-closed。resolver 使用内置有界超时
+    `KOKORO_SITE_RESOLVE_TIMEOUT_MS`（默认 1500ms，钳制 100..5000ms），超时会中止请求并回 `null`。
   - `resolveSiteId(host, fallbackSiteId)`：仅取 site_id 供 auth 流（magic-link/callback/team-switch）
-    与 Site-scoped BFF；仅开发档允许 `fallbackSiteId`，strict/production 保持 `null`，禁止未知 Host
+    与 Site-scoped BFF；仅显式 development fallback 允许 `fallbackSiteId`，其余环境保持 `null`，禁止未知 Host
     签发/换签信封或触达业务上游。
   - `SiteBrand`/`ResolvedSite`/`DEFAULT_BRAND`；`__clearSiteResolveCache()` 仅测试用。
 

@@ -45,11 +45,14 @@ export async function POST(request: Request): Promise<NextResponse> {
     return NextResponse.json({ error: "site_unresolved" }, { status: 404 })
   }
 
-  const outcome = await userIssueTeamSession(config, envelope.user_id, parsed.data.team_id)
+  const outcome = await userIssueTeamSession(config, envelope.user_id, parsed.data.team_id, siteId)
   if (outcome.kind === "forbidden") {
     return NextResponse.json({ error: "forbidden" }, { status: 403 })
   }
   if (outcome.kind === "unavailable") {
+    return NextResponse.json({ error: "unavailable" }, { status: 502 })
+  }
+  if (outcome.result.site_id !== siteId || outcome.result.site_id !== envelope.site_id) {
     return NextResponse.json({ error: "unavailable" }, { status: 502 })
   }
 

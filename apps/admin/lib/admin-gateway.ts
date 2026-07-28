@@ -2,36 +2,113 @@ import "server-only";
 
 import { z } from "zod";
 
+const MAX_ACTION_REQUEST_BYTES = 16 * 1024 * 1024;
+const MAX_GATEWAY_RESPONSE_BYTES = 8 * 1024 * 1024;
+
 const ACQUISITION_DISABLED = {
   error: { code: "ACQUISITION_CHANNEL_DISABLED", message: "Acquisition channel is disabled" },
 } as const;
+const TRUST_UNAVAILABLE = {
+  error: { code: "auth.boundary_unavailable", message: "Admin trust boundary is unavailable" },
+} as const;
 
-const manifestsEnvelopeSchema = z
-  .object({
-    data: z.array(z.object({ id: z.string() }).passthrough()),
-  })
-  .passthrough();
+const actionSchema = z.object({
+  id: z.string(),
+  labelKey: z.string(),
+  kind: z.string(),
+  requiredPermission: z.string().optional(),
+  route: z.string().nullable().optional(),
+});
+const resourceSchema = z.object({
+  id: z.string(),
+  labelKey: z.string(),
+  route: z.string(),
+  siteScopeField: z.enum(["siteId", "id"]).nullable(),
+  actions: z.array(actionSchema).optional(),
+});
+const manifestSchema = z.object({ resources: z.array(resourceSchema).optional() });
+const manifestsEnvelopeSchema = z.object({
+  data: z.array(
+    z.object({
+      id: z.string(),
+      online: z.boolean(),
+      manifest: manifestSchema.nullable().optional(),
+    }),
+  ),
+  requestId: z.string().optional(),
+});
 
-const billingOverviewEnvelopeSchema = z
-  .object({
-    data: z.object({}).passthrough(),
-  })
-  .passthrough();
+const creditStatsSchema = z.object({
+  accountsTotal: z.number(),
+  accountsActive: z.number(),
+  balanceSumMicros: z.string(),
+  heldSumMicros: z.string(),
+  grantedTotalMicros: z.string(),
+  spentTotalMicros: z.string(),
+});
+const billingOverviewEnvelopeSchema = z.object({
+  data: z.object({ credit: creditStatsSchema.nullable() }),
+  requestId: z.string().optional(),
+});
 
-const user360EnvelopeSchema = z
-  .object({
-    data: z.object({}).passthrough(),
-  })
-  .passthrough();
+const identitySchema = z.object({
+  id: z.string(),
+  email: z.string().nullish(),
+  displayName: z.string().nullish(),
+  status: z.string().nullish(),
+});
+const creditAccountSchema = z.object({
+  id: z.string(),
+  status: z.string().nullish(),
+  balanceMicros: z.string().nullish(),
+  heldMicros: z.string().nullish(),
+});
+const user360EnvelopeSchema = z.object({
+  data: z.object({
+    identity: identitySchema.nullable(),
+    creditAccount: creditAccountSchema.nullable(),
+  }),
+  requestId: z.string().optional(),
+});
 
+const errorEnvelopeSchema = z.object({
+  error: z.object({ code: z.string(), message: z.string() }),
+  requestId: z.string().optional(),
+});
 const actionBoundarySchema = z.object({ moduleId: z.unknown().optional(), route: z.unknown().optional() }).passthrough();
+
+type BoundedRead =
+  | { kind: "ok"; text: string }
+  | { kind: "too_large" }
+  | { kind: "read_error" };
 
 function disabled(): Response {
   return Response.json(ACQUISITION_DISABLED, { status: 404 });
 }
 
+function trustUnavailable(): Response {
+  return Response.json(TRUST_UNAVAILABLE, { status: 503 });
+}
+
 function badGateway(): Response {
-  return Response.json({ error: { code: "gateway.bad_response", message: "Admin gateway returned an invalid response" } }, { status: 502 });
+  return Response.json(
+    { error: { code: "gateway.bad_response", message: "Admin gateway returned an invalid response" } },
+    { status: 502 },
+  );
+}
+
+function responseTooLarge(): Response {
+  return Response.json(
+    { error: { code: "gateway.response_too_large", message: "Admin gateway response exceeds the size limit" } },
+    { status: 502 },
+  );
+}
+
+function requestTooLarge(): Response {
+  return Response.json(
+    { error: { code: "request.too_large", message: "Admin action request exceeds the size limit" } },
+    { status: 413 },
+  );
 }
 
 function isPaymentModule(value: unknown): boolean {
@@ -42,13 +119,71 @@ function isPaymentRoute(value: unknown): boolean {
   return typeof value === "string" && /(?:^|\/)payments?(?:\/|$)/iu.test(value.trim());
 }
 
-function requestHeaders(request: Request, hasBody: boolean): Headers {
+function declaredLengthExceeds(headers: Headers, limit: number): boolean {
+  const raw = headers.get("content-length")?.trim();
+  if (raw === undefined || !/^\d+$/u.test(raw)) return false;
+  const length = Number(raw);
+  return Number.isSafeInteger(length) && length > limit;
+}
+
+async function cancelBody(source: Request | Response): Promise<void> {
+  try {
+    await source.body?.cancel();
+  } catch {
+    // Cancellation is a resource hint; the stable boundary response remains authoritative.
+  }
+}
+
+async function readTextBounded(source: Request | Response, limit: number): Promise<BoundedRead> {
+  if (declaredLengthExceeds(source.headers, limit)) {
+    await cancelBody(source);
+    return { kind: "too_large" };
+  }
+  if (source.body === null) return { kind: "ok", text: "" };
+
+  const reader = source.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const result = await reader.read();
+      if (result.done) break;
+      total += result.value.byteLength;
+      if (total > limit) {
+        await reader.cancel();
+        return { kind: "too_large" };
+      }
+      chunks.push(result.value);
+    }
+  } catch {
+    return { kind: "read_error" };
+  } finally {
+    reader.releaseLock();
+  }
+
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return { kind: "ok", text: new TextDecoder().decode(bytes) };
+}
+
+function trustedGatewayHeaders(request: Request, hasBody: boolean): Headers | null {
+  const configuredSecret = process.env.KOKORO_ADMIN_PROXY_SECRET?.trim() ?? "";
+  const suppliedSecret = request.headers.get("x-kokoro-proxy-secret")?.trim() ?? "";
+  const operator = request.headers.get("x-kokoro-operator")?.trim() ?? "";
+  if (configuredSecret.length === 0 || suppliedSecret !== configuredSecret || operator.length === 0) return null;
+
   const headers = new Headers();
-  for (const name of ["accept", "x-kokoro-operator", "x-kokoro-proxy-secret", "x-request-id"]) {
+  for (const name of ["accept", "x-request-id"]) {
     const value = request.headers.get(name);
     if (value !== null) headers.set(name, value);
   }
-  if (hasBody) headers.set("content-type", request.headers.get("content-type") ?? "application/json");
+  headers.set("x-kokoro-operator", operator);
+  headers.set("x-kokoro-proxy-secret", configuredSecret);
+  if (hasBody) headers.set("content-type", "application/json");
   return headers;
 }
 
@@ -59,11 +194,11 @@ function gatewayTarget(request: Request, path: string): URL {
   return target;
 }
 
-async function fetchGateway(request: Request, path: string, body?: string): Promise<Response | null> {
+async function fetchGateway(request: Request, path: string, headers: Headers, body?: string): Promise<Response | null> {
   try {
     return await fetch(gatewayTarget(request, path), {
       method: body === undefined ? "GET" : "POST",
-      headers: requestHeaders(request, body !== undefined),
+      headers,
       ...(body === undefined ? {} : { body }),
       cache: "no-store",
       redirect: "manual",
@@ -74,67 +209,106 @@ async function fetchGateway(request: Request, path: string, body?: string): Prom
   }
 }
 
-function relay(upstream: Response): Response {
-  const headers = new Headers();
-  for (const name of ["content-type", "retry-after", "x-request-id"]) {
-    const value = upstream.headers.get(name);
-    if (value !== null) headers.set(name, value);
-  }
-  return new Response(upstream.body, { status: upstream.status, headers });
-}
-
 function unavailable(): Response {
-  return Response.json({ error: { code: "gateway.unavailable", message: "Admin gateway is unavailable" } }, { status: 502 });
-}
-
-export async function getFilteredManifests(request: Request): Promise<Response> {
-  const upstream = await fetchGateway(request, "/api/manifests");
-  if (upstream === null) return unavailable();
-  if (!upstream.ok) return relay(upstream);
-  const parsed = manifestsEnvelopeSchema.safeParse(await upstream.json().catch(() => null));
-  if (!parsed.success) return badGateway();
   return Response.json(
-    { ...parsed.data, data: parsed.data.data.filter((module) => !isPaymentModule(module.id)) },
-    { status: upstream.status },
+    { error: { code: "gateway.unavailable", message: "Admin gateway is unavailable" } },
+    { status: 502 },
   );
 }
 
-export async function getCreditBillingOverview(request: Request): Promise<Response> {
-  const upstream = await fetchGateway(request, "/api/billing-overview");
+async function readUpstreamJson(upstream: Response): Promise<{ kind: "ok"; raw: unknown } | Exclude<BoundedRead, { kind: "ok" }>> {
+  const read = await readTextBounded(upstream, MAX_GATEWAY_RESPONSE_BYTES);
+  if (read.kind !== "ok") return read;
+  try {
+    return { kind: "ok", raw: JSON.parse(read.text) as unknown };
+  } catch {
+    return { kind: "read_error" };
+  }
+}
+
+function normalizedError(upstream: Response, raw: unknown): Response {
+  const parsed = errorEnvelopeSchema.safeParse(raw);
+  const body = parsed.success
+    ? parsed.data
+    : { error: { code: "gateway.error", message: "Admin gateway request failed" } };
+  const headers = new Headers({ "content-type": "application/json" });
+  const retryAfter = upstream.headers.get("retry-after");
+  if (retryAfter !== null) headers.set("retry-after", retryAfter);
+  return new Response(JSON.stringify(body), { status: upstream.status, headers });
+}
+
+async function parsedUpstream(upstream: Response): Promise<{ kind: "ok"; raw: unknown } | { kind: "response"; response: Response }> {
+  const read = await readUpstreamJson(upstream);
+  if (read.kind === "too_large") return { kind: "response", response: responseTooLarge() };
+  if (read.kind === "read_error") return { kind: "response", response: badGateway() };
+  if (!upstream.ok) return { kind: "response", response: normalizedError(upstream, read.raw) };
+  return read;
+}
+
+async function relayBoundedJson(upstream: Response): Promise<Response> {
+  const parsed = await parsedUpstream(upstream);
+  if (parsed.kind === "response") return parsed.response;
+  return Response.json(parsed.raw, { status: upstream.status });
+}
+
+export async function getFilteredManifests(request: Request): Promise<Response> {
+  const headers = trustedGatewayHeaders(request, false);
+  if (headers === null) return trustUnavailable();
+  const upstream = await fetchGateway(request, "/api/manifests", headers);
   if (upstream === null) return unavailable();
-  if (!upstream.ok) return relay(upstream);
-  const parsed = billingOverviewEnvelopeSchema.safeParse(await upstream.json().catch(() => null));
+  const read = await parsedUpstream(upstream);
+  if (read.kind === "response") return read.response;
+  const parsed = manifestsEnvelopeSchema.safeParse(read.raw);
   if (!parsed.success) return badGateway();
-  const data = { ...parsed.data.data };
-  delete data.payment;
-  return Response.json({ ...parsed.data, data }, { status: upstream.status });
+  return Response.json({ ...parsed.data, data: parsed.data.data.filter((module) => !isPaymentModule(module.id)) });
+}
+
+export async function getCreditBillingOverview(request: Request): Promise<Response> {
+  const headers = trustedGatewayHeaders(request, false);
+  if (headers === null) return trustUnavailable();
+  const upstream = await fetchGateway(request, "/api/billing-overview", headers);
+  if (upstream === null) return unavailable();
+  const read = await parsedUpstream(upstream);
+  if (read.kind === "response") return read.response;
+  const parsed = billingOverviewEnvelopeSchema.safeParse(read.raw);
+  if (!parsed.success) return badGateway();
+  return Response.json(parsed.data);
 }
 
 export async function getAccountUser360(request: Request): Promise<Response> {
-  const upstream = await fetchGateway(request, "/api/user360");
+  const headers = trustedGatewayHeaders(request, false);
+  if (headers === null) return trustUnavailable();
+  const upstream = await fetchGateway(request, "/api/user360", headers);
   if (upstream === null) return unavailable();
-  if (!upstream.ok) return relay(upstream);
-  const parsed = user360EnvelopeSchema.safeParse(await upstream.json().catch(() => null));
+  const read = await parsedUpstream(upstream);
+  if (read.kind === "response") return read.response;
+  const parsed = user360EnvelopeSchema.safeParse(read.raw);
   if (!parsed.success) return badGateway();
-  const data = { ...parsed.data.data };
-  delete data.orders;
-  return Response.json({ ...parsed.data, data }, { status: upstream.status });
+  return Response.json(parsed.data);
 }
 
 export async function getFilteredResource(request: Request): Promise<Response> {
+  const headers = trustedGatewayHeaders(request, false);
+  if (headers === null) return trustUnavailable();
   const url = new URL(request.url);
   if (url.searchParams.getAll("moduleId").some(isPaymentModule) || url.searchParams.getAll("route").some(isPaymentRoute)) {
     return disabled();
   }
-  const upstream = await fetchGateway(request, "/api/resource");
-  return upstream === null ? unavailable() : relay(upstream);
+  const upstream = await fetchGateway(request, "/api/resource", headers);
+  return upstream === null ? unavailable() : relayBoundedJson(upstream);
 }
 
 export async function postFilteredAction(request: Request): Promise<Response> {
-  const body = await request.text();
+  const headers = trustedGatewayHeaders(request, true);
+  if (headers === null) return trustUnavailable();
+  const read = await readTextBounded(request, MAX_ACTION_REQUEST_BYTES);
+  if (read.kind === "too_large") return requestTooLarge();
+  if (read.kind === "read_error") {
+    return Response.json({ error: { code: "request.invalid", message: "Invalid action request" } }, { status: 400 });
+  }
   let raw: unknown;
   try {
-    raw = JSON.parse(body);
+    raw = JSON.parse(read.text) as unknown;
   } catch {
     return Response.json({ error: { code: "request.invalid", message: "Invalid JSON request" } }, { status: 400 });
   }
@@ -143,6 +317,6 @@ export async function postFilteredAction(request: Request): Promise<Response> {
     return Response.json({ error: { code: "request.invalid", message: "Invalid action request" } }, { status: 400 });
   }
   if (isPaymentModule(parsed.data.moduleId) || isPaymentRoute(parsed.data.route)) return disabled();
-  const upstream = await fetchGateway(request, "/api/action", body);
-  return upstream === null ? unavailable() : relay(upstream);
+  const upstream = await fetchGateway(request, "/api/action", headers, read.text);
+  return upstream === null ? unavailable() : relayBoundedJson(upstream);
 }
