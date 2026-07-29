@@ -35,7 +35,7 @@ export interface RegisteredSessionV3Provider {
     binding: SiteDeploymentBinding
     authSession?: AuthSession
   }>): PlatformPublicTransport
-  sessionHttp: AuthenticatedSessionBrowserV3HttpPort
+  sessionHttp(input: Readonly<{ binding: SiteDeploymentBinding }>): AuthenticatedSessionBrowserV3HttpPort
   platformCsrfToken(): string
   issueBrowserCsrf(): string
   verifyBrowserCsrf(input: Readonly<{ operationId: string; token: string }>): Promise<boolean> | boolean
@@ -264,7 +264,7 @@ async function createSessionRuntime(input: Readonly<{
     proxy: createSessionBrowserV3Proxy({
       bootstrap,
       access,
-      transport: createSessionBrowserV3Transport(input.activeProvider.sessionHttp),
+      transport: createSessionBrowserV3Transport(input.activeProvider.sessionHttp({ binding: input.binding })),
       browserRequestVerifier: createOriginCsrfBrowserRequestVerifier({
         runtimeEnvironment: input.binding.runtimeEnvironment,
         allowedOrigins: [input.allowedOrigin],

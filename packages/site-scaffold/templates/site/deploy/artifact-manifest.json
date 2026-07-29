@@ -9,6 +9,18 @@
     "@kokoro/site-client": {
       "version": __SITE_CLIENT_VERSION_JSON__,
       "sha256": __SITE_CLIENT_SHA256_JSON__
+    },
+    "@kokoro/session-client": {
+      "version": __SESSION_CLIENT_VERSION_JSON__,
+      "sha256": __SESSION_CLIENT_SHA256_JSON__
+    },
+    "@kokoro/bff-runtime": {
+      "version": __BFF_RUNTIME_VERSION_JSON__,
+      "sha256": __BFF_RUNTIME_SHA256_JSON__
+    },
+    "@kokoro/site-runtime-node": {
+      "version": __SITE_RUNTIME_NODE_VERSION_JSON__,
+      "sha256": __SITE_RUNTIME_NODE_SHA256_JSON__
     }
   }
 }

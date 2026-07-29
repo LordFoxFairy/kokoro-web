@@ -51,6 +51,8 @@ Root-generated Session browser v3 client by operation id; browser-provided arbit
 - Every browser request, including reads and SSE, carries a verified same-origin proof. Trusted server callers use the separate
   server-only transport port and never emulate a headerless browser call.
 - The Session transport returns the full authenticated grant binding out-of-band; response headers are never trusted as tenant evidence.
+- The low-level authenticated HTTP request receives that exact already-verified binding from this trust kernel. A deployment adapter
+  may return it only after establishing its registered authenticated upstream response; it must never derive it from response headers.
 - JSON is bounded, decoded and validated before re-encoding. SSE adapters emit only complete validated frames, one downstream pull at a
   time, and abort upstream on disconnect/cancel. Credentials, cookies, internal headers and `Set-Cookie` are never proxied.
 

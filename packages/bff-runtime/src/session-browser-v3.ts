@@ -102,6 +102,8 @@ export interface SessionBrowserV3HttpRequest {
     readonly grantRef: string;
     readonly audience: string;
   }>;
+  /** Exact Platform-signed grant binding already verified by the BFF trust kernel. */
+  readonly expectedBinding: SessionUpstreamResponse["binding"];
   readonly signal: AbortSignal;
 }
 
@@ -471,6 +473,7 @@ export function createSessionBrowserV3Transport(
       ) {
         throw new SessionProxyError("REQUEST_INVALID");
       }
+      const expectedBinding = fullGrantBinding(request.accessGrant);
       const response = await input.send({
         operationId,
         method: route.method,
@@ -487,9 +490,9 @@ export function createSessionBrowserV3Transport(
           grantRef: request.accessGrant.grantRef,
           audience: request.accessGrant.authorization.audience,
         }),
+        expectedBinding,
         signal: request.signal,
       });
-      const expectedBinding = fullGrantBinding(request.accessGrant);
       const authenticatedBinding = Object.freeze({ ...response.authenticatedBinding });
       if (!sameBinding(expectedBinding, authenticatedBinding)) {
         cancelRejectedBody(response.body);

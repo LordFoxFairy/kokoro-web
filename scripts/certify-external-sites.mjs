@@ -36,7 +36,7 @@ function outputArgument(argv) {
 async function pack(packageName, destination) {
   await run(pnpm, ["--filter", packageName, "pack", "--pack-destination", destination], webRoot);
   const archives = (await readdir(destination)).filter((name) => name.endsWith(".tgz"));
-  const expected = packageName.includes("app-kit") ? "site-app-kit" : "site-client";
+  const expected = packageName.slice("@kokoro/".length);
   const archiveName = archives.find((name) => name.includes(expected));
   if (archiveName === undefined) throw new Error(`pnpm pack produced no archive for ${packageName}`);
   const archivePath = join(destination, archiveName);
@@ -99,10 +99,16 @@ async function main() {
   try {
     await run(pnpm, ["--filter", "@kokoro/site-app-kit", "build"], webRoot);
     await run(pnpm, ["--filter", "@kokoro/site-client", "build"], webRoot);
+    await run(pnpm, ["--filter", "@kokoro/session-client", "build"], webRoot);
+    await run(pnpm, ["--filter", "@kokoro/bff-runtime", "build"], webRoot);
+    await run(pnpm, ["--filter", "@kokoro/site-runtime-node", "build"], webRoot);
     await run(pnpm, ["--filter", "@kokoro/site-scaffold", "build"], webRoot);
     const packages = await Promise.all([
       pack("@kokoro/site-app-kit", packageDirectory),
       pack("@kokoro/site-client", packageDirectory),
+      pack("@kokoro/session-client", packageDirectory),
+      pack("@kokoro/bff-runtime", packageDirectory),
+      pack("@kokoro/site-runtime-node", packageDirectory),
     ]);
     const packageArtifacts = Object.fromEntries(packages.map((entry) => [entry.name, entry.sha256]));
 

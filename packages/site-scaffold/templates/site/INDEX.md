@@ -5,8 +5,14 @@ This repository is the independent Web/deploy boundary for Site `__SITE_KEY_JSON
 ## Runtime boundary
 
 - Browser code imports only safe types/metadata from `@kokoro/site-client`.
-- Credential-bearing Platform calls are server-only through `@kokoro/site-client/server` and a deployment-registered transport; raw Platform URLs and runtime Host-to-Site switching are forbidden.
+- Credential-bearing Platform/Session calls are server-only through the deployment-registered `@kokoro/site-runtime-node` adapter;
+  its Node instrumentation owns validated origins, TLS 1.3 mTLS files, workload credentials, deadlines and streaming. Raw backend URLs
+  and runtime Host-to-Site switching remain forbidden outside that package.
 - Platform, Session, Agent, accounts, credits and plans remain shared backend authorities selected by the Site/workload binding, not implemented here.
+
+This scaffold revision installs the reusable production transport and immutable package closure only. It does not yet generate the
+Session/Platform BFF routes, sealed Auth session bridge, or Chat product UI, so it must not be described as a complete runnable product
+composition until the Site Factory app-composition slice adds those consumers.
 
 ## Contract trust
 

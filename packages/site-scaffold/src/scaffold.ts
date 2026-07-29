@@ -13,7 +13,12 @@ const PACKAGE_PATTERN = /^@[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._-]*$/u;
 const SITE_KEY_PATTERN = /^[a-z][a-z0-9-]{1,62}$/u;
 
 export interface ImmutablePackageArtifact {
-  readonly name: "@kokoro/site-app-kit" | "@kokoro/site-client";
+  readonly name:
+    | "@kokoro/site-app-kit"
+    | "@kokoro/site-client"
+    | "@kokoro/session-client"
+    | "@kokoro/bff-runtime"
+    | "@kokoro/site-runtime-node";
   readonly version: string;
   readonly archivePath: string;
   readonly sha256: string;
@@ -36,7 +41,13 @@ export interface CreateSiteProjectInput {
   readonly domains: readonly SiteDomainBinding[];
   readonly deployment: SiteDeploymentTarget;
   readonly contractFloor: SiteContractFloor;
-  readonly packages: readonly [ImmutablePackageArtifact, ImmutablePackageArtifact];
+  readonly packages: readonly [
+    ImmutablePackageArtifact,
+    ImmutablePackageArtifact,
+    ImmutablePackageArtifact,
+    ImmutablePackageArtifact,
+    ImmutablePackageArtifact,
+  ];
 }
 
 export interface CreatedSiteProject {
@@ -208,17 +219,34 @@ export async function createSiteProject(input: CreateSiteProjectInput): Promise<
   if (!SHA256_PATTERN.test(input.artifactSha256)) {
     throw new TypeError("artifactSha256 must be lowercase SHA-256");
   }
-  if (input.packages.length !== 2 || new Set(input.packages.map((artifact) => artifact.name)).size !== 2) {
-    throw new TypeError("exactly one app-kit and one site-client package artifact are required");
+  const requiredArtifacts = [
+    "@kokoro/site-app-kit",
+    "@kokoro/site-client",
+    "@kokoro/session-client",
+    "@kokoro/bff-runtime",
+    "@kokoro/site-runtime-node",
+  ] as const;
+  if (
+    input.packages.length !== requiredArtifacts.length ||
+    requiredArtifacts.some((name) => input.packages.filter((artifact) => artifact.name === name).length !== 1)
+  ) {
+    throw new TypeError("the complete immutable Site runtime package closure is required");
   }
   await Promise.all(input.packages.map(assertPackageArtifactInput));
 
   await mkdir(dirname(target), { recursive: true });
   const staging = await mkdtemp(join(dirname(target), `.${basename(target)}.staging-`));
   try {
-    const appKit = input.packages.find((artifact) => artifact.name === "@kokoro/site-app-kit");
-    const client = input.packages.find((artifact) => artifact.name === "@kokoro/site-client");
-    if (appKit === undefined || client === undefined) throw new TypeError("required package artifact missing");
+    const artifact = (name: ImmutablePackageArtifact["name"]): ImmutablePackageArtifact => {
+      const value = input.packages.find((candidate) => candidate.name === name);
+      if (value === undefined) throw new TypeError("required package artifact missing");
+      return value;
+    };
+    const appKit = artifact("@kokoro/site-app-kit");
+    const client = artifact("@kokoro/site-client");
+    const sessionClient = artifact("@kokoro/session-client");
+    const bffRuntime = artifact("@kokoro/bff-runtime");
+    const nodeRuntime = artifact("@kokoro/site-runtime-node");
 
     const replacements = {
       __PACKAGE_NAME_JSON__: JSON.stringify(input.packageName),
@@ -234,6 +262,12 @@ export async function createSiteProject(input: CreateSiteProjectInput): Promise<
       __SITE_CLIENT_VERSION_JSON__: JSON.stringify(client.version),
       __APP_KIT_SHA256_JSON__: JSON.stringify(appKit.sha256),
       __SITE_CLIENT_SHA256_JSON__: JSON.stringify(client.sha256),
+      __SESSION_CLIENT_VERSION_JSON__: JSON.stringify(sessionClient.version),
+      __SESSION_CLIENT_SHA256_JSON__: JSON.stringify(sessionClient.sha256),
+      __BFF_RUNTIME_VERSION_JSON__: JSON.stringify(bffRuntime.version),
+      __BFF_RUNTIME_SHA256_JSON__: JSON.stringify(bffRuntime.sha256),
+      __SITE_RUNTIME_NODE_VERSION_JSON__: JSON.stringify(nodeRuntime.version),
+      __SITE_RUNTIME_NODE_SHA256_JSON__: JSON.stringify(nodeRuntime.sha256),
     } as const;
 
     const templateFiles = await listTemplateFiles(TEMPLATE_ROOT);
@@ -248,10 +282,19 @@ export async function createSiteProject(input: CreateSiteProjectInput): Promise<
     await mkdir(join(staging, "vendor"), { recursive: true });
     const copiedAppKit = join(staging, "vendor", "site-app-kit.tgz");
     const copiedClient = join(staging, "vendor", "site-client.tgz");
-    await copyFile(appKit.archivePath, copiedAppKit, constants.COPYFILE_EXCL);
-    await copyFile(client.archivePath, copiedClient, constants.COPYFILE_EXCL);
-    await verifyCopiedPackageArtifact(appKit, copiedAppKit);
-    await verifyCopiedPackageArtifact(client, copiedClient);
+    const copiedSessionClient = join(staging, "vendor", "session-client.tgz");
+    const copiedBffRuntime = join(staging, "vendor", "bff-runtime.tgz");
+    const copiedNodeRuntime = join(staging, "vendor", "site-runtime-node.tgz");
+    for (const [artifact, destination] of [
+      [appKit, copiedAppKit],
+      [client, copiedClient],
+      [sessionClient, copiedSessionClient],
+      [bffRuntime, copiedBffRuntime],
+      [nodeRuntime, copiedNodeRuntime],
+    ] as const) {
+      await copyFile(artifact.archivePath, destination, constants.COPYFILE_EXCL);
+      await verifyCopiedPackageArtifact(artifact, destination);
+    }
 
     await publishStagingDirectory(staging, target);
     return Object.freeze({
@@ -262,11 +305,17 @@ export async function createSiteProject(input: CreateSiteProjectInput): Promise<
       packageArtifacts: Object.freeze({
         [appKit.name]: appKit.sha256,
         [client.name]: client.sha256,
+        [sessionClient.name]: sessionClient.sha256,
+        [bffRuntime.name]: bffRuntime.sha256,
+        [nodeRuntime.name]: nodeRuntime.sha256,
       }),
       generatedFiles: Object.freeze([
         ...templateFiles,
         "vendor/site-app-kit.tgz",
         "vendor/site-client.tgz",
+        "vendor/session-client.tgz",
+        "vendor/bff-runtime.tgz",
+        "vendor/site-runtime-node.tgz",
       ]),
     });
   } catch (error) {

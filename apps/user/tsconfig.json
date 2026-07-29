@@ -16,6 +16,7 @@
     "next-env.d.ts",
     "src/app/page.tsx",
     "src/app/layout.tsx",
+    "src/instrumentation.ts",
     "src/app/api/session/[...path]/route.ts",
     "src/reference/**/*.ts",
     "src/reference/**/*.tsx",

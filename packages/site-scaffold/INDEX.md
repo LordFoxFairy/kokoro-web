@@ -9,7 +9,8 @@ owners:
 
 ## Responsibilities
 
-Creates one product-named, independently versioned/deployed project per Site from immutable `site-app-kit` and `site-client` package artifacts.
+Creates one product-named, independently versioned/deployed project per Site from the immutable `site-app-kit`, generated clients,
+brandless BFF kernel, and Node deployment-adapter package closure.
 
 ## Supply-chain boundary
 
@@ -21,6 +22,8 @@ Creates one product-named, independently versioned/deployed project per Site fro
 ## Qualification boundary
 
 `scripts/certify-external-sites.mjs` proves only local Phase A packaging/isolation/build mechanics. Its ephemeral self-signed key is a test fixture and is not Task 18, live Platform, live auth, deploy or rollback qualification.
+The current template installs the Node transport provider artifact but does not yet contain Platform/Session BFF routes, an Auth session
+bridge, or Chat UI; those belong to the next Site Factory app-composition slice.
 
 ## Verification
 

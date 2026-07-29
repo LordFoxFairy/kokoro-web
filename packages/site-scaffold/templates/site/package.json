@@ -19,6 +19,9 @@
   "dependencies": {
     "@kokoro/site-app-kit": "file:vendor/site-app-kit.tgz",
     "@kokoro/site-client": "file:vendor/site-client.tgz",
+    "@kokoro/session-client": "file:vendor/session-client.tgz",
+    "@kokoro/bff-runtime": "file:vendor/bff-runtime.tgz",
+    "@kokoro/site-runtime-node": "file:vendor/site-runtime-node.tgz",
     "next": "16.2.12",
     "react": "19.2.8",
     "react-dom": "19.2.8"

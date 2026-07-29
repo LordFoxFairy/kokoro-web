@@ -186,6 +186,9 @@ importers:
       '@kokoro/site-client':
         specifier: workspace:*
         version: link:../../packages/site-client
+      '@kokoro/site-runtime-node':
+        specifier: workspace:*
+        version: link:../../packages/site-runtime-node
       antd:
         specifier: ^6.5.0
         version: 6.5.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -392,6 +395,37 @@ importers:
       '@eslint/js':
         specifier: 9.39.5
         version: 9.39.5
+      eslint:
+        specifier: 9.39.5
+        version: 9.39.5(jiti@2.7.0)
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+      typescript-eslint:
+        specifier: 8.65.0
+        version: 8.65.0(eslint@9.39.5(jiti@2.7.0))(typescript@5.9.3)
+      vitest:
+        specifier: 4.1.10
+        version: 4.1.10(@types/node@24.13.3)(jsdom@29.1.1)(vite@8.1.3(@types/node@24.13.3)(jiti@2.7.0))
+
+  packages/site-runtime-node:
+    dependencies:
+      '@kokoro/bff-runtime':
+        specifier: workspace:*
+        version: link:../bff-runtime
+      '@kokoro/site-client':
+        specifier: workspace:*
+        version: link:../site-client
+      server-only:
+        specifier: 0.0.1
+        version: 0.0.1
+    devDependencies:
+      '@eslint/js':
+        specifier: 9.39.5
+        version: 9.39.5
+      '@types/node':
+        specifier: 24.13.3
+        version: 24.13.3
       eslint:
         specifier: 9.39.5
         version: 9.39.5(jiti@2.7.0)

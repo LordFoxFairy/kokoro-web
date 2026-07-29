@@ -16,7 +16,12 @@ afterEach(async () => {
 async function createPackageArtifact(
   root: string,
   archiveName: string,
-  name: "@kokoro/site-app-kit" | "@kokoro/site-client",
+  name:
+    | "@kokoro/site-app-kit"
+    | "@kokoro/site-client"
+    | "@kokoro/session-client"
+    | "@kokoro/bff-runtime"
+    | "@kokoro/site-runtime-node",
 ) {
   const source = join(root, `${archiveName}-source`);
   await mkdir(join(source, "package"), { recursive: true });
@@ -41,6 +46,9 @@ describe("independent Site project scaffold", () => {
     const packages = [
       await createPackageArtifact(root, "app-kit", "@kokoro/site-app-kit"),
       await createPackageArtifact(root, "client", "@kokoro/site-client"),
+      await createPackageArtifact(root, "session-client", "@kokoro/session-client"),
+      await createPackageArtifact(root, "bff-runtime", "@kokoro/bff-runtime"),
+      await createPackageArtifact(root, "site-runtime-node", "@kokoro/site-runtime-node"),
     ] as const;
     const floor = {
       contract: "platform-public-v1" as const,

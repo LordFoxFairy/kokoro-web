@@ -10,6 +10,9 @@ const floor = JSON.parse(await readFile("deploy/contract-floor.json", "utf8"));
 assert.match(artifact.sourceArtifactSha256, /^[0-9a-f]{64}$/u);
 assert.match(artifact.packages["@kokoro/site-app-kit"].sha256, /^[0-9a-f]{64}$/u);
 assert.match(artifact.packages["@kokoro/site-client"].sha256, /^[0-9a-f]{64}$/u);
+assert.match(artifact.packages["@kokoro/session-client"].sha256, /^[0-9a-f]{64}$/u);
+assert.match(artifact.packages["@kokoro/bff-runtime"].sha256, /^[0-9a-f]{64}$/u);
+assert.match(artifact.packages["@kokoro/site-runtime-node"].sha256, /^[0-9a-f]{64}$/u);
 assert.equal(
   createHash("sha256").update(await readFile("vendor/site-app-kit.tgz")).digest("hex"),
   artifact.packages["@kokoro/site-app-kit"].sha256,
@@ -17,6 +20,18 @@ assert.equal(
 assert.equal(
   createHash("sha256").update(await readFile("vendor/site-client.tgz")).digest("hex"),
   artifact.packages["@kokoro/site-client"].sha256,
+);
+assert.equal(
+  createHash("sha256").update(await readFile("vendor/session-client.tgz")).digest("hex"),
+  artifact.packages["@kokoro/session-client"].sha256,
+);
+assert.equal(
+  createHash("sha256").update(await readFile("vendor/bff-runtime.tgz")).digest("hex"),
+  artifact.packages["@kokoro/bff-runtime"].sha256,
+);
+assert.equal(
+  createHash("sha256").update(await readFile("vendor/site-runtime-node.tgz")).digest("hex"),
+  artifact.packages["@kokoro/site-runtime-node"].sha256,
 );
 assert.equal(floor.contract, "platform-public-v1");
 assert.equal(floor.version, "1");

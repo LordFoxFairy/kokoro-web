@@ -256,6 +256,7 @@ describe("Session browser v3 operation authority", () => {
         grantRef: accessGrant.grantRef,
         audience: "session.read",
       },
+      expectedBinding: authenticatedBinding(accessGrant),
     }));
     expect(result.binding).toEqual({
       grantRef: accessGrant.grantRef,

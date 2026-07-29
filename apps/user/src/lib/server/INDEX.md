@@ -79,10 +79,12 @@ Platform UserSession → 短期、resource-bound Session grant；旧 `runtime_jw
     处理到响应 headers；timeout 仍走 P1 `dispose()` 与 lease `finally`。
 - `session-v3.ts`（当前生产 Session composition）
   - 只接收 registered Platform/Session transports；没有 raw URL 或浏览器可选 target。
+  - `instrumentation.ts` 从共享 `@kokoro/site-runtime-node` 明确安装 deployment adapter；adapter 独占
+    TLS 1.3 mTLS、已校验上游 origin、证书文件、Platform CSRF、Session workload credential、deadline 与流。
   - deployment singleton 缓存无用户 ProductContext；有界 256 项 LRU 按 identity session ref/generation
     缓存 PersonalContext、grant manager 与 proxy，到 AuthSession/bootstrap expiry 自动淘汰。
-  - `instrumentation.ts` 在 Node runtime 初始化静态 composition 边界；独立 provider 尚未安装时稳定
-    fail-closed 为 generated `INTERNAL_UNAVAILABLE`。
+  - `instrumentation.ts` 在 Node runtime 初始化静态 composition 边界；provider 配置缺失/非法时进程不进入
+    可服务状态，request 路径仍无 legacy JWT 后备。
   - 生产品牌来自必填 `KOKORO_SITE_BRAND_NAME` build config，canonical host 来自
     `KOKORO_SITE_PUBLIC_ORIGIN`；Host 不再用于选择 Site/品牌。
 - `retired-api.ts`：reference Site 的旧 Hub/Team/Billing/Shared API 显式返回 410。
