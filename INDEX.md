@@ -22,6 +22,7 @@ packages/
   i18n/     @kokoro/i18n       framework-agnostic i18n 引擎（createI18n：negotiate/translate/interpolate）。见其 INDEX。
   session-client/              Root contract-bound Session HTTP/SSE client；只收 path transport，不收 URL/凭据/Site。
   chat-surface/                browser-safe Chat projection + assistant-ui adapter；Session 仍是持久化与终态真源。
+  bff-runtime/                 server-only Site bootstrap、SessionAccessGrant 与 fail-closed proxy trust kernel。
 ```
 
 两 app 锁在同一套栈：Next 16.2.12、React 19.2.8、antd ^6.5.0、Vitest 4.1.10。根 `package.json`（`@kokoro/web`）：
@@ -49,6 +50,9 @@ Browsers call each app. User BFF calls Session HTTP/SSE; Admin server code calls
 - `packages/session-client/src/generated/*` 是新 Site Chat 的 Root 生成镜像；`packages/chat-surface` 只经该包消费
   Session 契约，不跨仓导入 Session 源码。当前 legacy flat snapshot/numeric cursor 会 fail closed，等待 Wave 3
   breaking browser contract 后才可进入 live BFF 接线。
+- `packages/bff-runtime` 是 brandless server-only trust kernel。它按 Root 的 ProductContext→PersonalContext→
+  SessionAccessGrant 三段权威面组合 bootstrap；生成镜像/Session browser v3 adapter 未接入前只允许窄 port，禁止手写
+  URL 或重复 wire contract。
 - `apps/admin` 上游 `kokoro-platform`（platform-admin 网关）：`apps/admin/lib/generated/contracts/**` 是根仓 Buf
   契约的生成镜像，必须提交且禁止手改；当前仅覆盖 `kokoro/platform/admin/v1` admin-auth，其余跨仓调用不走此路径。
 
