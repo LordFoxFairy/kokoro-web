@@ -852,7 +852,6 @@ export type SupersedeReauthenticationProofInput = {
 
 export type SupersedeRecoveryCodeSetInput = {
     priorCommandId: string;
-    reauthenticationProof: string;
     recoveryAction: 'supersede';
 };
 
@@ -870,7 +869,6 @@ export type SupersedeTotpEnrollmentInput = {
     ceremonyAction: 'supersede';
     priorCommandId: string;
     priorTransactionRef: string;
-    reauthenticationProof: string;
 };
 
 export type SupersedeTotpRecoveryReplacementInput = {

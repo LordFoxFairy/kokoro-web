@@ -918,7 +918,6 @@ export const zReauthenticationInput = z.union([
 
 export const zSupersedeRecoveryCodeSetInput = z.strictObject({
     priorCommandId: z.string().regex(/^(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/),
-    reauthenticationProof: z.string().min(32).max(2048),
     recoveryAction: z.literal('supersede')
 });
 
@@ -955,8 +954,7 @@ export const zSessionMfaCompletionInput = z.union([
 export const zSupersedeTotpEnrollmentInput = z.strictObject({
     ceremonyAction: z.literal('supersede'),
     priorCommandId: z.string().regex(/^(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/),
-    priorTransactionRef: z.string().min(16).max(128),
-    reauthenticationProof: z.string().min(32).max(2048)
+    priorTransactionRef: z.string().min(16).max(128)
 });
 
 export const zSupersedeTotpRecoveryReplacementInput = z.strictObject({
