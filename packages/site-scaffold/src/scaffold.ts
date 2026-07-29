@@ -18,7 +18,10 @@ export interface ImmutablePackageArtifact {
     | "@kokoro/site-client"
     | "@kokoro/session-client"
     | "@kokoro/bff-runtime"
-    | "@kokoro/site-runtime-node";
+    | "@kokoro/site-runtime-node"
+    | "@kokoro/chat-surface"
+    | "@kokoro/chat-app"
+    | "@kokoro/site-bff";
   readonly version: string;
   readonly archivePath: string;
   readonly sha256: string;
@@ -42,6 +45,9 @@ export interface CreateSiteProjectInput {
   readonly deployment: SiteDeploymentTarget;
   readonly contractFloor: SiteContractFloor;
   readonly packages: readonly [
+    ImmutablePackageArtifact,
+    ImmutablePackageArtifact,
+    ImmutablePackageArtifact,
     ImmutablePackageArtifact,
     ImmutablePackageArtifact,
     ImmutablePackageArtifact,
@@ -225,6 +231,9 @@ export async function createSiteProject(input: CreateSiteProjectInput): Promise<
     "@kokoro/session-client",
     "@kokoro/bff-runtime",
     "@kokoro/site-runtime-node",
+    "@kokoro/chat-surface",
+    "@kokoro/chat-app",
+    "@kokoro/site-bff",
   ] as const;
   if (
     input.packages.length !== requiredArtifacts.length ||
@@ -247,6 +256,9 @@ export async function createSiteProject(input: CreateSiteProjectInput): Promise<
     const sessionClient = artifact("@kokoro/session-client");
     const bffRuntime = artifact("@kokoro/bff-runtime");
     const nodeRuntime = artifact("@kokoro/site-runtime-node");
+    const chatSurface = artifact("@kokoro/chat-surface");
+    const chatApp = artifact("@kokoro/chat-app");
+    const siteBff = artifact("@kokoro/site-bff");
 
     const replacements = {
       __PACKAGE_NAME_JSON__: JSON.stringify(input.packageName),
@@ -268,6 +280,12 @@ export async function createSiteProject(input: CreateSiteProjectInput): Promise<
       __BFF_RUNTIME_SHA256_JSON__: JSON.stringify(bffRuntime.sha256),
       __SITE_RUNTIME_NODE_VERSION_JSON__: JSON.stringify(nodeRuntime.version),
       __SITE_RUNTIME_NODE_SHA256_JSON__: JSON.stringify(nodeRuntime.sha256),
+      __CHAT_SURFACE_VERSION_JSON__: JSON.stringify(chatSurface.version),
+      __CHAT_SURFACE_SHA256_JSON__: JSON.stringify(chatSurface.sha256),
+      __CHAT_APP_VERSION_JSON__: JSON.stringify(chatApp.version),
+      __CHAT_APP_SHA256_JSON__: JSON.stringify(chatApp.sha256),
+      __SITE_BFF_VERSION_JSON__: JSON.stringify(siteBff.version),
+      __SITE_BFF_SHA256_JSON__: JSON.stringify(siteBff.sha256),
     } as const;
 
     const templateFiles = await listTemplateFiles(TEMPLATE_ROOT);
@@ -285,12 +303,18 @@ export async function createSiteProject(input: CreateSiteProjectInput): Promise<
     const copiedSessionClient = join(staging, "vendor", "session-client.tgz");
     const copiedBffRuntime = join(staging, "vendor", "bff-runtime.tgz");
     const copiedNodeRuntime = join(staging, "vendor", "site-runtime-node.tgz");
+    const copiedChatSurface = join(staging, "vendor", "chat-surface.tgz");
+    const copiedChatApp = join(staging, "vendor", "chat-app.tgz");
+    const copiedSiteBff = join(staging, "vendor", "site-bff.tgz");
     for (const [artifact, destination] of [
       [appKit, copiedAppKit],
       [client, copiedClient],
       [sessionClient, copiedSessionClient],
       [bffRuntime, copiedBffRuntime],
       [nodeRuntime, copiedNodeRuntime],
+      [chatSurface, copiedChatSurface],
+      [chatApp, copiedChatApp],
+      [siteBff, copiedSiteBff],
     ] as const) {
       await copyFile(artifact.archivePath, destination, constants.COPYFILE_EXCL);
       await verifyCopiedPackageArtifact(artifact, destination);
@@ -308,6 +332,9 @@ export async function createSiteProject(input: CreateSiteProjectInput): Promise<
         [sessionClient.name]: sessionClient.sha256,
         [bffRuntime.name]: bffRuntime.sha256,
         [nodeRuntime.name]: nodeRuntime.sha256,
+        [chatSurface.name]: chatSurface.sha256,
+        [chatApp.name]: chatApp.sha256,
+        [siteBff.name]: siteBff.sha256,
       }),
       generatedFiles: Object.freeze([
         ...templateFiles,
@@ -316,6 +343,9 @@ export async function createSiteProject(input: CreateSiteProjectInput): Promise<
         "vendor/session-client.tgz",
         "vendor/bff-runtime.tgz",
         "vendor/site-runtime-node.tgz",
+        "vendor/chat-surface.tgz",
+        "vendor/chat-app.tgz",
+        "vendor/site-bff.tgz",
       ]),
     });
   } catch (error) {

@@ -60,7 +60,7 @@ async function initializeRepository(directory) {
   return (await run("git", ["rev-parse", "HEAD"], directory)).stdout;
 }
 
-async function verifyProject(directory, keyringJson) {
+async function verifyProject(directory, keyringJson, publicOrigin) {
   await run(pnpm, ["install", "--offline"], directory);
   await run(pnpm, ["install", "--offline", "--frozen-lockfile"], directory);
   const commit = await initializeRepository(directory);
@@ -70,7 +70,11 @@ async function verifyProject(directory, keyringJson) {
   await run(pnpm, ["artifact:verify"], directory, {
     KOKORO_CONTRACT_KEYRING_JSON: keyringJson,
   });
-  await run(pnpm, ["build"], directory);
+  await run(pnpm, ["build"], directory, {
+    AUTH_SECRET: "offline-site-certifier-secret-not-for-production-2026",
+    AUTH_URL: publicOrigin,
+    KOKORO_SITE_PUBLIC_ORIGIN: publicOrigin,
+  });
   const status = (await run("git", ["status", "--porcelain"], directory)).stdout;
   if (status !== "") throw new Error(`Site project is dirty after build: ${status}`);
   const lockSha256 = digest(await readFile(join(directory, "pnpm-lock.yaml")));
@@ -102,6 +106,9 @@ async function main() {
     await run(pnpm, ["--filter", "@kokoro/session-client", "build"], webRoot);
     await run(pnpm, ["--filter", "@kokoro/bff-runtime", "build"], webRoot);
     await run(pnpm, ["--filter", "@kokoro/site-runtime-node", "build"], webRoot);
+    await run(pnpm, ["--filter", "@kokoro/chat-surface", "build"], webRoot);
+    await run(pnpm, ["--filter", "@kokoro/chat-app", "build"], webRoot);
+    await run(pnpm, ["--filter", "@kokoro/site-bff", "build"], webRoot);
     await run(pnpm, ["--filter", "@kokoro/site-scaffold", "build"], webRoot);
     const packages = await Promise.all([
       pack("@kokoro/site-app-kit", packageDirectory),
@@ -109,6 +116,9 @@ async function main() {
       pack("@kokoro/session-client", packageDirectory),
       pack("@kokoro/bff-runtime", packageDirectory),
       pack("@kokoro/site-runtime-node", packageDirectory),
+      pack("@kokoro/chat-surface", packageDirectory),
+      pack("@kokoro/chat-app", packageDirectory),
+      pack("@kokoro/site-bff", packageDirectory),
     ]);
     const packageArtifacts = Object.fromEntries(packages.map((entry) => [entry.name, entry.sha256]));
 
@@ -182,7 +192,7 @@ async function main() {
         contractFloor,
         packages,
       });
-      const verification = await verifyProject(directory, fixtureKeyringJson);
+      const verification = await verifyProject(directory, fixtureKeyringJson, `https://${definition.hostname}`);
       reports.push({
         schemaVersion: 1,
         qualification: "phase_a_offline_non_qualifying",

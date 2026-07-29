@@ -12,10 +12,11 @@ test("the user root page is a Browser v3 reference harness", async () => {
     readFile(path.join(user, "src/app/page.tsx"), "utf8"),
     readFile(path.join(user, "package.json"), "utf8").then(JSON.parse),
   ])
-  assert.match(page, /ReferenceChat/u)
+  assert.match(page, /ChatProduct/u)
   assert.doesNotMatch(page, /HomeGate|SessionShell/u)
   assert.equal(manifest.dependencies["@kokoro/session-client"], "workspace:*")
   assert.equal(manifest.dependencies["@kokoro/chat-surface"], "workspace:*")
+  assert.equal(manifest.dependencies["@kokoro/chat-app"], "workspace:*")
 })
 
 test("legacy user code is quarantined rather than made contract-compatible", async () => {

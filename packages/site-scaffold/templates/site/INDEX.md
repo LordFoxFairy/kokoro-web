@@ -10,9 +10,14 @@ This repository is the independent Web/deploy boundary for Site `__SITE_KEY_JSON
   and runtime Host-to-Site switching remain forbidden outside that package.
 - Platform, Session, Agent, accounts, credits and plans remain shared backend authorities selected by the Site/workload binding, not implemented here.
 
-This scaffold revision installs the reusable production transport and immutable package closure only. It does not yet generate the
-Session/Platform BFF routes, sealed Auth session bridge, or Chat product UI, so it must not be described as a complete runnable product
-composition until the Site Factory app-composition slice adds those consumers.
+This project contains the complete reusable product composition: Auth.js owns its encrypted `__Host-` HttpOnly cookie and CSRF
+ceremony; only opaque Platform session/refresh handles enter the server token; the browser receives neither handles nor identity
+authority. The BFF resolves Platform PersonalContext before issuing exact-purpose grants through the generated Session Browser v3
+registry. The shared brand-neutral Chat app is rendered only when Platform publishes both the Chat surface and its model catalog.
+
+One-time login, MFA and refresh delivery is fail-safe: a generic upstream timeout retains the exact secret command identity for the
+next retry. Only Platform's typed `delivery_unavailable` result permits a new secret command bound to the prior command through the
+generated supersede input. Receipt recovery capability never enters client JavaScript, React props, the public Auth.js session, or logs.
 
 ## Contract trust
 
@@ -26,4 +31,4 @@ composition until the Site Factory app-composition slice adds those consumers.
 
 Run `pnpm install --frozen-lockfile`, `pnpm audit --prod --audit-level high`, `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm artifact:verify`, and `pnpm build` on Node 24.
 
-Local scaffold/certifier output is Phase A packaging evidence only. It is not Task 18 qualification and does not claim live Platform activation, cross-Site auth/cookie isolation, deployment, rollback, or Session chat.
+Local scaffold/certifier output is Phase A packaging evidence only. It is not Task 18 qualification and does not claim live Platform activation, cross-Site auth/cookie isolation, deployment, rollback, or live Session chat.

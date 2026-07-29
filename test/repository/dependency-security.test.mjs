@@ -16,6 +16,12 @@ const i18nPackage = await readPackage("packages/i18n");
 const siteAppKitPackage = await readPackage("packages/site-app-kit");
 const siteClientPackage = await readPackage("packages/site-client");
 const siteScaffoldPackage = await readPackage("packages/site-scaffold");
+const sessionClientPackage = await readPackage("packages/session-client");
+const bffRuntimePackage = await readPackage("packages/bff-runtime");
+const siteRuntimeNodePackage = await readPackage("packages/site-runtime-node");
+const chatSurfacePackage = await readPackage("packages/chat-surface");
+const chatAppPackage = await readPackage("packages/chat-app");
+const siteBffPackage = await readPackage("packages/site-bff");
 const referenceSitePackage = await readPackage("apps/reference-site");
 const workspace = await readFile(resolve(root, "pnpm-workspace.yaml"), "utf8");
 
@@ -70,7 +76,17 @@ test("the shared i18n package uses the same supported test and lint majors", () 
 });
 
 test("new Site packages use one Node 24 toolchain and the generated client owns Zod 4", () => {
-  for (const packageJson of [siteAppKitPackage, siteClientPackage, siteScaffoldPackage]) {
+  for (const packageJson of [
+    siteAppKitPackage,
+    siteClientPackage,
+    siteScaffoldPackage,
+    sessionClientPackage,
+    bffRuntimePackage,
+    siteRuntimeNodePackage,
+    chatSurfacePackage,
+    chatAppPackage,
+    siteBffPackage,
+  ]) {
     assert.equal(packageJson.engines.node, ">=24.0.0");
     assert.equal(packageJson.devDependencies.typescript, "5.9.3");
     assert.equal(packageJson.devDependencies.eslint, "9.39.5");
@@ -79,6 +95,8 @@ test("new Site packages use one Node 24 toolchain and the generated client owns 
   assert.equal(siteClientPackage.dependencies.zod, "4.4.3");
   assert.equal(siteClientPackage.dependencies["server-only"], "0.0.1");
   assert.equal(siteScaffoldPackage.dependencies.tar, "7.5.19");
+  assert.equal(siteBffPackage.dependencies["server-only"], "0.0.1");
+  assert.equal(chatAppPackage.dependencies["@kokoro/chat-surface"], "workspace:*");
   assert.equal(referenceSitePackage.engines.node, ">=24.0.0");
   assert.equal(referenceSitePackage.dependencies.next, "16.2.12");
   assert.equal(referenceSitePackage.dependencies.react, "19.2.8");

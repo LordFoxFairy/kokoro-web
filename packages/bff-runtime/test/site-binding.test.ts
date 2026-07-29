@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   bootstrapSiteRuntime,
+  bootstrapSiteRuntimeFromOpaqueSession,
   loadSiteDeploymentBinding,
   ProductContextManager,
   publicSiteBootstrap,
@@ -238,5 +239,51 @@ describe("Product and Personal context composition", () => {
       resource: { kind: "project" },
     }));
     expect(issueSessionAccessGrant.mock.calls[0]?.[0]).not.toHaveProperty("siteRef");
+  });
+
+  it("derives actor authority from Platform instead of requiring claims in the sealed Web token", async () => {
+    now = new Date("2026-07-28T12:00:00.000Z");
+    const { manager } = createProductContexts();
+    const resolved = await bootstrapSiteRuntimeFromOpaqueSession({
+      productContexts: manager,
+      authSession: {
+        sessionRef: authSession.sessionRef,
+        sessionCredential: authSession.sessionCredential,
+        expiresAt: authSession.expiresAt,
+      },
+      now: () => now,
+      personalAuthority: {
+        getPersonalContext: async ({ productContextRef, authSessionCredential }) => {
+          expect(authSessionCredential).toBe(authSession.sessionCredential);
+          return {
+            personalContextRef: "personal-context-opaque-12345678",
+            productContextRef,
+            actor: {
+              subjectRef: authSession.subjectRef,
+              subjectGeneration: authSession.subjectGeneration,
+              state: "active",
+              displayName: "Opaque User",
+              avatarUrl: null,
+            },
+            projects: [{
+              projectRef: "project-opaque-12345678",
+              workspaceRef: "workspace-opaque-12345678",
+              executionSpaceRef: "execution-space-opaque-12345678",
+              displayName: "Personal",
+              membershipRevision: "membership-opaque-12345678",
+            }],
+            defaultProjectRef: "project-opaque-12345678",
+            contextRevision: "personal-revision-opaque-12345678",
+            issuedAt: now.toISOString(),
+            expiresAt: new Date(now.getTime() + 50_000).toISOString(),
+          };
+        },
+      },
+    });
+    expect(resolved.authSession).toEqual(authSession);
+    expect(publicSiteBootstrap(resolved.bootstrap).actor).toEqual({
+      displayName: "Opaque User",
+      avatarUrl: null,
+    });
   });
 });

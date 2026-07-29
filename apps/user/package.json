@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@ant-design/cssinjs": "^2.1.2",
+    "@kokoro/chat-app": "workspace:*",
     "@kokoro/chat-surface": "workspace:*",
     "@kokoro/bff-runtime": "workspace:*",
     "@kokoro/i18n": "workspace:*",

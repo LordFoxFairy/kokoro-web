@@ -1,6 +1,14 @@
 packages: []
 
 overrides:
+  "@kokoro/site-app-kit": "file:vendor/site-app-kit.tgz"
+  "@kokoro/site-client": "file:vendor/site-client.tgz"
+  "@kokoro/session-client": "file:vendor/session-client.tgz"
+  "@kokoro/bff-runtime": "file:vendor/bff-runtime.tgz"
+  "@kokoro/site-runtime-node": "file:vendor/site-runtime-node.tgz"
+  "@kokoro/chat-surface": "file:vendor/chat-surface.tgz"
+  "@kokoro/chat-app": "file:vendor/chat-app.tgz"
+  "@kokoro/site-bff": "file:vendor/site-bff.tgz"
   baseline-browser-mapping: 2.10.41
   caniuse-lite: 1.0.30001800
   brace-expansion@<1.1.16: 1.1.16

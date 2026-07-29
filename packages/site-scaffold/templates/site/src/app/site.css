@@ -10,3 +10,8 @@ main { max-width: 56rem; margin: 0 auto; padding: 18vh 2rem 4rem; }
 .eyebrow { color: #9ca7ff; font-size: 0.8rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; }
 h1 { font-size: clamp(3rem, 10vw, 7rem); letter-spacing: -0.06em; line-height: 0.92; margin: 1rem 0; }
 main > p:last-child { color: #afb4c3; font-size: 1.15rem; line-height: 1.7; max-width: 42rem; }
+form { display: grid; gap: 1rem; max-width: 28rem; }
+label { display: grid; gap: 0.4rem; color: #afb4c3; }
+input, button { border: 1px solid #34394a; border-radius: 0.75rem; padding: 0.8rem 1rem; font: inherit; }
+input { background: #141722; color: #f7f8fb; }
+button { background: #6f7cff; color: white; cursor: pointer; }

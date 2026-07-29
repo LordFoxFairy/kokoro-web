@@ -115,21 +115,33 @@ export function assertProductionSafeBinding(binding: SiteDeploymentBinding): voi
   }
 }
 
-export interface AuthSession {
+export interface OpaqueAuthSession {
   readonly sessionRef: string;
   readonly sessionCredential: string;
-  readonly subjectRef: string;
-  readonly subjectGeneration: string;
   readonly expiresAt: string;
 }
 
-const authSessionSchema = z.strictObject({
+export interface AuthSession extends OpaqueAuthSession {
+  readonly subjectRef: string;
+  readonly subjectGeneration: string;
+}
+
+const opaqueAuthSessionSchema = z.strictObject({
   sessionRef: reference,
   sessionCredential: credential,
-  subjectRef: reference,
-  subjectGeneration: generation,
   expiresAt: instant,
 });
+
+const authSessionSchema = opaqueAuthSessionSchema.extend({
+  subjectRef: reference,
+  subjectGeneration: generation,
+});
+
+export function validatedOpaqueAuthSession(input: OpaqueAuthSession): Readonly<OpaqueAuthSession> {
+  const result = opaqueAuthSessionSchema.safeParse(input);
+  if (!result.success) throw new SiteBindingError("AUTH_SESSION_INVALID");
+  return Object.freeze({ ...result.data });
+}
 
 export function validatedAuthSession(input: AuthSession): Readonly<AuthSession> {
   const result = authSessionSchema.safeParse(input);
@@ -602,19 +614,28 @@ export function validatedSiteBootstrap(input: unknown): SiteBootstrap {
   });
 }
 
-export async function bootstrapSiteRuntime(input: {
+export interface ResolvedSiteRuntime {
+  readonly authSession: Readonly<AuthSession>;
+  readonly bootstrap: SiteBootstrap;
+}
+
+/**
+ * Resolves authoritative actor claims from Platform using only the opaque credential held by Auth.js.
+ * The Site must never decode the credential or persist actor authority in its browser-visible session.
+ */
+export async function bootstrapSiteRuntimeFromOpaqueSession(input: {
   readonly productContexts: ProductContextManager;
-  readonly authSession: AuthSession;
+  readonly authSession: OpaqueAuthSession;
   readonly personalAuthority: PlatformPersonalContextPort;
   readonly now?: () => Date;
   readonly maximumPersonalContextLifetimeMs?: number;
-}): Promise<SiteBootstrap> {
+}): Promise<ResolvedSiteRuntime> {
   const now = (input.now ?? (() => new Date()))().getTime();
   const maximumLifetimeMs = input.maximumPersonalContextLifetimeMs ?? 300_000;
   if (maximumLifetimeMs < 1_000 || maximumLifetimeMs > 900_000) {
     throw new SiteBindingError("PERSONAL_CONTEXT_INVALID");
   }
-  const authSession = validatedAuthSession(input.authSession);
+  const authSession = validatedOpaqueAuthSession(input.authSession);
   const authExpiresAt = millis(authSession.expiresAt, "AUTH_SESSION_INVALID");
   if (authExpiresAt <= now) throw new SiteBindingError("AUTH_SESSION_INVALID");
   const product = await input.productContexts.acquire();
@@ -626,8 +647,6 @@ export async function bootstrapSiteRuntime(input: {
   if (!personalResult.success) throw new SiteBindingError("PERSONAL_CONTEXT_INVALID");
   const personal = personalResult.data;
   same(personal.productContextRef, product.productContextRef, "PERSONAL_CONTEXT_MISMATCH");
-  same(personal.actor.subjectRef, authSession.subjectRef, "PERSONAL_CONTEXT_MISMATCH");
-  same(personal.actor.subjectGeneration, authSession.subjectGeneration, "PERSONAL_CONTEXT_MISMATCH");
   const issuedAt = millis(personal.issuedAt, "PERSONAL_CONTEXT_INVALID");
   const expiresAt = millis(personal.expiresAt, "PERSONAL_CONTEXT_INVALID");
   const productExpiresAt = millis(product.expiresAt, "PRODUCT_CONTEXT_INVALID");
@@ -644,7 +663,7 @@ export async function bootstrapSiteRuntime(input: {
     throw new SiteBindingError("PERSONAL_CONTEXT_STALE");
   }
   const remainingSeconds = Math.max(0, Math.floor((expiresAt - now) / 1_000));
-  return validatedSiteBootstrap({
+  const bootstrap = validatedSiteBootstrap({
     productContextRef: product.productContextRef,
     personalContextRef: personal.personalContextRef,
     siteProjectBindingRef: product.siteProjectBindingRef,
@@ -671,6 +690,36 @@ export async function bootstrapSiteRuntime(input: {
     expiresAt: personal.expiresAt,
     cacheMaxAgeSeconds: Math.min(product.cacheMaxAgeSeconds, remainingSeconds),
   });
+  return Object.freeze({
+    authSession: validatedAuthSession({
+      ...authSession,
+      subjectRef: personal.actor.subjectRef,
+      subjectGeneration: personal.actor.subjectGeneration,
+    }),
+    bootstrap,
+  });
+}
+
+/** Compatibility entry point for callers that already hold server-resolved actor authority. */
+export async function bootstrapSiteRuntime(input: {
+  readonly productContexts: ProductContextManager;
+  readonly authSession: AuthSession;
+  readonly personalAuthority: PlatformPersonalContextPort;
+  readonly now?: () => Date;
+  readonly maximumPersonalContextLifetimeMs?: number;
+}): Promise<SiteBootstrap> {
+  const expected = validatedAuthSession(input.authSession);
+  const resolved = await bootstrapSiteRuntimeFromOpaqueSession({
+    ...input,
+    authSession: {
+      sessionRef: expected.sessionRef,
+      sessionCredential: expected.sessionCredential,
+      expiresAt: expected.expiresAt,
+    },
+  });
+  same(resolved.authSession.subjectRef, expected.subjectRef, "PERSONAL_CONTEXT_MISMATCH");
+  same(resolved.authSession.subjectGeneration, expected.subjectGeneration, "PERSONAL_CONTEXT_MISMATCH");
+  return resolved.bootstrap;
 }
 
 export interface PublicSiteBootstrap {

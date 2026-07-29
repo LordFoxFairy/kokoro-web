@@ -21,6 +21,18 @@
     "@kokoro/site-runtime-node": {
       "version": __SITE_RUNTIME_NODE_VERSION_JSON__,
       "sha256": __SITE_RUNTIME_NODE_SHA256_JSON__
+    },
+    "@kokoro/chat-surface": {
+      "version": __CHAT_SURFACE_VERSION_JSON__,
+      "sha256": __CHAT_SURFACE_SHA256_JSON__
+    },
+    "@kokoro/chat-app": {
+      "version": __CHAT_APP_VERSION_JSON__,
+      "sha256": __CHAT_APP_SHA256_JSON__
+    },
+    "@kokoro/site-bff": {
+      "version": __SITE_BFF_VERSION_JSON__,
+      "sha256": __SITE_BFF_SHA256_JSON__
     }
   }
 }

@@ -9,7 +9,7 @@ import { Readable } from "node:stream";
 
 import type {
   AuthenticatedSessionBrowserV3HttpPort,
-  AuthSession,
+  OpaqueAuthSession,
   SessionBrowserV3HttpRequest,
   SiteDeploymentBinding,
 } from "@kokoro/bff-runtime";
@@ -46,7 +46,7 @@ export interface NodeSiteRuntimeTls {
 }
 
 export interface NodeSiteRuntimeProvider {
-  platformTransport(input: Readonly<{ binding: SiteDeploymentBinding; authSession?: AuthSession }>): PlatformPublicTransport;
+  platformTransport(input: Readonly<{ binding: SiteDeploymentBinding; authSession?: OpaqueAuthSession }>): PlatformPublicTransport;
   sessionHttp(input: Readonly<{ binding: SiteDeploymentBinding }>): AuthenticatedSessionBrowserV3HttpPort;
   platformCsrfToken(): string;
   issueBrowserCsrf(): string;

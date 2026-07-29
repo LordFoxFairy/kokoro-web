@@ -3,14 +3,17 @@ import "server-only";
 export {
   assertProductionSafeBinding,
   bootstrapSiteRuntime,
+  bootstrapSiteRuntimeFromOpaqueSession,
   loadSiteDeploymentBinding,
   ProductContextManager,
   publicSiteBootstrap,
   SiteBindingError,
+  validatedOpaqueAuthSession,
 } from "./site-binding.js";
 export type {
   AuthSession,
   LocalePolicy,
+  OpaqueAuthSession,
   PlatformPersonalContextPort,
   PlatformProductContextPort,
   ProductContext,
@@ -19,6 +22,7 @@ export type {
   ProjectSummary,
   PublishedModelOption,
   PublicSiteBootstrap,
+  ResolvedSiteRuntime,
   RuntimeEnvironment,
   SafeActor,
   SiteBootstrap,

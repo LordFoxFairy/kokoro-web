@@ -1,4 +1,5 @@
 import { publicSiteBootstrap, type PublicSiteBootstrap } from "@kokoro/bff-runtime"
+import { ChatProduct } from "@kokoro/chat-app"
 import { cookies, headers } from "next/headers"
 import { notFound } from "next/navigation"
 
@@ -8,7 +9,6 @@ import {
   issueSessionV3BrowserCsrf,
   platformAuthSessionFromSealedCookie,
 } from "@/lib/server/session-v3"
-import { ReferenceChat } from "@/reference/reference-chat"
 
 export default async function Home(props: {
   readonly searchParams: Promise<{ readonly session?: string | string[] }>
@@ -39,7 +39,7 @@ export default async function Home(props: {
     bootstrap = null
   }
   return (
-    <ReferenceChat
+    <ChatProduct
       bootstrap={bootstrap}
       brandName={brandName || "Kokoro local unsafe"}
       csrfToken={issueSessionV3BrowserCsrf()}
