@@ -252,4 +252,129 @@ describe("Session proxy", () => {
     })).rejects.toMatchObject({ code: "UPSTREAM_BINDING_MISMATCH" });
     await vi.waitFor(() => expect(cancel).toHaveBeenCalledOnce());
   });
+
+  it("disables transformation and intermediary buffering for validated SSE", async () => {
+    const proxy = createSessionProxy({ bootstrap, access, transport: transport(), browserRequestVerifier: verifier });
+    const response = await proxy.execute({
+      route,
+      browser: { method: "GET", headers: BROWSER_HEADERS, pathParameters: { sessionRef: "session-123" } },
+    });
+    expect(response.headers.get("cache-control")).toBe("no-store, no-transform");
+    expect(response.headers.get("x-accel-buffering")).toBe("no");
+    await response.body?.cancel();
+  });
+
+  it("keeps upstream validation pull-driven when the browser applies backpressure", async () => {
+    let producer: ReadableStreamDefaultController<Uint8Array> | undefined;
+    const push = vi.fn((chunk: Uint8Array) => [chunk]);
+    const pullRoute: SessionProxyRoute<{ sessionRef: string }> = {
+      ...route,
+      success: {
+        ...route.success,
+        response: {
+          ...route.success.response as Extract<typeof route.success.response, { kind: "sse" }>,
+          createValidator: () => ({ push, finish: () => [] }),
+        },
+      },
+    };
+    const proxy = createSessionProxy({
+      bootstrap,
+      access,
+      browserRequestVerifier: verifier,
+      transport: transport({
+        execute: async () => ({
+          status: 200,
+          headers: { "content-type": "text/event-stream" },
+          body: new ReadableStream<Uint8Array>({ start(controller) { producer = controller; } }),
+          binding: responseBinding(),
+        }),
+      }),
+    });
+    const response = await proxy.execute({
+      route: pullRoute,
+      browser: { method: "GET", headers: BROWSER_HEADERS, pathParameters: { sessionRef: "session-123" } },
+    });
+    const frame = new TextEncoder().encode("event: snapshot\ndata: {}\n\n");
+    producer?.enqueue(frame);
+    await vi.waitFor(() => expect(push).toHaveBeenCalledTimes(1));
+    producer?.enqueue(frame);
+    producer?.enqueue(frame);
+    await Promise.resolve();
+    expect(push).toHaveBeenCalledTimes(1);
+    await response.body?.cancel();
+  });
+
+  it("propagates downstream cancellation to the upstream reader and abort signal", async () => {
+    const cancel = vi.fn();
+    let signal: AbortSignal | undefined;
+    const proxy = createSessionProxy({
+      bootstrap,
+      access,
+      browserRequestVerifier: verifier,
+      transport: transport({
+        execute: async (request) => {
+          signal = request.signal;
+          return {
+            status: 200,
+            headers: { "content-type": "text/event-stream" },
+            body: new ReadableStream<Uint8Array>({ cancel }),
+            binding: responseBinding(),
+          };
+        },
+      }),
+    });
+    const response = await proxy.execute({
+      route,
+      browser: { method: "GET", headers: BROWSER_HEADERS, pathParameters: { sessionRef: "session-123" } },
+    });
+    await response.body?.cancel("browser disconnected");
+    expect(signal?.aborted).toBe(true);
+    expect(cancel).toHaveBeenCalledWith("browser disconnected");
+  });
+
+  it("fails closed, cancels, and aborts when an upstream chunk exceeds its bound", async () => {
+    const cancel = vi.fn();
+    let signal: AbortSignal | undefined;
+    const boundedRoute: SessionProxyRoute<{ sessionRef: string }> = {
+      ...route,
+      success: {
+        ...route.success,
+        response: {
+          kind: "sse",
+          maximumEmittedFrameBytes: 4,
+          maximumUpstreamChunkBytes: 4,
+          maximumBufferedBytes: 8,
+          createValidator: () => ({ push: (chunk) => [chunk], finish: () => [] }),
+        },
+      },
+    };
+    const proxy = createSessionProxy({
+      bootstrap,
+      access,
+      browserRequestVerifier: verifier,
+      transport: transport({
+        execute: async (request) => {
+          signal = request.signal;
+          return {
+            status: 200,
+            headers: { "content-type": "text/event-stream" },
+            body: new ReadableStream<Uint8Array>({
+              start(controller) {
+                controller.enqueue(new Uint8Array(5));
+              },
+              cancel,
+            }),
+            binding: responseBinding(),
+          };
+        },
+      }),
+    });
+    const response = await proxy.execute({
+      route: boundedRoute,
+      browser: { method: "GET", headers: BROWSER_HEADERS, pathParameters: { sessionRef: "session-123" } },
+    });
+    await expect(response.body?.getReader().read()).rejects.toMatchObject({ code: "UPSTREAM_PROTOCOL_ERROR" });
+    await vi.waitFor(() => expect(cancel).toHaveBeenCalledOnce());
+    expect(signal?.aborted).toBe(true);
+  });
 });

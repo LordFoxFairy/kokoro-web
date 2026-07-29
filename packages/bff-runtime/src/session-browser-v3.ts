@@ -137,9 +137,10 @@ function normalizeQuery(endpoint: GeneratedEndpoint, value: unknown): Readonly<R
   }
   const parsed = asPlainRecord(endpoint.querySchema.parse(value ?? {}));
   const normalized = queryRecordSchema.parse(parsed);
-  if (typeof normalized.after === "string") {
+  for (const cursor of [normalized.after, normalized.cursor]) {
+    if (typeof cursor !== "string") continue;
     try {
-      assertOpaqueCursor(normalized.after);
+      assertOpaqueCursor(cursor);
     } catch {
       throw new SessionProxyError("REQUEST_INVALID");
     }
@@ -425,7 +426,7 @@ function parseSseFields(frame: string): ParsedSseFields | null {
   let id: string | undefined;
   const data: string[] = [];
   let hasField = false;
-  for (const line of frame.split(/\r?\n/u)) {
+  for (const line of frame.split(/\r\n|\r|\n/u)) {
     if (line.startsWith(":")) continue;
     if (line.length === 0) continue;
     hasField = true;
@@ -446,11 +447,20 @@ function parseSseFields(frame: string): ParsedSseFields | null {
 }
 
 function boundaryIn(buffer: string): { readonly index: number; readonly length: number } | null {
-  const lf = buffer.indexOf("\n\n");
-  const crlf = buffer.indexOf("\r\n\r\n");
-  if (lf < 0 && crlf < 0) return null;
-  if (crlf >= 0 && (lf < 0 || crlf < lf)) return { index: crlf, length: 4 };
-  return { index: lf, length: 2 };
+  let lineStart = 0;
+  let previousEndingStart = 0;
+  for (let index = 0; index < buffer.length; index += 1) {
+    const character = buffer[index];
+    if (character !== "\r" && character !== "\n") continue;
+    const width = character === "\r" && buffer[index + 1] === "\n" ? 2 : 1;
+    if (index === lineStart) {
+      return { index: previousEndingStart, length: index + width - previousEndingStart };
+    }
+    previousEndingStart = index;
+    lineStart = index + width;
+    index += width - 1;
+  }
+  return null;
 }
 
 export function createSessionBrowserV3SseFrameValidator(input: Readonly<{

@@ -668,8 +668,9 @@ export function createSessionProxy(input: {
         responseHeaders.set("content-type", `${contract.contentTypes[0]}; charset=utf-8`);
         return new Response(json, { status: result.response.status, headers: responseHeaders });
       }
-      responseHeaders.set("cache-control", "no-store");
+      responseHeaders.set("cache-control", "no-store, no-transform");
       responseHeaders.set("content-type", "text/event-stream; charset=utf-8");
+      responseHeaders.set("x-accel-buffering", "no");
       return new Response(forwardValidatedSse(
         body,
         contract.createValidator({

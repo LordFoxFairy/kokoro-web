@@ -6,18 +6,69 @@ import type {
   SessionSnapshot,
 } from "@kokoro/session-client/contracts"
 
-export type ChatPart =
-  | { readonly kind: "text"; readonly id: string; readonly text: string }
-  | { readonly kind: "reasoning"; readonly id: string; readonly text: string }
+type ChatPartBase = {
+  readonly id: string
+  readonly ordinal: number
+  readonly version: number
+  readonly lifecycle: MessagePartEnvelope["lifecycle"]
+}
+
+export type ChatPart = ChatPartBase & (
+  | { readonly kind: "text"; readonly text: string }
+  | { readonly kind: "reasoning"; readonly text: string }
+  | {
+      readonly kind: "citation"
+      readonly sourceRef: string
+      readonly title: string
+      readonly locator?: string
+      readonly attribution?: string
+    }
   | {
       readonly kind: "tool"
-      readonly id: string
       readonly name: string
       readonly args: Record<string, unknown>
       readonly result?: string
       readonly status: "running" | "awaiting" | "complete" | "error" | "incomplete"
+      readonly effectRef?: string
+      readonly receiptRef?: string
     }
-  | { readonly kind: "unsupported"; readonly id: string; readonly originalKind: string }
+  | {
+      readonly kind: "approval" | "interaction"
+      readonly ownerRef: string
+      readonly expectedVersion: number
+      readonly deadline?: string
+      readonly allowedActions: readonly string[]
+      readonly receiptRef?: string
+      readonly status: string
+    }
+  | {
+      readonly kind: "plan"
+      readonly planProposalRef: string
+      readonly steps: readonly { readonly stepRef: string; readonly label: string; readonly status: string }[]
+    }
+  | {
+      readonly kind: "job" | "artifact"
+      readonly ownerRef: string
+      readonly status: string
+      readonly safeMetadata: Readonly<Record<string, unknown>>
+    }
+  | {
+      readonly kind: "cost"
+      readonly costProjectionRef: string
+      readonly status: string
+      readonly amount?: string
+      readonly currencyOrCreditUnit?: string
+      readonly freshness: string
+    }
+  | {
+      readonly kind: "notice" | "error"
+      readonly code: string
+      readonly message: string
+      readonly retryClass: string
+      readonly supportCorrelationRef?: string
+    }
+  | { readonly kind: "unsupported"; readonly originalKind: string }
+)
 
 export type ChatProjectionMessage = {
   readonly id: string
@@ -32,6 +83,7 @@ export type ChatProjection = {
   readonly messages: readonly ChatProjectionMessage[]
   readonly activeBranchId: string | null
   readonly activeRunId: string | null
+  readonly activeRunState: "launching" | "running" | "paused" | "cancelling" | "outcome_unknown" | null
   readonly connection: SessionConnectionState | { readonly kind: "idle" }
   readonly command: {
     readonly state: "idle" | "pending" | "conflict" | "failed"
@@ -76,6 +128,7 @@ export function createChatProjection(): ChatProjection {
     messages: [],
     activeBranchId: null,
     activeRunId: null,
+    activeRunState: null,
     connection: { kind: "idle" },
     command: { state: "idle" },
     repair: { required: false },
@@ -97,24 +150,91 @@ function toolStatus(part: Extract<MessagePartEnvelope, { kind: "tool-call" }>): 
 }
 
 function projectPart(part: MessagePartEnvelope): ChatPart {
+  const base = {
+    id: part.part_id,
+    ordinal: part.ordinal,
+    version: part.version,
+    lifecycle: part.lifecycle,
+  }
   switch (part.kind) {
     case "text":
-      return { kind: "text", id: part.part_id, text: part.payload.spans.map((span) => span.text).join("") }
+      return { ...base, kind: "text", text: part.payload.spans.map((span) => span.text).join("") }
     case "reasoning":
-      return { kind: "reasoning", id: part.part_id, text: part.payload.safe_summary }
+      return { ...base, kind: "reasoning", text: part.payload.safe_summary }
+    case "citation":
+      return {
+        ...base,
+        kind: "citation",
+        sourceRef: part.payload.source_ref,
+        title: part.payload.title,
+        ...(part.payload.locator === undefined ? {} : { locator: part.payload.locator }),
+        ...(part.payload.attribution === undefined ? {} : { attribution: part.payload.attribution }),
+      }
     case "tool-call":
       return {
+        ...base,
         kind: "tool",
-        id: part.part_id,
         name: part.payload.tool_label,
         args: part.payload.input_summary,
         status: toolStatus(part),
+        ...(part.payload.effect_ref === undefined ? {} : { effectRef: part.payload.effect_ref }),
+        ...(part.payload.receipt_ref === undefined ? {} : { receiptRef: part.payload.receipt_ref }),
+      }
+    case "approval":
+    case "interaction":
+      return {
+        ...base,
+        kind: part.kind,
+        ownerRef: part.payload.owner_ref,
+        expectedVersion: part.payload.expected_version,
+        allowedActions: part.payload.allowed_actions,
+        status: part.payload.status,
+        ...(part.payload.deadline === undefined ? {} : { deadline: part.payload.deadline }),
+        ...(part.payload.receipt_ref === undefined ? {} : { receiptRef: part.payload.receipt_ref }),
+      }
+    case "plan":
+      return {
+        ...base,
+        kind: "plan",
+        planProposalRef: part.payload.plan_proposal_ref,
+        steps: part.payload.steps.map((step) => ({ stepRef: step.step_ref, label: step.label, status: step.status })),
+      }
+    case "job":
+    case "artifact":
+      return {
+        ...base,
+        kind: part.kind,
+        ownerRef: part.payload.owner_ref,
+        status: part.payload.status,
+        safeMetadata: part.payload.safe_metadata,
+      }
+    case "cost":
+      return {
+        ...base,
+        kind: "cost",
+        costProjectionRef: part.payload.cost_projection_ref,
+        status: part.payload.status,
+        freshness: part.payload.freshness,
+        ...(part.payload.amount === undefined ? {} : { amount: part.payload.amount }),
+        ...(part.payload.currency_or_credit_unit === undefined ? {} : { currencyOrCreditUnit: part.payload.currency_or_credit_unit }),
+      }
+    case "notice":
+    case "error":
+      return {
+        ...base,
+        kind: part.kind,
+        code: part.payload.code,
+        message: part.payload.message,
+        retryClass: part.payload.retry_class,
+        ...(part.payload.support_correlation_ref === undefined ? {} : { supportCorrelationRef: part.payload.support_correlation_ref }),
       }
     case "unsupported":
-      return { kind: "unsupported", id: part.part_id, originalKind: part.payload.original_kind }
-    default:
-      return { kind: "unsupported", id: part.part_id, originalKind: part.kind }
+      return { ...base, kind: "unsupported", originalKind: part.payload.original_kind }
   }
+}
+
+function sortParts(parts: readonly ChatPart[]): readonly ChatPart[] {
+  return [...parts].sort((left, right) => left.ordinal - right.ordinal || left.id.localeCompare(right.id))
 }
 
 function projectMessage(message: MessageRecord): ChatProjectionMessage | null {
@@ -124,7 +244,7 @@ function projectMessage(message: MessageRecord): ChatProjectionMessage | null {
     runId: message.run_id ?? null,
     role: message.role,
     createdAt: message.created_at,
-    parts: [...message.parts].sort((left, right) => left.ordinal - right.ordinal).map(projectPart),
+    parts: sortParts(message.parts.map(projectPart)),
     status: messageStatus(message.lifecycle),
   }
 }
@@ -140,12 +260,22 @@ function upsertMessage(
   return next
 }
 
-function upsertPart(message: ChatProjectionMessage, part: ChatPart): ChatProjectionMessage {
+function upsertPart(
+  message: ChatProjectionMessage,
+  part: ChatPart,
+): { readonly message: ChatProjectionMessage; readonly conflict?: "part_version_regression" | "part_version_conflict" } {
   const index = message.parts.findIndex((candidate) => candidate.id === part.id)
-  if (index < 0) return { ...message, parts: [...message.parts, part] }
+  if (index < 0) return { message: { ...message, parts: sortParts([...message.parts, part]) } }
+  const current = message.parts[index] as ChatPart
+  if (part.version < current.version) return { message, conflict: "part_version_regression" }
+  if (part.version === current.version) {
+    return JSON.stringify(part) === JSON.stringify(current)
+      ? { message }
+      : { message, conflict: "part_version_conflict" }
+  }
   const next = [...message.parts]
   next[index] = part
-  return { ...message, parts: next }
+  return { message: { ...message, parts: sortParts(next) } }
 }
 
 function activeMessageRecords(snapshot: SessionSnapshot): Readonly<{
@@ -176,11 +306,25 @@ function activeMessageRecords(snapshot: SessionSnapshot): Readonly<{
   return { messages: reverse.reverse(), complete: true }
 }
 
-function activeRunId(snapshot: SessionSnapshot): string | null {
+function activeRun(snapshot: SessionSnapshot): Pick<ChatProjection, "activeRunId" | "activeRunState"> {
   const candidates = snapshot.runs.filter((run) =>
     run.branch_id === snapshot.session.active_branch_id && ACTIVE_RUN_STATUSES.has(run.execution_status),
   )
-  return candidates.at(-1)?.run_id ?? null
+  const run = candidates.at(-1)
+  const launch = snapshot.run_launches
+    .filter((candidate) => candidate.branch_id === snapshot.session.active_branch_id && ACTIVE_LAUNCH_STATUSES.has(candidate.status))
+    .at(-1)
+  const runId = run?.run_id ?? launch?.proposed_run_id ?? null
+  if (runId === null) return { activeRunId: null, activeRunState: null }
+  const cancelling = snapshot.controls.some((control) =>
+    control.run_id === runId && control.kind === "cancel" && ["pending", "persisted", "applied", "outcome_unknown"].includes(control.status),
+  )
+  if (cancelling) return { activeRunId: runId, activeRunState: "cancelling" }
+  if (run?.execution_status === "paused") return { activeRunId: runId, activeRunState: "paused" }
+  if (run?.execution_status === "outcome_unknown" || launch?.status === "outcome_unknown") {
+    return { activeRunId: runId, activeRunState: "outcome_unknown" }
+  }
+  return { activeRunId: runId, activeRunState: run === undefined ? "launching" : "running" }
 }
 
 function reduceEvent(state: ChatProjection, event: SessionEvent): ChatProjection {
@@ -196,14 +340,26 @@ function reduceEvent(state: ChatProjection, event: SessionEvent): ChatProjection
         return { ...state, repair: { required: true, reason: "message_part_without_message" } }
       }
       const messages = [...state.messages]
-      messages[index] = upsertPart(messages[index] as ChatProjectionMessage, projectPart(event.payload.part))
-      return { ...state, messages }
+      const result = upsertPart(messages[index] as ChatProjectionMessage, projectPart(event.payload.part))
+      messages[index] = result.message
+      return result.conflict === undefined
+        ? { ...state, messages }
+        : { ...state, messages, repair: { required: true, reason: result.conflict } }
     }
-    case "run.launch.updated":
-      return event.payload.launch.branch_id === state.activeBranchId &&
-        ACTIVE_LAUNCH_STATUSES.has(event.payload.launch.status)
-        ? { ...state, activeRunId: event.payload.launch.proposed_run_id }
+    case "run.launch.updated": {
+      const launch = event.payload.launch
+      if (launch.branch_id !== state.activeBranchId) return state
+      if (ACTIVE_LAUNCH_STATUSES.has(launch.status)) {
+        return {
+          ...state,
+          activeRunId: launch.proposed_run_id,
+          activeRunState: launch.status === "outcome_unknown" ? "outcome_unknown" : "launching",
+        }
+      }
+      return state.activeRunId === launch.proposed_run_id
+        ? { ...state, activeRunId: null, activeRunState: null }
         : state
+    }
     case "run.view.updated": {
       const run = event.payload.run
       if (run.branch_id !== state.activeBranchId) return state
@@ -217,7 +373,20 @@ function reduceEvent(state: ChatProjection, event: SessionEvent): ChatProjection
         ...state,
         messages,
         activeRunId: active ? run.run_id : state.activeRunId === run.run_id ? null : state.activeRunId,
+        activeRunState: active
+          ? run.execution_status === "paused" || run.execution_status === "cancelling" || run.execution_status === "outcome_unknown"
+            ? run.execution_status
+            : "running"
+          : state.activeRunId === run.run_id ? null : state.activeRunState,
       }
+    }
+    case "run.control.updated": {
+      const control = event.payload.control
+      if (control.run_id !== state.activeRunId || control.kind !== "cancel") return state
+      if (["pending", "persisted", "applied", "outcome_unknown"].includes(control.status)) {
+        return { ...state, activeRunState: control.status === "outcome_unknown" ? "outcome_unknown" : "cancelling" }
+      }
+      return control.status === "failed" ? { ...state, activeRunState: "running" } : state
     }
     case "branch.activated":
       return {
@@ -225,6 +394,7 @@ function reduceEvent(state: ChatProjection, event: SessionEvent): ChatProjection
         messages: [],
         activeBranchId: event.payload.branch_id,
         activeRunId: null,
+        activeRunState: null,
         repair: { required: true, reason: "active_branch_changed_refetch_snapshot" },
       }
     case "session.updated":
@@ -235,10 +405,10 @@ function reduceEvent(state: ChatProjection, event: SessionEvent): ChatProjection
             messages: [],
             activeBranchId: event.payload.session.active_branch_id,
             activeRunId: null,
+            activeRunState: null,
             repair: { required: true, reason: "active_branch_changed_refetch_snapshot" },
           }
     case "branch.created":
-    case "run.control.updated":
     case "run.cost.updated":
     case "command.receipt.updated":
       return state
@@ -249,11 +419,12 @@ export function reduceChatProjection(state: ChatProjection, action: ChatProjecti
   switch (action.type) {
     case "snapshot": {
       const active = activeMessageRecords(action.snapshot)
+      const activeExecution = activeRun(action.snapshot)
       return {
         ...state,
         messages: active.messages.map(projectMessage).filter((message): message is ChatProjectionMessage => message !== null),
         activeBranchId: action.snapshot.session.active_branch_id,
-        activeRunId: activeRunId(action.snapshot),
+        ...activeExecution,
         repair: active.complete
           ? { required: false }
           : { required: true, reason: "snapshot_active_lineage_incomplete" },
@@ -280,8 +451,11 @@ export function reduceChatProjection(state: ChatProjection, action: ChatProjecti
         messages: upsertMessage(state.messages, upsertPart(message, {
           kind: "unsupported",
           id: `unsupported:${action.originalKind}:${message.parts.length}`,
+          ordinal: message.parts.length,
+          version: 1,
+          lifecycle: "streaming",
           originalKind: action.originalKind,
-        })),
+        }).message),
       }
     }
   }

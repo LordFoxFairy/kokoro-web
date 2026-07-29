@@ -169,6 +169,11 @@ describe("Session browser v3 operation authority", () => {
       query: { after: "7" },
       body: undefined,
     })).toThrowError(new SessionProxyError("REQUEST_INVALID"));
+    expect(() => SESSION_BROWSER_V3_ROUTES.snapshot.parseInput({
+      pathParameters: { session_id: "session-12345678" },
+      query: { cursor: "7" },
+      body: undefined,
+    })).toThrowError(new SessionProxyError("REQUEST_INVALID"));
   });
 
   it("uses generated paths and schemas while keeping grant material out-of-band", async () => {
@@ -285,6 +290,17 @@ describe("Session browser v3 SSE validation", () => {
     expect(validator.push(frame.slice(0, 17))).toEqual([]);
     expect(validator.push(frame.slice(17))).toEqual([frame]);
     expect(validator.finish()).toEqual([]);
+  });
+
+  it("accepts CR, LF, CRLF, and mixed line endings", () => {
+    const value = browserEvent();
+    const mixed = new TextEncoder().encode(
+      `id: signed.cursor.1\revent: branch.activated\ndata: ${JSON.stringify(value)}\r\n\r`,
+    );
+    const expected = new TextEncoder().encode(
+      `id: signed.cursor.1\revent: branch.activated\ndata: ${JSON.stringify(value)}\n\n`,
+    );
+    expect(sseValidator().push(mixed)).toEqual([expected]);
   });
 
   it("rejects numeric cursors, non-string uint64 values, and mismatched event identity", () => {

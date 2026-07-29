@@ -2,6 +2,7 @@ import type { SessionEvent, SessionSnapshot } from "@kokoro/session-client/contr
 import { describe, expect, it } from "vitest"
 
 import { createChatProjectionStore } from "../src/projection/store.js"
+import { createKokoroExternalStoreAdapter } from "../src/runtime/kokoro-external-store-adapter.js"
 
 const NOW = "2026-07-28T00:00:00.000Z"
 
@@ -148,7 +149,7 @@ describe("Chat projection", () => {
     })
 
     expect(store.getSnapshot().messages[1]?.parts).toEqual([
-      { kind: "text", id: "part-assistant-12345678", text: "hi there" },
+      expect.objectContaining({ kind: "text", id: "part-assistant-12345678", text: "hi there", version: 2, ordinal: 0 }),
     ])
   })
 
@@ -168,5 +169,134 @@ describe("Chat projection", () => {
       activeRunId: null,
       repair: { required: true, reason: "active_branch_changed_refetch_snapshot" },
     })
+  })
+
+  it("preserves and renders every authoritative v3 card payload including HITL routing identity", () => {
+    const base = snapshot()
+    const assistant = base.messages[1]
+    if (assistant === undefined) throw new Error("assistant fixture missing")
+    const rich: SessionSnapshot = {
+      ...base,
+      messages: [base.messages[0] as SessionSnapshot["messages"][number], {
+        ...assistant,
+        parts: [
+          { part_id: "citation-1", message_id: assistant.message_id, ordinal: 0, version: 1, schema_version: 1, lifecycle: "completed", kind: "citation", payload: { source_ref: "source-1", title: "Source", locator: "p. 2", attribution: "Author" } },
+          { part_id: "approval-1", message_id: assistant.message_id, ordinal: 1, version: 3, schema_version: 1, lifecycle: "streaming", kind: "approval", payload: { owner_ref: "owner-approval", expected_version: 7, deadline: NOW, allowed_actions: ["approve", "reject"], receipt_ref: "receipt-1", status: "pending" } },
+          { part_id: "interaction-1", message_id: assistant.message_id, ordinal: 2, version: 2, schema_version: 1, lifecycle: "streaming", kind: "interaction", payload: { owner_ref: "owner-interaction", expected_version: 4, allowed_actions: ["submit"], status: "waiting" } },
+          { part_id: "plan-1", message_id: assistant.message_id, ordinal: 3, version: 1, schema_version: 1, lifecycle: "completed", kind: "plan", payload: { plan_proposal_ref: "plan-ref", steps: [{ step_ref: "step-1", label: "Inspect", status: "done" }] } },
+          { part_id: "job-1", message_id: assistant.message_id, ordinal: 4, version: 1, schema_version: 1, lifecycle: "streaming", kind: "job", payload: { owner_ref: "job-owner", status: "running", safe_metadata: { label: "Render" } } },
+          { part_id: "artifact-1", message_id: assistant.message_id, ordinal: 5, version: 1, schema_version: 1, lifecycle: "completed", kind: "artifact", payload: { owner_ref: "artifact-owner", status: "ready", safe_metadata: { media_type: "image/png" } } },
+          { part_id: "cost-1", message_id: assistant.message_id, ordinal: 6, version: 1, schema_version: 1, lifecycle: "completed", kind: "cost", payload: { cost_projection_ref: "cost-ref", status: "settled", amount: "1.25", currency_or_credit_unit: "credits", freshness: NOW } },
+          { part_id: "notice-1", message_id: assistant.message_id, ordinal: 7, version: 1, schema_version: 1, lifecycle: "completed", kind: "notice", payload: { code: "WAIT", message: "Still working", retry_class: "after_delay", support_correlation_ref: "support-1" } },
+          { part_id: "error-1", message_id: assistant.message_id, ordinal: 8, version: 1, schema_version: 1, lifecycle: "failed", kind: "error", payload: { code: "FAILED", message: "Stopped", retry_class: "never" } },
+        ],
+      }],
+    }
+    const store = createChatProjectionStore()
+    store.dispatch({ type: "snapshot", snapshot: rich })
+    const assistantProjection = store.getSnapshot().messages[1]
+    if (assistantProjection === undefined) throw new Error("assistant projection missing")
+
+    expect(assistantProjection.parts).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: "citation", sourceRef: "source-1", locator: "p. 2", version: 1, ordinal: 0 }),
+      expect.objectContaining({ kind: "approval", ownerRef: "owner-approval", expectedVersion: 7, allowedActions: ["approve", "reject"], receiptRef: "receipt-1", version: 3, ordinal: 1 }),
+      expect.objectContaining({ kind: "interaction", ownerRef: "owner-interaction", expectedVersion: 4, allowedActions: ["submit"] }),
+      expect.objectContaining({ kind: "plan", planProposalRef: "plan-ref" }),
+      expect.objectContaining({ kind: "job", ownerRef: "job-owner", safeMetadata: { label: "Render" } }),
+      expect.objectContaining({ kind: "artifact", ownerRef: "artifact-owner" }),
+      expect.objectContaining({ kind: "cost", costProjectionRef: "cost-ref", amount: "1.25" }),
+      expect.objectContaining({ kind: "notice", code: "WAIT", retryClass: "after_delay" }),
+      expect.objectContaining({ kind: "error", code: "FAILED", retryClass: "never" }),
+    ]))
+
+    const adapter = createKokoroExternalStoreAdapter(store.getSnapshot(), { submit: async () => undefined })
+    const rendered = adapter.convertMessage(assistantProjection, 1)
+    expect(rendered.content).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: "data", name: "kokoro:approval", data: expect.objectContaining({ ownerRef: "owner-approval", expectedVersion: 7 }) }),
+      expect.objectContaining({ type: "data", name: "kokoro:citation", data: expect.objectContaining({ sourceRef: "source-1" }) }),
+      expect.objectContaining({ type: "data", name: "kokoro:cost", data: expect.objectContaining({ costProjectionRef: "cost-ref" }) }),
+    ]))
+  })
+
+  it("rejects part version regression and keeps parts in stable ordinal order", () => {
+    const store = createChatProjectionStore()
+    store.dispatch({ type: "snapshot", snapshot: snapshot() })
+    store.dispatch({
+      type: "event",
+      event: event({
+        kind: "message.part.updated",
+        payload: {
+          part: {
+            part_id: "part-assistant-12345678",
+            message_id: "message-assistant-12345678",
+            ordinal: 2,
+            version: 2,
+            schema_version: 1,
+            lifecycle: "streaming",
+            kind: "text",
+            payload: { spans: [{ text: "fresh" }] },
+          },
+        },
+      }),
+    })
+    store.dispatch({
+      type: "event",
+      event: event({
+        kind: "message.part.updated",
+        payload: {
+          part: {
+            part_id: "part-assistant-12345678",
+            message_id: "message-assistant-12345678",
+            ordinal: 9,
+            version: 1,
+            schema_version: 1,
+            lifecycle: "completed",
+            kind: "text",
+            payload: { spans: [{ text: "stale" }] },
+          },
+        },
+      }),
+    })
+
+    expect(store.getSnapshot().messages[1]?.parts[0]).toMatchObject({ text: "fresh", version: 2, ordinal: 2 })
+    expect(store.getSnapshot().repair).toEqual({ required: true, reason: "part_version_regression" })
+  })
+
+  it("uses launch, run, and control projections to own active and cancelling state", () => {
+    const base = snapshot()
+    const launching: SessionSnapshot = {
+      ...base,
+      runs: [],
+      run_launches: [{
+        launch_id: "launch-12345678",
+        branch_id: base.session.active_branch_id,
+        trigger_message_id: "message-user-12345678",
+        proposed_run_id: "run-12345678",
+        status: "dispatch_pending",
+        command_receipt_ref: "receipt-launch",
+        version: 2,
+        updated_at: NOW,
+      }],
+      controls: [{
+        decision_id: "decision-12345678",
+        run_id: "run-12345678",
+        kind: "cancel",
+        status: "persisted",
+        command_receipt_ref: "receipt-control",
+        updated_at: NOW,
+      }],
+    }
+    const store = createChatProjectionStore()
+    store.dispatch({ type: "snapshot", snapshot: launching })
+    expect(store.getSnapshot()).toMatchObject({ activeRunId: "run-12345678", activeRunState: "cancelling" })
+
+    store.dispatch({
+      type: "event",
+      event: event({
+        kind: "run.launch.updated",
+        payload: { launch: { ...launching.run_launches[0] as NonNullable<typeof launching.run_launches[0]>, status: "failed", failure_code: "ADMISSION_DENIED", version: 3 } },
+      }),
+    })
+    expect(store.getSnapshot()).toMatchObject({ activeRunId: null, activeRunState: null })
   })
 })

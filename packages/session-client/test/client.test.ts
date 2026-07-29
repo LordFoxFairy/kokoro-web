@@ -2,8 +2,10 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   createSessionClient,
+  SESSION_CLIENT_OPERATION_SURFACE,
   type SessionTransport,
 } from "../src/client.js";
+import { SESSION_HTTP_ENDPOINTS } from "../src/contracts.js";
 
 const DIGEST = "a".repeat(64);
 
@@ -76,6 +78,10 @@ function problem(code: string, action: string, retryClass: string) {
 }
 
 describe("contract-bound Session v3 client", () => {
+  it("keeps its callable operation surface exhaustive with the generated registry", () => {
+    expect(Object.keys(SESSION_CLIENT_OPERATION_SURFACE).sort()).toEqual(Object.keys(SESSION_HTTP_ENDPOINTS).sort());
+  });
+
   it("hydrates the complete projection from its opaque snapshot watermark", async () => {
     const calls: string[] = [];
     const transport: SessionTransport = {
@@ -129,7 +135,7 @@ describe("contract-bound Session v3 client", () => {
     const client = createSessionClient({ transport });
     const handle = client.openEvents({
       sessionId: "session-12345678",
-      cursor: "signed.cursor.7",
+      watermark: snapshot().snapshot_watermark,
       onEvent,
       onConnection: vi.fn(),
     });
@@ -183,7 +189,7 @@ describe("contract-bound Session v3 client", () => {
     });
     const handle = client.openEvents({
       sessionId: "session-12345678",
-      cursor: "signed.cursor.7",
+      watermark: snapshot().snapshot_watermark,
       onEvent: vi.fn(),
       onConnection,
     });
@@ -221,7 +227,7 @@ describe("contract-bound Session v3 client", () => {
     });
     const handle = client.openEvents({
       sessionId: "session-12345678",
-      cursor: "signed.cursor.7",
+      watermark: snapshot().snapshot_watermark,
       onEvent,
       onConnection: vi.fn(),
     });
@@ -247,7 +253,7 @@ describe("contract-bound Session v3 client", () => {
     });
     const handle = client.openEvents({
       sessionId: "session-12345678",
-      cursor: "signed.cursor.7",
+      watermark: snapshot().snapshot_watermark,
       onEvent: vi.fn(),
       onConnection: vi.fn(),
     });
@@ -312,5 +318,136 @@ describe("contract-bound Session v3 client", () => {
 
     expect(bodies).toEqual([expect.objectContaining({ command })]);
     expect(response).toEqual(commandResponse());
+  });
+
+  it.each([
+    [409, problem("CLIENT_CONTRACT_UPGRADE_REQUIRED", "upgrade_client", "after_user_action"), "contract_incompatible"],
+    [409, problem("IDEMPOTENCY_CONFLICT", "reconcile_receipt", "reconcile_receipt"), "command_conflict"],
+    [403, problem("ADMISSION_DENIED", "show_reason", "never"), "http"],
+    [403, problem("SESSION_SCOPE_MISMATCH", "stop", "never"), "http"],
+    [401, problem("BFF_WORKLOAD_REVOKED", "stop", "never"), "http"],
+    [400, problem("SNAPSHOT_REQUIRED", "refetch_snapshot", "immediate"), "repair_required"],
+  ])("classifies status %i by stable problem semantics", async (status, body, kind) => {
+    const client = createSessionClient({
+      transport: {
+        request: async () => jsonResponse(status, body, "application/problem+json"),
+        stream: async () => ({ status: 500, headers: new Headers(), body: null }),
+      },
+    });
+
+    await expect(client.fetchSnapshot("session-12345678")).rejects.toMatchObject({ kind });
+  });
+
+  it("anchors the first event to both the snapshot epoch and immediately following durable sequence", async () => {
+    const baseEvent = {
+      kind: "branch.activated",
+      event_id: "event-12345678",
+      cursor: "signed.cursor.8",
+      session_id: "session-12345678",
+      stream_epoch: "epoch-12345678",
+      durable_seq: "8",
+      projection_version: 2,
+      schema_revision: 3,
+      recorded_at: "2026-07-28T00:00:01.000Z",
+      payload: { branch_id: "branch-12345678", session_version: 2 },
+    };
+    for (const mismatched of [
+      { ...baseEvent, cursor: "signed.cursor.9", durable_seq: "9" },
+      { ...baseEvent, stream_epoch: "epoch-other-12345678" },
+    ]) {
+      const onConnection = vi.fn();
+      const client = createSessionClient({
+        transport: {
+          request: async () => jsonResponse(500, {}),
+          stream: async () => ({
+            status: 200,
+            headers: new Headers({ "content-type": "text/event-stream" }),
+            body: new Response(`id: ${mismatched.cursor}\revent: ${mismatched.kind}\ndata: ${JSON.stringify(mismatched)}\r\n\r`).body,
+          }),
+        },
+      });
+      const handle = client.openEvents({
+        sessionId: "session-12345678",
+        watermark: snapshot().snapshot_watermark,
+        onEvent: vi.fn(),
+        onConnection,
+      });
+      await handle.ready;
+      await vi.waitFor(() => expect(onConnection).toHaveBeenCalledWith(expect.objectContaining({ kind: "contract_incompatible" })));
+      handle.close();
+    }
+  });
+
+  it("parses CR, LF, CRLF, and mixed SSE line endings across one frame", async () => {
+    const next = {
+      kind: "branch.activated",
+      event_id: "event-12345678",
+      cursor: "signed.cursor.8",
+      session_id: "session-12345678",
+      stream_epoch: "epoch-12345678",
+      durable_seq: "8",
+      projection_version: 2,
+      schema_revision: 3,
+      recorded_at: "2026-07-28T00:00:01.000Z",
+      payload: { branch_id: "branch-12345678", session_version: 2 },
+    };
+    const onEvent = vi.fn();
+    const client = createSessionClient({
+      transport: {
+        request: async () => jsonResponse(500, {}),
+        stream: async () => ({
+          status: 200,
+          headers: new Headers({ "content-type": "text/event-stream" }),
+          body: new Response(`id: ${next.cursor}\revent: ${next.kind}\ndata: ${JSON.stringify(next)}\r\n\r`).body,
+        }),
+      },
+    });
+    const handle = client.openEvents({
+      sessionId: "session-12345678",
+      watermark: snapshot().snapshot_watermark,
+      onEvent,
+      onConnection: vi.fn(),
+    });
+    await handle.ready;
+    await vi.waitFor(() => expect(onEvent).toHaveBeenCalledOnce());
+    handle.close();
+  });
+
+  it("honors the authoritative draining retry delay before reconnecting", async () => {
+    vi.useFakeTimers();
+    try {
+      const draining = {
+        kind: "stream.draining",
+        session_id: "session-12345678",
+        stream_epoch: "epoch-12345678",
+        last_durable_cursor: "signed.cursor.7",
+        action: "retry_same_cursor",
+        retry_after_ms: 25,
+      };
+      const stream = vi.fn(async () => ({
+        status: 200,
+        headers: new Headers({ "content-type": "text/event-stream" }),
+        body: new Response(`event: stream.draining\ndata: ${JSON.stringify(draining)}\n\n`).body,
+      }));
+      const client = createSessionClient({
+        transport: { request: async () => jsonResponse(500, {}), stream },
+        reconnectDelayMs: 1,
+        reconnectMaxDelayMs: 100,
+      });
+      const handle = client.openEvents({
+        sessionId: "session-12345678",
+        watermark: snapshot().snapshot_watermark,
+        onEvent: vi.fn(),
+        onConnection: vi.fn(),
+      });
+      await handle.ready;
+      await vi.advanceTimersByTimeAsync(24);
+      expect(stream).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(stream).toHaveBeenCalledTimes(2);
+      handle.close();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

@@ -4,6 +4,7 @@ import {
   LAST_EVENT_ID_HEADER,
   errorEnvelopeSchema,
   SESSION_HTTP_ENDPOINTS,
+  snapshotWatermarkSchema,
   sessionStreamFrameSchema,
   type BranchCommandRequest,
   type CancellationRequest,
@@ -23,6 +24,7 @@ import {
   type SessionLifecycleCommandRequest,
   type SessionList,
   type SessionSnapshot,
+  type SnapshotWatermark,
   type StreamControlFrame,
   type SubmitMessageRequest,
   type UpdateFolderRequest,
@@ -102,7 +104,7 @@ export class SessionClientError extends Error {
 }
 
 export type SessionHydration =
-  | { readonly kind: "ready"; readonly snapshot: SessionSnapshot; readonly cursor: SessionCursor }
+  | { readonly kind: "ready"; readonly snapshot: SessionSnapshot; readonly watermark: SnapshotWatermark; readonly cursor: SessionCursor }
   | { readonly kind: "not_found" }
   | {
       readonly kind: "repair_required" | "contract_incompatible";
@@ -119,7 +121,7 @@ export type SessionConnectionState =
 
 export type OpenEventsInput = {
   readonly sessionId: string;
-  readonly cursor: SessionCursor | string;
+  readonly watermark: SnapshotWatermark;
   readonly onEvent: (event: SessionEvent, cursor: SessionCursor) => void;
   readonly onConnection: (state: SessionConnectionState) => void;
 };
@@ -155,6 +157,29 @@ export type SessionClient = {
 
 type SseFrame = Readonly<{ id: string | null; event: string | null; data: string | null }>;
 type SessionOperationId = keyof typeof SESSION_HTTP_ENDPOINTS;
+
+export const SESSION_CLIENT_OPERATION_SURFACE = {
+  createSession: "createSession",
+  listSessions: "listSessions",
+  snapshot: "fetchSnapshot",
+  stream: "openEvents",
+  submitMessage: "submitMessage",
+  editMessage: "editMessage",
+  regenerateMessage: "regenerateMessage",
+  forkBranch: "forkBranch",
+  activateBranch: "activateBranch",
+  cancelRun: "cancelRun",
+  getCommandReceipt: "getCommandReceipt",
+  updateSession: "updateSession",
+  archiveSession: "archiveSession",
+  restoreSession: "restoreSession",
+  trashSession: "trashSession",
+  putPreference: "putPreference",
+  listFolders: "listFolders",
+  createFolder: "createFolder",
+  updateFolder: "updateFolder",
+  deleteFolder: "deleteFolder",
+} as const satisfies Readonly<Record<SessionOperationId, keyof SessionClient>>;
 type SchemaOutput<Schema> = Schema extends ZodType<infer Output> ? Output : never;
 type OperationResponse<Operation extends SessionOperationId> = SchemaOutput<
   NonNullable<(typeof SESSION_HTTP_ENDPOINTS)[Operation]["responseSchema"]>
@@ -189,24 +214,35 @@ function responseError(
   method: string,
   path: string,
   response: SessionResponse | SessionStreamResponse,
-  cursorPolicy: CursorPolicy,
 ): SessionClientError {
   const problem = "body" in response ? parseProblem(response.body) : undefined;
   const message = problem?.error.message ?? `${method} ${path} failed with status ${response.status}`;
   const common = { status: response.status, problem };
-  if (response.status === 401 || response.status === 403) {
+  if (problem === undefined) return new SessionClientError("http", message, common);
+  const { action, code } = problem.error;
+  if (
+    action === "refresh_grant" || action === "reauthenticate" ||
+    code === "SESSION_ACCESS_GRANT_REQUIRED" || code === "SESSION_ACCESS_GRANT_EXPIRED" ||
+    code === "SESSION_ACCESS_GRANT_REVOKED"
+  ) {
     return new SessionClientError("auth_required", message, common);
   }
-  if (response.status === 409 && problem?.error.action === "reconcile_receipt") {
+  if (action === "reconcile_receipt" || code === "IDEMPOTENCY_CONFLICT") {
     return new SessionClientError("command_conflict", message, common);
   }
-  if (problem?.error.action === "upgrade_client") {
+  if (action === "upgrade_client" || action === "developer_error" || code === "CLIENT_CONTRACT_UPGRADE_REQUIRED") {
     return new SessionClientError("contract_incompatible", message, common);
   }
-  if ([409, 410, 412, 422, 426].includes(response.status)) {
+  if (
+    action === "refetch_snapshot" || action === "retry_same_cursor" ||
+    code === "CURSOR_INVALID" || code === "CURSOR_CONFLICT" || code === "CURSOR_AHEAD" ||
+    code === "CURSOR_SCOPE_MISMATCH" || code === "STREAM_EPOCH_MISMATCH" || code === "SNAPSHOT_REQUIRED"
+  ) {
     return new SessionClientError("repair_required", message, {
       ...common,
-      recovery: cursorPolicy.onRejected(response.status),
+      recovery: action === "refetch_snapshot"
+        ? { kind: "rehydrate", reason: "cursor_expired" }
+        : { kind: "repair_required", reason: "cursor_conflict" },
     });
   }
   return new SessionClientError("http", message, common);
@@ -291,7 +327,9 @@ function createSseParser(
   maximumBufferedBytes: number,
   maximumFrameBytes: number,
 ) {
-  let buffer = "";
+  let line = "";
+  let frameLines: string[] = [];
+  let pendingCr = false;
   const encoder = new TextEncoder();
 
   const emit = (frame: string): void => {
@@ -301,11 +339,11 @@ function createSseParser(
     let id: string | null = null;
     let event: string | null = null;
     const data: string[] = [];
-    for (const line of frame.split(/\r?\n/u)) {
-      if (line.startsWith(":")) continue;
-      const separator = line.indexOf(":");
-      const field = separator < 0 ? line : line.slice(0, separator);
-      const raw = separator < 0 ? "" : line.slice(separator + 1);
+    for (const frameLine of frame.split("\n")) {
+      if (frameLine.startsWith(":")) continue;
+      const separator = frameLine.indexOf(":");
+      const field = separator < 0 ? frameLine : frameLine.slice(0, separator);
+      const raw = separator < 0 ? "" : frameLine.slice(separator + 1);
       const value = raw.startsWith(" ") ? raw.slice(1) : raw;
       if (field === "id" && id === null) id = value;
       else if (field === "event" && event === null) event = value;
@@ -317,31 +355,49 @@ function createSseParser(
     }
   };
 
-  const drain = (final: boolean): void => {
-    for (;;) {
-      const lf = buffer.indexOf("\n\n");
-      const crlf = buffer.indexOf("\r\n\r\n");
-      const index = lf < 0 ? crlf : crlf < 0 ? lf : Math.min(lf, crlf);
-      if (index < 0) break;
-      const width = crlf >= 0 && crlf === index ? 4 : 2;
-      emit(buffer.slice(0, index));
-      buffer = buffer.slice(index + width);
+  const endLine = (): void => {
+    if (line.length > 0) {
+      frameLines.push(line);
+      line = "";
+      return;
     }
-    if (final && buffer.length !== 0) {
-      throw new SessionClientError("protocol", "SSE stream ended with an incomplete frame");
+    if (frameLines.length > 0) emit(frameLines.join("\n"));
+    frameLines = [];
+  };
+
+  const bufferedBytes = (): number => encoder.encode([
+    ...frameLines,
+    line + (pendingCr ? "\r" : ""),
+  ].join("\n")).byteLength;
+
+  const consume = (chunk: string): void => {
+    for (const character of chunk) {
+      if (pendingCr) {
+        pendingCr = false;
+        endLine();
+        if (character === "\n") continue;
+      }
+      if (character === "\r") pendingCr = true;
+      else if (character === "\n") endLine();
+      else line += character;
     }
   };
 
   return Object.freeze({
     push(chunk: string) {
-      buffer += chunk;
-      if (encoder.encode(buffer).byteLength > maximumBufferedBytes) {
+      consume(chunk);
+      if (bufferedBytes() > maximumBufferedBytes) {
         throw new SessionClientError("protocol", "SSE buffer exceeds the bounded contract limit");
       }
-      drain(false);
     },
     finish() {
-      drain(true);
+      if (pendingCr) {
+        pendingCr = false;
+        endLine();
+      }
+      if (line.length !== 0 || frameLines.length !== 0) {
+        throw new SessionClientError("protocol", "SSE stream ended with an incomplete frame");
+      }
     },
   });
 }
@@ -422,7 +478,7 @@ export function createSessionClient(options: {
       throw new SessionClientError("network", `${input.method} ${input.path} failed`, { cause: error });
     }
     if (response.status !== endpoint.status) {
-      throw responseError(input.method, input.path, response, cursorPolicy);
+      throw responseError(input.method, input.path, response);
     }
     if (endpoint.responseSchema === null) {
       throw new SessionClientError("protocol", `${operationId} has no JSON response schema`);
@@ -431,8 +487,11 @@ export function createSessionClient(options: {
   };
 
   const fetchSnapshot = async (sessionId: string): Promise<SessionSnapshot | null> => {
-    const input = operationRequest("snapshot", { pathParameters: { session_id: sessionId } });
     const endpoint = SESSION_HTTP_ENDPOINTS.snapshot;
+    const input = operationRequest("snapshot", {
+      pathParameters: { session_id: sessionId },
+      ...(endpoint.querySchema === null ? {} : { query: {} }),
+    });
     let response: SessionResponse;
     try {
       response = await options.transport.request(input);
@@ -441,7 +500,7 @@ export function createSessionClient(options: {
     }
     if (response.status === 404) return null;
     if (response.status !== endpoint.status) {
-      throw responseError(input.method, input.path, response, cursorPolicy);
+      throw responseError(input.method, input.path, response);
     }
     if (endpoint.responseSchema === null) throw new SessionClientError("protocol", "Snapshot schema missing");
     const snapshot = parseContract(response.body, endpoint.responseSchema);
@@ -458,7 +517,7 @@ export function createSessionClient(options: {
       if (snapshot === null) return { kind: "not_found" };
       const acceptance = cursorPolicy.accept(snapshot.snapshot_watermark.cursor);
       if (acceptance.kind !== "ready") return { ...acceptance, snapshot };
-      return { kind: "ready", snapshot, cursor: acceptance.cursor };
+      return { kind: "ready", snapshot, watermark: snapshot.snapshot_watermark, cursor: acceptance.cursor };
     },
     listSessions(query) {
       return executeOperation("listSessions", { query });
@@ -511,7 +570,8 @@ export function createSessionClient(options: {
       pathParameters: { folder_id: folderId }, body,
     }),
     openEvents(input) {
-      const initialCursor = cursorPolicy.accept(input.cursor);
+      const watermark = parseContract(input.watermark, snapshotWatermarkSchema);
+      const initialCursor = cursorPolicy.accept(watermark.cursor);
       if (initialCursor.kind !== "ready") {
         throw new SessionClientError("contract_incompatible", initialCursor.reason);
       }
@@ -521,8 +581,8 @@ export function createSessionClient(options: {
       const path = streamRequest.path;
       const streamEndpoint = SESSION_HTTP_ENDPOINTS.stream;
       let cursor = initialCursor.cursor;
-      let streamEpoch: string | null = null;
-      let durableSeq: bigint | null = null;
+      const streamEpoch = watermark.stream_epoch;
+      let durableSeq: bigint = BigInt(watermark.durable_seq);
       let durableEventId: string | null = null;
       let closed = false;
       let controller: AbortController | null = null;
@@ -560,11 +620,13 @@ export function createSessionClient(options: {
           : null;
       };
 
-      const scheduleReconnect = (headers?: Headers): void => {
+      const scheduleReconnect = (headers?: Headers, requestedDelayMs?: number): void => {
         if (closed) return;
         input.onConnection({ kind: "reconnecting" });
         const cap = Math.min(reconnectMaxDelayMs, reconnectDelayMs * 2 ** Math.min(reconnectAttempt, 20));
-        const delay = retryAfterMs(headers) ?? Math.floor(random() * (cap + 1));
+        const delay = requestedDelayMs === undefined
+          ? retryAfterMs(headers) ?? Math.floor(random() * (cap + 1))
+          : Math.min(requestedDelayMs, reconnectMaxDelayMs);
         reconnectAttempt += 1;
         retryTimer = setTimeout(() => {
           retryTimer = null;
@@ -606,8 +668,11 @@ export function createSessionClient(options: {
             status: response.status,
             headers: response.headers,
             body: problem,
-          }, cursorPolicy);
-          if (!firstConnection && [429, 502, 503, 504].includes(response.status)) {
+          });
+          if (
+            !firstConnection &&
+            (problem.error.action === "retry_same_cursor" || ["immediate", "after_delay"].includes(problem.error.retry_class))
+          ) {
             scheduleReconnect(response.headers);
           } else {
             fail(error);
@@ -628,6 +693,7 @@ export function createSessionClient(options: {
 
         let terminalError: SessionClientError | null = null;
         let draining = false;
+        let drainingRetryAfterMs: number | undefined;
         let deliveredThisConnection = false;
         const parser = createSseParser((frame) => {
           if (frame.data === null || frame.event === null) return;
@@ -645,13 +711,14 @@ export function createSessionClient(options: {
             if (frame.id !== null) throw new SessionClientError("protocol", "Control frame advanced durable cursor");
             const accepted = cursorPolicy.accept(parsed.last_durable_cursor);
             if (accepted.kind !== "ready") throw new SessionClientError("contract_incompatible", accepted.reason);
-            if (streamEpoch !== null && parsed.stream_epoch !== streamEpoch) {
+            if (parsed.stream_epoch !== streamEpoch) {
               throw new SessionClientError("contract_incompatible", "SSE epoch mismatch");
             }
             if (accepted.cursor !== (deliveredThisConnection ? cursor : connectionStartCursor)) {
               throw new SessionClientError("contract_incompatible", "SSE draining cursor advanced without delivery");
             }
             draining = true;
+            drainingRetryAfterMs = parsed.retry_after_ms;
             input.onConnection({ kind: "draining", control: parsed });
             controller?.abort();
             return;
@@ -661,18 +728,16 @@ export function createSessionClient(options: {
             throw new SessionClientError("contract_incompatible", "SSE cursor mismatch");
           }
           const nextSeq = BigInt(parsed.durable_seq);
-          const exactReplay = durableSeq !== null &&
+          const exactReplay =
             nextSeq === durableSeq &&
             parsed.cursor === cursor &&
             parsed.event_id === durableEventId;
           if (
-            streamEpoch !== null && parsed.stream_epoch !== streamEpoch ||
-            durableSeq === null && parsed.cursor === connectionStartCursor ||
-            durableSeq !== null && !exactReplay && nextSeq !== durableSeq + 1n
+            parsed.stream_epoch !== streamEpoch ||
+            !exactReplay && nextSeq !== durableSeq + 1n
           ) {
             throw new SessionClientError("contract_incompatible", "SSE durable order mismatch");
           }
-          streamEpoch = parsed.stream_epoch;
           durableSeq = nextSeq;
           durableEventId = parsed.event_id;
           cursor = accepted.cursor;
@@ -701,7 +766,7 @@ export function createSessionClient(options: {
         }
         if (closed) return;
         if (terminalError !== null) fail(terminalError);
-        else scheduleReconnect(response.headers);
+        else scheduleReconnect(response.headers, drainingRetryAfterMs);
       };
 
       void connect();

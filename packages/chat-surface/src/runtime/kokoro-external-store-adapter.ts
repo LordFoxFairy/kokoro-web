@@ -7,7 +7,7 @@ import {
   type ThreadMessageLike,
 } from "@assistant-ui/react"
 
-import type { ChatProjection, ChatProjectionMessage } from "../projection/store.js"
+import type { ChatPart, ChatProjection, ChatProjectionMessage } from "../projection/store.js"
 
 export type ChatCommandPort = {
   readonly submit: (command: { readonly content: string; readonly parentId: string | null }) => Promise<void>
@@ -33,6 +33,69 @@ function jsonObject(value: Record<string, unknown>): Record<string, JsonValue> {
   return JSON.parse(JSON.stringify(value)) as Record<string, JsonValue>
 }
 
+function unreachablePart(part: never): never {
+  throw new Error(`Unsupported projected part: ${JSON.stringify(part)}`)
+}
+
+function dataPart(part: Exclude<ChatPart, { kind: "text" | "reasoning" | "tool" | "unsupported" }>) {
+  const common = { ordinal: part.ordinal, version: part.version, lifecycle: part.lifecycle }
+  switch (part.kind) {
+    case "citation":
+      return { type: "data" as const, name: "kokoro:citation", data: {
+        ...common,
+        sourceRef: part.sourceRef,
+        title: part.title,
+        ...(part.locator === undefined ? {} : { locator: part.locator }),
+        ...(part.attribution === undefined ? {} : { attribution: part.attribution }),
+      } }
+    case "approval":
+    case "interaction":
+      return { type: "data" as const, name: `kokoro:${part.kind}`, data: {
+        ...common,
+        ownerRef: part.ownerRef,
+        expectedVersion: part.expectedVersion,
+        allowedActions: [...part.allowedActions],
+        status: part.status,
+        ...(part.deadline === undefined ? {} : { deadline: part.deadline }),
+        ...(part.receiptRef === undefined ? {} : { receiptRef: part.receiptRef }),
+      } }
+    case "plan":
+      return { type: "data" as const, name: "kokoro:plan", data: {
+        ...common,
+        planProposalRef: part.planProposalRef,
+        steps: part.steps.map((step) => ({ ...step })),
+      } }
+    case "job":
+    case "artifact":
+      return { type: "data" as const, name: `kokoro:${part.kind}`, data: {
+        ...common,
+        ownerRef: part.ownerRef,
+        status: part.status,
+        safeMetadata: jsonObject({ ...part.safeMetadata }),
+      } }
+    case "cost":
+      return { type: "data" as const, name: "kokoro:cost", data: {
+        ...common,
+        costProjectionRef: part.costProjectionRef,
+        status: part.status,
+        freshness: part.freshness,
+        ...(part.amount === undefined ? {} : { amount: part.amount }),
+        ...(part.currencyOrCreditUnit === undefined ? {} : { currencyOrCreditUnit: part.currencyOrCreditUnit }),
+      } }
+    case "notice":
+    case "error":
+      return { type: "data" as const, name: `kokoro:${part.kind}`, data: {
+        ...common,
+        code: part.code,
+        message: part.message,
+        retryClass: part.retryClass,
+        ...(part.supportCorrelationRef === undefined ? {} : { supportCorrelationRef: part.supportCorrelationRef }),
+      } }
+    default:
+      return unreachablePart(part)
+  }
+}
+
 function convertMessage(message: ChatProjectionMessage): ThreadMessageLike {
   const content = message.parts.map((part) => {
     if (part.kind === "text") return { type: "text" as const, text: part.text }
@@ -45,9 +108,22 @@ function convertMessage(message: ChatProjectionMessage): ThreadMessageLike {
       argsText: JSON.stringify(part.args),
       ...(part.result === undefined ? {} : { result: part.result }),
       ...(part.status === "error" ? { isError: true } : {}),
-      ...(part.status === "awaiting" ? { interrupt: { type: "human" as const, payload: { owner: "kokoro-session" } } } : {}),
+      ...(part.status === "awaiting" ? { interrupt: { type: "human" as const, payload: {
+        effectRef: part.effectRef,
+        receiptRef: part.receiptRef,
+      } } } : {}),
     }
-    return { type: "data" as const, name: "kokoro:unsupported", data: { originalKind: part.originalKind } }
+    if (part.kind === "unsupported") return {
+      type: "data" as const,
+      name: "kokoro:unsupported",
+      data: {
+        originalKind: part.originalKind,
+        ordinal: part.ordinal,
+        version: part.version,
+        lifecycle: part.lifecycle,
+      },
+    }
+    return dataPart(part)
   })
   const custom = { kokoro: { runId: message.runId, integrity: message.status } }
   if (message.role === "user") {
