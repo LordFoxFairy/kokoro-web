@@ -185,4 +185,60 @@ describe("one-time Platform identity delivery", () => {
     expect(runtime.verifyBrowserMutation({ operationId: "account.launch", token: "browser-csrf" })).toBe(true)
     expect(requests.find(({ operationId }) => operationId === "previewRedemption")?.body).toEqual({ code: "RAW-CODE-NEVER-PERSISTED" })
   })
+
+  it("keeps account security proofs and delivery recovery behind the Site BFF", async () => {
+    const requests: PlatformPublicRequest<never>[] = []
+    const transport: PlatformPublicTransport = { async execute(request) {
+      requests.push(request as PlatformPublicRequest<never>)
+      const commandId = request.headers["X-Kokoro-Command-Id"] ?? "1".repeat(32)
+      const requestDigest = "d".repeat(64)
+      const receipt = { commandId, requestDigest, receiptRef: "receipt-security-12345678", state: "committed", committedAt: "2026-07-29T00:00:00.000Z" }
+      switch (request.operationId) {
+        case "reauthenticateIdentitySession": return { status: 200, body: { commandId, requestDigest, proof: {
+          audience: "platform-public", operationId: "beginTotpEnrollment", resourceKind: "identity_account",
+          reauthenticationProof: "p".repeat(64), authStrengthPolicyRevision: "auth-policy-1",
+          issuedAt: "2026-07-29T00:00:00.000Z", expiresAt: "2026-07-29T00:05:00.000Z",
+          sessionRef: "identity-session-12345678", sessionEpoch: "1", userSecurityEpoch: "2",
+        } } }
+        case "beginTotpEnrollment": return { status: 200, body: { commandId, requestDigest, transaction: {
+          transactionRef: "totp-enrollment-12345678", expiresAt: "2026-07-29T00:10:00.000Z",
+          manualEntrySecret: "JBSWY3DPEHPK3PXP", otpauthUri: "otpauth://totp/Image%20Studio:user@example.com?secret=JBSWY3DPEHPK3PXP",
+        } } }
+        case "confirmTotpEnrollment":
+        case "regenerateRecoveryCodes": return { status: 200, body: { commandId, requestDigest,
+          generatedAt: "2026-07-29T00:01:00.000Z",
+          recoveryCodes: Array.from({ length: 8 }, (_, index) => `recovery-${index}-code`),
+        } }
+        case "disableTotp": return { status: 200, body: { receipt } }
+        default: throw new Error(`unexpected operation: ${request.operationId}`)
+      }
+    } }
+    const provider = {
+      platformTransport: () => transport,
+      sessionHttp: () => ({ send: async () => { throw new Error("not used") } }),
+      platformCsrfToken: () => "c".repeat(64), issueBrowserCsrf: () => "browser-csrf",
+      verifyBrowserCsrf: () => true, close: () => undefined,
+    } satisfies NodeSiteRuntimeProvider
+    const runtime = createSiteBffRuntime({ binding, publicOrigin: "https://site.example", provider })
+    const auth = { sessionRef: "identity-session-12345678", sessionCredential: "s".repeat(64), expiresAt: "2026-07-30T00:00:00.000Z" }
+    const target = { audience: "platform-public" as const, operationId: "beginTotpEnrollment" as const,
+      resource: { kind: "identity_account" as const } }
+
+    const proof = await runtime.reauthenticate(auth, { stage: "password", password: "correct horse battery staple", target }, { command: runtime.createOneTimeCommand() })
+    if (!("proof" in proof)) throw new Error("expected proof")
+    const enrollment = await runtime.beginTotpEnrollment(auth, { reauthenticationProof: proof.proof.reauthenticationProof }, { command: runtime.createOneTimeCommand() })
+    if (!("transaction" in enrollment)) throw new Error("expected enrollment")
+    await runtime.confirmTotpEnrollment(auth, { transactionRef: enrollment.transaction.transactionRef, code: "123456" }, { command: runtime.createOneTimeCommand() })
+    await runtime.disableTotp(auth, { reauthenticationProof: proof.proof.reauthenticationProof, code: "234567" }, runtime.createCommand())
+    await runtime.regenerateRecoveryCodes(auth, { reauthenticationProof: proof.proof.reauthenticationProof }, { command: runtime.createOneTimeCommand() })
+
+    expect(requests.map(({ operationId }) => operationId)).toEqual([
+      "reauthenticateIdentitySession", "beginTotpEnrollment", "confirmTotpEnrollment",
+      "disableTotp", "regenerateRecoveryCodes",
+    ])
+    expect(requests[0]?.body).toEqual({ stage: "password", password: "correct horse battery staple", target })
+    expect(requests[1]?.body).toEqual({ ceremonyAction: "begin", reauthenticationProof: "p".repeat(64) })
+    expect(requests[3]?.security.receiptRecoveryCapability).toBeUndefined()
+    expect(requests[4]?.body).toEqual({ recoveryAction: "regenerate", reauthenticationProof: "p".repeat(64) })
+  })
 })

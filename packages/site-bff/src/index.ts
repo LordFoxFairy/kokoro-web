@@ -29,8 +29,11 @@ import type {
   EmailVerificationTransactionResponse,
   IdentitySessionList,
   PublicCommandReceiptResponse,
+  ReauthenticationResponse,
+  RecoveryCodeSetResponse,
   RedemptionCommandResponse,
   RedemptionPreviewResponse,
+  TotpEnrollmentTransactionResponse,
   VerificationActivationResponse,
 } from "@kokoro/site-client"
 import type { NodeSiteRuntimeProvider } from "@kokoro/site-runtime-node"
@@ -64,6 +67,22 @@ export type SiteDeliveryAttempt = Readonly<{
   command: SiteOneTimeCommand
   priorCommandId?: string
 }>
+
+export type SiteReauthenticationTarget = Readonly<{
+  audience: "platform-public"
+  operationId: "beginTotpEnrollment" | "disableTotp" | "regenerateRecoveryCodes"
+  resource: Readonly<{ kind: "identity_account" }>
+}>
+
+export type SiteReauthenticationInput =
+  | Readonly<{ stage: "password"; password: string; target: SiteReauthenticationTarget }>
+  | Readonly<{
+      stage: "mfa"
+      challengeKind: "totp" | "recovery"
+      proofCode: string
+      transactionRef: string
+      target: SiteReauthenticationTarget
+    }>
 
 /** A superseding delivery consumes the prior command and its recovery capability atomically. */
 export function supersedeSiteDelivery(
@@ -99,6 +118,11 @@ export interface SiteBffRuntime {
   resendVerification(email: string, command: PublicCommandContext): Promise<EmailVerificationTransactionResponse>
   completeEmailVerification(input: Readonly<{ transactionRef: string; transactionSecret: string }>, delivery: SiteDeliveryAttempt): Promise<VerificationActivationResponse>
   listSecuritySessions(auth: OpaqueAuthSession): Promise<IdentitySessionList>
+  reauthenticate(auth: OpaqueAuthSession, input: SiteReauthenticationInput, delivery: SiteDeliveryAttempt): Promise<ReauthenticationResponse>
+  beginTotpEnrollment(auth: OpaqueAuthSession, input: Readonly<{ reauthenticationProof: string; priorTransactionRef?: string }>, delivery: SiteDeliveryAttempt): Promise<TotpEnrollmentTransactionResponse>
+  confirmTotpEnrollment(auth: OpaqueAuthSession, input: Readonly<{ transactionRef: string; code: string }>, delivery: SiteDeliveryAttempt): Promise<RecoveryCodeSetResponse>
+  disableTotp(auth: OpaqueAuthSession, input: Readonly<{ reauthenticationProof: string; code: string }>, command: PublicCommandContext): Promise<CommandReceiptResponse>
+  regenerateRecoveryCodes(auth: OpaqueAuthSession, input: Readonly<{ reauthenticationProof: string }>, delivery: SiteDeliveryAttempt): Promise<RecoveryCodeSetResponse>
   revokeSessions(auth: OpaqueAuthSession, input: Readonly<{ target: "current" | "others" | "all" }>, command: PublicCommandContext): Promise<CommandReceiptResponse>
   previewRedemption(auth: OpaqueAuthSession, code: string, command: PublicCommandContext): Promise<RedemptionPreviewResponse>
   confirmRedemption(auth: OpaqueAuthSession, input: Readonly<{ previewCredential: string; legalAcceptanceRefs: readonly string[] }>, command: PublicCommandContext): Promise<RedemptionCommandResponse>
@@ -272,6 +296,74 @@ export function createSiteBffRuntime(input: Readonly<{
     },
     listSecuritySessions(authSession: OpaqueAuthSession) {
       return authenticatedClient(authSession).execute({ operationId: "listIdentitySessions", data: {} })
+    },
+    reauthenticate(
+      authSession: OpaqueAuthSession,
+      reauthentication: SiteReauthenticationInput,
+      delivery: SiteDeliveryAttempt,
+    ) {
+      return authenticatedClient(authSession).execute({
+        operationId: "reauthenticateIdentitySession",
+        data: { body: delivery.priorCommandId === undefined
+          ? reauthentication
+          : { stage: "supersede", priorCommandId: delivery.priorCommandId } },
+        command: delivery.command,
+      })
+    },
+    beginTotpEnrollment(
+      authSession: OpaqueAuthSession,
+      enrollment: Readonly<{ reauthenticationProof: string; priorTransactionRef?: string }>,
+      delivery: SiteDeliveryAttempt,
+    ) {
+      if (delivery.priorCommandId !== undefined && enrollment.priorTransactionRef === undefined) {
+        throw new TypeError("superseding TOTP enrollment requires the prior transaction")
+      }
+      return authenticatedClient(authSession).execute({
+        operationId: "beginTotpEnrollment",
+        data: { body: delivery.priorCommandId === undefined
+          ? { ceremonyAction: "begin", reauthenticationProof: enrollment.reauthenticationProof }
+          : { ceremonyAction: "supersede", priorCommandId: delivery.priorCommandId,
+              priorTransactionRef: enrollment.priorTransactionRef as string } },
+        command: delivery.command,
+      })
+    },
+    confirmTotpEnrollment(
+      authSession: OpaqueAuthSession,
+      confirmation: Readonly<{ transactionRef: string; code: string }>,
+      delivery: SiteDeliveryAttempt,
+    ) {
+      if (delivery.priorCommandId !== undefined) {
+        throw new TypeError("TOTP confirmation has no secret-delivery supersede operation")
+      }
+      return authenticatedClient(authSession).execute({
+        operationId: "confirmTotpEnrollment",
+        data: { body: confirmation },
+        command: delivery.command,
+      })
+    },
+    disableTotp(
+      authSession: OpaqueAuthSession,
+      disable: Readonly<{ reauthenticationProof: string; code: string }>,
+      commandIdentity: PublicCommandContext,
+    ) {
+      return authenticatedClient(authSession).execute({
+        operationId: "disableTotp",
+        data: { body: disable },
+        command: commandIdentity,
+      })
+    },
+    regenerateRecoveryCodes(
+      authSession: OpaqueAuthSession,
+      regeneration: Readonly<{ reauthenticationProof: string }>,
+      delivery: SiteDeliveryAttempt,
+    ) {
+      return authenticatedClient(authSession).execute({
+        operationId: "regenerateRecoveryCodes",
+        data: { body: delivery.priorCommandId === undefined
+          ? { recoveryAction: "regenerate", reauthenticationProof: regeneration.reauthenticationProof }
+          : { recoveryAction: "supersede", priorCommandId: delivery.priorCommandId } },
+        command: delivery.command,
+      })
     },
     revokeSessions(
       authSession: OpaqueAuthSession,
