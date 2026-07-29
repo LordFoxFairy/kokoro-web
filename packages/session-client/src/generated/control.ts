@@ -74,6 +74,35 @@ export const runtimeContextSchema = z
   .strict()
 export type RuntimeContext = z.infer<typeof runtimeContextSchema>
 
+const executionContextIntentRootSchema = z
+  .object({
+    mode: z.literal("root"),
+  })
+  .strict()
+
+const executionContextIntentContinueSchema = z
+  .object({
+    parent_anchor: z.string().min(1).max(256).refine((value) => value.trim() === value),
+    parent_digest: z.string().regex(/^[0-9a-f]{64}$/u),
+    mode: z.literal("continue"),
+  })
+  .strict()
+
+const executionContextIntentForkSchema = z
+  .object({
+    parent_anchor: z.string().min(1).max(256).refine((value) => value.trim() === value),
+    parent_digest: z.string().regex(/^[0-9a-f]{64}$/u),
+    mode: z.literal("fork"),
+  })
+  .strict()
+
+export const executionContextIntentSchema = z.discriminatedUnion("mode", [
+  executionContextIntentRootSchema,
+  executionContextIntentContinueSchema,
+  executionContextIntentForkSchema,
+])
+export type ExecutionContextIntent = z.infer<typeof executionContextIntentSchema>
+
 export type Backend = RuntimeConfig["backend"]
 
 const approveDecisionSchema = z.object({ type: z.literal("approve"), tool_id: z.string().min(1), args: z.record(z.string(), z.unknown()).optional() }).strict()
@@ -99,6 +128,7 @@ export const runRequestSchema = z
     input: runInputSchema,
     runtime: runtimeConfigSchema,
     context: runtimeContextSchema,
+    execution_context: executionContextIntentSchema,
     trace: z.record(z.string(), z.unknown()).optional(),
   })
   .strict()

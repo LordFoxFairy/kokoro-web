@@ -7,7 +7,7 @@ import { sessionMetadataSchema, conversationBranchSchema, messageRecordSchema, m
 export const sessionEventContractMetadata = Object.freeze({
   schemaId: "kokoro.session.events.v3",
   schemaVersion: 3,
-  sourceDigestSha256: "63260ffad6ca1429034098a93992cb8a713963342f44efae6dce969bfb5ff8b8",
+  sourceDigestSha256: "86cf0536deb410768a58feb65a7b760493a51015187402c882152e363612f178",
 })
 
 const todoSchema = z
