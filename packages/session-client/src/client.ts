@@ -2,44 +2,9 @@ import { ZodError, type ZodType } from "zod";
 
 import {
   LAST_EVENT_ID_HEADER,
-  activateBranchPath,
-  branchCommandRequestSchema,
-  cancellationPath,
-  cancellationRequestSchema,
-  commandReceiptLookupQuerySchema,
-  commandReceiptPath,
-  createFolderRequestSchema,
-  createSessionRequestSchema,
-  editMessagePath,
-  editMessageRequestSchema,
   errorEnvelopeSchema,
-  eventsPath,
-  folderDeleteRequestSchema,
-  folderListQuerySchema,
-  folderListSchema,
-  folderPath,
-  foldersPath,
-  forkBranchPath,
-  listSessionsQuerySchema,
-  preferencePath,
-  preferenceRequestSchema,
-  regenerateMessagePath,
-  regenerateMessageRequestSchema,
-  sessionCommandResponseSchema,
-  sessionLifecycleCommandRequestSchema,
-  sessionListSchema,
-  sessionPath,
+  SESSION_HTTP_ENDPOINTS,
   sessionStreamFrameSchema,
-  sessionsPath,
-  snapshotPath,
-  submitMessageRequestSchema,
-  messagesPath,
-  updateFolderRequestSchema,
-  updateSessionRequestSchema,
-  archiveSessionPath,
-  restoreSessionPath,
-  trashSessionPath,
-  sessionSnapshotSchema,
   type BranchCommandRequest,
   type CancellationRequest,
   type CommandReceiptLookupQuery,
@@ -71,7 +36,7 @@ import {
 } from "./cursor-policy.js";
 
 export type SessionRequest = {
-  readonly method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+  readonly method: (typeof SESSION_HTTP_ENDPOINTS)[keyof typeof SESSION_HTTP_ENDPOINTS]["method"];
   readonly path: string;
   readonly headers?: Readonly<Record<string, string>>;
   readonly body?: unknown;
@@ -189,17 +154,25 @@ export type SessionClient = {
 };
 
 type SseFrame = Readonly<{ id: string | null; event: string | null; data: string | null }>;
-
-function routeSegment(value: string, label: string): string {
-  if (value.trim().length === 0 || value.length > 128) {
-    throw new SessionClientError("protocol", `${label} is invalid`);
-  }
-  return encodeURIComponent(value);
-}
+type SessionOperationId = keyof typeof SESSION_HTTP_ENDPOINTS;
+type SchemaOutput<Schema> = Schema extends ZodType<infer Output> ? Output : never;
+type OperationResponse<Operation extends SessionOperationId> = SchemaOutput<
+  NonNullable<(typeof SESSION_HTTP_ENDPOINTS)[Operation]["responseSchema"]>
+>;
 
 function parseContract<T>(raw: unknown, schema: ZodType<T>): T {
   try {
     return schema.parse(raw);
+  } catch (error) {
+    throw new SessionClientError("contract_incompatible", "Session payload rejected by Root contract", {
+      cause: error instanceof ZodError ? error : undefined,
+    });
+  }
+}
+
+function parseGenerated(raw: unknown, schema: ZodType): unknown {
+  try {
+    return schema.parse(raw) as unknown;
   } catch (error) {
     throw new SessionClientError("contract_incompatible", "Session payload rejected by Root contract", {
       cause: error instanceof ZodError ? error : undefined,
@@ -251,6 +224,66 @@ function queryString(value: Readonly<Record<string, unknown>>): string {
 function withQuery(path: string, query: Readonly<Record<string, unknown>>): string {
   const serialized = queryString(query);
   return serialized.length === 0 ? path : `${path}?${serialized}`;
+}
+
+function operationRequest(
+  operationId: SessionOperationId,
+  input: Readonly<{
+    pathParameters?: unknown;
+    query?: unknown;
+    body?: unknown;
+    signal?: AbortSignal;
+  }> = {},
+): SessionRequest {
+  const endpoint = SESSION_HTTP_ENDPOINTS[operationId];
+  let path: string = endpoint.path;
+  if (endpoint.pathSchema === null) {
+    if (input.pathParameters !== undefined) {
+      throw new SessionClientError("protocol", `${operationId} does not accept path parameters`);
+    }
+  } else {
+    const parameters = parseGenerated(input.pathParameters, endpoint.pathSchema);
+    if (typeof parameters !== "object" || parameters === null || Array.isArray(parameters)) {
+      throw new SessionClientError("protocol", `${operationId} path parameters are invalid`);
+    }
+    for (const [name, rawValue] of Object.entries(parameters)) {
+      if (typeof rawValue !== "string") {
+        throw new SessionClientError("protocol", `${operationId} path parameter is invalid`);
+      }
+      path = path.replace(`{${name}}`, encodeURIComponent(rawValue));
+    }
+    if (path.includes("{") || path.includes("}")) {
+      throw new SessionClientError("protocol", `${operationId} path is incomplete`);
+    }
+  }
+  if (endpoint.querySchema === null) {
+    if (input.query !== undefined) {
+      throw new SessionClientError("protocol", `${operationId} does not accept query parameters`);
+    }
+  } else {
+    const query = parseGenerated(input.query ?? {}, endpoint.querySchema);
+    if (typeof query !== "object" || query === null || Array.isArray(query)) {
+      throw new SessionClientError("protocol", `${operationId} query is invalid`);
+    }
+    path = withQuery(path, query as Readonly<Record<string, unknown>>);
+  }
+  let body: unknown;
+  if (endpoint.requestSchema === null) {
+    if (input.body !== undefined) {
+      throw new SessionClientError("protocol", `${operationId} does not accept a body`);
+    }
+  } else {
+    body = parseGenerated(input.body, endpoint.requestSchema);
+  }
+  return Object.freeze({
+    method: endpoint.method,
+    path,
+    ...(body === undefined ? {} : {
+      headers: { "content-type": "application/json" },
+      body,
+    }),
+    ...(input.signal === undefined ? {} : { signal: input.signal }),
+  });
 }
 
 function createSseParser(
@@ -313,6 +346,53 @@ function createSseParser(
   });
 }
 
+async function decodeProblemStream(
+  response: SessionStreamResponse,
+  maximumBytes = 131_072,
+): Promise<ErrorEnvelope> {
+  const contentType = response.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase();
+  if (response.body === null || contentType !== "application/problem+json") {
+    throw new SessionClientError("protocol", "Session stream error did not return a problem envelope", {
+      status: response.status,
+    });
+  }
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    for (;;) {
+      const result = await reader.read();
+      if (result.done) break;
+      size += result.value.byteLength;
+      if (size > maximumBytes) {
+        throw new SessionClientError("protocol", "Session stream problem exceeds the bounded limit", {
+          status: response.status,
+        });
+      }
+      chunks.push(result.value);
+    }
+    const merged = new Uint8Array(size);
+    let offset = 0;
+    for (const chunk of chunks) {
+      merged.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    let raw: unknown;
+    try {
+      raw = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(merged));
+    } catch (error) {
+      throw new SessionClientError("protocol", "Session stream problem is not valid UTF-8 JSON", {
+        status: response.status,
+        cause: error,
+      });
+    }
+    return parseContract(raw, errorEnvelopeSchema);
+  } catch (error) {
+    void reader.cancel(error).catch(() => undefined);
+    throw error;
+  }
+}
+
 export function createSessionClient(options: {
   readonly transport: SessionTransport;
   readonly cursorPolicy?: CursorPolicy;
@@ -329,48 +409,42 @@ export function createSessionClient(options: {
   const maximumSseBufferBytes = options.maximumSseBufferBytes ?? 1_048_576;
   const maximumSseFrameBytes = options.maximumSseFrameBytes ?? 524_288;
 
-  const request = async <T>(
-    input: SessionRequest,
-    expectedStatus: number,
-    schema: ZodType<T>,
-  ): Promise<T> => {
+  const executeOperation = async <Operation extends SessionOperationId>(
+    operationId: Operation,
+    operationInput: Parameters<typeof operationRequest>[1] = {},
+  ): Promise<OperationResponse<Operation>> => {
+    const input = operationRequest(operationId, operationInput);
+    const endpoint = SESSION_HTTP_ENDPOINTS[operationId];
     let response: SessionResponse;
     try {
       response = await options.transport.request(input);
     } catch (error) {
       throw new SessionClientError("network", `${input.method} ${input.path} failed`, { cause: error });
     }
-    if (response.status !== expectedStatus) {
+    if (response.status !== endpoint.status) {
       throw responseError(input.method, input.path, response, cursorPolicy);
     }
-    return parseContract(response.body, schema);
+    if (endpoint.responseSchema === null) {
+      throw new SessionClientError("protocol", `${operationId} has no JSON response schema`);
+    }
+    return parseGenerated(response.body, endpoint.responseSchema) as OperationResponse<Operation>;
   };
 
-  const command = <T>(
-    method: SessionRequest["method"],
-    path: string,
-    body: T,
-    schema: ZodType<T>,
-    status: number,
-  ) => request({
-    method,
-    path,
-    headers: { "content-type": "application/json" },
-    body: parseContract(body, schema),
-  }, status, sessionCommandResponseSchema);
-
   const fetchSnapshot = async (sessionId: string): Promise<SessionSnapshot | null> => {
-    const encodedSessionId = routeSegment(sessionId, "sessionId");
-    const path = snapshotPath(encodedSessionId);
+    const input = operationRequest("snapshot", { pathParameters: { session_id: sessionId } });
+    const endpoint = SESSION_HTTP_ENDPOINTS.snapshot;
     let response: SessionResponse;
     try {
-      response = await options.transport.request({ method: "GET", path });
+      response = await options.transport.request(input);
     } catch (error) {
-      throw new SessionClientError("network", `GET ${path} failed`, { cause: error });
+      throw new SessionClientError("network", `${input.method} ${input.path} failed`, { cause: error });
     }
     if (response.status === 404) return null;
-    if (response.status !== 200) throw responseError("GET", path, response, cursorPolicy);
-    const snapshot = parseContract(response.body, sessionSnapshotSchema);
+    if (response.status !== endpoint.status) {
+      throw responseError(input.method, input.path, response, cursorPolicy);
+    }
+    if (endpoint.responseSchema === null) throw new SessionClientError("protocol", "Snapshot schema missing");
+    const snapshot = parseContract(response.body, endpoint.responseSchema);
     if (snapshot.session.session_id !== sessionId) {
       throw new SessionClientError("contract_incompatible", "Snapshot Session identity mismatch");
     }
@@ -387,87 +461,65 @@ export function createSessionClient(options: {
       return { kind: "ready", snapshot, cursor: acceptance.cursor };
     },
     listSessions(query) {
-      const parsed = parseContract(query, listSessionsQuerySchema);
-      return request({ method: "GET", path: withQuery(sessionsPath(), parsed) }, 200, sessionListSchema);
+      return executeOperation("listSessions", { query });
     },
-    createSession: (body) => command("POST", sessionsPath(), body, createSessionRequestSchema, 201),
-    submitMessage: (sessionId, body) => command(
-      "POST", messagesPath(routeSegment(sessionId, "sessionId")), body, submitMessageRequestSchema, 202,
-    ),
-    editMessage: (sessionId, messageId, body) => command(
-      "POST",
-      editMessagePath(routeSegment(sessionId, "sessionId"), routeSegment(messageId, "messageId")),
-      body,
-      editMessageRequestSchema,
-      202,
-    ),
-    regenerateMessage: (sessionId, messageId, body) => command(
-      "POST",
-      regenerateMessagePath(routeSegment(sessionId, "sessionId"), routeSegment(messageId, "messageId")),
-      body,
-      regenerateMessageRequestSchema,
-      202,
-    ),
-    forkBranch: (sessionId, branchId, body) => command(
-      "POST",
-      forkBranchPath(routeSegment(sessionId, "sessionId"), routeSegment(branchId, "branchId")),
-      body,
-      branchCommandRequestSchema,
-      202,
-    ),
-    activateBranch: (sessionId, branchId, body) => command(
-      "POST",
-      activateBranchPath(routeSegment(sessionId, "sessionId"), routeSegment(branchId, "branchId")),
-      body,
-      branchCommandRequestSchema,
-      202,
-    ),
-    cancelRun: (sessionId, runId, body) => command(
-      "POST",
-      cancellationPath(routeSegment(sessionId, "sessionId"), routeSegment(runId, "runId")),
-      body,
-      cancellationRequestSchema,
-      202,
-    ),
-    getCommandReceipt(commandId, query) {
-      const parsed = parseContract(query, commandReceiptLookupQuerySchema);
-      return request({
-        method: "GET",
-        path: withQuery(commandReceiptPath(routeSegment(commandId, "commandId")), parsed),
-      }, 200, sessionCommandResponseSchema);
-    },
-    updateSession: (sessionId, body) => command(
-      "PATCH", sessionPath(routeSegment(sessionId, "sessionId")), body, updateSessionRequestSchema, 202,
-    ),
-    archiveSession: (sessionId, body) => command(
-      "POST", archiveSessionPath(routeSegment(sessionId, "sessionId")), body, sessionLifecycleCommandRequestSchema, 202,
-    ),
-    restoreSession: (sessionId, body) => command(
-      "POST", restoreSessionPath(routeSegment(sessionId, "sessionId")), body, sessionLifecycleCommandRequestSchema, 202,
-    ),
-    trashSession: (sessionId, body) => command(
-      "POST", trashSessionPath(routeSegment(sessionId, "sessionId")), body, sessionLifecycleCommandRequestSchema, 202,
-    ),
-    putPreference: (sessionId, body) => command(
-      "PUT", preferencePath(routeSegment(sessionId, "sessionId")), body, preferenceRequestSchema, 202,
-    ),
+    createSession: (body) => executeOperation("createSession", { body }),
+    submitMessage: (sessionId, body) => executeOperation("submitMessage", {
+      pathParameters: { session_id: sessionId }, body,
+    }),
+    editMessage: (sessionId, messageId, body) => executeOperation("editMessage", {
+      pathParameters: { session_id: sessionId, message_id: messageId }, body,
+    }),
+    regenerateMessage: (sessionId, messageId, body) => executeOperation("regenerateMessage", {
+      pathParameters: { session_id: sessionId, message_id: messageId }, body,
+    }),
+    forkBranch: (sessionId, branchId, body) => executeOperation("forkBranch", {
+      pathParameters: { session_id: sessionId, branch_id: branchId }, body,
+    }),
+    activateBranch: (sessionId, branchId, body) => executeOperation("activateBranch", {
+      pathParameters: { session_id: sessionId, branch_id: branchId }, body,
+    }),
+    cancelRun: (sessionId, runId, body) => executeOperation("cancelRun", {
+      pathParameters: { session_id: sessionId, run_id: runId }, body,
+    }),
+    getCommandReceipt: (commandId, query) => executeOperation("getCommandReceipt", {
+      pathParameters: { command_id: commandId }, query,
+    }),
+    updateSession: (sessionId, body) => executeOperation("updateSession", {
+      pathParameters: { session_id: sessionId }, body,
+    }),
+    archiveSession: (sessionId, body) => executeOperation("archiveSession", {
+      pathParameters: { session_id: sessionId }, body,
+    }),
+    restoreSession: (sessionId, body) => executeOperation("restoreSession", {
+      pathParameters: { session_id: sessionId }, body,
+    }),
+    trashSession: (sessionId, body) => executeOperation("trashSession", {
+      pathParameters: { session_id: sessionId }, body,
+    }),
+    putPreference: (sessionId, body) => executeOperation("putPreference", {
+      pathParameters: { session_id: sessionId }, body,
+    }),
     listFolders(query) {
-      const parsed = parseContract(query, folderListQuerySchema);
-      return request({ method: "GET", path: withQuery(foldersPath(), parsed) }, 200, folderListSchema);
+      return executeOperation("listFolders", { query });
     },
-    createFolder: (body) => command("POST", foldersPath(), body, createFolderRequestSchema, 201),
-    updateFolder: (folderId, body) => command(
-      "PATCH", folderPath(routeSegment(folderId, "folderId")), body, updateFolderRequestSchema, 202,
-    ),
-    deleteFolder: (folderId, body) => command(
-      "DELETE", folderPath(routeSegment(folderId, "folderId")), body, folderDeleteRequestSchema, 202,
-    ),
+    createFolder: (body) => executeOperation("createFolder", { body }),
+    updateFolder: (folderId, body) => executeOperation("updateFolder", {
+      pathParameters: { folder_id: folderId }, body,
+    }),
+    deleteFolder: (folderId, body) => executeOperation("deleteFolder", {
+      pathParameters: { folder_id: folderId }, body,
+    }),
     openEvents(input) {
       const initialCursor = cursorPolicy.accept(input.cursor);
       if (initialCursor.kind !== "ready") {
         throw new SessionClientError("contract_incompatible", initialCursor.reason);
       }
-      const path = eventsPath(routeSegment(input.sessionId, "sessionId"));
+      const streamRequest = operationRequest("stream", {
+        pathParameters: { session_id: input.sessionId },
+      });
+      const path = streamRequest.path;
+      const streamEndpoint = SESSION_HTTP_ENDPOINTS.stream;
       let cursor = initialCursor.cursor;
       let streamEpoch: string | null = null;
       let durableSeq: bigint | null = null;
@@ -522,12 +574,13 @@ export function createSessionClient(options: {
 
       const connect = async (): Promise<void> => {
         if (closed) return;
+        const connectionStartCursor = cursor;
         controller = new AbortController();
         input.onConnection({ kind: firstConnection ? "connecting" : "reconnecting" });
         let response: SessionStreamResponse;
         try {
           response = await options.transport.stream({
-            method: "GET",
+            method: streamEndpoint.method,
             path,
             headers: { accept: "text/event-stream", [LAST_EVENT_ID_HEADER]: cursor },
             signal: controller.signal,
@@ -539,9 +592,32 @@ export function createSessionClient(options: {
           return;
         }
         const contentType = response.headers.get("content-type")?.split(";", 1)[0]?.trim();
-        if (response.status !== 200 || response.body === null || contentType !== "text/event-stream") {
-          if (!firstConnection && [429, 502, 503, 504].includes(response.status)) scheduleReconnect(response.headers);
-          else fail(responseError("GET", path, response, cursorPolicy));
+        if (response.status !== streamEndpoint.status) {
+          let problem: ErrorEnvelope;
+          try {
+            problem = await decodeProblemStream(response);
+          } catch (error) {
+            fail(error instanceof SessionClientError
+              ? error
+              : new SessionClientError("protocol", "Session stream problem decoding failed", { cause: error }));
+            return;
+          }
+          const error = responseError(streamEndpoint.method, path, {
+            status: response.status,
+            headers: response.headers,
+            body: problem,
+          }, cursorPolicy);
+          if (!firstConnection && [429, 502, 503, 504].includes(response.status)) {
+            scheduleReconnect(response.headers);
+          } else {
+            fail(error);
+          }
+          return;
+        }
+        if (response.body === null || contentType !== "text/event-stream") {
+          fail(new SessionClientError("protocol", "Session stream success response is not event-stream", {
+            status: response.status,
+          }));
           return;
         }
         input.onConnection({ kind: "live" });
@@ -552,6 +628,7 @@ export function createSessionClient(options: {
 
         let terminalError: SessionClientError | null = null;
         let draining = false;
+        let deliveredThisConnection = false;
         const parser = createSseParser((frame) => {
           if (frame.data === null || frame.event === null) return;
           let raw: unknown;
@@ -571,7 +648,9 @@ export function createSessionClient(options: {
             if (streamEpoch !== null && parsed.stream_epoch !== streamEpoch) {
               throw new SessionClientError("contract_incompatible", "SSE epoch mismatch");
             }
-            cursor = accepted.cursor;
+            if (accepted.cursor !== (deliveredThisConnection ? cursor : connectionStartCursor)) {
+              throw new SessionClientError("contract_incompatible", "SSE draining cursor advanced without delivery");
+            }
             draining = true;
             input.onConnection({ kind: "draining", control: parsed });
             controller?.abort();
@@ -588,6 +667,7 @@ export function createSessionClient(options: {
             parsed.event_id === durableEventId;
           if (
             streamEpoch !== null && parsed.stream_epoch !== streamEpoch ||
+            durableSeq === null && parsed.cursor === connectionStartCursor ||
             durableSeq !== null && !exactReplay && nextSeq !== durableSeq + 1n
           ) {
             throw new SessionClientError("contract_incompatible", "SSE durable order mismatch");
@@ -597,6 +677,8 @@ export function createSessionClient(options: {
           durableEventId = parsed.event_id;
           cursor = accepted.cursor;
           reconnectAttempt = 0;
+          if (exactReplay) return;
+          deliveredThisConnection = true;
           input.onEvent(parsed, cursor);
         }, maximumSseBufferBytes, maximumSseFrameBytes);
 

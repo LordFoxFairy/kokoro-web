@@ -194,6 +194,74 @@ describe("contract-bound Session v3 client", () => {
     handle.close();
   });
 
+  it("suppresses an exact replay by opaque cursor and event identity", async () => {
+    const event = {
+      kind: "branch.activated",
+      event_id: "event-12345678",
+      cursor: "signed.cursor.8",
+      session_id: "session-12345678",
+      stream_epoch: "epoch-12345678",
+      durable_seq: "8",
+      projection_version: 2,
+      schema_revision: 3,
+      recorded_at: "2026-07-28T00:00:01.000Z",
+      payload: { branch_id: "branch-12345678", session_version: 2 },
+    };
+    const frame = `id: ${event.cursor}\nevent: ${event.kind}\ndata: ${JSON.stringify(event)}\n\n`;
+    const onEvent = vi.fn();
+    const client = createSessionClient({
+      transport: {
+        request: async () => jsonResponse(500, {}),
+        stream: async () => ({
+          status: 200,
+          headers: new Headers({ "content-type": "text/event-stream" }),
+          body: new Response(`${frame}${frame}`).body,
+        }),
+      },
+    });
+    const handle = client.openEvents({
+      sessionId: "session-12345678",
+      cursor: "signed.cursor.7",
+      onEvent,
+      onConnection: vi.fn(),
+    });
+    await handle.ready;
+    await vi.waitFor(() => expect(onEvent).toHaveBeenCalledOnce());
+    handle.close();
+  });
+
+  it("bounded-decodes an SSE upgrade problem and preserves its stable recovery fields", async () => {
+    const client = createSessionClient({
+      transport: {
+        request: async () => jsonResponse(500, {}),
+        stream: async () => ({
+          status: 426,
+          headers: new Headers({ "content-type": "application/problem+json" }),
+          body: new Response(JSON.stringify(problem(
+            "CLIENT_CONTRACT_UPGRADE_REQUIRED",
+            "upgrade_client",
+            "after_user_action",
+          ))).body,
+        }),
+      },
+    });
+    const handle = client.openEvents({
+      sessionId: "session-12345678",
+      cursor: "signed.cursor.7",
+      onEvent: vi.fn(),
+      onConnection: vi.fn(),
+    });
+
+    await expect(handle.ready).rejects.toMatchObject({
+      kind: "contract_incompatible",
+      status: 426,
+      stableCode: "CLIENT_CONTRACT_UPGRADE_REQUIRED",
+      action: "upgrade_client",
+      retryClass: "after_user_action",
+    });
+    handle.close();
+  });
+
   it("propagates generated problem details as a typed auth failure", async () => {
     const transport: SessionTransport = {
       request: async () => jsonResponse(

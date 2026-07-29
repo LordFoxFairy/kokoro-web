@@ -1,3 +1,5 @@
+import { SESSION_HTTP_ENDPOINTS } from "@kokoro/session-client/contracts";
+
 import type { SessionAccessGrant, SessionAccessManager, SessionPurpose } from "./session-access.js";
 import {
   validatedSiteBootstrap,
@@ -26,7 +28,10 @@ const AUTHORITY_KEYS = new Set([
   "workloadcredential",
 ]);
 
-export type SessionProxyMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+export type SessionProxyMethod = (typeof SESSION_HTTP_ENDPOINTS)[keyof typeof SESSION_HTTP_ENDPOINTS]["method"];
+const SESSION_PROXY_METHODS = new Set<SessionProxyMethod>(
+  Object.values(SESSION_HTTP_ENDPOINTS).map((endpoint) => endpoint.method),
+);
 
 const UPSTREAM_REQUEST_HEADERS = new Set([
   "accept",
@@ -86,13 +91,20 @@ export interface BrowserSessionRequest {
 }
 
 export interface BrowserRequestVerificationPort {
-  /** Must verify origin/fetch metadata and CSRF for every mutation before any grant is acquired. */
+  /** Must verify origin/fetch metadata for every browser request and CSRF for every mutation. */
   verify(input: {
     readonly operationId: string;
     readonly method: SessionProxyMethod;
     readonly headers: Readonly<Record<string, string>>;
-  }): Promise<void> | void;
+  }): Promise<BrowserRequestProof> | BrowserRequestProof;
 }
+
+export type BrowserRequestProof = Readonly<{
+  readonly kind: "same-origin-browser";
+  readonly operationId: string;
+  readonly method: SessionProxyMethod;
+  readonly origin: string;
+}>;
 
 export interface CsrfVerificationPort {
   verify(input: { readonly operationId: string; readonly token: string }): Promise<boolean> | boolean;
@@ -129,17 +141,22 @@ export function createOriginCsrfBrowserRequestVerifier(input: {
     async verify(request: Parameters<BrowserRequestVerificationPort["verify"]>[0]) {
       const origin = request.headers.origin;
       const fetchSite = request.headers["sec-fetch-site"];
-      if (origin !== undefined && !allowedOrigins.has(origin)) {
-        throw new SessionProxyError("BROWSER_REQUEST_UNVERIFIED");
-      }
-      if (fetchSite !== undefined && fetchSite !== "same-origin") {
-        throw new SessionProxyError("BROWSER_REQUEST_UNVERIFIED");
-      }
-      if (request.method === "GET") return;
-      const token = request.headers["x-csrf-token"];
       if (
         origin === undefined ||
-        fetchSite !== "same-origin" ||
+        !allowedOrigins.has(origin) ||
+        fetchSite !== "same-origin"
+      ) {
+        throw new SessionProxyError("BROWSER_REQUEST_UNVERIFIED");
+      }
+      const proof = Object.freeze({
+        kind: "same-origin-browser" as const,
+        operationId: request.operationId,
+        method: request.method,
+        origin,
+      });
+      if (request.method === "GET") return proof;
+      const token = request.headers["x-csrf-token"];
+      if (
         token === undefined ||
         token.length < 32 ||
         token.length > 512 ||
@@ -148,6 +165,7 @@ export function createOriginCsrfBrowserRequestVerifier(input: {
       ) {
         throw new SessionProxyError("BROWSER_REQUEST_UNVERIFIED");
       }
+      return proof;
     },
   });
 }
@@ -171,7 +189,11 @@ export type SessionResponseContract =
       maximumEmittedFrameBytes: number;
       maximumUpstreamChunkBytes: number;
       maximumBufferedBytes: number;
-      createValidator: () => SessionSseFrameValidator;
+      createValidator: (context: Readonly<{
+        operationId: string;
+        input: unknown;
+        headers: Readonly<Record<string, string>>;
+      }>) => SessionSseFrameValidator;
     }>
   | Readonly<{ kind: "empty" }>;
 
@@ -180,8 +202,10 @@ export interface SessionProxyRoute<Input = unknown> {
   readonly method: SessionProxyMethod;
   readonly purpose: SessionPurpose;
   readonly replaySafety: "idempotent" | "unsafe";
-  /** Exact generated status-to-schema/stream mapping, including JSON problem responses for SSE operations. */
-  readonly responses: Readonly<Partial<Record<number, SessionResponseContract>>>;
+  /** The sole successful status and schema come from the generated operation registry. */
+  readonly success: Readonly<{ readonly status: number; readonly response: SessionResponseContract }>;
+  /** Every non-success HTTP response is a bounded generated problem envelope. */
+  readonly problem: Extract<SessionResponseContract, { kind: "json" }>;
   /** Generated Session adapters supply validation and operation-bound input construction here. */
   readonly parseInput: (request: {
     readonly pathParameters: unknown;
@@ -219,8 +243,8 @@ export interface SessionUpstreamResponse {
   }>;
 }
 
-export interface SessionProxyTransportPort {
-  /** The adapter owns the registered Session endpoint; arbitrary URLs and paths are absent. */
+export interface TrustedServerSessionTransportPort {
+  /** Server-internal port: the adapter owns a registered endpoint and an OOB-authenticated grant binding. */
   execute<Input>(request: {
     readonly operationId: string;
     readonly input: Input;
@@ -229,6 +253,8 @@ export interface SessionProxyTransportPort {
     readonly signal: AbortSignal;
   }): Promise<SessionUpstreamResponse>;
 }
+
+export type SessionProxyTransportPort = TrustedServerSessionTransportPort;
 
 function normalizedAuthorityKey(key: string): string {
   return key.toLowerCase().replaceAll(/[-_]/gu, "");
@@ -423,7 +449,11 @@ function responseContract(
   route: SessionProxyRoute,
 ): SessionResponseContract {
   if (!Number.isInteger(response.status)) throw new SessionProxyError("UPSTREAM_PROTOCOL_ERROR");
-  const contract = route.responses[response.status];
+  const contract = response.status === route.success.status
+    ? route.success.response
+    : response.status >= 400 && response.status <= 599
+      ? route.problem
+      : undefined;
   if (contract === undefined) throw new SessionProxyError("UPSTREAM_PROTOCOL_ERROR");
   const headers = response.headers instanceof Headers ? response.headers : new Headers(response.headers);
   const contentType = headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase() ?? "";
@@ -443,23 +473,22 @@ function responseContract(
 }
 
 function assertRouteDefinition(route: SessionProxyRoute): void {
-  const entries = Object.entries(route.responses);
+  const contracts = [route.success.response, route.problem] as const;
   if (
     route.operationId.trim().length === 0 ||
     route.operationId.length > 128 ||
-    !["GET", "POST", "PUT", "PATCH", "DELETE"].includes(route.method) ||
+    !SESSION_PROXY_METHODS.has(route.method) ||
     !["read", "write", "control", "stream"].includes(route.purpose) ||
     !["idempotent", "unsafe"].includes(route.replaySafety) ||
-    entries.length === 0 ||
+    !Number.isInteger(route.success.status) ||
+    route.success.status < 200 ||
+    route.success.status > 299 ||
+    route.problem.kind !== "json" ||
     typeof route.parseInput !== "function"
   ) {
     throw new SessionProxyError("REQUEST_INVALID");
   }
-  for (const [rawStatus, contract] of entries) {
-    const status = Number(rawStatus);
-    if (!Number.isInteger(status) || status < 200 || status > 599 || contract === undefined) {
-      throw new SessionProxyError("REQUEST_INVALID");
-    }
+  for (const contract of contracts) {
     if (
       (contract.kind === "json" && (
         contract.maximumBytes < 1 ||
@@ -481,7 +510,7 @@ function assertRouteDefinition(route: SessionProxyRoute): void {
     }
   }
   if (
-    entries.some(([, contract]) => contract?.kind === "sse") &&
+    route.success.response.kind === "sse" &&
     (route.method !== "GET" || route.replaySafety !== "idempotent" || route.purpose !== "stream")
   ) {
     throw new SessionProxyError("REQUEST_INVALID");
@@ -527,7 +556,7 @@ async function parseJsonResponse(
 export function createSessionProxy(input: {
   readonly bootstrap: SiteBootstrap;
   readonly access: SessionAccessManager;
-  readonly transport: SessionProxyTransportPort;
+  readonly transport: TrustedServerSessionTransportPort;
   readonly browserRequestVerifier: BrowserRequestVerificationPort;
 }) {
   const bootstrap = validatedSiteBootstrap(input.bootstrap);
@@ -543,11 +572,19 @@ export function createSessionProxy(input: {
     }
     const browserHeaders = collectBrowserHeaders(request.browser.headers);
     try {
-      await input.browserRequestVerifier.verify({
+      const proof = await input.browserRequestVerifier.verify({
         operationId: request.route.operationId,
         method: request.route.method,
         headers: browserHeaders,
       });
+      if (
+        proof.kind !== "same-origin-browser" ||
+        proof.operationId !== request.route.operationId ||
+        proof.method !== request.route.method ||
+        browserHeaders.origin !== proof.origin
+      ) {
+        throw new SessionProxyError("BROWSER_REQUEST_UNVERIFIED");
+      }
     } catch (error) {
       if (error instanceof SessionProxyError) throw error;
       throw new SessionProxyError("BROWSER_REQUEST_UNVERIFIED");
@@ -635,7 +672,11 @@ export function createSessionProxy(input: {
       responseHeaders.set("content-type", "text/event-stream; charset=utf-8");
       return new Response(forwardValidatedSse(
         body,
-        contract.createValidator(),
+        contract.createValidator({
+          operationId: request.route.operationId,
+          input: routeInput,
+          headers: upstreamHeaders(browserHeaders),
+        }),
         contract.maximumEmittedFrameBytes,
         contract.maximumUpstreamChunkBytes,
         contract.maximumBufferedBytes,

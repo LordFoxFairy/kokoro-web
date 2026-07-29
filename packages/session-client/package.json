@@ -14,10 +14,12 @@
   "exports": {
     ".": {
       "types": "./src/index.ts",
+      "development": "./src/index.ts",
       "import": "./dist/index.js"
     },
     "./contracts": {
       "types": "./src/contracts.ts",
+      "development": "./src/contracts.ts",
       "import": "./dist/contracts.js"
     }
   },

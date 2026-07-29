@@ -10,6 +10,6 @@ Brand-neutral client over Root-generated Session HTTP/SSE schemas. Callers injec
 
 The Root-generated Session browser v3 mirror is live. The client exposes the complete browser command surface, validates the full projection snapshot, and hydrates only from its opaque snapshot watermark.
 
-SSE resume tokens are opaque and travel only in `Last-Event-ID`. Numeric/empty cursors, event/id/cursor mismatches, epoch/order gaps, and sequence reuse under another event identity fail closed. `stream.draining` remains a non-durable control frame; auth, conflict, contract, and repair outcomes remain distinct.
+SSE resume tokens are opaque and travel only in `Last-Event-ID`. Numeric/empty cursors, event/id/cursor mismatches, epoch/order gaps, and sequence reuse under another event identity fail closed; exact cursor/event replays are suppressed. `stream.draining` cannot advance beyond continuously delivered data. Non-success SSE bodies are bounded and decoded through the generated problem schema, preserving stable code/action/retry fields (including contract upgrade). Auth, conflict, contract, and repair outcomes remain distinct.
 
 Verification: `pnpm --filter @kokoro/session-client lint && pnpm --filter @kokoro/session-client typecheck && pnpm --filter @kokoro/session-client test && pnpm --filter @kokoro/session-client build`.

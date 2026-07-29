@@ -1,5 +1,10 @@
-import type { SessionEvent, SessionSnapshot } from "@kokoro/session-client/contracts"
 import type { SessionConnectionState } from "@kokoro/session-client"
+import type {
+  MessagePartEnvelope,
+  MessageRecord,
+  SessionEvent,
+  SessionSnapshot,
+} from "@kokoro/session-client/contracts"
 
 export type ChatPart =
   | { readonly kind: "text"; readonly id: string; readonly text: string }
@@ -25,6 +30,7 @@ export type ChatProjectionMessage = {
 
 export type ChatProjection = {
   readonly messages: readonly ChatProjectionMessage[]
+  readonly activeBranchId: string | null
   readonly activeRunId: string | null
   readonly connection: SessionConnectionState | { readonly kind: "idle" }
   readonly command: {
@@ -45,9 +51,30 @@ export type ChatProjectionAction =
     }
   | { readonly type: "unsupported"; readonly runId: string; readonly originalKind: string }
 
+const ACTIVE_RUN_STATUSES = new Set([
+  "admission_pending",
+  "waiting_prerequisite",
+  "running",
+  "paused",
+  "cancelling",
+  "outcome_unknown",
+])
+const ACTIVE_LAUNCH_STATUSES = new Set([
+  "intent_recorded",
+  "admission_pending",
+  "waiting_prerequisite",
+  "reserved",
+  "committed",
+  "dispatch_pending",
+  "dispatched",
+  "event_observed",
+  "outcome_unknown",
+])
+
 export function createChatProjection(): ChatProjection {
   return {
     messages: [],
+    activeBranchId: null,
     activeRunId: null,
     connection: { kind: "idle" },
     command: { state: "idle" },
@@ -55,21 +82,60 @@ export function createChatProjection(): ChatProjection {
   }
 }
 
-function assistantMessage(state: ChatProjection, runId: string, timestamp: string): ChatProjectionMessage {
-  return state.messages.find((message) => message.role === "assistant" && message.runId === runId) ?? {
-    id: `assistant:${runId}`,
-    runId,
-    role: "assistant",
-    createdAt: timestamp,
-    parts: [],
-    status: "running",
+function messageStatus(lifecycle: MessageRecord["lifecycle"]): ChatProjectionMessage["status"] {
+  if (lifecycle === "completed") return "complete"
+  if (["partial", "failed", "canceled"].includes(lifecycle)) return "incomplete"
+  return "running"
+}
+
+function toolStatus(part: Extract<MessagePartEnvelope, { kind: "tool-call" }>): Extract<ChatPart, { kind: "tool" }>["status"] {
+  if (part.lifecycle === "failed" || part.lifecycle === "canceled") return "error"
+  if (part.lifecycle === "partial") return "incomplete"
+  if (part.lifecycle === "completed") return "complete"
+  if (/await|approval/iu.test(part.payload.status)) return "awaiting"
+  return "running"
+}
+
+function projectPart(part: MessagePartEnvelope): ChatPart {
+  switch (part.kind) {
+    case "text":
+      return { kind: "text", id: part.part_id, text: part.payload.spans.map((span) => span.text).join("") }
+    case "reasoning":
+      return { kind: "reasoning", id: part.part_id, text: part.payload.safe_summary }
+    case "tool-call":
+      return {
+        kind: "tool",
+        id: part.part_id,
+        name: part.payload.tool_label,
+        args: part.payload.input_summary,
+        status: toolStatus(part),
+      }
+    case "unsupported":
+      return { kind: "unsupported", id: part.part_id, originalKind: part.payload.original_kind }
+    default:
+      return { kind: "unsupported", id: part.part_id, originalKind: part.kind }
   }
 }
 
-function upsertMessage(state: ChatProjection, message: ChatProjectionMessage): readonly ChatProjectionMessage[] {
-  const index = state.messages.findIndex((candidate) => candidate.id === message.id)
-  if (index < 0) return [...state.messages, message]
-  const next = [...state.messages]
+function projectMessage(message: MessageRecord): ChatProjectionMessage | null {
+  if (message.role === "system") return null
+  return {
+    id: message.message_id,
+    runId: message.run_id ?? null,
+    role: message.role,
+    createdAt: message.created_at,
+    parts: [...message.parts].sort((left, right) => left.ordinal - right.ordinal).map(projectPart),
+    status: messageStatus(message.lifecycle),
+  }
+}
+
+function upsertMessage(
+  messages: readonly ChatProjectionMessage[],
+  message: ChatProjectionMessage,
+): readonly ChatProjectionMessage[] {
+  const index = messages.findIndex((candidate) => candidate.id === message.id)
+  if (index < 0) return [...messages, message]
+  const next = [...messages]
   next[index] = message
   return next
 }
@@ -82,103 +148,117 @@ function upsertPart(message: ChatProjectionMessage, part: ChatPart): ChatProject
   return { ...message, parts: next }
 }
 
-function appendPartText(message: ChatProjectionMessage, part: ChatPart & { text: string }): ChatProjectionMessage {
-  const existing = message.parts.find((candidate) => candidate.id === part.id)
-  return upsertPart(
-    message,
-    existing && (existing.kind === "text" || existing.kind === "reasoning")
-      ? { ...part, text: `${existing.text}${part.text}` }
-      : part,
+function activeMessageRecords(snapshot: SessionSnapshot): Readonly<{
+  messages: readonly MessageRecord[]
+  complete: boolean
+}> {
+  const leafId = snapshot.session.active_leaf_message_id
+  if (leafId === undefined) {
+    return {
+      messages: snapshot.messages
+        .filter((message) => message.branch_id === snapshot.session.active_branch_id)
+        .sort((left, right) => left.ordinal - right.ordinal),
+      complete: true,
+    }
+  }
+  const byId = new Map(snapshot.messages.map((message) => [message.message_id, message]))
+  const seen = new Set<string>()
+  const reverse: MessageRecord[] = []
+  let currentId: string | undefined = leafId
+  while (currentId !== undefined) {
+    if (seen.has(currentId)) return { messages: [], complete: false }
+    seen.add(currentId)
+    const message = byId.get(currentId)
+    if (message === undefined) return { messages: [], complete: false }
+    reverse.push(message)
+    currentId = message.parent_message_id
+  }
+  return { messages: reverse.reverse(), complete: true }
+}
+
+function activeRunId(snapshot: SessionSnapshot): string | null {
+  const candidates = snapshot.runs.filter((run) =>
+    run.branch_id === snapshot.session.active_branch_id && ACTIVE_RUN_STATUSES.has(run.execution_status),
   )
+  return candidates.at(-1)?.run_id ?? null
 }
 
 function reduceEvent(state: ChatProjection, event: SessionEvent): ChatProjection {
-  if (event.kind === "message.user") {
-    return {
-      ...state,
-      messages: upsertMessage(state, {
-        id: event.payload.message_id,
-        runId: event.run_id,
-        role: "user",
-        createdAt: event.timestamp,
-        parts: [{ kind: "text", id: `${event.payload.message_id}:text`, text: event.payload.content }],
-        status: "complete",
-      }),
-    }
-  }
-  let message = assistantMessage(state, event.run_id, event.timestamp)
   switch (event.kind) {
-    case "run.created":
-      return { ...state, activeRunId: event.payload.run_id }
-    case "message.delta":
-      message = appendPartText(message, { kind: "text", id: event.payload.segment_id, text: event.payload.delta })
-      break
-    case "message.completed":
-      message = upsertPart(message, { kind: "text", id: event.payload.segment_id, text: event.payload.content })
-      break
-    case "thinking.delta":
-      message = appendPartText(message, { kind: "reasoning", id: event.payload.segment_id, text: event.payload.delta })
-      break
-    case "tool.invoked":
-      message = upsertPart(message, { kind: "tool", id: event.payload.tool_id, name: event.payload.name, args: event.payload.args, status: "running" })
-      break
-    case "tool.awaiting_approval":
-      message = upsertPart(message, { kind: "tool", id: event.payload.tool_id, name: event.payload.name, args: event.payload.args, status: "awaiting" })
-      break
-    case "tool.returned":
-      {
-        const invoked = message.parts.find(
-          (part): part is Extract<ChatPart, { readonly kind: "tool" }> =>
-            part.kind === "tool" && part.id === event.payload.tool_id,
-        )
-        message = upsertPart(message, {
-          kind: "tool",
-          id: event.payload.tool_id,
-          name: invoked?.name ?? event.payload.name,
-          args: invoked?.args ?? {},
-          result: event.payload.result,
-          status: event.payload.is_error ? "error" : "complete",
-        })
+    case "message.created": {
+      if (event.payload.message.branch_id !== state.activeBranchId) return state
+      const message = projectMessage(event.payload.message)
+      return message === null ? state : { ...state, messages: upsertMessage(state.messages, message) }
+    }
+    case "message.part.updated": {
+      const index = state.messages.findIndex((message) => message.id === event.payload.part.message_id)
+      if (index < 0) {
+        return { ...state, repair: { required: true, reason: "message_part_without_message" } }
       }
-      break
-    case "run.completed":
-      message = { ...message, status: event.payload.status === "cancelled" ? "incomplete" : "complete" }
-      return { ...state, activeRunId: state.activeRunId === event.run_id ? null : state.activeRunId, messages: upsertMessage(state, message) }
-    case "run.failed":
-      message = { ...message, status: "incomplete" }
-      return { ...state, activeRunId: state.activeRunId === event.run_id ? null : state.activeRunId, messages: upsertMessage(state, message) }
-    case "session.created":
-    case "tool.output.delta":
-    case "todo.updated":
-    case "delivery.created":
-    case "subagent.started":
-    case "subagent.finished":
-    case "subagent.thinking.delta":
-    case "subagent.text.delta":
-    case "subagent.text.completed":
-    case "subagent.tool.invoked":
-    case "subagent.tool.returned":
+      const messages = [...state.messages]
+      messages[index] = upsertPart(messages[index] as ChatProjectionMessage, projectPart(event.payload.part))
+      return { ...state, messages }
+    }
+    case "run.launch.updated":
+      return event.payload.launch.branch_id === state.activeBranchId &&
+        ACTIVE_LAUNCH_STATUSES.has(event.payload.launch.status)
+        ? { ...state, activeRunId: event.payload.launch.proposed_run_id }
+        : state
+    case "run.view.updated": {
+      const run = event.payload.run
+      if (run.branch_id !== state.activeBranchId) return state
+      const active = ACTIVE_RUN_STATUSES.has(run.execution_status)
+      const messages = state.messages.map((message) =>
+        message.runId === run.run_id && !active
+          ? { ...message, status: run.execution_status === "completed" ? "complete" as const : "incomplete" as const }
+          : message,
+      )
+      return {
+        ...state,
+        messages,
+        activeRunId: active ? run.run_id : state.activeRunId === run.run_id ? null : state.activeRunId,
+      }
+    }
+    case "branch.activated":
+      return {
+        ...state,
+        messages: [],
+        activeBranchId: event.payload.branch_id,
+        activeRunId: null,
+        repair: { required: true, reason: "active_branch_changed_refetch_snapshot" },
+      }
+    case "session.updated":
+      return event.payload.session.active_branch_id === state.activeBranchId
+        ? state
+        : {
+            ...state,
+            messages: [],
+            activeBranchId: event.payload.session.active_branch_id,
+            activeRunId: null,
+            repair: { required: true, reason: "active_branch_changed_refetch_snapshot" },
+          }
+    case "branch.created":
+    case "run.control.updated":
+    case "run.cost.updated":
+    case "command.receipt.updated":
       return state
   }
-  return { ...state, messages: upsertMessage(state, message) }
 }
 
 export function reduceChatProjection(state: ChatProjection, action: ChatProjectionAction): ChatProjection {
   switch (action.type) {
-    case "snapshot":
+    case "snapshot": {
+      const active = activeMessageRecords(action.snapshot)
       return {
         ...state,
-        messages: (action.snapshot.messages ?? []).map((message) => ({
-          id: message.message_id,
-          runId: message.run_id ?? null,
-          role: message.role,
-          createdAt: message.created_at,
-          parts: [{ kind: "text", id: `${message.message_id}:legacy-text`, text: message.content }],
-          status: message.status === "completed" ? "complete" : message.status === "failed" ? "incomplete" : "running",
-        })),
-        activeRunId: action.snapshot.active_run?.run_id ?? null,
-        repair: { required: true, reason: "legacy_flat_snapshot" },
+        messages: active.messages.map(projectMessage).filter((message): message is ChatProjectionMessage => message !== null),
+        activeBranchId: action.snapshot.session.active_branch_id,
+        activeRunId: activeRunId(action.snapshot),
+        repair: active.complete
+          ? { required: false }
+          : { required: true, reason: "snapshot_active_lineage_incomplete" },
       }
+    }
     case "event":
       return reduceEvent(state, action.event)
     case "connection":
@@ -186,10 +266,18 @@ export function reduceChatProjection(state: ChatProjection, action: ChatProjecti
     case "command":
       return { ...state, command: { state: action.state, ...(action.detail ? { detail: action.detail } : {}) } }
     case "unsupported": {
-      const message = assistantMessage(state, action.runId, new Date(0).toISOString())
+      const existing = state.messages.find((message) => message.role === "assistant" && message.runId === action.runId)
+      const message = existing ?? {
+        id: `assistant:${action.runId}`,
+        runId: action.runId,
+        role: "assistant" as const,
+        createdAt: new Date(0).toISOString(),
+        parts: [],
+        status: "running" as const,
+      }
       return {
         ...state,
-        messages: upsertMessage(state, upsertPart(message, {
+        messages: upsertMessage(state.messages, upsertPart(message, {
           kind: "unsupported",
           id: `unsupported:${action.originalKind}:${message.parts.length}`,
           originalKind: action.originalKind,

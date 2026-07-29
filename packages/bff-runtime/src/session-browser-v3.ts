@@ -20,32 +20,33 @@ import {
 } from "./session-proxy.js";
 import type { SiteBootstrap } from "./site-binding.js";
 
-export const SESSION_BROWSER_V3_OPERATION_IDS = Object.freeze([
-  "createSession",
-  "listSessions",
-  "snapshot",
-  "stream",
-  "submitMessage",
-  "editMessage",
-  "regenerateMessage",
-  "forkBranch",
-  "activateBranch",
-  "cancelRun",
-  "getCommandReceipt",
-  "updateSession",
-  "archiveSession",
-  "restoreSession",
-  "trashSession",
-  "putPreference",
-  "listFolders",
-  "createFolder",
-  "updateFolder",
-  "deleteFolder",
-] as const satisfies readonly (keyof typeof SESSION_HTTP_ENDPOINTS)[]);
+export type SessionBrowserV3OperationId = keyof typeof SESSION_HTTP_ENDPOINTS;
+export const SESSION_BROWSER_V3_OPERATION_IDS = Object.freeze(
+  Object.keys(SESSION_HTTP_ENDPOINTS) as SessionBrowserV3OperationId[],
+);
 
-export type SessionBrowserV3OperationId = (typeof SESSION_BROWSER_V3_OPERATION_IDS)[number];
-
-const operationIdSchema = z.enum(SESSION_BROWSER_V3_OPERATION_IDS);
+const SESSION_BROWSER_V3_PURPOSES = Object.freeze({
+  createSession: "write",
+  listSessions: "read",
+  snapshot: "read",
+  stream: "stream",
+  submitMessage: "write",
+  editMessage: "write",
+  regenerateMessage: "write",
+  forkBranch: "write",
+  activateBranch: "write",
+  cancelRun: "control",
+  getCommandReceipt: "read",
+  updateSession: "write",
+  archiveSession: "write",
+  restoreSession: "write",
+  trashSession: "write",
+  putPreference: "write",
+  listFolders: "read",
+  createFolder: "write",
+  updateFolder: "write",
+  deleteFolder: "write",
+} as const satisfies Readonly<Record<SessionBrowserV3OperationId, SessionPurpose>>);
 const noValueSchema = z.union([z.undefined(), z.null(), z.object({}).strict()]);
 const pathParameterRecordSchema = z.record(z.string(), z.string().min(1).max(128));
 const queryValueSchema = z.union([z.string(), z.number().finite(), z.boolean()]);
@@ -56,20 +57,6 @@ const normalizedInputSchema = z.object({
   bodyJson: z.string().nullable(),
 }).strict();
 
-const PROBLEM_STATUSES = Object.freeze([
-  400,
-  401,
-  403,
-  404,
-  409,
-  410,
-  412,
-  422,
-  426,
-  429,
-  500,
-  503,
-] as const);
 const JSON_LIMIT_BYTES = 2_097_152;
 const PROBLEM_LIMIT_BYTES = 131_072;
 const SSE_FRAME_LIMIT_BYTES = 524_288;
@@ -110,7 +97,7 @@ export interface AuthenticatedSessionBrowserV3HttpResponse {
   readonly headers: Headers | Readonly<Record<string, string>>;
   readonly body: ReadableStream<Uint8Array> | null;
   /** Supplied by the authenticated server transport, never parsed from HTTP response headers. */
-  readonly authenticatedGrantRef: string;
+  readonly authenticatedBinding: SessionUpstreamResponse["binding"];
 }
 
 export interface AuthenticatedSessionBrowserV3HttpPort {
@@ -118,9 +105,10 @@ export interface AuthenticatedSessionBrowserV3HttpPort {
 }
 
 function endpointFor(operationId: string): GeneratedEndpoint {
-  const parsed = operationIdSchema.safeParse(operationId);
-  if (!parsed.success) throw new SessionProxyError("REQUEST_INVALID");
-  return SESSION_HTTP_ENDPOINTS[parsed.data];
+  if (!Object.hasOwn(SESSION_HTTP_ENDPOINTS, operationId)) {
+    throw new SessionProxyError("REQUEST_INVALID");
+  }
+  return SESSION_HTTP_ENDPOINTS[operationId as SessionBrowserV3OperationId];
 }
 
 function parseNoValue(value: unknown): void {
@@ -229,37 +217,42 @@ function jsonContract(schema: ZodType, maximumBytes: number, contentType: string
   });
 }
 
-function routeResponses(
+function routeSuccess(
   operationId: SessionBrowserV3OperationId,
   endpoint: GeneratedEndpoint,
-): SessionProxyRoute<SessionBrowserV3OperationInput>["responses"] {
-  const responses: Record<number, NonNullable<SessionProxyRoute["responses"][number]>> = {};
+): SessionProxyRoute<SessionBrowserV3OperationInput>["success"] {
+  let response: SessionProxyRoute<SessionBrowserV3OperationInput>["success"]["response"];
   if (operationId === "stream") {
-    responses[endpoint.status] = Object.freeze({
+    response = Object.freeze({
       kind: "sse",
       maximumEmittedFrameBytes: SSE_FRAME_LIMIT_BYTES,
       maximumUpstreamChunkBytes: SSE_CHUNK_LIMIT_BYTES,
       maximumBufferedBytes: SSE_BUFFER_LIMIT_BYTES,
-      createValidator: createSessionBrowserV3SseFrameValidator,
+      createValidator: ({ input, headers }) => {
+        const normalized = normalizedInputSchema.parse(input);
+        const sessionId = normalized.pathParameters.session_id;
+        const headerCursor = headers["last-event-id"];
+        const queryCursor = normalized.query.after;
+        if (
+          typeof sessionId !== "string" ||
+          queryCursor !== undefined && typeof queryCursor !== "string" ||
+          headerCursor !== undefined && queryCursor !== undefined && headerCursor !== queryCursor
+        ) {
+          throw new SessionProxyError("UPSTREAM_PROTOCOL_ERROR");
+        }
+        const initialCursor = headerCursor ?? queryCursor;
+        if (initialCursor === undefined) throw new SessionProxyError("UPSTREAM_PROTOCOL_ERROR");
+        return createSessionBrowserV3SseFrameValidator({ sessionId, initialCursor });
+      },
     });
   } else {
     if (endpoint.responseSchema === null) throw new SessionProxyError("REQUEST_INVALID");
-    responses[endpoint.status] = Object.freeze({
+    response = Object.freeze({
       ...jsonContract(endpoint.responseSchema, JSON_LIMIT_BYTES, "application/json"),
       parse: responseParser(operationId, endpoint.responseSchema),
     });
   }
-  for (const status of PROBLEM_STATUSES) {
-    responses[status] = jsonContract(errorEnvelopeSchema, PROBLEM_LIMIT_BYTES, "application/problem+json");
-  }
-  return Object.freeze(responses);
-}
-
-function routePurpose(operationId: SessionBrowserV3OperationId): SessionPurpose {
-  if (operationId === "stream") return "stream";
-  if (operationId === "cancelRun") return "control";
-  if (["listSessions", "snapshot", "getCommandReceipt", "listFolders"].includes(operationId)) return "read";
-  return "write";
+  return Object.freeze({ status: endpoint.status, response });
 }
 
 function createRoute(operationId: SessionBrowserV3OperationId): SessionProxyRoute<SessionBrowserV3OperationInput> {
@@ -267,9 +260,10 @@ function createRoute(operationId: SessionBrowserV3OperationId): SessionProxyRout
   return Object.freeze({
     operationId,
     method: endpoint.method,
-    purpose: routePurpose(operationId),
+    purpose: SESSION_BROWSER_V3_PURPOSES[operationId],
     replaySafety: "idempotent",
-    responses: routeResponses(operationId, endpoint),
+    success: routeSuccess(operationId, endpoint),
+    problem: jsonContract(errorEnvelopeSchema, PROBLEM_LIMIT_BYTES, "application/problem+json"),
     parseInput: (request: {
       readonly pathParameters: unknown;
       readonly query: unknown;
@@ -281,6 +275,13 @@ function createRoute(operationId: SessionBrowserV3OperationId): SessionProxyRout
 export const SESSION_BROWSER_V3_ROUTES = Object.freeze(Object.fromEntries(
   SESSION_BROWSER_V3_OPERATION_IDS.map((operationId) => [operationId, createRoute(operationId)]),
 )) as Readonly<Record<SessionBrowserV3OperationId, SessionProxyRoute<SessionBrowserV3OperationInput>>>;
+
+if (
+  Object.keys(SESSION_BROWSER_V3_PURPOSES).length !== SESSION_BROWSER_V3_OPERATION_IDS.length ||
+  Object.keys(SESSION_BROWSER_V3_ROUTES).length !== SESSION_BROWSER_V3_OPERATION_IDS.length
+) {
+  throw new SessionProxyError("REQUEST_INVALID");
+}
 
 function renderPath(template: string, pathParameters: Readonly<Record<string, string>>): string {
   let pathname = template;
@@ -315,6 +316,15 @@ function fullGrantBinding(accessGrant: SessionAccessGrant): SessionUpstreamRespo
   });
 }
 
+function sameBinding(
+  expected: SessionUpstreamResponse["binding"],
+  actual: SessionUpstreamResponse["binding"],
+): boolean {
+  const expectedEntries = Object.entries(expected);
+  return expectedEntries.length === Object.keys(actual).length &&
+    expectedEntries.every(([key, value]) => actual[key as keyof typeof actual] === value);
+}
+
 function cancelRejectedBody(body: ReadableStream<Uint8Array> | null): void {
   if (body === null) return;
   void body.cancel("authenticated grant mismatch").catch(() => undefined);
@@ -331,10 +341,9 @@ export function createSessionBrowserV3Transport(
       readonly accessGrant: SessionAccessGrant;
       readonly signal: AbortSignal;
     }) {
-      const operationId = operationIdSchema.safeParse(request.operationId);
-      if (!operationId.success) throw new SessionProxyError("REQUEST_INVALID");
-      const route = SESSION_BROWSER_V3_ROUTES[operationId.data];
-      const endpoint = endpointFor(operationId.data);
+      const endpoint = endpointFor(request.operationId);
+      const operationId = request.operationId as SessionBrowserV3OperationId;
+      const route = SESSION_BROWSER_V3_ROUTES[operationId];
       let pathParameters: Readonly<Record<string, string>>;
       let query: Readonly<Record<string, QueryValue>>;
       let bodyJson: string | null;
@@ -357,15 +366,22 @@ export function createSessionBrowserV3Transport(
       }
       const lastEventId = request.headers["last-event-id"];
       if (lastEventId !== undefined) {
-        if (operationId.data !== "stream") throw new SessionProxyError("REQUEST_INVALID");
+        if (operationId !== "stream") throw new SessionProxyError("REQUEST_INVALID");
         try {
           assertOpaqueCursor(lastEventId);
         } catch {
           throw new SessionProxyError("REQUEST_INVALID");
         }
       }
+      if (
+        operationId === "stream" &&
+        (lastEventId === undefined && query.after === undefined ||
+          lastEventId !== undefined && query.after !== undefined && lastEventId !== query.after)
+      ) {
+        throw new SessionProxyError("REQUEST_INVALID");
+      }
       const response = await input.send({
-        operationId: operationId.data,
+        operationId,
         method: route.method,
         pathname: renderPath(endpoint.path, pathParameters),
         query: renderQuery(query),
@@ -382,7 +398,9 @@ export function createSessionBrowserV3Transport(
         }),
         signal: request.signal,
       });
-      if (response.authenticatedGrantRef !== request.accessGrant.grantRef) {
+      const expectedBinding = fullGrantBinding(request.accessGrant);
+      const authenticatedBinding = Object.freeze({ ...response.authenticatedBinding });
+      if (!sameBinding(expectedBinding, authenticatedBinding)) {
         cancelRejectedBody(response.body);
         throw new SessionProxyError("UPSTREAM_BINDING_MISMATCH");
       }
@@ -390,7 +408,7 @@ export function createSessionBrowserV3Transport(
         status: response.status,
         headers: response.headers,
         body: response.body,
-        binding: fullGrantBinding(request.accessGrant),
+        binding: authenticatedBinding,
       });
     },
   });
@@ -435,7 +453,16 @@ function boundaryIn(buffer: string): { readonly index: number; readonly length: 
   return { index: lf, length: 2 };
 }
 
-export function createSessionBrowserV3SseFrameValidator(): SessionSseFrameValidator {
+export function createSessionBrowserV3SseFrameValidator(input: Readonly<{
+  sessionId: string;
+  initialCursor: string;
+}>): SessionSseFrameValidator {
+  if (input.sessionId.trim().length === 0) throw new SessionProxyError("REQUEST_INVALID");
+  try {
+    assertOpaqueCursor(input.initialCursor);
+  } catch {
+    throw new SessionProxyError("REQUEST_INVALID");
+  }
   const decoder = new TextDecoder("utf-8", { fatal: true });
   let buffer = "";
   let streamEpoch: string | null = null;
@@ -443,7 +470,7 @@ export function createSessionBrowserV3SseFrameValidator(): SessionSseFrameValida
   let durableCursor: string | null = null;
   let durableEventId: string | null = null;
 
-  const validateFrame = (frame: string): Uint8Array => {
+  const validateFrame = (frame: string): Uint8Array | null => {
     const fields = parseSseFields(frame);
     if (fields === null) return encoder.encode(`${frame}\n\n`);
     let raw: unknown;
@@ -456,12 +483,15 @@ export function createSessionBrowserV3SseFrameValidator(): SessionSseFrameValida
     if (!parsed.success || parsed.data.kind !== fields.event) {
       throw new SessionProxyError("UPSTREAM_PROTOCOL_ERROR");
     }
+    if (parsed.data.session_id !== input.sessionId) {
+      throw new SessionProxyError("UPSTREAM_PROTOCOL_ERROR");
+    }
     if (parsed.data.kind === "stream.draining") {
       if (fields.id !== undefined) throw new SessionProxyError("UPSTREAM_PROTOCOL_ERROR");
       assertOpaqueCursor(parsed.data.last_durable_cursor);
       if (
         streamEpoch !== null && parsed.data.stream_epoch !== streamEpoch ||
-        durableCursor !== null && parsed.data.last_durable_cursor !== durableCursor
+        parsed.data.last_durable_cursor !== (durableCursor ?? input.initialCursor)
       ) {
         throw new SessionProxyError("UPSTREAM_PROTOCOL_ERROR");
       }
@@ -478,6 +508,7 @@ export function createSessionBrowserV3SseFrameValidator(): SessionSseFrameValida
         const exactReplay = nextSeq === durableSeq &&
           parsed.data.cursor === durableCursor &&
           parsed.data.event_id === durableEventId;
+        if (exactReplay) return null;
         if (!exactReplay && nextSeq !== durableSeq + 1n) {
           throw new SessionProxyError("UPSTREAM_PROTOCOL_ERROR");
         }
@@ -497,7 +528,8 @@ export function createSessionBrowserV3SseFrameValidator(): SessionSseFrameValida
       if (boundary === null) break;
       const frame = buffer.slice(0, boundary.index);
       buffer = buffer.slice(boundary.index + boundary.length);
-      emitted.push(validateFrame(frame));
+      const validated = validateFrame(frame);
+      if (validated !== null) emitted.push(validated);
     }
     return emitted;
   };
@@ -548,10 +580,9 @@ export function createSessionBrowserV3Proxy(input: {
       readonly browser: BrowserSessionRequest;
       readonly projectRef?: string;
     }): Promise<Response> {
-      const operationId = operationIdSchema.safeParse(request.operationId);
-      if (!operationId.success) throw new SessionProxyError("REQUEST_INVALID");
+      endpointFor(request.operationId);
       return proxy.execute({
-        route: SESSION_BROWSER_V3_ROUTES[operationId.data],
+        route: SESSION_BROWSER_V3_ROUTES[request.operationId],
         browser: request.browser,
         projectRef: request.projectRef,
       });

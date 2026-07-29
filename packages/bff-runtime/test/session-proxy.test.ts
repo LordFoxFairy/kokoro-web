@@ -2,8 +2,10 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { SessionAccessGrant, SessionAccessManager } from "../src/session-access.js";
 import {
+  createOriginCsrfBrowserRequestVerifier,
   createSessionProxy,
   SessionProxyError,
+  type SessionProxyMethod,
   type SessionProxyRoute,
   type SessionProxyTransportPort,
 } from "../src/session-proxy.js";
@@ -75,26 +77,38 @@ const grant: SessionAccessGrant = {
 };
 
 const access = { acquire: vi.fn(async () => grant) } as unknown as SessionAccessManager;
-const verifier = { verify: vi.fn() };
+const BROWSER_HEADERS = {
+  origin: "https://chat.example.test",
+  "sec-fetch-site": "same-origin",
+};
+const verifier = {
+  verify: vi.fn((input: { readonly operationId: string; readonly method: SessionProxyMethod }) => ({
+    kind: "same-origin-browser" as const,
+    operationId: input.operationId,
+    method: input.method,
+    origin: BROWSER_HEADERS.origin,
+  })),
+};
 const route: SessionProxyRoute<{ sessionRef: string }> = {
   operationId: "streamSessionEvents",
   method: "GET",
   purpose: "stream",
   replaySafety: "idempotent",
-  responses: {
-    200: {
+  success: {
+    status: 200,
+    response: {
       kind: "sse",
       maximumEmittedFrameBytes: 64 * 1024,
       maximumUpstreamChunkBytes: 256 * 1024,
       maximumBufferedBytes: 512 * 1024,
       createValidator: () => ({ push: (chunk) => [chunk], finish: () => [] }),
     },
-    400: {
-      kind: "json",
-      contentTypes: ["application/problem+json"],
-      maximumBytes: 64 * 1024,
-      parse: (value) => value,
-    },
+  },
+  problem: {
+    kind: "json",
+    contentTypes: ["application/problem+json"],
+    maximumBytes: 64 * 1024,
+    parse: (value) => value,
   },
   parseInput: ({ pathParameters }) => pathParameters as { sessionRef: string },
 };
@@ -126,6 +140,32 @@ function transport(overrides: Partial<SessionProxyTransportPort> = {}): SessionP
 }
 
 describe("Session proxy", () => {
+  it("requires same-origin browser proof even for read and stream operations", async () => {
+    const csrf = { verify: vi.fn(async () => true) };
+    const browserRequestVerifier = createOriginCsrfBrowserRequestVerifier({
+      runtimeEnvironment: "production",
+      allowedOrigins: ["https://chat.example.test"],
+      csrf,
+    });
+
+    await expect(browserRequestVerifier.verify({
+      operationId: "snapshot",
+      method: "GET",
+      headers: {},
+    })).rejects.toEqual(new SessionProxyError("BROWSER_REQUEST_UNVERIFIED"));
+    await expect(browserRequestVerifier.verify({
+      operationId: "stream",
+      method: "GET",
+      headers: { origin: "https://chat.example.test", "sec-fetch-site": "cross-site" },
+    })).rejects.toEqual(new SessionProxyError("BROWSER_REQUEST_UNVERIFIED"));
+    await expect(browserRequestVerifier.verify({
+      operationId: "snapshot",
+      method: "GET",
+      headers: { origin: "https://chat.example.test", "sec-fetch-site": "same-origin" },
+    })).resolves.toMatchObject({ kind: "same-origin-browser" });
+    expect(csrf.verify).not.toHaveBeenCalled();
+  });
+
   it("requires request verification and rejects browser authority before transport", async () => {
     const execute = vi.fn<SessionProxyTransportPort["execute"]>();
     const proxy = createSessionProxy({
@@ -138,6 +178,7 @@ describe("Session proxy", () => {
       route,
       browser: {
         method: "GET",
+        headers: BROWSER_HEADERS,
         pathParameters: { sessionRef: "session-123", nested: { siteRef: "attacker-site" } },
       },
     })).rejects.toEqual(new SessionProxyError("BROWSER_AUTHORITY_FORBIDDEN"));
@@ -161,7 +202,7 @@ describe("Session proxy", () => {
     });
     const response = await proxy.execute({
       route,
-      browser: { method: "GET", pathParameters: { sessionRef: "session-123" } },
+      browser: { method: "GET", headers: BROWSER_HEADERS, pathParameters: { sessionRef: "session-123" } },
     });
     expect(response.status).toBe(400);
     expect(response.headers.has("set-cookie")).toBe(false);
@@ -181,6 +222,7 @@ describe("Session proxy", () => {
       route,
       browser: {
         method: "GET",
+        headers: BROWSER_HEADERS,
         pathParameters: { sessionRef: "session-123" },
         query: { credential: "browser-owned-secret" },
       },
@@ -206,7 +248,7 @@ describe("Session proxy", () => {
     });
     await expect(proxy.execute({
       route,
-      browser: { method: "GET", pathParameters: { sessionRef: "session-123" } },
+      browser: { method: "GET", headers: BROWSER_HEADERS, pathParameters: { sessionRef: "session-123" } },
     })).rejects.toMatchObject({ code: "UPSTREAM_BINDING_MISMATCH" });
     await vi.waitFor(() => expect(cancel).toHaveBeenCalledOnce());
   });

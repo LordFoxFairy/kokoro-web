@@ -82,6 +82,19 @@ function grant(purpose: "read" | "write" | "control" | "stream"): SessionAccessG
   };
 }
 
+function authenticatedBinding(accessGrant: SessionAccessGrant) {
+  return {
+    grantRef: accessGrant.grantRef,
+    ...accessGrant.binding,
+    purpose: accessGrant.authorization.purpose,
+    audience: accessGrant.authorization.audience,
+  };
+}
+
+function sseValidator(initialCursor = "signed.cursor.0", sessionId = "session-12345678") {
+  return createSessionBrowserV3SseFrameValidator({ initialCursor, sessionId });
+}
+
 function browserEvent(overrides: Readonly<Record<string, unknown>> = {}) {
   return {
     kind: "branch.activated",
@@ -159,14 +172,14 @@ describe("Session browser v3 operation authority", () => {
   });
 
   it("uses generated paths and schemas while keeping grant material out-of-band", async () => {
-    const send = vi.fn<AuthenticatedSessionBrowserV3HttpPort["send"]>(async (request) => ({
+    const accessGrant = grant("read");
+    const send = vi.fn<AuthenticatedSessionBrowserV3HttpPort["send"]>(async () => ({
       status: 200,
       headers: { "content-type": "application/json" },
       body: new Response(JSON.stringify({ sessions: [], index_watermark: "index-1" })).body,
-      authenticatedGrantRef: request.authorization.grantRef,
+      authenticatedBinding: authenticatedBinding(accessGrant),
     }));
     const transport = createSessionBrowserV3Transport({ send });
-    const accessGrant = grant("read");
 
     const result = await transport.execute({
       operationId: "listSessions",
@@ -212,7 +225,10 @@ describe("Session browser v3 operation authority", () => {
         status: 200,
         headers: { "content-type": "application/json" },
         body: new Response(JSON.stringify({ sessions: [], index_watermark: "index-1" })).body,
-        authenticatedGrantRef: "different-grant",
+        authenticatedBinding: {
+          ...authenticatedBinding(grant("read")),
+          deploymentRef: "different-deployment",
+        },
       }),
     });
     await expect(transport.execute({
@@ -233,13 +249,20 @@ describe("Session browser v3 operation authority", () => {
     const proxy = createSessionBrowserV3Proxy({
       bootstrap,
       access,
-      browserRequestVerifier: { verify: vi.fn() },
+      browserRequestVerifier: {
+        verify: vi.fn((input) => ({
+          kind: "same-origin-browser" as const,
+          operationId: input.operationId,
+          method: input.method,
+          origin: "https://chat.example.test",
+        })),
+      },
       transport: createSessionBrowserV3Transport({
-        send: async (request) => ({
+        send: async () => ({
           status: 200,
           headers: { "content-type": "application/json" },
           body: new Response(JSON.stringify({ sessions: [], index_watermark: "index-1" })).body,
-          authenticatedGrantRef: request.authorization.grantRef,
+          authenticatedBinding: authenticatedBinding(grant("read")),
         }),
       }),
     });
@@ -247,6 +270,7 @@ describe("Session browser v3 operation authority", () => {
       operationId: "listSessions",
       browser: {
         method: "GET",
+        headers: { origin: "https://chat.example.test", "sec-fetch-site": "same-origin" },
         query: { project_ref: bootstrap.defaultProjectRef },
       },
     });
@@ -256,7 +280,7 @@ describe("Session browser v3 operation authority", () => {
 
 describe("Session browser v3 SSE validation", () => {
   it("waits for a complete frame and validates the generated event envelope", () => {
-    const validator = createSessionBrowserV3SseFrameValidator();
+    const validator = sseValidator();
     const frame = sseFrame(browserEvent(), { id: "signed.cursor.1" });
     expect(validator.push(frame.slice(0, 17))).toEqual([]);
     expect(validator.push(frame.slice(17))).toEqual([frame]);
@@ -271,7 +295,7 @@ describe("Session browser v3 SSE validation", () => {
       sseFrame(browserEvent(), { id: "signed.cursor.1", event: "message.created" }),
     ];
     for (const frame of cases) {
-      expect(() => createSessionBrowserV3SseFrameValidator().push(frame)).toThrowError(
+      expect(() => sseValidator().push(frame)).toThrowError(
         new SessionProxyError("UPSTREAM_PROTOCOL_ERROR"),
       );
     }
@@ -287,19 +311,30 @@ describe("Session browser v3 SSE validation", () => {
       retry_after_ms: 1000,
     };
     const frame = sseFrame(draining, { event: "stream.draining" });
-    expect(createSessionBrowserV3SseFrameValidator().push(frame)).toEqual([frame]);
-    expect(() => createSessionBrowserV3SseFrameValidator().push(
+    expect(sseValidator("signed.cursor.1").push(frame)).toEqual([frame]);
+    expect(() => sseValidator("signed.cursor.1").push(
       sseFrame(draining, { id: "signed.cursor.1", event: "stream.draining" }),
     )).toThrowError(new SessionProxyError("UPSTREAM_PROTOCOL_ERROR"));
+    expect(() => sseValidator("signed.cursor.initial").push(frame)).toThrowError(
+      new SessionProxyError("UPSTREAM_PROTOCOL_ERROR"),
+    );
+  });
+
+  it("binds every SSE frame to the requested Session identity", () => {
+    expect(() => sseValidator().push(sseFrame(browserEvent({
+      session_id: "session-other-12345678",
+    }), { id: "signed.cursor.1" }))).toThrowError(
+      new SessionProxyError("UPSTREAM_PROTOCOL_ERROR"),
+    );
   });
 
   it("accepts an exact replay but rejects reuse of a durable sequence for another event", () => {
     const original = browserEvent();
     const replay = sseFrame(original, { id: "signed.cursor.1" });
-    const validator = createSessionBrowserV3SseFrameValidator();
+    const validator = sseValidator();
 
     expect(validator.push(replay)).toEqual([replay]);
-    expect(validator.push(replay)).toEqual([replay]);
+    expect(validator.push(replay)).toEqual([]);
     expect(() => validator.push(sseFrame(browserEvent({
       event_id: "event-different-12345678",
       cursor: "signed.cursor.different",
@@ -310,7 +345,7 @@ describe("Session browser v3 SSE validation", () => {
 
   it("passes comment heartbeats but rejects an incomplete terminal frame", () => {
     const heartbeat = new TextEncoder().encode(": heartbeat\n\n");
-    const validator = createSessionBrowserV3SseFrameValidator();
+    const validator = sseValidator();
     expect(validator.push(heartbeat)).toEqual([heartbeat]);
     validator.push(new TextEncoder().encode("event: branch.activated\n"));
     expect(() => validator.finish()).toThrowError(new SessionProxyError("UPSTREAM_PROTOCOL_ERROR"));

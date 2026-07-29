@@ -44,6 +44,7 @@ export {
 } from "./session-proxy.js";
 export type {
   BrowserSessionRequest,
+  BrowserRequestProof,
   BrowserRequestVerificationPort,
   CsrfVerificationPort,
   SessionProxyRoute,
@@ -51,6 +52,7 @@ export type {
   SessionResponseContract,
   SessionSseFrameValidator,
   SessionUpstreamResponse,
+  TrustedServerSessionTransportPort,
 } from "./session-proxy.js";
 export {
   createSessionBrowserV3Proxy,

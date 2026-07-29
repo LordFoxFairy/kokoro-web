@@ -43,6 +43,10 @@ Root-generated Session browser v3 client by operation id; browser-provided arbit
 - Session grants are server-only, purpose/audience specific, short lived, and bound to Site/release/artifact/project/subject/epochs.
 - Routes are server-declared operations with exact methods and status-to-response schemas. Browser Site/namespace/bearer/workload/
   generation authority is rejected recursively before operation parsing; every route passes a mandatory origin/CSRF verifier.
+- The generated Session registry is the only operation/method/path/success-status/schema authority. The local purpose policy is an
+  exhaustive compile-time map over that registry; non-success statuses use one bounded generated problem-envelope fallback.
+- Every browser request, including reads and SSE, carries a verified same-origin proof. Trusted server callers use the separate
+  server-only transport port and never emulate a headerless browser call.
 - The Session transport returns the full authenticated grant binding out-of-band; response headers are never trusted as tenant evidence.
 - JSON is bounded, decoded and validated before re-encoding. SSE adapters emit only complete validated frames, one downstream pull at a
   time, and abort upstream on disconnect/cancel. Credentials, cookies, internal headers and `Set-Cookie` are never proxied.
