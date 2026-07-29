@@ -76,11 +76,11 @@ export type RuntimeContext = z.infer<typeof runtimeContextSchema>
 
 export type Backend = RuntimeConfig["backend"]
 
-const approveDecisionSchema = z.object({ type: z.literal("approve"), tool_id: z.string().min(1), args: z.record(z.unknown()).optional() }).strict()
-const editDecisionSchema = z.object({ type: z.literal("edit"), tool_id: z.string().min(1), args: z.record(z.unknown()) }).strict()
+const approveDecisionSchema = z.object({ type: z.literal("approve"), tool_id: z.string().min(1), args: z.record(z.string(), z.unknown()).optional() }).strict()
+const editDecisionSchema = z.object({ type: z.literal("edit"), tool_id: z.string().min(1), args: z.record(z.string(), z.unknown()) }).strict()
 const rejectDecisionSchema = z.object({ type: z.literal("reject"), tool_id: z.string().min(1), reason: z.string().optional() }).strict()
 const respondDecisionSchema = z.object({ type: z.literal("respond"), tool_id: z.string().min(1), response: z.string().min(1) }).strict()
-const submitDecisionSchema = z.object({ type: z.literal("submit"), request_id: z.string().min(1), value: z.record(z.unknown()) }).strict()
+const submitDecisionSchema = z.object({ type: z.literal("submit"), request_id: z.string().min(1), value: z.record(z.string(), z.unknown()) }).strict()
 export const resumeDecisionSchema = z.discriminatedUnion("type", [
   approveDecisionSchema,
   editDecisionSchema,
@@ -99,7 +99,7 @@ export const runRequestSchema = z
     input: runInputSchema,
     runtime: runtimeConfigSchema,
     context: runtimeContextSchema,
-    trace: z.record(z.unknown()).optional(),
+    trace: z.record(z.string(), z.unknown()).optional(),
   })
   .strict()
 export type RunRequest = z.infer<typeof runRequestSchema>

@@ -1,0 +1,28 @@
+name: Site CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@8912a9102ac27614460f54aedde9e1e7f9aec20d # v6.0.5
+        with:
+          version: 11.2.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm audit --prod --audit-level high
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm artifact:verify
+        env:
+          # Public trust roots are controlled by CI/deploy authority, not committed by the Site artifact.
+          KOKORO_CONTRACT_KEYRING_JSON: ${{ vars.KOKORO_CONTRACT_KEYRING_JSON }}
+      - run: pnpm build

@@ -1,0 +1,14 @@
+{
+  "releaseId": __RELEASE_ID_JSON__,
+  "sourceArtifactSha256": __ARTIFACT_SHA256_JSON__,
+  "packages": {
+    "@kokoro/site-app-kit": {
+      "version": __APP_KIT_VERSION_JSON__,
+      "sha256": __APP_KIT_SHA256_JSON__
+    },
+    "@kokoro/site-client": {
+      "version": __SITE_CLIENT_VERSION_JSON__,
+      "sha256": __SITE_CLIENT_SHA256_JSON__
+    }
+  }
+}

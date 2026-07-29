@@ -1,0 +1,42 @@
+{
+  "name": "@kokoro/site-scaffold",
+  "version": "0.1.0",
+  "description": "Creates one independently owned, deployable repository per Kokoro Site.",
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "files": [
+    "dist",
+    "templates"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/scaffold.d.ts",
+      "import": "./dist/scaffold.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "prepack": "pnpm run build",
+    "lint": "eslint src",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest --config vitest.config.ts"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "dependencies": {
+    "@kokoro/site-app-kit": "workspace:*",
+    "tar": "7.5.19"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.39.5",
+    "@types/node": "24.13.3",
+    "eslint": "9.39.5",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.65.0",
+    "vitest": "4.1.10"
+  }
+}

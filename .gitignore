@@ -39,6 +39,7 @@ next-env.d.ts
 # test artifacts
 playwright-report/
 vitest-report/
+test/reports/external-sites/
 
 # local agent helper
 CLAUDE.md

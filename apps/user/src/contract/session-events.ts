@@ -72,7 +72,7 @@ const toolInvokedPayload = z
     segment_id: z.string().min(1),
     tool_id: z.string().min(1),
     name: z.string().min(1),
-    args: z.record(z.unknown()),
+    args: z.record(z.string(), z.unknown()),
   })
   .strict()
 
@@ -91,14 +91,14 @@ const toolAwaitingApprovalPayload = z
     segment_id: z.string().min(1),
     tool_id: z.string().min(1),
     name: z.string().min(1),
-    args: z.record(z.unknown()),
+    args: z.record(z.string(), z.unknown()),
     description: z.string(),
     allowed_decisions: z.array(z.enum(["approve", "edit", "reject", "respond", "submit"])),
     kind: z.enum(["tool_approval", "ask_user_question", "result_review", "input"]),
     // 面向 web 的风险摘要，非权限判断真源。
     risk: riskSchema.optional(),
     editable: z.boolean(),
-    input_schema: z.record(z.unknown()).optional(),
+    input_schema: z.record(z.string(), z.unknown()).optional(),
     // 同帧完整待批 tool_id 列表；HITL『凑齐才提交』契约依据，web 读契约而非内嵌算法。
     pending_tool_ids: z.array(z.string().min(1)),
     // 仅 kind=result_review 时存在：待人工审核的已执行结果（payload 列表尾缀 ? = 该 kind 局部可选）。
@@ -119,7 +119,7 @@ const toolReturnedPayload = z
     rejected: z.boolean().optional(),
     reject_reason: z.string().optional(),
     responded: z.boolean().optional(),
-    summary: z.record(z.unknown()).optional(),
+    summary: z.record(z.string(), z.unknown()).optional(),
   })
   .strict()
 
@@ -195,7 +195,7 @@ const subagentToolInvokedPayload = z
     tool_id: z.string().min(1),
     name: z.string().min(1),
     // 子代理内工具过程可见性通道；HITL 审批仍走主通道嵌套帧，无输出增量通道（终值走 returned）。
-    args: z.record(z.unknown()),
+    args: z.record(z.string(), z.unknown()),
   })
   .strict()
 

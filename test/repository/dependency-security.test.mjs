@@ -13,6 +13,10 @@ const rootPackage = await readPackage(".");
 const adminPackage = await readPackage("apps/admin");
 const userPackage = await readPackage("apps/user");
 const i18nPackage = await readPackage("packages/i18n");
+const siteAppKitPackage = await readPackage("packages/site-app-kit");
+const siteClientPackage = await readPackage("packages/site-client");
+const siteScaffoldPackage = await readPackage("packages/site-scaffold");
+const referenceSitePackage = await readPackage("apps/reference-site");
 const workspace = await readFile(resolve(root, "pnpm-workspace.yaml"), "utf8");
 
 test("deployable apps pin the reviewed security patch line", () => {
@@ -63,6 +67,23 @@ test("the shared i18n package uses the same supported test and lint majors", () 
   assert.equal(i18nPackage.devDependencies["@eslint/js"], "9.39.5");
   assert.equal(i18nPackage.devDependencies["typescript-eslint"], "8.65.0");
   assert.equal(i18nPackage.devDependencies.vitest, "4.1.10");
+});
+
+test("new Site packages use one Node 24 toolchain and the generated client owns Zod 4", () => {
+  for (const packageJson of [siteAppKitPackage, siteClientPackage, siteScaffoldPackage]) {
+    assert.equal(packageJson.engines.node, ">=24.0.0");
+    assert.equal(packageJson.devDependencies.typescript, "5.9.3");
+    assert.equal(packageJson.devDependencies.eslint, "9.39.5");
+    assert.equal(packageJson.devDependencies.vitest, "4.1.10");
+  }
+  assert.equal(siteClientPackage.dependencies.zod, "4.4.3");
+  assert.equal(siteClientPackage.dependencies["server-only"], "0.0.1");
+  assert.equal(siteScaffoldPackage.dependencies.tar, "7.5.19");
+  assert.equal(referenceSitePackage.engines.node, ">=24.0.0");
+  assert.equal(referenceSitePackage.dependencies.next, "16.2.12");
+  assert.equal(referenceSitePackage.dependencies.react, "19.2.8");
+  assert.equal(referenceSitePackage.dependencies["react-dom"], "19.2.8");
+  assert.equal(userPackage.dependencies.zod, "^3.25.76");
 });
 
 test("the normal root test command executes repository contracts", () => {

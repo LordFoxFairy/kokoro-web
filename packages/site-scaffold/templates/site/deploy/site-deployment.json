@@ -1,0 +1,8 @@
+{
+  "siteKey": __SITE_KEY_JSON__,
+  "releaseId": __RELEASE_ID_JSON__,
+  "target": __DEPLOYMENT_JSON__,
+  "domains": __DOMAINS_JSON__,
+  "activationMode": "platform-exact-binding",
+  "rollbackAuthority": "site-project"
+}
