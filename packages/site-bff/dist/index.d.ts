@@ -32,6 +32,8 @@ export type SiteDeliveryAttempt = Readonly<{
     command: SiteOneTimeCommand;
     priorCommandId?: string;
 }>;
+/** A superseding delivery consumes the prior command and its recovery capability atomically. */
+export declare function supersedeSiteDelivery(prior: SiteDeliveryAttempt, fresh: SiteOneTimeCommand): SiteDeliveryAttempt;
 export type SiteSessionRuntime = Readonly<{
     authSession: Readonly<import("@kokoro/bff-runtime").AuthSession>;
     bootstrap: SiteBootstrap;

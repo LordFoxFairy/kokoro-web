@@ -12,6 +12,16 @@ export class SiteBffError extends Error {
         this.name = "SiteBffError";
     }
 }
+/** A superseding delivery consumes the prior command and its recovery capability atomically. */
+export function supersedeSiteDelivery(prior, fresh) {
+    return Object.freeze({
+        command: Object.freeze({
+            ...fresh,
+            receiptRecoveryCapability: prior.command.receiptRecoveryCapability,
+        }),
+        priorCommandId: prior.command.commandId,
+    });
+}
 function required(env, name) {
     const value = env[name]?.trim();
     if (!value)

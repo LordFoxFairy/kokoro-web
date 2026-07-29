@@ -38,7 +38,7 @@ class IsolatedSiteTransport implements PlatformPublicTransport {
       } };
     }
     if (request.operationId === "completeEmailVerification") {
-      return { ok: true, status: 200, body: { receipt, accountRef: `${this.siteKey}-account`, personalContextPending: false } };
+      return { ok: true, status: 200, body: { receipt, accountRef: `${this.siteKey}-account` } };
     }
     if (request.operationId === "createIdentitySession") {
       if (!this.users.has(body.email)) throw new Error("site-local account not found");

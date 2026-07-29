@@ -3,7 +3,7 @@ import "server-only"
 import { createSiteLaunchApi } from "@kokoro/site-bff"
 import { parseSiteLegalDocuments } from "@kokoro/site-bff/site-legal-documents"
 
-import { platformAuthSessionFromRequest } from "./session-v3"
+import { readOpaqueAuthSessionFromRequest } from "@/auth"
 import { userSiteBff } from "./site-bff"
 
 let api: ReturnType<typeof createSiteLaunchApi> | undefined
@@ -16,7 +16,7 @@ export function userLaunchApi() {
   api = createSiteLaunchApi({
     runtime: userSiteBff(),
     stateSecret: secret,
-    readAuthSession: (request) => platformAuthSessionFromRequest(request),
+    readAuthSession: (request) => readOpaqueAuthSessionFromRequest(request),
     legalDocuments,
   })
   return api

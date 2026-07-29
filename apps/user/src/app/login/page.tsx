@@ -1,16 +1,30 @@
 import { headers } from "next/headers"
-import { notFound } from "next/navigation"
+import { notFound, redirect } from "next/navigation"
 
-import { LoginPanel } from "@/ui/auth/login-panel"
-import { resolveSite } from "@/lib/server/site"
+import { auth } from "@/auth"
+import { PasswordLogin } from "@/ui/auth/password-login"
 
 export default async function LoginRoute() {
-  // 服务端按请求 Host 解析站点品牌（SITE-REAL）：与首页同源，缺省档回退默认 Kokoro。
   const host = (await headers()).get("host")
-  const site = await resolveSite(host)
-  if (site === null) {
-    // strict 档 fail-closed：解析失败渲染中性无品牌 404（防多租户品牌串味）。
-    notFound()
+  const configuredOrigin = process.env.KOKORO_SITE_PUBLIC_ORIGIN?.trim()
+  const brandName = process.env.KOKORO_SITE_BRAND_NAME?.trim()
+  let canonicalHost: string | undefined
+  try {
+    canonicalHost = configuredOrigin ? new URL(configuredOrigin).host : undefined
+  } catch {
+    canonicalHost = undefined
   }
-  return <LoginPanel brandName={site.brand.name} />
+  if (!brandName || canonicalHost === undefined || host !== canonicalHost) notFound()
+  const session = await auth() as {
+    expires: string
+    authState?: "authenticated" | "mfa_required" | "anonymous"
+    mfaTransactionRef?: string
+  } | null
+  if (session?.authState === "authenticated") {
+    redirect("/")
+  }
+  return <PasswordLogin
+    brandName={brandName}
+    transactionRef={session?.authState === "mfa_required" ? session.mfaTransactionRef : undefined}
+  />
 }

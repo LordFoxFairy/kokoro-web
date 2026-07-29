@@ -275,14 +275,6 @@ export function LandingPage({ brandName }: { brandName?: string }) {
   const [heroDraft, setHeroDraft] = useState("")
   const brand = brandName ?? "Kokoro"
 
-  // magic-link 回调失败 303 落在 `/?auth=link_unavailable`（callback 机制不改）：转投 /login，
-  // 由登录页统一 toast 提示重发。落地页本身不承载登录错误 UI。
-  useEffect(() => {
-    if (new URLSearchParams(window.location.search).get("auth") === "link_unavailable") {
-      router.replace("/login?auth=link_unavailable")
-    }
-  }, [router])
-
   // hero 输入回车/点开始：暂存草稿到 pending 键 → 跳 /login；登录回跳 `/` 后 composer 读同键预填。
   const startFromHero = (): void => {
     const value = heroDraft.trim()

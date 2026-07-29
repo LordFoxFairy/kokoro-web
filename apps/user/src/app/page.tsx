@@ -1,13 +1,12 @@
-import { publicSiteBootstrap, type PublicSiteBootstrap } from "@kokoro/bff-runtime"
+import type { PublicSiteBootstrap } from "@kokoro/bff-runtime"
 import { ChatProduct } from "@kokoro/chat-app"
-import { cookies, headers } from "next/headers"
+import { headers } from "next/headers"
 import { notFound } from "next/navigation"
 
-import { SESSION_COOKIE } from "@/lib/server/auth"
+import { readOpaqueAuthSession } from "@/auth"
 import {
   assembleSessionBrowserV3,
   issueSessionV3BrowserCsrf,
-  platformAuthSessionFromSealedCookie,
 } from "@/lib/server/session-v3"
 
 export default async function Home(props: {
@@ -28,11 +27,9 @@ export default async function Home(props: {
   const rawSessionId = (await props.searchParams).session
   let bootstrap: PublicSiteBootstrap | null = null
   try {
-    const authSession = platformAuthSessionFromSealedCookie(
-      (await cookies()).get(SESSION_COOKIE)?.value,
-    )
+    const authSession = await readOpaqueAuthSession()
     if (authSession !== null) {
-      bootstrap = publicSiteBootstrap((await assembleSessionBrowserV3({ authSession })).bootstrap)
+      bootstrap = (await assembleSessionBrowserV3({ authSession })).publicBootstrap
     }
   } catch {
     // Registered Platform/Session provider absence and invalid authority both fail closed in UI.

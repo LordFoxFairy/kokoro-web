@@ -1,13 +1,14 @@
 import "server-only";
 import type { OpaqueAuthSession } from "@kokoro/bff-runtime";
 import type { SiteBffRuntime } from "./index.js";
+import type { SiteLegalDocument } from "./site-legal-documents.js";
 export declare const SITE_LAUNCH_STATE_COOKIE = "__Host-kokoro.launch-state";
 type LaunchAction = "dashboard" | "prepare" | "execute" | "recover";
 export declare function createSiteLaunchApi(input: Readonly<{
     runtime: SiteBffRuntime;
     stateSecret: string;
     readAuthSession(request: Request): Promise<OpaqueAuthSession | null> | OpaqueAuthSession | null;
-    registrationLegalAcceptanceRefs?: readonly string[];
+    legalDocuments?: readonly SiteLegalDocument[];
     now?: () => number;
     nonce?: () => Buffer;
 }>): Readonly<{

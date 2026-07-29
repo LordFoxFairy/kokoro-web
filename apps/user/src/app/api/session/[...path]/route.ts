@@ -5,10 +5,10 @@ import {
 import { errorEnvelopeSchema, type ErrorDetail } from "@kokoro/session-client/contracts"
 import { randomUUID } from "node:crypto"
 
+import { readOpaqueAuthSessionFromRequest } from "@/auth"
 import { readBoundedRequestJson, SESSION_REQUEST_BODY_MAX_BYTES } from "@/lib/server/http-boundary"
 import {
   assembleSessionBrowserV3,
-  platformAuthSessionFromRequest,
   sessionV3PublicOrigin,
   SessionV3AssemblyError,
 } from "@/lib/server/session-v3"
@@ -65,7 +65,7 @@ async function proxy(request: Request, context: { params: Promise<{ path: string
       pathname: `/${(path ?? []).join("/")}`,
       searchParams: url.searchParams,
     })
-    const authSession = platformAuthSessionFromRequest(request)
+    const authSession = await readOpaqueAuthSessionFromRequest(request)
     if (authSession === null) {
       return problem(
         401,

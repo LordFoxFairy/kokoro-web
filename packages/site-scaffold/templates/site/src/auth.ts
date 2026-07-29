@@ -9,6 +9,7 @@ import { cookies } from "next/headers";
 
 import {
   SiteBffError,
+  supersedeSiteDelivery,
   type OpaqueAuthSession,
   type SiteCredentialPair,
   type SiteDeliveryAttempt,
@@ -85,6 +86,36 @@ function pairFromToken(token: SiteJwt): SiteCredentialPair | null {
   return sessionRef && sessionCredential && sessionCredentialExpiresAt && refreshCredential && refreshCredentialExpiresAt
     ? { sessionRef, sessionCredential, sessionCredentialExpiresAt, refreshCredential, refreshCredentialExpiresAt }
     : null;
+}
+
+function credentialIsActive(expiresAt: string, now = Date.now()): boolean {
+  const expiry = Date.parse(expiresAt);
+  return Number.isFinite(expiry) && expiry > now;
+}
+
+function assembleChunkedCookie(
+  entries: readonly Readonly<{ name: string; value: string }>[],
+  name: string,
+  maximumBytes = 32_768,
+): string | null {
+  const exact = entries.filter((entry) => entry.name === name);
+  const prefix = `${name}.`;
+  const chunks = entries.flatMap((entry) => {
+    if (!entry.name.startsWith(prefix)) return [];
+    const suffix = entry.name.slice(prefix.length);
+    if (!/^\d+$/u.test(suffix)) return [{ index: -1, value: entry.value }];
+    return [{ index: Number(suffix), value: entry.value }];
+  });
+  if (exact.length > 1 || (exact.length === 1 && chunks.length > 0)) return null;
+  if (exact.length === 1) {
+    const value = exact[0]!.value;
+    return value.length > 0 && value.length <= maximumBytes ? value : null;
+  }
+  if (chunks.length === 0 || chunks.length > 16) return null;
+  chunks.sort((left, right) => left.index - right.index);
+  if (chunks.some((chunk, index) => chunk.index !== index)) return null;
+  const value = chunks.map((chunk) => chunk.value).join("");
+  return value.length > 0 && value.length <= maximumBytes ? value : null;
 }
 
 function replaceCredentials(token: SiteJwt, pair: SiteCredentialPair): SiteJwt {
@@ -196,16 +227,20 @@ export async function prepareAuthDelivery(input: AuthDeliveryPreparation, advanc
   if (existing?.flow === input.flow && existing.inputDigest === digest && !advance) return;
   const fresh = siteBff().createOneTimeCommand();
   const superseding = advance && existing?.flow === input.flow && existing.inputDigest === digest;
-  const command = superseding
-    ? { ...fresh, receiptRecoveryCapability: existing.receiptRecoveryCapability }
-    : fresh;
+  const attempt = superseding
+    ? supersedeSiteDelivery({
+        command: {
+          commandId: existing.commandId,
+          idempotencyKey: existing.idempotencyKey,
+          receiptRecoveryCapability: existing.receiptRecoveryCapability,
+        },
+      }, fresh)
+    : { command: fresh };
   await writeDelivery({
     flow: input.flow,
     inputDigest: digest,
-    ...(superseding
-      ? { priorCommandId: existing.commandId }
-      : {}),
-    ...command,
+    ...(attempt.priorCommandId === undefined ? {} : { priorCommandId: attempt.priorCommandId }),
+    ...attempt.command,
   });
 }
 
@@ -222,13 +257,19 @@ async function preparedDelivery(flow: DeliveryFlow, digest: string): Promise<Sit
   };
 }
 
-const configuredOrigin = process.env.KOKORO_SITE_PUBLIC_ORIGIN?.trim();
-if (!configuredOrigin || process.env.AUTH_URL?.trim() !== configuredOrigin) {
-  throw new Error("AUTH_URL must exactly equal KOKORO_SITE_PUBLIC_ORIGIN");
+function configuredOrigin(): string {
+  secret();
+  const value = process.env.KOKORO_SITE_PUBLIC_ORIGIN?.trim();
+  if (!value || process.env.AUTH_URL?.trim() !== value) {
+    throw new Error("AUTH_URL must exactly equal KOKORO_SITE_PUBLIC_ORIGIN");
+  }
+  return value;
 }
 
-export const { handlers, auth, signIn, signOut } = NextAuth({
-  secret: secret(),
+const nextAuth = NextAuth({
+  // Build artifacts are configuration-free. Runtime entry points validate the
+  // deployment's non-public secret and canonical origin before any auth work.
+  secret: process.env.AUTH_SECRET,
   trustHost: false,
   pages: { signIn: "/login", error: "/login" },
   session: { strategy: "jwt", maxAge: 30 * 24 * 60 * 60, updateAge: 5 * 60 },
@@ -302,24 +343,26 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         return token;
       }
       const pair = pairFromToken(token);
-      if (pair === null || Date.parse(pair.sessionCredentialExpiresAt) > Date.now() + 60_000) return token;
+      if (pair === null) return token;
+      if (credentialIsActive(pair.sessionCredentialExpiresAt, Date.now() + 60_000)) return token;
+      if (!credentialIsActive(pair.refreshCredentialExpiresAt)) return clearAuthority(token);
       let delivery = refreshRecovery(token) ?? { command: siteBff().createOneTimeCommand() };
       setRefreshRecovery(token, delivery);
       try {
         return replaceCredentials(token, await siteBff().refresh(pair.refreshCredential, delivery));
       } catch (error) {
-        if (!(error instanceof SiteBffError) || error.code !== "AUTH_DELIVERY_UNAVAILABLE") return token;
-        const fresh = siteBff().createOneTimeCommand();
-        delivery = {
-          command: { ...fresh, receiptRecoveryCapability: delivery.command.receiptRecoveryCapability },
-          priorCommandId: delivery.command.commandId,
-        };
+        if (!(error instanceof SiteBffError) || error.code !== "AUTH_DELIVERY_UNAVAILABLE") {
+          return clearAuthority(token);
+        }
+        delivery = supersedeSiteDelivery(delivery, siteBff().createOneTimeCommand());
         setRefreshRecovery(token, delivery);
         try {
           return replaceCredentials(token, await siteBff().refresh(pair.refreshCredential, delivery));
-        } catch {
+        } catch (retryError) {
           // Keep the exact superseding identity in the encrypted token. The next JWT pass retries it.
-          return token;
+          return retryError instanceof SiteBffError && retryError.code === "AUTH_DELIVERY_UNAVAILABLE"
+            ? token
+            : clearAuthority(token);
         }
       }
     },
@@ -328,7 +371,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       const transactionRef = text(token.pendingTransactionRef, 256);
       return {
         expires: session.expires,
-        authState: pairFromToken(token) !== null ? "authenticated" : transactionRef !== null ? "mfa_required" : "anonymous",
+        authState: (() => {
+          const pair = pairFromToken(token);
+          return pair !== null && credentialIsActive(pair.sessionCredentialExpiresAt)
+            ? "authenticated"
+            : transactionRef !== null ? "mfa_required" : "anonymous";
+        })(),
         ...(transactionRef === null ? {} : { mfaTransactionRef: transactionRef }),
       };
     },
@@ -347,24 +395,32 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   },
 });
 
+export const { handlers, signIn, signOut } = nextAuth;
+
+export async function auth() {
+  configuredOrigin();
+  return nextAuth.auth();
+}
+
 export function authRouteAllowed(request: Request): boolean {
-  let origin: string;
+  let origin: string, expectedOrigin: string;
   try {
     origin = new URL(request.url).origin;
+    expectedOrigin = configuredOrigin();
   } catch {
     return false;
   }
-  if (origin !== configuredOrigin) return false;
+  if (origin !== expectedOrigin) return false;
   if (request.method !== "POST") return true;
-  return request.headers.get("origin") === configuredOrigin && request.headers.get("sec-fetch-site") === "same-origin";
+  return request.headers.get("origin") === expectedOrigin && request.headers.get("sec-fetch-site") === "same-origin";
 }
 
 export async function readOpaqueAuthSession(): Promise<OpaqueAuthSession | null> {
-  const sealed = (await cookies()).get(SITE_SESSION_COOKIE)?.value;
+  const sealed = assembleChunkedCookie((await cookies()).getAll(), SITE_SESSION_COOKIE);
   if (!sealed) return null;
   const token = await decode({ token: sealed, secret: secret(), salt: SITE_SESSION_COOKIE });
   const pair = token === null ? null : pairFromToken(token as SiteJwt);
-  if (pair === null) return null;
+  if (pair === null || !credentialIsActive(pair.sessionCredentialExpiresAt)) return null;
   return Object.freeze({
     sessionRef: pair.sessionRef,
     sessionCredential: pair.sessionCredential,

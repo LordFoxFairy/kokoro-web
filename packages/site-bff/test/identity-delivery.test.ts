@@ -4,7 +4,7 @@ import type { SiteDeploymentBinding } from "@kokoro/bff-runtime"
 import type { PlatformPublicRequest, PlatformPublicTransport } from "@kokoro/site-client/server"
 import type { NodeSiteRuntimeProvider } from "@kokoro/site-runtime-node"
 
-import { createSiteBffRuntime } from "../src/index.js"
+import { createSiteBffRuntime, supersedeSiteDelivery } from "../src/index.js"
 
 const binding: SiteDeploymentBinding = {
   runtimeEnvironment: "production",
@@ -20,6 +20,42 @@ const binding: SiteDeploymentBinding = {
 }
 
 describe("one-time Platform identity delivery", () => {
+  it("reuses only the prior raw recovery capability when a delivery command is superseded", () => {
+    const prior = { command: {
+      commandId: "1".repeat(32),
+      idempotencyKey: "2".repeat(48),
+      receiptRecoveryCapability: "3".repeat(64),
+    } }
+    const fresh = {
+      commandId: "4".repeat(32),
+      idempotencyKey: "5".repeat(48),
+      receiptRecoveryCapability: "6".repeat(64),
+    }
+
+    expect(supersedeSiteDelivery(prior, fresh)).toEqual({
+      command: {
+        commandId: fresh.commandId,
+        idempotencyKey: fresh.idempotencyKey,
+        receiptRecoveryCapability: prior.command.receiptRecoveryCapability,
+      },
+      priorCommandId: prior.command.commandId,
+    })
+
+    const secondFresh = {
+      commandId: "7".repeat(32),
+      idempotencyKey: "8".repeat(48),
+      receiptRecoveryCapability: "9".repeat(64),
+    }
+    expect(supersedeSiteDelivery(supersedeSiteDelivery(prior, fresh), secondFresh)).toEqual({
+      command: {
+        commandId: secondFresh.commandId,
+        idempotencyKey: secondFresh.idempotencyKey,
+        receiptRecoveryCapability: prior.command.receiptRecoveryCapability,
+      },
+      priorCommandId: fresh.commandId,
+    })
+  })
+
   it("uses generated secret command security and the typed refresh supersede path", async () => {
     const requests: PlatformPublicRequest<never>[] = []
     const transport: PlatformPublicTransport = {
@@ -67,11 +103,8 @@ describe("one-time Platform identity delivery", () => {
     )
     const original = runtime.createOneTimeCommand()
     await runtime.refresh("r".repeat(64), { command: original })
-    const superseding = runtime.createOneTimeCommand()
-    await runtime.refresh("ignored-after-consumption", {
-      command: superseding,
-      priorCommandId: original.commandId,
-    })
+    const superseding = supersedeSiteDelivery({ command: original }, runtime.createOneTimeCommand())
+    await runtime.refresh("ignored-after-consumption", superseding)
 
     expect(requests.map((request) => request.operationId)).toEqual([
       "createIdentitySession",
@@ -88,6 +121,7 @@ describe("one-time Platform identity delivery", () => {
       priorCommandId: original.commandId,
       recoveryAction: "supersede_refresh_delivery",
     })
+    expect(requests[3]?.security.receiptRecoveryCapability).toBe(original.receiptRecoveryCapability)
   })
 
   it("keeps launch identity, account and redemption operations on the generated server client", async () => {
@@ -103,7 +137,7 @@ describe("one-time Platform identity delivery", () => {
           } }
           case "completeEmailVerification": return { status: 200, body: {
             receipt: { commandId: request.headers["X-Kokoro-Command-Id"], requestDigest: "d".repeat(64), receiptRef: "receipt-12345678", state: "committed", committedAt: "2026-07-29T00:00:00.000Z" },
-            accountRef: "account-12345678", personalContextPending: false,
+            accountRef: "account-12345678",
           } }
           case "listIdentitySessions": return { status: 200, body: { revision: "revision-12345678", sessions: [] } }
           case "revokeIdentitySessions": return { status: 200, body: { receipt: { commandId: request.headers["X-Kokoro-Command-Id"], requestDigest: "d".repeat(64), receiptRef: "receipt-12345678", state: "committed", committedAt: "2026-07-29T00:00:00.000Z" } } }
