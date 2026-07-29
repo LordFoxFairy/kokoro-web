@@ -1,7 +1,13 @@
 import "server-only";
 
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
-import { readFileSync, statSync } from "node:fs";
+import {
+  closeSync,
+  constants as fileSystemConstants,
+  fstatSync,
+  openSync,
+  readSync,
+} from "node:fs";
 import { isAbsolute } from "node:path";
 import { Agent, request as httpsRequest, type RequestOptions } from "node:https";
 import type { IncomingHttpHeaders, IncomingMessage } from "node:http";
@@ -94,26 +100,74 @@ function boundedInteger(raw: string | undefined, fallback: number, minimum: numb
 
 function secretFile(env: NodeJS.ProcessEnv, name: string, kind: "certificate" | "private_key"): Buffer {
   const path = required(env, name);
-  if (!isAbsolute(path)) throw new NodeSiteRuntimeError("TLS_MATERIAL_INVALID");
+  if (!isAbsolute(path) || path.includes("\0")) {
+    throw new NodeSiteRuntimeError("TLS_MATERIAL_INVALID");
+  }
+  let descriptor: number | undefined;
+  let contents: Buffer | undefined;
+  let invalid = false;
   try {
-    const metadata = statSync(path);
-    if (!metadata.isFile() || metadata.size < 1 || metadata.size > SECRET_FILE_LIMIT) {
-      throw new NodeSiteRuntimeError("TLS_MATERIAL_INVALID");
+    descriptor = openSync(
+      path,
+      fileSystemConstants.O_RDONLY | fileSystemConstants.O_NOFOLLOW,
+    );
+    const before = fstatSync(descriptor, { bigint: true });
+    assertSecretMetadata(before, kind);
+
+    const buffer = Buffer.allocUnsafe(SECRET_FILE_LIMIT + 1);
+    let total = 0;
+    while (total < buffer.byteLength) {
+      const requested = buffer.byteLength - total;
+      const bytesRead = readSync(descriptor, buffer, total, requested, total);
+      if (!Number.isInteger(bytesRead) || bytesRead < 0 || bytesRead > requested) {
+        throw new Error("TLS_MATERIAL_INVALID");
+      }
+      if (bytesRead === 0) break;
+      total += bytesRead;
     }
-    const contents = readFileSync(path);
-    if (contents.byteLength < 1 || contents.byteLength > SECRET_FILE_LIMIT) {
-      throw new NodeSiteRuntimeError("TLS_MATERIAL_INVALID");
+    if (total < 1 || total > SECRET_FILE_LIMIT) {
+      throw new Error("TLS_MATERIAL_INVALID");
     }
+
+    const after = fstatSync(descriptor, { bigint: true });
+    assertSecretMetadata(after, kind);
+    if (
+      before.dev !== after.dev || before.ino !== after.ino || before.mode !== after.mode ||
+      before.size !== after.size || before.ctimeNs !== after.ctimeNs ||
+      before.mtimeNs !== after.mtimeNs || BigInt(total) !== before.size
+    ) throw new Error("TLS_MATERIAL_INVALID");
+
+    contents = Buffer.from(buffer.subarray(0, total));
     const pem = contents.toString("ascii");
     const validPem = kind === "certificate"
       ? /-----BEGIN CERTIFICATE-----[\s\S]+-----END CERTIFICATE-----/u.test(pem)
       : /-----BEGIN (?:EC |RSA )?PRIVATE KEY-----[\s\S]+-----END (?:EC |RSA )?PRIVATE KEY-----/u.test(pem);
-    if (!validPem) throw new NodeSiteRuntimeError("TLS_MATERIAL_INVALID");
-    return contents;
-  } catch (error) {
-    if (error instanceof NodeSiteRuntimeError) throw error;
-    throw new NodeSiteRuntimeError("TLS_MATERIAL_INVALID");
+    if (!validPem) throw new Error("TLS_MATERIAL_INVALID");
+  } catch {
+    invalid = true;
   }
+  try {
+    if (descriptor !== undefined) closeSync(descriptor);
+  } catch {
+    invalid = true;
+  }
+  if (invalid || contents === undefined) throw new NodeSiteRuntimeError("TLS_MATERIAL_INVALID");
+  return contents;
+}
+
+function assertSecretMetadata(
+  metadata: ReturnType<typeof fstatSync>,
+  kind: "certificate" | "private_key",
+): void {
+  const size = typeof metadata.size === "bigint" ? metadata.size : BigInt(metadata.size);
+  const mode = typeof metadata.mode === "bigint" ? metadata.mode : BigInt(metadata.mode);
+  const permissions = mode & 0o777n;
+  const safePermissions = kind === "private_key"
+    ? permissions === 0o400n || permissions === 0o600n
+    : (permissions & 0o400n) !== 0n && (permissions & 0o022n) === 0n;
+  if (
+    !metadata.isFile() || size < 1n || size > BigInt(SECRET_FILE_LIMIT) || !safePermissions
+  ) throw new Error("TLS_MATERIAL_INVALID");
 }
 
 export function loadNodeSiteRuntime(input: NodeJS.ProcessEnv = process.env): Readonly<{

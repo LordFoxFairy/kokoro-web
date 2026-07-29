@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -23,9 +23,9 @@ async function environment(): Promise<NodeJS.ProcessEnv> {
   const key = join(directory, "client-key.pem");
   const ca = join(directory, "ca.pem");
   await Promise.all([
-    writeFile(certificate, "-----BEGIN CERTIFICATE-----\ndGVzdA==\n-----END CERTIFICATE-----\n"),
-    writeFile(key, "-----BEGIN PRIVATE KEY-----\ndGVzdA==\n-----END PRIVATE KEY-----\n"),
-    writeFile(ca, "-----BEGIN CERTIFICATE-----\ndGVzdA==\n-----END CERTIFICATE-----\n"),
+    writeFile(certificate, "-----BEGIN CERTIFICATE-----\ndGVzdA==\n-----END CERTIFICATE-----\n", { mode: 0o644 }),
+    writeFile(key, "-----BEGIN PRIVATE KEY-----\ndGVzdA==\n-----END PRIVATE KEY-----\n", { mode: 0o600 }),
+    writeFile(ca, "-----BEGIN CERTIFICATE-----\ndGVzdA==\n-----END CERTIFICATE-----\n", { mode: 0o644 }),
   ]);
   return {
     KOKORO_SITE_RUNTIME_PLATFORM_ORIGIN: "https://platform.internal.example",
@@ -61,6 +61,39 @@ describe("Node Site deployment adapter", () => {
     env.KOKORO_SITE_RUNTIME_PLATFORM_ORIGIN = "https://platform.internal.example";
     env.KOKORO_SITE_RUNTIME_MTLS_CERT_FILE = "client.pem";
     expect(() => loadNodeSiteRuntime(env)).toThrowError(new NodeSiteRuntimeError("TLS_MATERIAL_INVALID"));
+  });
+
+  it("rejects symlinked TLS material and a private key readable outside its owner", async () => {
+    const env = await environment();
+    const target = env.KOKORO_SITE_RUNTIME_MTLS_KEY_FILE!;
+    const link = `${target}.link`;
+    await symlink(target, link);
+    env.KOKORO_SITE_RUNTIME_MTLS_KEY_FILE = link;
+
+    expect(() => loadNodeSiteRuntime(env)).toThrowError(
+      new NodeSiteRuntimeError("TLS_MATERIAL_INVALID"),
+    );
+
+    env.KOKORO_SITE_RUNTIME_MTLS_KEY_FILE = target;
+    await chmod(target, 0o640);
+    expect(() => loadNodeSiteRuntime(env)).toThrowError(
+      new NodeSiteRuntimeError("TLS_MATERIAL_INVALID"),
+    );
+  });
+
+  it("rejects writable certificate material and files larger than the bounded read", async () => {
+    const env = await environment();
+    const certificate = env.KOKORO_SITE_RUNTIME_MTLS_CERT_FILE!;
+    await chmod(certificate, 0o666);
+    expect(() => loadNodeSiteRuntime(env)).toThrowError(
+      new NodeSiteRuntimeError("TLS_MATERIAL_INVALID"),
+    );
+
+    await writeFile(certificate, Buffer.alloc(1024 * 1024 + 1, 0x61));
+    await chmod(certificate, 0o600);
+    expect(() => loadNodeSiteRuntime(env)).toThrowError(
+      new NodeSiteRuntimeError("TLS_MATERIAL_INVALID"),
+    );
   });
 
   it("issues bounded HMAC browser CSRF capabilities and rejects tamper or expiry", async () => {
