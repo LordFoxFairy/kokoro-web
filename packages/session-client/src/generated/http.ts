@@ -6,7 +6,7 @@ import { z } from "zod"
 export const sessionHttpContractMetadata = Object.freeze({
   schemaId: "kokoro.session.browser.v3",
   schemaVersion: 3,
-  sourceDigestSha256: "d9c26e86424e7d8d9c84a9963bd3a341ad8e93f59af266d4aa05e7b63c494525",
+  sourceDigestSha256: "bb1c7c75369fee3082587d5e1dfaa873737e438b78161c91548bd4838d2d1378",
 })
 
 export const commandIdentitySchema = z
@@ -21,7 +21,7 @@ export type CommandIdentity = z.infer<typeof commandIdentitySchema>
 
 export const errorDetailSchema = z
   .object({
-    code: z.enum(["REQUEST_INVALID", "PAYLOAD_TOO_LARGE", "METHOD_NOT_ALLOWED", "UNSUPPORTED_MEDIA_TYPE", "BFF_WORKLOAD_REQUIRED", "BFF_WORKLOAD_REVOKED", "SESSION_ACCESS_GRANT_REQUIRED", "SESSION_ACCESS_GRANT_EXPIRED", "SESSION_ACCESS_GRANT_REVOKED", "SESSION_SCOPE_MISMATCH", "SESSION_NOT_FOUND", "SESSION_VERSION_CONFLICT", "IDEMPOTENCY_CONFLICT", "ACTIVE_RUN_EXISTS", "CAPABILITY_SNAPSHOT_LOCKED", "MODEL_OPTION_UNAVAILABLE", "ATTACHMENT_NOT_READY", "ATTACHMENT_REVOKED", "ADMISSION_DENIED", "ADMISSION_OUTCOME_UNKNOWN", "LAUNCH_OUTCOME_UNKNOWN", "RUN_CANCELLATION_PENDING", "RUN_OUTCOME_UNKNOWN", "CURSOR_INVALID", "CURSOR_CONFLICT", "CURSOR_AHEAD", "SNAPSHOT_REQUIRED", "CURSOR_SCOPE_MISMATCH", "STREAM_EPOCH_MISMATCH", "CLIENT_CONTRACT_UPGRADE_REQUIRED", "PART_SCHEMA_UNSUPPORTED", "INTERNAL_UNAVAILABLE"]),
+    code: z.enum(["REQUEST_INVALID", "PAYLOAD_TOO_LARGE", "METHOD_NOT_ALLOWED", "UNSUPPORTED_MEDIA_TYPE", "BFF_WORKLOAD_REQUIRED", "BFF_WORKLOAD_REVOKED", "SESSION_ACCESS_GRANT_REQUIRED", "SESSION_ACCESS_GRANT_EXPIRED", "SESSION_ACCESS_GRANT_REVOKED", "SESSION_SCOPE_MISMATCH", "SESSION_NOT_FOUND", "SESSION_VERSION_CONFLICT", "IDEMPOTENCY_CONFLICT", "ACTIVE_RUN_EXISTS", "CAPABILITY_SNAPSHOT_LOCKED", "MODEL_OPTION_UNAVAILABLE", "ATTACHMENT_NOT_READY", "ATTACHMENT_REVOKED", "ADMISSION_DENIED", "ADMISSION_OUTCOME_UNKNOWN", "LAUNCH_OUTCOME_UNKNOWN", "RUN_CANCELLATION_PENDING", "RUN_OUTCOME_UNKNOWN", "ACTION_NOT_FOUND", "ACTION_VERSION_CONFLICT", "ACTION_EXPIRED", "ACTION_NOT_ALLOWED", "ACTION_DECISION_PENDING", "PLAN_NOT_FOUND", "PLAN_VERSION_CONFLICT", "PLAN_EXPIRED", "PLAN_DECISION_PENDING", "CURSOR_INVALID", "CURSOR_CONFLICT", "CURSOR_AHEAD", "SNAPSHOT_REQUIRED", "CURSOR_SCOPE_MISMATCH", "STREAM_EPOCH_MISMATCH", "CLIENT_CONTRACT_UPGRADE_REQUIRED", "PART_SCHEMA_UNSUPPORTED", "INTERNAL_UNAVAILABLE"]),
     message: z.string().min(1),
     retry_class: z.enum(["never", "immediate", "after_delay", "after_user_action", "reconcile_receipt"]),
     action: z.enum(["retry_same_cursor", "refresh_grant", "reauthenticate", "refetch_snapshot", "upgrade_client", "stop", "developer_error", "wait_or_cancel", "fork_new_session", "choose_model", "wait_prerequisite", "remove_attachment", "show_reason", "reconcile_receipt", "poll_or_stream", "render_unsupported"]),
@@ -82,6 +82,31 @@ export const cancellationCommandResultSchema = z
   })
   .strict()
 export type CancellationCommandResult = z.infer<typeof cancellationCommandResultSchema>
+
+export const actionDecisionCommandResultSchema = z
+  .object({
+    session_id: z.string().min(1),
+    run_id: z.string().min(1),
+    decision_id: z.string().min(1),
+    owner_kind: z.enum(["approval", "interaction"]),
+    owner_ref: z.string().min(1),
+    owner_version: z.number().int().positive(),
+    control_status: z.enum(["pending", "persisted", "applied", "failed", "outcome_unknown"]),
+  })
+  .strict()
+export type ActionDecisionCommandResult = z.infer<typeof actionDecisionCommandResultSchema>
+
+export const planDecisionCommandResultSchema = z
+  .object({
+    session_id: z.string().min(1),
+    run_id: z.string().min(1),
+    decision_id: z.string().min(1),
+    plan_proposal_ref: z.string().min(1),
+    plan_version: z.number().int().positive(),
+    control_status: z.enum(["pending", "persisted", "applied", "failed", "outcome_unknown"]),
+  })
+  .strict()
+export type PlanDecisionCommandResult = z.infer<typeof planDecisionCommandResultSchema>
 
 export const sessionMutationCommandResultSchema = z
   .object({
@@ -147,6 +172,20 @@ const sessionCommandEffectCancellationRequestedSchema = z
   })
   .strict()
 
+const sessionCommandEffectActionDecisionRecordedSchema = z
+  .object({
+    kind: z.literal("action-decision-recorded"),
+    payload: actionDecisionCommandResultSchema,
+  })
+  .strict()
+
+const sessionCommandEffectPlanDecisionRecordedSchema = z
+  .object({
+    kind: z.literal("plan-decision-recorded"),
+    payload: planDecisionCommandResultSchema,
+  })
+  .strict()
+
 const sessionCommandEffectSessionUpdatedSchema = z
   .object({
     kind: z.literal("session-updated"),
@@ -180,6 +219,8 @@ export const sessionCommandEffectSchema = z.discriminatedUnion("kind", [
   sessionCommandEffectRunLaunchCreatedSchema,
   sessionCommandEffectBranchUpdatedSchema,
   sessionCommandEffectCancellationRequestedSchema,
+  sessionCommandEffectActionDecisionRecordedSchema,
+  sessionCommandEffectPlanDecisionRecordedSchema,
   sessionCommandEffectSessionUpdatedSchema,
   sessionCommandEffectPreferenceUpdatedSchema,
   sessionCommandEffectFolderUpdatedSchema,
@@ -198,7 +239,7 @@ export type CommandRecoveryPayload = z.infer<typeof commandRecoveryPayloadSchema
 
 const commandReceiptViewPendingSchema = z
   .object({
-    operation: z.enum(["create_session", "submit_message", "edit_message", "regenerate_message", "fork_branch", "activate_branch", "cancel_run", "update_session", "archive_session", "restore_session", "trash_session", "put_preference", "create_folder", "update_folder", "delete_folder"]),
+    operation: z.enum(["create_session", "submit_message", "edit_message", "regenerate_message", "fork_branch", "activate_branch", "cancel_run", "decide_action", "decide_plan", "update_session", "archive_session", "restore_session", "trash_session", "put_preference", "create_folder", "update_folder", "delete_folder"]),
     command_id: z.string().min(1).max(128),
     idempotency_key: z.string().min(1).max(191),
     digest_algorithm: z.literal("SHA256_CANONICAL_JSON_V1"),
@@ -211,7 +252,7 @@ const commandReceiptViewPendingSchema = z
 
 const commandReceiptViewOutcomeUnknownSchema = z
   .object({
-    operation: z.enum(["create_session", "submit_message", "edit_message", "regenerate_message", "fork_branch", "activate_branch", "cancel_run", "update_session", "archive_session", "restore_session", "trash_session", "put_preference", "create_folder", "update_folder", "delete_folder"]),
+    operation: z.enum(["create_session", "submit_message", "edit_message", "regenerate_message", "fork_branch", "activate_branch", "cancel_run", "decide_action", "decide_plan", "update_session", "archive_session", "restore_session", "trash_session", "put_preference", "create_folder", "update_folder", "delete_folder"]),
     command_id: z.string().min(1).max(128),
     idempotency_key: z.string().min(1).max(191),
     digest_algorithm: z.literal("SHA256_CANONICAL_JSON_V1"),
@@ -224,7 +265,7 @@ const commandReceiptViewOutcomeUnknownSchema = z
 
 const commandReceiptViewAcceptedSchema = z
   .object({
-    operation: z.enum(["create_session", "submit_message", "edit_message", "regenerate_message", "fork_branch", "activate_branch", "cancel_run", "update_session", "archive_session", "restore_session", "trash_session", "put_preference", "create_folder", "update_folder", "delete_folder"]),
+    operation: z.enum(["create_session", "submit_message", "edit_message", "regenerate_message", "fork_branch", "activate_branch", "cancel_run", "decide_action", "decide_plan", "update_session", "archive_session", "restore_session", "trash_session", "put_preference", "create_folder", "update_folder", "delete_folder"]),
     command_id: z.string().min(1).max(128),
     idempotency_key: z.string().min(1).max(191),
     digest_algorithm: z.literal("SHA256_CANONICAL_JSON_V1"),
@@ -237,7 +278,7 @@ const commandReceiptViewAcceptedSchema = z
 
 const commandReceiptViewAppliedSchema = z
   .object({
-    operation: z.enum(["create_session", "submit_message", "edit_message", "regenerate_message", "fork_branch", "activate_branch", "cancel_run", "update_session", "archive_session", "restore_session", "trash_session", "put_preference", "create_folder", "update_folder", "delete_folder"]),
+    operation: z.enum(["create_session", "submit_message", "edit_message", "regenerate_message", "fork_branch", "activate_branch", "cancel_run", "decide_action", "decide_plan", "update_session", "archive_session", "restore_session", "trash_session", "put_preference", "create_folder", "update_folder", "delete_folder"]),
     command_id: z.string().min(1).max(128),
     idempotency_key: z.string().min(1).max(191),
     digest_algorithm: z.literal("SHA256_CANONICAL_JSON_V1"),
@@ -250,7 +291,7 @@ const commandReceiptViewAppliedSchema = z
 
 const commandReceiptViewDeniedSchema = z
   .object({
-    operation: z.enum(["create_session", "submit_message", "edit_message", "regenerate_message", "fork_branch", "activate_branch", "cancel_run", "update_session", "archive_session", "restore_session", "trash_session", "put_preference", "create_folder", "update_folder", "delete_folder"]),
+    operation: z.enum(["create_session", "submit_message", "edit_message", "regenerate_message", "fork_branch", "activate_branch", "cancel_run", "decide_action", "decide_plan", "update_session", "archive_session", "restore_session", "trash_session", "put_preference", "create_folder", "update_folder", "delete_folder"]),
     command_id: z.string().min(1).max(128),
     idempotency_key: z.string().min(1).max(191),
     digest_algorithm: z.literal("SHA256_CANONICAL_JSON_V1"),
@@ -270,14 +311,14 @@ export const commandReceiptViewSchema = z.discriminatedUnion("status", [
 ])
 .superRefine((value, context) => {
   if (value.status !== "accepted" && value.status !== "applied") return
-  const expectedKind = ({ "create_session": "session-created", "submit_message": "run-launch-created", "edit_message": "run-launch-created", "regenerate_message": "run-launch-created", "fork_branch": "branch-updated", "activate_branch": "branch-updated", "cancel_run": "cancellation-requested", "update_session": "session-updated", "archive_session": "session-updated", "restore_session": "session-updated", "trash_session": "session-updated", "put_preference": "preference-updated", "create_folder": "folder-updated", "update_folder": "folder-updated", "delete_folder": "folder-deleted" } as const)[value.operation]
+  const expectedKind = ({ "create_session": "session-created", "submit_message": "run-launch-created", "edit_message": "run-launch-created", "regenerate_message": "run-launch-created", "fork_branch": "branch-updated", "activate_branch": "branch-updated", "cancel_run": "cancellation-requested", "decide_action": "action-decision-recorded", "decide_plan": "plan-decision-recorded", "update_session": "session-updated", "archive_session": "session-updated", "restore_session": "session-updated", "trash_session": "session-updated", "put_preference": "preference-updated", "create_folder": "folder-updated", "update_folder": "folder-updated", "delete_folder": "folder-deleted" } as const)[value.operation]
   if (value.payload.kind !== expectedKind) context.addIssue({ code: "custom", path: ["payload", "kind"], message: "command receipt operation/effect mismatch" })
 })
 export type CommandReceiptView = z.infer<typeof commandReceiptViewSchema>
 
 export const commandReceiptLookupQuerySchema = z
   .object({
-    operation: z.enum(["create_session", "submit_message", "edit_message", "regenerate_message", "fork_branch", "activate_branch", "cancel_run", "update_session", "archive_session", "restore_session", "trash_session", "put_preference", "create_folder", "update_folder", "delete_folder"]),
+    operation: z.enum(["create_session", "submit_message", "edit_message", "regenerate_message", "fork_branch", "activate_branch", "cancel_run", "decide_action", "decide_plan", "update_session", "archive_session", "restore_session", "trash_session", "put_preference", "create_folder", "update_folder", "delete_folder"]),
     idempotency_key: z.string().min(1).max(191),
     digest_algorithm: z.literal("SHA256_CANONICAL_JSON_V1"),
     request_digest: z.string().regex(/^[0-9a-f]{64}$/u),
@@ -338,6 +379,14 @@ export const actionPartPayloadSchema = z
   .object({
     owner_ref: z.string().min(1),
     expected_version: z.number().int().positive(),
+    decision_group_ref: z.string().min(1),
+    required_owner_refs: z.array(z.string().min(1)).min(1).max(64),
+    title: z.string().min(1),
+    description: z.string().min(1),
+    risk_summary: z.string().min(1).optional(),
+    safe_request_summary: z.record(z.string(), z.unknown()).optional(),
+    input_schema_ref: z.string().min(1).optional(),
+    safe_input_schema: z.record(z.string(), z.unknown()).optional(),
     deadline: z.string().datetime({ offset: true }).optional(),
     allowed_actions: z.array(z.string().min(1)),
     receipt_ref: z.string().min(1).optional(),
@@ -358,7 +407,13 @@ export type PlanStep = z.infer<typeof planStepSchema>
 export const planPartPayloadSchema = z
   .object({
     plan_proposal_ref: z.string().min(1),
+    plan_version: z.number().int().positive(),
+    summary: z.string().min(1),
     steps: z.array(planStepSchema),
+    allowed_actions: z.array(z.string().min(1)),
+    deadline: z.string().datetime({ offset: true }).optional(),
+    receipt_ref: z.string().min(1).optional(),
+    status: z.string().min(1),
   })
   .strict()
 export type PlanPartPayload = z.infer<typeof planPartPayloadSchema>
@@ -917,6 +972,177 @@ export const cancellationRequestSchema = z
   .strict()
 export type CancellationRequest = z.infer<typeof cancellationRequestSchema>
 
+export const approveActionDecisionSchema = z
+  .object({
+    acknowledged_risk: z.literal(true),
+  })
+  .strict()
+export type ApproveActionDecision = z.infer<typeof approveActionDecisionSchema>
+
+export const rejectActionDecisionSchema = z
+  .object({
+    reason_code: z.string().min(1).max(128).optional(),
+  })
+  .strict()
+export type RejectActionDecision = z.infer<typeof rejectActionDecisionSchema>
+
+export const editActionDecisionSchema = z
+  .object({
+    input_schema_ref: z.string().min(1).max(256),
+    edited_input: z.record(z.string(), z.unknown()),
+  })
+  .strict()
+export type EditActionDecision = z.infer<typeof editActionDecisionSchema>
+
+export const interactionTextResponseSchema = z
+  .object({
+    text: z.string().min(1).max(1048576),
+  })
+  .strict()
+export type InteractionTextResponse = z.infer<typeof interactionTextResponseSchema>
+
+export const interactionSelectionResponseSchema = z
+  .object({
+    selected_option_ids: z.array(z.string().min(1).max(256)).min(1).max(64),
+  })
+  .strict()
+export type InteractionSelectionResponse = z.infer<typeof interactionSelectionResponseSchema>
+
+export const interactionFormResponseSchema = z
+  .object({
+    fields: z.record(z.string(), z.unknown()),
+  })
+  .strict()
+export type InteractionFormResponse = z.infer<typeof interactionFormResponseSchema>
+
+const interactionResponseTextSchema = z
+  .object({
+    kind: z.literal("text"),
+    payload: interactionTextResponseSchema,
+  })
+  .strict()
+
+const interactionResponseSelectionSchema = z
+  .object({
+    kind: z.literal("selection"),
+    payload: interactionSelectionResponseSchema,
+  })
+  .strict()
+
+const interactionResponseFormSchema = z
+  .object({
+    kind: z.literal("form"),
+    payload: interactionFormResponseSchema,
+  })
+  .strict()
+
+export const interactionResponseSchema = z.discriminatedUnion("kind", [
+  interactionResponseTextSchema,
+  interactionResponseSelectionSchema,
+  interactionResponseFormSchema,
+])
+export type InteractionResponse = z.infer<typeof interactionResponseSchema>
+
+export const respondActionDecisionSchema = z
+  .object({
+    input_schema_ref: z.string().min(1).max(256),
+    response: interactionResponseSchema,
+  })
+  .strict()
+export type RespondActionDecision = z.infer<typeof respondActionDecisionSchema>
+
+const actionDecisionApproveSchema = z
+  .object({
+    kind: z.literal("approve"),
+    payload: approveActionDecisionSchema,
+  })
+  .strict()
+
+const actionDecisionRejectSchema = z
+  .object({
+    kind: z.literal("reject"),
+    payload: rejectActionDecisionSchema,
+  })
+  .strict()
+
+const actionDecisionEditSchema = z
+  .object({
+    kind: z.literal("edit"),
+    payload: editActionDecisionSchema,
+  })
+  .strict()
+
+const actionDecisionRespondSchema = z
+  .object({
+    kind: z.literal("respond"),
+    payload: respondActionDecisionSchema,
+  })
+  .strict()
+
+export const actionDecisionSchema = z.discriminatedUnion("kind", [
+  actionDecisionApproveSchema,
+  actionDecisionRejectSchema,
+  actionDecisionEditSchema,
+  actionDecisionRespondSchema,
+])
+export type ActionDecision = z.infer<typeof actionDecisionSchema>
+
+export const actionDecisionRequestSchema = z
+  .object({
+    command: commandIdentitySchema,
+    expected_session_version: z.number().int().positive(),
+    expected_run_projection_version: z.number().int().positive(),
+    owner_kind: z.enum(["approval", "interaction"]),
+    owner_ref: z.string().min(1).max(256),
+    decision_group_ref: z.string().min(1).max(256),
+    expected_owner_version: z.number().int().positive(),
+    decision: actionDecisionSchema,
+  })
+  .strict()
+export type ActionDecisionRequest = z.infer<typeof actionDecisionRequestSchema>
+
+export const acceptPlanDecisionSchema = z.object({}).strict()
+export type AcceptPlanDecision = z.infer<typeof acceptPlanDecisionSchema>
+
+export const rejectPlanDecisionSchema = z
+  .object({
+    reason_code: z.string().min(1).max(128).optional(),
+  })
+  .strict()
+export type RejectPlanDecision = z.infer<typeof rejectPlanDecisionSchema>
+
+const planDecisionAcceptSchema = z
+  .object({
+    kind: z.literal("accept"),
+    payload: acceptPlanDecisionSchema,
+  })
+  .strict()
+
+const planDecisionRejectSchema = z
+  .object({
+    kind: z.literal("reject"),
+    payload: rejectPlanDecisionSchema,
+  })
+  .strict()
+
+export const planDecisionSchema = z.discriminatedUnion("kind", [
+  planDecisionAcceptSchema,
+  planDecisionRejectSchema,
+])
+export type PlanDecision = z.infer<typeof planDecisionSchema>
+
+export const planDecisionRequestSchema = z
+  .object({
+    command: commandIdentitySchema,
+    expected_session_version: z.number().int().positive(),
+    expected_run_projection_version: z.number().int().positive(),
+    plan_proposal_ref: z.string().min(1).max(256),
+    expected_plan_version: z.number().int().positive(),
+    decision: planDecisionSchema,
+  })
+  .strict()
+export type PlanDecisionRequest = z.infer<typeof planDecisionRequestSchema>
+
 export const updateSessionRequestSchema = z
   .object({
     command: commandIdentitySchema,
@@ -1048,6 +1274,20 @@ export const cancelRunPathParamsSchema = z
   })
   .strict()
 
+export const decideActionPathParamsSchema = z
+  .object({
+    session_id: z.string().min(1).max(128),
+    run_id: z.string().min(1).max(128),
+  })
+  .strict()
+
+export const decidePlanPathParamsSchema = z
+  .object({
+    session_id: z.string().min(1).max(128),
+    run_id: z.string().min(1).max(128),
+  })
+  .strict()
+
 export const getCommandReceiptPathParamsSchema = z
   .object({
     command_id: z.string().min(1).max(128),
@@ -1107,6 +1347,8 @@ export const SESSION_HTTP_ENDPOINTS = Object.freeze({
   forkBranch: Object.freeze({ method: "POST", path: "/v1/sessions/{session_id}/branches/{branch_id}:fork", status: 202, pathSchema: forkBranchPathParamsSchema, requestSchema: branchCommandRequestSchema, querySchema: null, responseSchema: sessionCommandResponseSchema, query: Object.freeze([]), authorization: null }),
   activateBranch: Object.freeze({ method: "POST", path: "/v1/sessions/{session_id}/branches/{branch_id}:activate", status: 202, pathSchema: activateBranchPathParamsSchema, requestSchema: branchCommandRequestSchema, querySchema: null, responseSchema: sessionCommandResponseSchema, query: Object.freeze([]), authorization: null }),
   cancelRun: Object.freeze({ method: "POST", path: "/v1/sessions/{session_id}/runs/{run_id}:cancel", status: 202, pathSchema: cancelRunPathParamsSchema, requestSchema: cancellationRequestSchema, querySchema: null, responseSchema: sessionCommandResponseSchema, query: Object.freeze([]), authorization: null }),
+  decideAction: Object.freeze({ method: "POST", path: "/v1/sessions/{session_id}/runs/{run_id}/actions:decide", status: 202, pathSchema: decideActionPathParamsSchema, requestSchema: actionDecisionRequestSchema, querySchema: null, responseSchema: sessionCommandResponseSchema, query: Object.freeze([]), authorization: null }),
+  decidePlan: Object.freeze({ method: "POST", path: "/v1/sessions/{session_id}/runs/{run_id}/plans:decide", status: 202, pathSchema: decidePlanPathParamsSchema, requestSchema: planDecisionRequestSchema, querySchema: null, responseSchema: sessionCommandResponseSchema, query: Object.freeze([]), authorization: null }),
   getCommandReceipt: Object.freeze({ method: "GET", path: "/v1/session-commands/{command_id}/receipt", status: 200, pathSchema: getCommandReceiptPathParamsSchema, requestSchema: null, querySchema: commandReceiptLookupQuerySchema, responseSchema: sessionCommandResponseSchema, query: Object.freeze([]), authorization: "subject-site-command-receipt-grant" }),
   updateSession: Object.freeze({ method: "PATCH", path: "/v1/sessions/{session_id}", status: 202, pathSchema: updateSessionPathParamsSchema, requestSchema: updateSessionRequestSchema, querySchema: null, responseSchema: sessionCommandResponseSchema, query: Object.freeze([]), authorization: null }),
   archiveSession: Object.freeze({ method: "POST", path: "/v1/sessions/{session_id}:archive", status: 202, pathSchema: archiveSessionPathParamsSchema, requestSchema: sessionLifecycleCommandRequestSchema, querySchema: null, responseSchema: sessionCommandResponseSchema, query: Object.freeze([]), authorization: null }),
@@ -1145,6 +1387,12 @@ export function activateBranchPath(sessionId: string, branchId: string): string 
 }
 export function cancellationPath(sessionId: string, runId: string): string {
   return `/v1/sessions/${sessionId}/runs/${runId}:cancel`
+}
+export function actionDecisionPath(sessionId: string, runId: string): string {
+  return `/v1/sessions/${sessionId}/runs/${runId}/actions:decide`
+}
+export function planDecisionPath(sessionId: string, runId: string): string {
+  return `/v1/sessions/${sessionId}/runs/${runId}/plans:decide`
 }
 export function commandReceiptPath(commandId: string): string {
   return `/v1/session-commands/${commandId}/receipt`

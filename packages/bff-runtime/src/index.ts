@@ -17,11 +17,14 @@ export type {
   ProductContextCommandFactoryPort,
   ProductContextManagerOptions,
   ProjectSummary,
+  PublishedModelOption,
+  PublicSiteBootstrap,
   RuntimeEnvironment,
   SafeActor,
   SiteBootstrap,
   SiteDeploymentBinding,
   SiteDeploymentBindingInput,
+  SurfaceModelOptionCatalog,
   UnsafeBindingAuditPort,
 } from "./site-binding.js";
 export {

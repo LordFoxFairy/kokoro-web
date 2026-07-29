@@ -149,6 +149,47 @@ const localePolicySchema = z.strictObject({
   }
 });
 
+const publicToken = z.string().regex(/^[a-z][a-z0-9._-]{0,63}$/u);
+const uniquePublicTokens = (minimum: number) => z.array(publicToken).min(minimum).max(16)
+  .refine((values) => new Set(values).size === values.length, "must be unique");
+const publishedModelOptionSchema = z.strictObject({
+  modelOptionRevisionRef: reference,
+  optionKey: z.string().regex(/^[a-z][a-z0-9._-]{1,127}$/u),
+  label: z.string().min(1).max(128),
+  description: z.string().max(512).optional(),
+  inputModalities: uniquePublicTokens(1),
+  outputModalities: uniquePublicTokens(1),
+  supportedEfforts: uniquePublicTokens(0),
+  badges: uniquePublicTokens(0),
+  availability: z.enum(["available", "temporarily_unavailable"]),
+});
+const surfaceModelOptionCatalogSchema = z.strictObject({
+  surfaceId: shortReference,
+  catalogRevisionRef: reference,
+  defaultModelOptionRevisionRef: reference,
+  options: z.array(publishedModelOptionSchema).min(1).max(256),
+  publishedAt: instant,
+}).superRefine((catalog, issues) => {
+  const optionRefs = catalog.options.map(({ modelOptionRevisionRef }) => modelOptionRevisionRef);
+  const optionKeys = catalog.options.map(({ optionKey }) => optionKey);
+  if (new Set(optionRefs).size !== optionRefs.length) {
+    issues.addIssue({ code: "custom", path: ["options"], message: "model option refs must be unique" });
+  }
+  if (new Set(optionKeys).size !== optionKeys.length) {
+    issues.addIssue({ code: "custom", path: ["options"], message: "model option keys must be unique" });
+  }
+  const selectedDefault = catalog.options.find(
+    ({ modelOptionRevisionRef }) => modelOptionRevisionRef === catalog.defaultModelOptionRevisionRef,
+  );
+  if (selectedDefault?.availability !== "available") {
+    issues.addIssue({
+      code: "custom",
+      path: ["defaultModelOptionRevisionRef"],
+      message: "default must identify an available published option",
+    });
+  }
+});
+
 const productContextSchema = z.strictObject({
   productContextRef: reference,
   siteProjectBindingRef: reference,
@@ -165,6 +206,7 @@ const productContextSchema = z.strictObject({
   enabledSurfaceIds: z.array(shortReference).max(256),
   featurePolicyRevision: shortReference,
   modelOptionCatalogRef: reference,
+  modelOptionCatalogs: z.array(surfaceModelOptionCatalogSchema).max(64),
   agentCatalogRef: reference,
   localePolicy: localePolicySchema,
   cacheMaxAgeSeconds: z.number().int().min(0).max(300),
@@ -173,6 +215,22 @@ const productContextSchema = z.strictObject({
 }).superRefine((context, issues) => {
   if (new Set(context.enabledSurfaceIds).size !== context.enabledSurfaceIds.length) {
     issues.addIssue({ code: "custom", path: ["enabledSurfaceIds"], message: "must be unique" });
+  }
+  const catalogSurfaces = context.modelOptionCatalogs.map(({ surfaceId }) => surfaceId);
+  if (new Set(catalogSurfaces).size !== catalogSurfaces.length) {
+    issues.addIssue({ code: "custom", path: ["modelOptionCatalogs"], message: "surfaceId must be unique" });
+  }
+  if (catalogSurfaces.some((surfaceId) => !context.enabledSurfaceIds.includes(surfaceId))) {
+    issues.addIssue({ code: "custom", path: ["modelOptionCatalogs"], message: "surface must be enabled" });
+  }
+  for (const productSurface of ["chat", "image", "music", "video"] as const) {
+    if (context.enabledSurfaceIds.includes(productSurface) && !catalogSurfaces.includes(productSurface)) {
+      issues.addIssue({
+        code: "custom",
+        path: ["modelOptionCatalogs"],
+        message: `enabled ${productSurface} surface requires a catalog`,
+      });
+    }
   }
 });
 
@@ -194,6 +252,26 @@ export interface LocalePolicy {
   readonly allowedLocales: readonly string[];
 }
 
+export interface PublishedModelOption {
+  readonly modelOptionRevisionRef: string;
+  readonly optionKey: string;
+  readonly label: string;
+  readonly description?: string;
+  readonly inputModalities: readonly string[];
+  readonly outputModalities: readonly string[];
+  readonly supportedEfforts: readonly string[];
+  readonly badges: readonly string[];
+  readonly availability: "available" | "temporarily_unavailable";
+}
+
+export interface SurfaceModelOptionCatalog {
+  readonly surfaceId: string;
+  readonly catalogRevisionRef: string;
+  readonly defaultModelOptionRevisionRef: string;
+  readonly options: readonly PublishedModelOption[];
+  readonly publishedAt: string;
+}
+
 export interface ProductContext {
   readonly productContextRef: string;
   readonly siteProjectBindingRef: string;
@@ -210,6 +288,7 @@ export interface ProductContext {
   readonly enabledSurfaceIds: readonly string[];
   readonly featurePolicyRevision: string;
   readonly modelOptionCatalogRef: string;
+  readonly modelOptionCatalogs: readonly SurfaceModelOptionCatalog[];
   readonly agentCatalogRef: string;
   readonly localePolicy: LocalePolicy;
   readonly cacheMaxAgeSeconds: number;
@@ -258,6 +337,7 @@ function freezeProductContext(input: unknown): ProductContext {
   return Object.freeze({
     ...context,
     enabledSurfaceIds: Object.freeze([...context.enabledSurfaceIds]),
+    modelOptionCatalogs: freezeModelOptionCatalogs(context.modelOptionCatalogs),
     localePolicy: Object.freeze({
       ...context.localePolicy,
       allowedLocales: Object.freeze([...context.localePolicy.allowedLocales]),
@@ -461,6 +541,7 @@ const siteBootstrapSchema = z.strictObject({
   enabledSurfaceIds: z.array(shortReference).max(256),
   featurePolicyRevision: shortReference,
   modelOptionCatalogRef: reference,
+  modelOptionCatalogs: z.array(surfaceModelOptionCatalogSchema).max(64),
   agentCatalogRef: reference,
   localePolicy: localePolicySchema,
   issuedAt: instant,
@@ -488,6 +569,7 @@ export interface SiteBootstrap {
   readonly enabledSurfaceIds: readonly string[];
   readonly featurePolicyRevision: string;
   readonly modelOptionCatalogRef: string;
+  readonly modelOptionCatalogs: readonly SurfaceModelOptionCatalog[];
   readonly agentCatalogRef: string;
   readonly localePolicy: LocalePolicy;
   readonly issuedAt: string;
@@ -511,6 +593,7 @@ export function validatedSiteBootstrap(input: unknown): SiteBootstrap {
     ...value,
     actor: Object.freeze({ ...value.actor }),
     enabledSurfaceIds: Object.freeze([...value.enabledSurfaceIds]),
+    modelOptionCatalogs: freezeModelOptionCatalogs(value.modelOptionCatalogs),
     projects: Object.freeze(value.projects.map((project) => Object.freeze({ ...project }))),
     localePolicy: Object.freeze({
       ...value.localePolicy,
@@ -581,6 +664,7 @@ export async function bootstrapSiteRuntime(input: {
     enabledSurfaceIds: product.enabledSurfaceIds,
     featurePolicyRevision: product.featurePolicyRevision,
     modelOptionCatalogRef: product.modelOptionCatalogRef,
+    modelOptionCatalogs: product.modelOptionCatalogs,
     agentCatalogRef: product.agentCatalogRef,
     localePolicy: product.localePolicy,
     issuedAt: personal.issuedAt,
@@ -589,19 +673,22 @@ export async function bootstrapSiteRuntime(input: {
   });
 }
 
-/** Browser-safe view deliberately excludes Site authority, subject authority and all credentials. */
-export function publicSiteBootstrap(bootstrap: SiteBootstrap): Readonly<{
+export interface PublicSiteBootstrap {
   actor: Readonly<{ displayName: string; avatarUrl: string | null }>;
-  enabledSurfaceIds: readonly string[];
-  featurePolicyRevision: string;
-  projects: readonly ProjectSummary[];
-  defaultProjectRef: string;
-  modelOptionCatalogRef: string;
-  agentCatalogRef: string;
-  localePolicy: LocalePolicy;
-  sessionContractRevision: string;
-  cacheMaxAgeSeconds: number;
-}> {
+  readonly enabledSurfaceIds: readonly string[];
+  readonly featurePolicyRevision: string;
+  readonly projects: readonly ProjectSummary[];
+  readonly defaultProjectRef: string;
+  readonly modelOptionCatalogRef: string;
+  readonly modelOptionCatalogs: readonly SurfaceModelOptionCatalog[];
+  readonly agentCatalogRef: string;
+  readonly localePolicy: LocalePolicy;
+  readonly sessionContractRevision: string;
+  readonly cacheMaxAgeSeconds: number;
+}
+
+/** Browser-safe view deliberately excludes Site authority, subject authority and all credentials. */
+export function publicSiteBootstrap(bootstrap: SiteBootstrap): Readonly<PublicSiteBootstrap> {
   return Object.freeze({
     actor: Object.freeze({
       displayName: bootstrap.actor.displayName,
@@ -612,9 +699,25 @@ export function publicSiteBootstrap(bootstrap: SiteBootstrap): Readonly<{
     projects: bootstrap.projects,
     defaultProjectRef: bootstrap.defaultProjectRef,
     modelOptionCatalogRef: bootstrap.modelOptionCatalogRef,
+    modelOptionCatalogs: bootstrap.modelOptionCatalogs,
     agentCatalogRef: bootstrap.agentCatalogRef,
     localePolicy: bootstrap.localePolicy,
     sessionContractRevision: bootstrap.sessionContractRevision,
     cacheMaxAgeSeconds: bootstrap.cacheMaxAgeSeconds,
   });
+}
+
+function freezeModelOptionCatalogs(
+  catalogs: readonly z.infer<typeof surfaceModelOptionCatalogSchema>[],
+): readonly SurfaceModelOptionCatalog[] {
+  return Object.freeze(catalogs.map((catalog) => Object.freeze({
+    ...catalog,
+    options: Object.freeze(catalog.options.map((option) => Object.freeze({
+      ...option,
+      inputModalities: Object.freeze([...option.inputModalities]),
+      outputModalities: Object.freeze([...option.outputModalities]),
+      supportedEfforts: Object.freeze([...option.supportedEfforts]),
+      badges: Object.freeze([...option.badges]),
+    }))),
+  })));
 }

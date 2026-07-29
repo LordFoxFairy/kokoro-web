@@ -17,13 +17,14 @@ authority material to a browser.
 ## Public API
 
 - `site-binding.ts`: explicit build/deployment binding, production unsafe-mode gate, `exchangeProductContext` command/cache,
-  `getPersonalContext` subject read, strict local bootstrap composition, and browser-safe projection.
+  `getPersonalContext` subject read, strict local bootstrap composition, and browser-safe projection including only published
+  per-surface model option catalogs (never provider/route/secret bindings).
 - `session-access.ts`: compact-JWS, five-minute maximum `session.read|write|control|stream` grants; exact frozen binding validation,
   project/session/run resource scoping, and resource-keyed single-flight cache.
 - `session-proxy.ts`: operation-bound proxy with browser authority rejection, request/response header allowlists, authenticated
   response binding checks, abort propagation, and pull-based SSE backpressure.
-- `session-browser-v3.ts`: exact Root-generated browser operation registry, path/query/body adapters, status-specific JSON/problem
-  validators, complete SSE frame validation, and authenticated transport binding returned out-of-band.
+- `session-browser-v3.ts`: exact Root-generated browser operation registry, path/query/body adapters (including action/plan decisions),
+  status-specific JSON/problem validators, complete SSE frame validation, and authenticated transport binding returned out-of-band.
 - `index.ts`: the sole package export and a `server-only` guard. Site browser bundles must never import this package.
 
 ## Dependency direction

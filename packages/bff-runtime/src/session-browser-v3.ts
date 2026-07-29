@@ -41,6 +41,8 @@ const SESSION_BROWSER_V3_PURPOSES = Object.freeze({
   forkBranch: "write",
   activateBranch: "write",
   cancelRun: "control",
+  decideAction: "control",
+  decidePlan: "control",
   getCommandReceipt: "read",
   updateSession: "write",
   archiveSession: "write",

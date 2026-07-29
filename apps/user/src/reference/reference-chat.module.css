@@ -32,6 +32,52 @@
   padding: 0.85rem 1rem;
 }
 
+.modelSelector {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin-bottom: 0.65rem;
+  color: var(--k-text-secondary);
+  font-size: 0.85rem;
+}
+
+.modelSelector select,
+.hitlCard textarea {
+  min-width: 0;
+  border: 1px solid var(--k-border);
+  border-radius: 0.7rem;
+  background: var(--k-bg-container);
+  color: var(--k-text);
+  padding: 0.55rem 0.7rem;
+}
+
+.fieldStack {
+  display: grid;
+  gap: 0.5rem;
+  margin-block: 0.75rem;
+}
+
+.fieldStack label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.fieldStack select,
+.fieldStack input:not([type="checkbox"]):not([type="radio"]) {
+  min-width: 0;
+  border: 1px solid var(--k-border);
+  border-radius: 0.55rem;
+  background: var(--k-bg-container);
+  color: var(--k-text);
+  padding: 0.45rem 0.6rem;
+}
+
+.hitlCard textarea {
+  width: 100%;
+  margin-block: 0.5rem;
+}
+
 .connectShell input {
   width: min(32rem, 70vw);
 }

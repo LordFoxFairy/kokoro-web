@@ -58,12 +58,32 @@ function productContext(commandId: string) {
       enabledSurfaceIds: ["chat"],
       featurePolicyRevision: "feature-policy-12345678",
       modelOptionCatalogRef: "model-options-12345678",
+      modelOptionCatalogs: [chatCatalog()],
       agentCatalogRef: "agent-catalog-12345678",
       localePolicy: { defaultLocale: "en-US", allowedLocales: ["en-US"] },
       cacheMaxAgeSeconds: 10,
       issuedAt: now.toISOString(),
       expiresAt: new Date(now.getTime() + 60_000).toISOString(),
     },
+  };
+}
+
+function chatCatalog() {
+  return {
+    surfaceId: "chat",
+    catalogRevisionRef: "chat-catalog-12345678",
+    defaultModelOptionRevisionRef: "model-option-12345678",
+    options: [{
+      modelOptionRevisionRef: "model-option-12345678",
+      optionKey: "chat.standard",
+      label: "Standard",
+      inputModalities: ["text"],
+      outputModalities: ["text"],
+      supportedEfforts: [],
+      badges: ["standard"],
+      availability: "available" as const,
+    }],
+    publishedAt: now.toISOString(),
   };
 }
 

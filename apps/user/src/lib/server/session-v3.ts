@@ -113,10 +113,16 @@ export function platformAuthSessionFromRequest(
   request: Request,
   env: NodeJS.ProcessEnv = process.env,
 ): AuthSession | null {
+  return platformAuthSessionFromSealedCookie(cookie(request, SESSION_COOKIE), env)
+}
+
+export function platformAuthSessionFromSealedCookie(
+  sealed: string | null | undefined,
+  env: NodeJS.ProcessEnv = process.env,
+): AuthSession | null {
   const secretRaw = required(env, "KOKORO_WEB_SESSION_SECRET")
   const secrets = secretRaw.split(",").map((value) => value.trim()).filter(Boolean)
-  const sealed = cookie(request, SESSION_COOKIE)
-  if (sealed === null || secrets.length === 0) return null
+  if (sealed === null || sealed === undefined || secrets.length === 0) return null
   const envelope = openEnvelope(sealed, secrets, Math.floor(Date.now() / 1_000))
   const session = envelope?.platform_session
   return session === undefined ? null : Object.freeze({

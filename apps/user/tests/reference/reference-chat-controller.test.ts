@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest"
 
 import { createCursorPolicy, type SessionClient } from "@kokoro/session-client"
 import type { SessionEvent, SessionSnapshot } from "@kokoro/session-client/contracts"
+import type { SurfaceModelOptionCatalog } from "@kokoro/site-client"
 
 import {
   createReferenceChatController,
@@ -9,6 +10,22 @@ import {
 } from "@/reference/reference-chat-controller"
 
 const NOW = "2026-07-29T12:00:00.000Z"
+const CHAT_CATALOG: SurfaceModelOptionCatalog = {
+  surfaceId: "chat",
+  catalogRevisionRef: "chat-catalog-1",
+  defaultModelOptionRevisionRef: "model-option-7",
+  options: [{
+    modelOptionRevisionRef: "model-option-7",
+    optionKey: "chat.standard",
+    label: "Standard",
+    inputModalities: ["text"],
+    outputModalities: ["text"],
+    supportedEfforts: [],
+    badges: [],
+    availability: "available",
+  }],
+  publishedAt: NOW,
+}
 
 function snapshot(): SessionSnapshot {
   return {
@@ -113,7 +130,21 @@ function fakeClient(input: {
       cursor: accepted.cursor,
     })),
     listSessions: vi.fn(),
-    createSession: vi.fn(),
+    createSession: vi.fn(async () => ({
+      command_receipt: {
+        operation: "create_session" as const,
+        command_id: "command-create",
+        idempotency_key: "idempotency-create",
+        digest_algorithm: "SHA256_CANONICAL_JSON_V1" as const,
+        request_digest: "c".repeat(64),
+        updated_at: NOW,
+        status: "accepted" as const,
+        payload: {
+          kind: "session-created" as const,
+          payload: { session_id: "session-1", initial_branch_id: "branch-1", session_version: 1 },
+        },
+      },
+    })),
     submitMessage: vi.fn(async () => ({
       command_receipt: {
         operation: "submit_message" as const,
@@ -162,6 +193,8 @@ function fakeClient(input: {
         },
       },
     })),
+    decideAction: vi.fn(),
+    decidePlan: vi.fn(),
     getCommandReceipt: vi.fn(),
     updateSession: vi.fn(),
     archiveSession: vi.fn(),
@@ -180,9 +213,20 @@ function fakeClient(input: {
 }
 
 describe("reference Browser v3 controller", () => {
+  it("creates a chat in the bootstrap default project and opens its accepted Session receipt", async () => {
+    const client = fakeClient()
+    const controller = createReferenceChatController({ client, trustedLocale: "en-US", chatCatalog: CHAT_CATALOG, defaultProjectRef: "project-1" })
+
+    await expect(controller.create()).resolves.toBe("session-1")
+
+    expect(client.createSession).toHaveBeenCalledWith(expect.objectContaining({ project_ref: "project-1" }))
+    expect(client.hydrate).toHaveBeenCalledWith("session-1")
+    expect(controller.getSnapshot().selectedModelOptionRevisionRef).toBe("model-option-7")
+  })
+
   it("hydrates the complete typed snapshot before opening SSE at its watermark", async () => {
     const client = fakeClient()
-    const controller = createReferenceChatController({ client, trustedLocale: "en-US" })
+    const controller = createReferenceChatController({ client, trustedLocale: "en-US", chatCatalog: CHAT_CATALOG, defaultProjectRef: "project-1" })
 
     await controller.open("session-1")
 
@@ -199,7 +243,7 @@ describe("reference Browser v3 controller", () => {
 
   it("submits with the persisted model revision and cancels using the current run projection version", async () => {
     const client = fakeClient()
-    const controller = createReferenceChatController({ client, trustedLocale: "en-US" })
+    const controller = createReferenceChatController({ client, trustedLocale: "en-US", chatCatalog: CHAT_CATALOG, defaultProjectRef: "project-1" })
     await controller.open("session-1")
 
     await controller.submit("continue")
@@ -221,7 +265,7 @@ describe("reference Browser v3 controller", () => {
   it("keeps approval state typed and read-only while the owner command is absent", async () => {
     let openHandlers: Parameters<SessionClient["openEvents"]>[0] | undefined
     const client = fakeClient({ onOpen: (handlers) => { openHandlers = handlers } })
-    const controller = createReferenceChatController({ client, trustedLocale: "en-US" })
+    const controller = createReferenceChatController({ client, trustedLocale: "en-US", chatCatalog: CHAT_CATALOG, defaultProjectRef: "project-1" })
     await controller.open("session-1")
 
     const accepted = createCursorPolicy().accept("signed.cursor.5")
@@ -237,14 +281,14 @@ describe("reference Browser v3 controller", () => {
       },
     } as SessionEvent["payload"]), accepted.cursor)
 
-    expect(controller.getSnapshot().hitlDecisionSupported).toBe(false)
+    expect(controller.getSnapshot().hitlDecisionSupported).toBe(true)
     expect(controller.getSnapshot().projection.activeRunId).toBe("run-1")
   })
 
   it("fails closed when a session has no published model option revision", async () => {
     const noModel = { ...snapshot(), model_history: [] }
     const client = fakeClient({ value: noModel })
-    const controller = createReferenceChatController({ client, trustedLocale: "en-US" })
+    const controller = createReferenceChatController({ client, trustedLocale: "en-US", chatCatalog: null, defaultProjectRef: "project-1" })
     await controller.open("session-1")
 
     await controller.submit("cannot be routed")

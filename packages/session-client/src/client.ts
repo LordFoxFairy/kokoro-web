@@ -6,6 +6,7 @@ import {
   SESSION_HTTP_ENDPOINTS,
   snapshotWatermarkSchema,
   sessionStreamFrameSchema,
+  type ActionDecisionRequest,
   type BranchCommandRequest,
   type CancellationRequest,
   type CommandReceiptLookupQuery,
@@ -18,6 +19,7 @@ import {
   type FolderListQuery,
   type ListSessionsQuery,
   type PreferenceRequest,
+  type PlanDecisionRequest,
   type RegenerateMessageRequest,
   type SessionCommandResponse,
   type SessionEvent,
@@ -142,6 +144,8 @@ export type SessionClient = {
   readonly forkBranch: (sessionId: string, branchId: string, body: BranchCommandRequest) => Promise<SessionCommandResponse>;
   readonly activateBranch: (sessionId: string, branchId: string, body: BranchCommandRequest) => Promise<SessionCommandResponse>;
   readonly cancelRun: (sessionId: string, runId: string, body: CancellationRequest) => Promise<SessionCommandResponse>;
+  readonly decideAction: (sessionId: string, runId: string, body: ActionDecisionRequest) => Promise<SessionCommandResponse>;
+  readonly decidePlan: (sessionId: string, runId: string, body: PlanDecisionRequest) => Promise<SessionCommandResponse>;
   readonly getCommandReceipt: (commandId: string, query: CommandReceiptLookupQuery) => Promise<SessionCommandResponse>;
   readonly updateSession: (sessionId: string, body: UpdateSessionRequest) => Promise<SessionCommandResponse>;
   readonly archiveSession: (sessionId: string, body: SessionLifecycleCommandRequest) => Promise<SessionCommandResponse>;
@@ -169,6 +173,8 @@ export const SESSION_CLIENT_OPERATION_SURFACE = {
   forkBranch: "forkBranch",
   activateBranch: "activateBranch",
   cancelRun: "cancelRun",
+  decideAction: "decideAction",
+  decidePlan: "decidePlan",
   getCommandReceipt: "getCommandReceipt",
   updateSession: "updateSession",
   archiveSession: "archiveSession",
@@ -539,6 +545,12 @@ export function createSessionClient(options: {
       pathParameters: { session_id: sessionId, branch_id: branchId }, body,
     }),
     cancelRun: (sessionId, runId, body) => executeOperation("cancelRun", {
+      pathParameters: { session_id: sessionId, run_id: runId }, body,
+    }),
+    decideAction: (sessionId, runId, body) => executeOperation("decideAction", {
+      pathParameters: { session_id: sessionId, run_id: runId }, body,
+    }),
+    decidePlan: (sessionId, runId, body) => executeOperation("decidePlan", {
       pathParameters: { session_id: sessionId, run_id: runId }, body,
     }),
     getCommandReceipt: (commandId, query) => executeOperation("getCommandReceipt", {

@@ -13,6 +13,7 @@ import {
 import { createBrowserSessionTransport } from "./browser-session-transport"
 import {
   createReferenceChatController,
+  type ReferenceModelOptionCatalog,
   type ReferenceChatController,
   type ReferenceChatState,
 } from "./reference-chat-controller"
@@ -22,7 +23,290 @@ function neverPart(part: never): never {
   throw new Error(`Unreachable Chat part: ${JSON.stringify(part)}`)
 }
 
-function Part({ part }: { readonly part: ChatPart }) {
+type SafeFormField = Readonly<{
+  name: string
+  label: string
+  type: "text" | "number" | "boolean" | "selection"
+  required: boolean
+  options: readonly Readonly<{ id: string; label: string }>[]
+}>
+
+type SafeInteractionSchema =
+  | Readonly<{ kind: "text"; maxLength: number }>
+  | Readonly<{ kind: "selection"; multiple: boolean; options: readonly Readonly<{ id: string; label: string }>[] }>
+  | Readonly<{ kind: "form"; fields: readonly SafeFormField[] }>
+
+function record(value: unknown): Readonly<Record<string, unknown>> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? value as Readonly<Record<string, unknown>>
+    : null
+}
+
+function safeOptions(value: unknown): readonly Readonly<{ id: string; label: string }>[] | null {
+  if (!Array.isArray(value) || value.length === 0 || value.length > 64) return null
+  const options = value.map((raw) => {
+    if (typeof raw === "string" && raw.length > 0) return { id: raw, label: raw }
+    const item = record(raw)
+    const id = item?.id
+    const label = item?.label
+    return typeof id === "string" && id.length > 0 && typeof label === "string" && label.length > 0
+      ? { id, label }
+      : null
+  })
+  return options.every((option) => option !== null)
+    ? options as readonly Readonly<{ id: string; label: string }>[]
+    : null
+}
+
+function safeInteractionSchema(value: Readonly<Record<string, unknown>> | undefined): SafeInteractionSchema | null {
+  if (value === undefined) return null
+  const kind = value.kind ?? value.response_kind
+  const type = value.type
+  const enumOptions = safeOptions(value.options ?? value.enum)
+  if (kind === "selection" || enumOptions !== null || type === "array") {
+    const items = record(value.items)
+    const options = enumOptions ?? safeOptions(items?.enum)
+    if (options === null) return null
+    return { kind: "selection", multiple: value.multiple === true || type === "array", options }
+  }
+  if (kind === "text" || type === "string") {
+    const requestedMax = typeof value.maxLength === "number" && Number.isInteger(value.maxLength)
+      ? value.maxLength
+      : 1_048_576
+    return { kind: "text", maxLength: Math.max(1, Math.min(requestedMax, 1_048_576)) }
+  }
+  if (kind !== "form" && type !== "object") return null
+  const properties = record(value.properties ?? value.fields)
+  if (properties === null) return null
+  const required = new Set(Array.isArray(value.required) ? value.required.filter((item): item is string => typeof item === "string") : [])
+  const fields: SafeFormField[] = []
+  for (const [name, rawField] of Object.entries(properties)) {
+    const field = record(rawField)
+    if (field === null || fields.length >= 64) return null
+    const label = typeof field.title === "string" && field.title.length > 0 ? field.title : name
+    const options = safeOptions(field.options ?? field.enum) ?? []
+    const fieldType = options.length > 0
+      ? "selection" as const
+      : field.type === "boolean"
+        ? "boolean" as const
+        : field.type === "number" || field.type === "integer"
+          ? "number" as const
+          : field.type === "string" || field.type === undefined
+            ? "text" as const
+            : null
+    if (fieldType === null) return null
+    fields.push({ name, label, type: fieldType, required: required.has(name), options })
+  }
+  return fields.length > 0 ? { kind: "form", fields } : null
+}
+
+function ActionPartCard(props: {
+  readonly part: Extract<ChatPart, { kind: "approval" | "interaction" }>
+  readonly runId: string | null
+  readonly controller: ReferenceChatController
+  readonly disabled: boolean
+}) {
+  const [acknowledgedRisk, setAcknowledgedRisk] = useState(false)
+  const [response, setResponse] = useState("")
+  const [selectedOptionIds, setSelectedOptionIds] = useState<readonly string[]>([])
+  const [formValues, setFormValues] = useState<Readonly<Record<string, string | boolean>>>({})
+  const [editedInput, setEditedInput] = useState(() => JSON.stringify(props.part.safeRequestSummary ?? {}, null, 2))
+  const [editError, setEditError] = useState<string | null>(null)
+  const canDecide = props.runId !== null && props.part.status === "pending" && !props.disabled
+  const schema = props.part.kind === "interaction" ? safeInteractionSchema(props.part.safeInputSchema) : null
+  const canRespond = schema?.kind === "text"
+    ? response.trim().length > 0
+    : schema?.kind === "selection"
+      ? selectedOptionIds.length > 0
+      : schema?.kind === "form"
+        ? schema.fields.every((field) => !field.required || formValues[field.name] !== undefined && formValues[field.name] !== "")
+        : false
+  const respond = (): void => {
+    if (props.runId === null || props.part.inputSchemaRef === undefined || schema === null) return
+    const formFields: Record<string, unknown> = {}
+    if (schema.kind === "form") {
+      for (const field of schema.fields) {
+        const value = formValues[field.name]
+        if (value === undefined || value === "") continue
+        if (field.type !== "number") {
+          formFields[field.name] = value
+          continue
+        }
+        const numeric = Number(value)
+        if (Number.isFinite(numeric)) formFields[field.name] = numeric
+      }
+    }
+    const interactionResponse = schema.kind === "text"
+      ? { kind: "text" as const, payload: { text: response.trim() } }
+      : schema.kind === "selection"
+        ? { kind: "selection" as const, payload: { selected_option_ids: [...selectedOptionIds] } }
+        : {
+            kind: "form" as const,
+            payload: { fields: formFields },
+          }
+    void props.controller.decideAction({
+      runId: props.runId,
+      part: props.part,
+      decision: { kind: "respond", payload: { input_schema_ref: props.part.inputSchemaRef, response: interactionResponse } },
+    })
+  }
+  const edit = (): void => {
+    if (props.runId === null || props.part.inputSchemaRef === undefined) return
+    try {
+      const parsed = JSON.parse(editedInput) as unknown
+      const edited = record(parsed)
+      if (edited === null) throw new Error("Edited input must be a JSON object.")
+      setEditError(null)
+      void props.controller.decideAction({
+        runId: props.runId,
+        part: props.part,
+        decision: { kind: "edit", payload: { input_schema_ref: props.part.inputSchemaRef, edited_input: { ...edited } } },
+      })
+    } catch (error) {
+      setEditError(error instanceof Error ? error.message : "Edited input is not valid JSON.")
+    }
+  }
+  return (
+    <aside className={styles.hitlCard}>
+      <div className={styles.partTitle}>
+        <strong>{props.part.title}</strong><span>{props.part.status}</span>
+      </div>
+      <p>{props.part.description}</p>
+      {props.part.riskSummary ? <p><strong>Risk:</strong> {props.part.riskSummary}</p> : null}
+      {props.part.safeRequestSummary ? <pre>{JSON.stringify(props.part.safeRequestSummary, null, 2)}</pre> : null}
+      {props.part.kind === "approval" && props.part.allowedActions.includes("approve") ? (
+        <label>
+          <input
+            checked={acknowledgedRisk}
+            onChange={(event) => setAcknowledgedRisk(event.target.checked)}
+            type="checkbox"
+          /> I understand and accept the stated risk
+        </label>
+      ) : null}
+      {props.part.allowedActions.includes("edit") && props.part.inputSchemaRef ? (
+        <label className={styles.fieldStack}>
+          <span>Edited request (JSON object)</span>
+          <textarea aria-label={`Edited input for ${props.part.title}`} onChange={(event) => setEditedInput(event.target.value)} rows={5} value={editedInput} />
+        </label>
+      ) : null}
+      {editError ? <p role="alert">{editError}</p> : null}
+      {props.part.kind === "interaction" && props.part.allowedActions.includes("respond") && props.part.inputSchemaRef && schema?.kind === "text" ? (
+        <textarea
+          aria-label={`Response for ${props.part.title}`}
+          maxLength={1_048_576}
+          onChange={(event) => setResponse(event.target.value)}
+          rows={3}
+          value={response}
+        />
+      ) : null}
+      {props.part.kind === "interaction" && props.part.allowedActions.includes("respond") && props.part.inputSchemaRef && schema?.kind === "selection" ? (
+        <fieldset className={styles.fieldStack}>
+          <legend>Choose {schema.multiple ? "one or more options" : "one option"}</legend>
+          {schema.options.map((option) => <label key={option.id}>
+            <input
+              checked={selectedOptionIds.includes(option.id)}
+              name={`interaction-${props.part.id}`}
+              onChange={(event) => setSelectedOptionIds(event.target.checked
+                ? schema.multiple ? [...selectedOptionIds, option.id] : [option.id]
+                : selectedOptionIds.filter((id) => id !== option.id))}
+              type={schema.multiple ? "checkbox" : "radio"}
+            /> {option.label}
+          </label>)}
+        </fieldset>
+      ) : null}
+      {props.part.kind === "interaction" && props.part.allowedActions.includes("respond") && props.part.inputSchemaRef && schema?.kind === "form" ? (
+        <fieldset className={styles.fieldStack}>
+          <legend>Requested information</legend>
+          {schema.fields.map((field) => <label key={field.name}>
+            <span>{field.label}{field.required ? " (required)" : ""}</span>
+            {field.type === "boolean" ? (
+              <input checked={formValues[field.name] === true} onChange={(event) => setFormValues({ ...formValues, [field.name]: event.target.checked })} type="checkbox" />
+            ) : field.type === "selection" ? (
+              <select onChange={(event) => setFormValues({ ...formValues, [field.name]: event.target.value })} value={String(formValues[field.name] ?? "")}>
+                <option disabled value="">Select…</option>
+                {field.options.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+              </select>
+            ) : (
+              <input onChange={(event) => setFormValues({ ...formValues, [field.name]: event.target.value })} type={field.type} value={String(formValues[field.name] ?? "")} />
+            )}
+          </label>)}
+        </fieldset>
+      ) : null}
+      {props.part.kind === "interaction" && props.part.allowedActions.includes("respond") && (props.part.inputSchemaRef === undefined || schema === null) ? (
+        <p className={styles.quiet} role="status">This interaction schema is unsupported by this client. Refresh or upgrade the client to respond safely.</p>
+      ) : null}
+      <div className={styles.actions}>
+        {props.part.allowedActions.includes("approve") ? (
+          <button
+            type="button"
+            disabled={!canDecide || !acknowledgedRisk}
+            onClick={() => props.runId === null ? undefined : void props.controller.decideAction({
+              runId: props.runId,
+              part: props.part,
+              decision: { kind: "approve", payload: { acknowledged_risk: true } },
+            })}
+          >Approve</button>
+        ) : null}
+        {props.part.allowedActions.includes("reject") ? (
+          <button
+            type="button"
+            disabled={!canDecide}
+            onClick={() => props.runId === null ? undefined : void props.controller.decideAction({
+              runId: props.runId,
+              part: props.part,
+              decision: { kind: "reject", payload: { reason_code: "user_rejected" } },
+            })}
+          >Reject</button>
+        ) : null}
+        {props.part.allowedActions.includes("edit") && props.part.inputSchemaRef ? (
+          <button type="button" disabled={!canDecide || editedInput.trim().length === 0} onClick={edit}>Submit edit</button>
+        ) : null}
+        {props.part.kind === "interaction" && props.part.allowedActions.includes("respond") && props.part.inputSchemaRef && schema !== null ? (
+          <button
+            type="button"
+            disabled={!canDecide || !canRespond}
+            onClick={respond}
+          >Respond</button>
+        ) : null}
+      </div>
+      <p className={styles.quiet}>Owner {props.part.ownerRef} · Version {props.part.expectedVersion}</p>
+    </aside>
+  )
+}
+
+function PlanPartCard(props: {
+  readonly part: Extract<ChatPart, { kind: "plan" }>
+  readonly runId: string | null
+  readonly controller: ReferenceChatController
+  readonly disabled: boolean
+}) {
+  const canDecide = props.runId !== null && props.part.status === "pending" && !props.disabled
+  return (
+    <aside className={styles.partCard}>
+      <div className={styles.partTitle}><strong>Plan</strong><span>{props.part.status}</span></div>
+      <p>{props.part.summary}</p>
+      <ol>{props.part.steps.map((step) => <li key={step.stepRef}>{step.label} · {step.status}</li>)}</ol>
+      <div className={styles.actions}>
+        {props.part.allowedActions.includes("accept") ? <button type="button" disabled={!canDecide} onClick={() =>
+          props.runId === null ? undefined : void props.controller.decidePlan({
+            runId: props.runId, part: props.part, decision: { kind: "accept", payload: {} },
+          })}>Accept</button> : null}
+        {props.part.allowedActions.includes("reject") ? <button type="button" disabled={!canDecide} onClick={() =>
+          props.runId === null ? undefined : void props.controller.decidePlan({
+            runId: props.runId, part: props.part, decision: { kind: "reject", payload: { reason_code: "user_rejected" } },
+          })}>Reject</button> : null}
+      </div>
+    </aside>
+  )
+}
+
+function Part(props: {
+  readonly part: ChatPart
+  readonly runId: string | null
+  readonly controller: ReferenceChatController
+  readonly disabled: boolean
+}) {
+  const { part } = props
   const meta = <span className={styles.partMeta}>v{part.version} · {part.lifecycle}</span>
   switch (part.kind) {
     case "text":
@@ -42,28 +326,9 @@ function Part({ part }: { readonly part: ChatPart }) {
       )
     case "approval":
     case "interaction":
-      return (
-        <aside className={styles.hitlCard}>
-          <div className={styles.partTitle}>
-            <strong>{part.kind === "approval" ? "Approval required" : "Input required"}</strong>
-            <span>{part.status}</span>
-          </div>
-          <p>Owner {part.ownerRef} · Version {part.expectedVersion}</p>
-          <div className={styles.actions}>
-            {part.allowedActions.map((action) => <button type="button" disabled key={action}>{action}</button>)}
-          </div>
-          <p className={styles.quiet}>The decision API is not available in Browser v3 yet. No action is simulated.</p>
-          {meta}
-        </aside>
-      )
+      return <ActionPartCard {...props} part={part} />
     case "plan":
-      return (
-        <aside className={styles.partCard}>
-          <strong>Plan</strong>
-          <ol>{part.steps.map((step) => <li key={step.stepRef}>{step.label} · {step.status}</li>)}</ol>
-          {meta}
-        </aside>
-      )
+      return <PlanPartCard {...props} part={part} />
     case "job":
     case "artifact":
       return (
@@ -118,7 +383,7 @@ export function ReferenceChatView(props: {
   readonly state: ReferenceChatState
 }) {
   const [draft, setDraft] = useState("")
-  const hasModel = (props.state.snapshot?.model_history.length ?? 0) > 0
+  const hasModel = props.state.selectedModelOptionRevisionRef !== null
   const commandPending = props.state.projection.command.state === "pending"
   const connected = props.state.projection.connection.kind === "live"
   const activeRun = props.state.projection.activeRunId !== null
@@ -180,12 +445,26 @@ export function ReferenceChatView(props: {
               <strong>{message.role === "user" ? "You" : "Assistant"}</strong>
               <span>{message.status}</span>
             </div>
-            {message.parts.map((part) => <Part key={part.id} part={part} />)}
+            {message.parts.map((part) => <Part
+              controller={props.controller}
+              disabled={commandPending}
+              key={part.id}
+              part={part}
+              runId={message.runId}
+            />)}
           </article>
         ))}
       </section>
 
       <form className={styles.composer} onSubmit={submit}>
+        {props.state.chatCatalog ? (
+          <ModelOptionSelector
+            catalog={props.state.chatCatalog}
+            disabled={activeRun || commandPending}
+            onChange={(value) => props.controller.selectModelOption(value)}
+            value={props.state.selectedModelOptionRevisionRef}
+          />
+        ) : null}
         {!hasModel && props.state.phase === "ready" ? (
           <p className={styles.modelNotice}>A published default model option is required before the first message can be sent.</p>
         ) : null}
@@ -204,17 +483,24 @@ export function ReferenceChatView(props: {
 }
 
 export function ReferenceChat(props: {
+  readonly bootstrap: Readonly<{
+    readonly defaultProjectRef: string
+    readonly modelOptionCatalogs: readonly ReferenceModelOptionCatalog[]
+  }> | null
   readonly brandName: string
   readonly csrfToken?: string
   readonly initialSessionId?: string
 }) {
+  const chatCatalog = props.bootstrap?.modelOptionCatalogs.find(({ surfaceId }) => surfaceId === "chat") ?? null
   const client = useMemo(() => createSessionClient({
     transport: createBrowserSessionTransport({ csrfToken: props.csrfToken }),
   }), [props.csrfToken])
   const controller = useMemo(() => createReferenceChatController({
     client,
     trustedLocale: typeof document === "undefined" ? "en-US" : document.documentElement.lang || "en-US",
-  }), [client])
+    chatCatalog,
+    defaultProjectRef: props.bootstrap?.defaultProjectRef ?? null,
+  }), [chatCatalog, client, props.bootstrap?.defaultProjectRef])
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot)
   const [sessionInput, setSessionInput] = useState(props.initialSessionId ?? "")
 
@@ -224,11 +510,20 @@ export function ReferenceChat(props: {
   }, [controller, props.initialSessionId])
 
   if (state.phase === "idle") {
+    const productAvailable = props.bootstrap !== null && chatCatalog !== null
+    const commandPending = state.projection.command.state === "pending"
     return (
       <main className={styles.connectShell}>
         <span className={styles.eyebrow}>Session Browser v3 reference</span>
         <h1>{props.brandName}</h1>
-        <p>Open an existing Session to verify typed snapshot, durable SSE, cancellation, and reconnect behavior.</p>
+        <p>Start a new chat with this product&apos;s published default, or open an existing Session.</p>
+        <button
+          type="button"
+          disabled={!productAvailable || commandPending}
+          onClick={() => void controller.create().then((sessionId) => {
+            if (sessionId !== null) window.history.replaceState(window.history.state, "", `/?session=${encodeURIComponent(sessionId)}`)
+          })}
+        >{commandPending ? "Creating…" : "New chat"}</button>
         <form onSubmit={(event) => {
           event.preventDefault()
           const sessionId = sessionInput.trim()
@@ -237,12 +532,45 @@ export function ReferenceChat(props: {
           void controller.open(sessionId)
         }}>
           <input aria-label="Session ID" value={sessionInput} onChange={(event) => setSessionInput(event.target.value)} />
-          <button type="submit" disabled={sessionInput.trim().length === 0}>Open session</button>
+          <button type="submit" disabled={!productAvailable || commandPending || sessionInput.trim().length === 0}>Open session</button>
         </form>
-        <p className={styles.quiet}>New-session model selection is intentionally unavailable until Platform publishes a default option.</p>
+        {!productAvailable ? <p className={styles.quiet} role="status">Product context or its published chat catalog is unavailable. Chat is closed safely.</p> : null}
+        {state.failure ? <p className={styles.failure} role="alert">{state.failure.code}: {state.failure.message}</p> : null}
       </main>
     )
   }
 
   return <ReferenceChatView brandName={props.brandName} controller={controller} state={state} />
+}
+
+function ModelOptionSelector(props: {
+  readonly catalog: ReferenceModelOptionCatalog
+  readonly value: string | null
+  readonly disabled: boolean
+  readonly onChange: (value: string) => void
+}) {
+  return (
+    <label className={styles.modelSelector}>
+      <span>Model</span>
+      <select
+        aria-label="Model option"
+        disabled={props.disabled}
+        onChange={(event) => props.onChange(event.target.value)}
+        value={props.value ?? ""}
+      >
+        {props.value === null ? <option disabled value="">No available model option</option> : null}
+        {props.catalog.options.map((option) => (
+          <option
+            disabled={option.availability !== "available"}
+            key={option.modelOptionRevisionRef}
+            value={option.modelOptionRevisionRef}
+          >
+            {option.label} · {option.inputModalities.join(", ")} → {option.outputModalities.join(", ")}
+            {option.supportedEfforts.length > 0 ? ` · ${option.supportedEfforts.join(", ")}` : ""}
+            {option.badges.length > 0 ? ` · ${option.badges.join(", ")}` : ""}
+          </option>
+        ))}
+      </select>
+    </label>
+  )
 }

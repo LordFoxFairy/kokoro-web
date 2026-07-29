@@ -4,8 +4,10 @@ import {
   type SessionClient,
 } from "@kokoro/session-client"
 import type {
+  ActionDecision,
   CommandIdentity,
   ErrorDetail,
+  PlanDecision,
   SessionCommandResponse,
   SessionEvent,
   SessionSnapshot,
@@ -13,8 +15,29 @@ import type {
 import {
   createChatProjection,
   reduceChatProjection,
+  type ChatPart,
   type ChatProjection,
 } from "@kokoro/chat-surface"
+
+export type ReferenceModelOption = Readonly<{
+  modelOptionRevisionRef: string
+  optionKey: string
+  label: string
+  description?: string
+  inputModalities: readonly string[]
+  outputModalities: readonly string[]
+  supportedEfforts: readonly string[]
+  badges: readonly string[]
+  availability: "available" | "temporarily_unavailable"
+}>
+
+export type ReferenceModelOptionCatalog = Readonly<{
+  surfaceId: string
+  catalogRevisionRef: string
+  defaultModelOptionRevisionRef: string
+  options: readonly ReferenceModelOption[]
+  publishedAt: string
+}>
 
 type StableCode = ErrorDetail["code"]
 type StableAction = ErrorDetail["action"]
@@ -33,7 +56,9 @@ export type ReferenceChatState = Readonly<{
   snapshot: SessionSnapshot | null
   projection: ChatProjection
   failure: ReferenceChatFailure | null
-  hitlDecisionSupported: false
+  chatCatalog: ReferenceModelOptionCatalog | null
+  selectedModelOptionRevisionRef: string | null
+  hitlDecisionSupported: true
 }>
 
 type FailureLike = Readonly<{
@@ -62,6 +87,9 @@ const VALID_CODES = new Set<StableCode>([
   "CAPABILITY_SNAPSHOT_LOCKED", "MODEL_OPTION_UNAVAILABLE", "ATTACHMENT_NOT_READY",
   "ATTACHMENT_REVOKED", "ADMISSION_DENIED", "ADMISSION_OUTCOME_UNKNOWN", "LAUNCH_OUTCOME_UNKNOWN",
   "RUN_CANCELLATION_PENDING", "RUN_OUTCOME_UNKNOWN", "CURSOR_INVALID", "CURSOR_CONFLICT",
+  "ACTION_NOT_FOUND", "ACTION_VERSION_CONFLICT", "ACTION_EXPIRED", "ACTION_NOT_ALLOWED",
+  "ACTION_DECISION_PENDING", "PLAN_NOT_FOUND", "PLAN_VERSION_CONFLICT", "PLAN_EXPIRED",
+  "PLAN_DECISION_PENDING",
   "CURSOR_AHEAD", "SNAPSHOT_REQUIRED", "CURSOR_SCOPE_MISMATCH", "STREAM_EPOCH_MISMATCH",
   "CLIENT_CONTRACT_UPGRADE_REQUIRED", "PART_SCHEMA_UNSUPPORTED", "INTERNAL_UNAVAILABLE",
 ])
@@ -119,7 +147,7 @@ function canonicalJson(value: unknown): string {
   if (typeof value === "object") {
     const entries = Object.entries(value as Readonly<Record<string, unknown>>)
       .filter(([, child]) => child !== undefined)
-      .sort(([left], [right]) => left.localeCompare(right))
+      .sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)
     return `{${entries.map(([key, child]) => `${JSON.stringify(key)}:${canonicalJson(child)}`).join(",")}}`
   }
   throw new Error("Command payload cannot be canonically serialized")
@@ -162,15 +190,29 @@ function deniedFailure(response: SessionCommandResponse): ReferenceChatFailure |
 export type ReferenceChatController = Readonly<{
   getSnapshot(): ReferenceChatState
   subscribe(listener: () => void): () => void
+  create(): Promise<string | null>
   open(sessionId: string): Promise<void>
   submit(content: string): Promise<void>
   cancel(): Promise<void>
+  selectModelOption(modelOptionRevisionRef: string): void
+  decideAction(input: Readonly<{
+    runId: string
+    part: Extract<ChatPart, { kind: "approval" | "interaction" }>
+    decision: ActionDecision
+  }>): Promise<void>
+  decidePlan(input: Readonly<{
+    runId: string
+    part: Extract<ChatPart, { kind: "plan" }>
+    decision: PlanDecision
+  }>): Promise<void>
   close(): void
 }>
 
 export function createReferenceChatController(options: {
   readonly client: SessionClient
   readonly trustedLocale: string
+  readonly chatCatalog: ReferenceModelOptionCatalog | null
+  readonly defaultProjectRef: string | null
 }): ReferenceChatController {
   let state: ReferenceChatState = {
     phase: "idle",
@@ -178,7 +220,9 @@ export function createReferenceChatController(options: {
     snapshot: null,
     projection: createChatProjection(),
     failure: null,
-    hitlDecisionSupported: false,
+    chatCatalog: options.chatCatalog,
+    selectedModelOptionRevisionRef: null,
+    hitlDecisionSupported: true,
   }
   let stream: EventStreamHandle | null = null
   let generation = 0
@@ -204,12 +248,27 @@ export function createReferenceChatController(options: {
   const attach = (sessionId: string, snapshot: SessionSnapshot, currentGeneration: number): void => {
     runProjectionVersions.clear()
     for (const run of snapshot.runs) runProjectionVersions.set(run.run_id, run.projection_version)
+    const availableOptions = new Set(
+      options.chatCatalog?.options
+        .filter(({ availability }) => availability === "available")
+        .map(({ modelOptionRevisionRef }) => modelOptionRevisionRef) ?? [],
+    )
+    const persistedOption = snapshot.model_history.at(-1)?.model_option_revision_ref
+    const selectedModelOptionRevisionRef =
+      state.selectedModelOptionRevisionRef !== null && availableOptions.has(state.selectedModelOptionRevisionRef)
+        ? state.selectedModelOptionRevisionRef
+        : persistedOption !== undefined && availableOptions.has(persistedOption)
+          ? persistedOption
+          : options.chatCatalog !== null && availableOptions.has(options.chatCatalog.defaultModelOptionRevisionRef)
+            ? options.chatCatalog.defaultModelOptionRevisionRef
+            : null
     publish({
       ...state,
       phase: "ready",
       sessionId,
       snapshot,
       failure: null,
+      selectedModelOptionRevisionRef,
       projection: reduceChatProjection(state.projection, { type: "snapshot", snapshot }),
     })
     stream?.close()
@@ -291,13 +350,81 @@ export function createReferenceChatController(options: {
     if (snapshot !== null) attach(sessionId, snapshot, generation)
   }
 
+  const reconcileReceipt = async (
+    response: SessionCommandResponse,
+    command: CommandIdentity,
+    operation: Parameters<SessionClient["getCommandReceipt"]>[1]["operation"],
+  ): Promise<SessionCommandResponse> => {
+    const receipt = response.command_receipt
+    if (receipt.status !== "pending" && receipt.status !== "outcome_unknown") return response
+    return options.client.getCommandReceipt(command.command_id, {
+      operation,
+      idempotency_key: command.idempotency_key,
+      digest_algorithm: command.digest_algorithm,
+      request_digest: command.request_digest,
+    })
+  }
+
+  const pendingFailure = (
+    response: SessionCommandResponse,
+    pendingCode: StableCode,
+  ): ReferenceChatFailure | null => {
+    const receipt = response.command_receipt
+    if (receipt.status === "pending" || receipt.status === "outcome_unknown") {
+      return describeSessionFailure({
+        stableCode: pendingCode,
+        action: receipt.payload.action,
+        retryClass: receipt.payload.retry_class,
+      })
+    }
+    return deniedFailure(response)
+  }
+
+  const create = async (): Promise<string | null> => {
+    const projectRef = options.defaultProjectRef
+    if (projectRef === null) {
+      fail(describeSessionFailure({ stableCode: "SESSION_SCOPE_MISMATCH", action: "stop", retryClass: "never" }))
+      return null
+    }
+    const effect = { project_ref: projectRef }
+    project({ type: "command", state: "pending" })
+    try {
+      const command = await commandIdentity(effect)
+      const response = await reconcileReceipt(
+        await options.client.createSession({ command, ...effect }),
+        command,
+        "create_session",
+      )
+      const failure = pendingFailure(response, "INTERNAL_UNAVAILABLE")
+      if (failure !== null) {
+        fail(failure)
+        return null
+      }
+      const receipt = response.command_receipt
+      if (
+        (receipt.status !== "accepted" && receipt.status !== "applied") ||
+        receipt.payload.kind !== "session-created"
+      ) {
+        fail(describeSessionFailure({ stableCode: "INTERNAL_UNAVAILABLE", action: "reconcile_receipt", retryClass: "reconcile_receipt" }))
+        return null
+      }
+      project({ type: "command", state: "idle" })
+      const sessionId = receipt.payload.payload.session_id
+      await open(sessionId)
+      return sessionId
+    } catch (error) {
+      fail(failureFromError(error))
+      return null
+    }
+  }
+
   const submit = async (content: string): Promise<void> => {
     const snapshot = state.snapshot
     const sessionId = state.sessionId
     const text = content.trim()
     if (snapshot === null || sessionId === null || text.length === 0) return
-    const model = snapshot.model_history.at(-1)
-    if (model === undefined) {
+    const modelOptionRevisionRef = state.selectedModelOptionRevisionRef
+    if (modelOptionRevisionRef === null) {
       fail(describeSessionFailure({
         stableCode: "MODEL_OPTION_UNAVAILABLE",
         action: "choose_model",
@@ -312,7 +439,7 @@ export function createReferenceChatController(options: {
       trusted_locale: options.trustedLocale,
       parts: [{ schema_version: 1 as const, kind: "text" as const, payload: { text } }],
       attachment_refs: [],
-      model_option_revision_ref: model.model_option_revision_ref,
+      model_option_revision_ref: modelOptionRevisionRef,
     }
     project({ type: "command", state: "pending" })
     try {
@@ -364,15 +491,100 @@ export function createReferenceChatController(options: {
     }
   }
 
+  const decideAction: ReferenceChatController["decideAction"] = async ({ runId, part, decision }) => {
+    const snapshot = state.snapshot
+    const sessionId = state.sessionId
+    const runVersion = runProjectionVersions.get(runId)
+    if (
+      snapshot === null || sessionId === null || runVersion === undefined ||
+      part.status !== "pending" || !part.allowedActions.includes(decision.kind) ||
+      part.deadline !== undefined && Date.parse(part.deadline) <= Date.now()
+    ) {
+      fail(describeSessionFailure({ stableCode: "ACTION_NOT_ALLOWED", action: "refetch_snapshot", retryClass: "after_user_action" }))
+      return
+    }
+    const effect = {
+      expected_session_version: snapshot.session.version,
+      expected_run_projection_version: runVersion,
+      owner_kind: part.kind,
+      owner_ref: part.ownerRef,
+      decision_group_ref: part.decisionGroupRef,
+      expected_owner_version: part.expectedVersion,
+      decision,
+    }
+    project({ type: "command", state: "pending" })
+    try {
+      const command = await commandIdentity(effect)
+      const response = await reconcileReceipt(await options.client.decideAction(sessionId, runId, {
+        command,
+        ...effect,
+      }), command, "decide_action")
+      const failure = pendingFailure(response, "ACTION_DECISION_PENDING")
+      if (failure !== null) return fail(failure)
+      project({ type: "command", state: "idle" })
+      await refresh()
+    } catch (error) {
+      fail(failureFromError(error))
+    }
+  }
+
+  const decidePlan: ReferenceChatController["decidePlan"] = async ({ runId, part, decision }) => {
+    const snapshot = state.snapshot
+    const sessionId = state.sessionId
+    const runVersion = runProjectionVersions.get(runId)
+    if (
+      snapshot === null || sessionId === null || runVersion === undefined ||
+      part.status !== "pending" || !part.allowedActions.includes(decision.kind) ||
+      part.deadline !== undefined && Date.parse(part.deadline) <= Date.now()
+    ) {
+      fail(describeSessionFailure({ stableCode: "PLAN_NOT_FOUND", action: "refetch_snapshot", retryClass: "after_user_action" }))
+      return
+    }
+    const effect = {
+      expected_session_version: snapshot.session.version,
+      expected_run_projection_version: runVersion,
+      plan_proposal_ref: part.planProposalRef,
+      expected_plan_version: part.planVersion,
+      decision,
+    }
+    project({ type: "command", state: "pending" })
+    try {
+      const command = await commandIdentity(effect)
+      const response = await reconcileReceipt(await options.client.decidePlan(sessionId, runId, {
+        command,
+        ...effect,
+      }), command, "decide_plan")
+      const failure = pendingFailure(response, "PLAN_DECISION_PENDING")
+      if (failure !== null) return fail(failure)
+      project({ type: "command", state: "idle" })
+      await refresh()
+    } catch (error) {
+      fail(failureFromError(error))
+    }
+  }
+
   return Object.freeze({
     getSnapshot: () => state,
     subscribe(listener) {
       listeners.add(listener)
       return () => listeners.delete(listener)
     },
+    create,
     open,
     submit,
     cancel,
+    selectModelOption(modelOptionRevisionRef) {
+      const selectable = options.chatCatalog?.options.some(
+        (option) => option.modelOptionRevisionRef === modelOptionRevisionRef && option.availability === "available",
+      ) === true
+      if (!selectable) {
+        fail(describeSessionFailure({ stableCode: "MODEL_OPTION_UNAVAILABLE", action: "choose_model", retryClass: "after_user_action" }))
+        return
+      }
+      publish({ ...state, selectedModelOptionRevisionRef: modelOptionRevisionRef, failure: null })
+    },
+    decideAction,
+    decidePlan,
     close() {
       generation += 1
       stream?.close()

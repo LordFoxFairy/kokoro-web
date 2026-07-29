@@ -36,6 +36,14 @@ export type ChatPart = ChatPartBase & (
       readonly kind: "approval" | "interaction"
       readonly ownerRef: string
       readonly expectedVersion: number
+      readonly decisionGroupRef: string
+      readonly requiredOwnerRefs: readonly string[]
+      readonly title: string
+      readonly description: string
+      readonly riskSummary?: string
+      readonly safeRequestSummary?: Readonly<Record<string, unknown>>
+      readonly inputSchemaRef?: string
+      readonly safeInputSchema?: Readonly<Record<string, unknown>>
       readonly deadline?: string
       readonly allowedActions: readonly string[]
       readonly receiptRef?: string
@@ -44,7 +52,13 @@ export type ChatPart = ChatPartBase & (
   | {
       readonly kind: "plan"
       readonly planProposalRef: string
+      readonly planVersion: number
+      readonly summary: string
       readonly steps: readonly { readonly stepRef: string; readonly label: string; readonly status: string }[]
+      readonly allowedActions: readonly string[]
+      readonly deadline?: string
+      readonly receiptRef?: string
+      readonly status: string
     }
   | {
       readonly kind: "job" | "artifact"
@@ -187,8 +201,16 @@ function projectPart(part: MessagePartEnvelope): ChatPart {
         kind: part.kind,
         ownerRef: part.payload.owner_ref,
         expectedVersion: part.payload.expected_version,
+        decisionGroupRef: part.payload.decision_group_ref,
+        requiredOwnerRefs: part.payload.required_owner_refs,
+        title: part.payload.title,
+        description: part.payload.description,
         allowedActions: part.payload.allowed_actions,
         status: part.payload.status,
+        ...(part.payload.risk_summary === undefined ? {} : { riskSummary: part.payload.risk_summary }),
+        ...(part.payload.safe_request_summary === undefined ? {} : { safeRequestSummary: part.payload.safe_request_summary }),
+        ...(part.payload.input_schema_ref === undefined ? {} : { inputSchemaRef: part.payload.input_schema_ref }),
+        ...(part.payload.safe_input_schema === undefined ? {} : { safeInputSchema: part.payload.safe_input_schema }),
         ...(part.payload.deadline === undefined ? {} : { deadline: part.payload.deadline }),
         ...(part.payload.receipt_ref === undefined ? {} : { receiptRef: part.payload.receipt_ref }),
       }
@@ -197,7 +219,13 @@ function projectPart(part: MessagePartEnvelope): ChatPart {
         ...base,
         kind: "plan",
         planProposalRef: part.payload.plan_proposal_ref,
+        planVersion: part.payload.plan_version,
+        summary: part.payload.summary,
         steps: part.payload.steps.map((step) => ({ stepRef: step.step_ref, label: step.label, status: step.status })),
+        allowedActions: part.payload.allowed_actions,
+        status: part.payload.status,
+        ...(part.payload.deadline === undefined ? {} : { deadline: part.payload.deadline }),
+        ...(part.payload.receipt_ref === undefined ? {} : { receiptRef: part.payload.receipt_ref }),
       }
     case "job":
     case "artifact":
