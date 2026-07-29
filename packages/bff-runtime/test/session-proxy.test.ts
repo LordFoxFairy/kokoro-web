@@ -165,7 +165,27 @@ describe("Session proxy", () => {
     });
     expect(response.status).toBe(400);
     expect(response.headers.has("set-cookie")).toBe(false);
+    expect(response.headers.get("content-type")).toBe("application/problem+json; charset=utf-8");
     expect(await response.json()).toEqual({ code: "CURSOR_INVALID" });
+  });
+
+  it("rejects browser credential authority before route parsing", async () => {
+    const execute = vi.fn<SessionProxyTransportPort["execute"]>();
+    const proxy = createSessionProxy({
+      bootstrap,
+      access,
+      transport: { execute },
+      browserRequestVerifier: verifier,
+    });
+    await expect(proxy.execute({
+      route,
+      browser: {
+        method: "GET",
+        pathParameters: { sessionRef: "session-123" },
+        query: { credential: "browser-owned-secret" },
+      },
+    })).rejects.toEqual(new SessionProxyError("BROWSER_AUTHORITY_FORBIDDEN"));
+    expect(execute).not.toHaveBeenCalled();
   });
 
   it("cancels a response whose authenticated deployment binding differs", async () => {

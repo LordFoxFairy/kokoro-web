@@ -52,3 +52,17 @@ export type {
   SessionSseFrameValidator,
   SessionUpstreamResponse,
 } from "./session-proxy.js";
+export {
+  createSessionBrowserV3Proxy,
+  createSessionBrowserV3SseFrameValidator,
+  createSessionBrowserV3Transport,
+  SESSION_BROWSER_V3_OPERATION_IDS,
+  SESSION_BROWSER_V3_ROUTES,
+} from "./session-browser-v3.js";
+export type {
+  AuthenticatedSessionBrowserV3HttpPort,
+  AuthenticatedSessionBrowserV3HttpResponse,
+  SessionBrowserV3HttpRequest,
+  SessionBrowserV3OperationId,
+  SessionBrowserV3OperationInput,
+} from "./session-browser-v3.js";

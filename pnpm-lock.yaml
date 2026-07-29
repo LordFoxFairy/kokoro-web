@@ -241,6 +241,9 @@ importers:
 
   packages/bff-runtime:
     dependencies:
+      '@kokoro/session-client':
+        specifier: workspace:*
+        version: link:../session-client
       server-only:
         specifier: 0.0.1
         version: 0.0.1

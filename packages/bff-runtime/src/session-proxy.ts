@@ -8,8 +8,16 @@ import {
 const AUTHORITY_KEYS = new Set([
   "authorization",
   "bearer",
+  "credential",
+  "deploymentref",
+  "grant",
+  "grantref",
+  "identitysessionref",
   "namespace",
+  "policyepoch",
+  "productcontextref",
   "rawsessionbearer",
+  "revocationepoch",
   "sessionaccessgrant",
   "siteid",
   "siteref",
@@ -17,6 +25,8 @@ const AUTHORITY_KEYS = new Set([
   "subjectgeneration",
   "workloadcredential",
 ]);
+
+export type SessionProxyMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
 const UPSTREAM_REQUEST_HEADERS = new Set([
   "accept",
@@ -79,7 +89,7 @@ export interface BrowserRequestVerificationPort {
   /** Must verify origin/fetch metadata and CSRF for every mutation before any grant is acquired. */
   verify(input: {
     readonly operationId: string;
-    readonly method: "GET" | "POST" | "PATCH" | "DELETE";
+    readonly method: SessionProxyMethod;
     readonly headers: Readonly<Record<string, string>>;
   }): Promise<void> | void;
 }
@@ -167,7 +177,7 @@ export type SessionResponseContract =
 
 export interface SessionProxyRoute<Input = unknown> {
   readonly operationId: string;
-  readonly method: "GET" | "POST" | "PATCH" | "DELETE";
+  readonly method: SessionProxyMethod;
   readonly purpose: SessionPurpose;
   readonly replaySafety: "idempotent" | "unsafe";
   /** Exact generated status-to-schema/stream mapping, including JSON problem responses for SSE operations. */
@@ -437,7 +447,7 @@ function assertRouteDefinition(route: SessionProxyRoute): void {
   if (
     route.operationId.trim().length === 0 ||
     route.operationId.length > 128 ||
-    !["GET", "POST", "PATCH", "DELETE"].includes(route.method) ||
+    !["GET", "POST", "PUT", "PATCH", "DELETE"].includes(route.method) ||
     !["read", "write", "control", "stream"].includes(route.purpose) ||
     !["idempotent", "unsafe"].includes(route.replaySafety) ||
     entries.length === 0 ||
@@ -618,7 +628,7 @@ export function createSessionProxy(input: {
         responseHeaders.delete("etag");
         responseHeaders.delete("last-modified");
         responseHeaders.set("cache-control", "no-store");
-        responseHeaders.set("content-type", "application/json; charset=utf-8");
+        responseHeaders.set("content-type", `${contract.contentTypes[0]}; charset=utf-8`);
         return new Response(json, { status: result.response.status, headers: responseHeaders });
       }
       responseHeaders.set("cache-control", "no-store");

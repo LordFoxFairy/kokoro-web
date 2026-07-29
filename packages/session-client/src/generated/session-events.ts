@@ -2,6 +2,13 @@
 // Regenerate: python3 contract/generate.py
 
 import { z } from "zod"
+import { sessionMetadataSchema, conversationBranchSchema, messageRecordSchema, messagePartEnvelopeSchema, runLaunchProjectionSchema, runViewSchema, controlProjectionSchema, runCostProjectionSchema, commandReceiptViewSchema } from "./http"
+
+export const sessionEventContractMetadata = Object.freeze({
+  schemaId: "kokoro.session.events.v3",
+  schemaVersion: 3,
+  sourceDigestSha256: "1d570e839677c52d7b769dd321170edc84aa79eaded03ecfecbfe9fd41293cb2",
+})
 
 const todoSchema = z
   .object({
@@ -25,242 +32,92 @@ const riskSchema = z
   })
   .strict()
 
-const sessionCreatedPayload = z
+const sessionUpdatedPayload = z
   .object({
-    title: z.string().min(1),
-    owner_id: z.string().min(1),
+    session: sessionMetadataSchema,
   })
   .strict()
 
-const runCreatedPayload = z
+const branchCreatedPayload = z
   .object({
-    run_id: z.string().min(1),
+    branch: conversationBranchSchema,
   })
   .strict()
 
-const messageUserPayload = z
+const branchActivatedPayload = z
   .object({
-    message_id: z.string().min(1),
-    content: z.string(),
+    branch_id: z.string().min(1),
+    active_leaf_message_id: z.string().min(1).optional(),
+    session_version: z.number().int().positive(),
   })
   .strict()
 
-const messageDeltaPayload = z
+const messageCreatedPayload = z
   .object({
-    segment_id: z.string().min(1),
-    // 流上文本恒为 assistant，无 role 字段；角色由 segment 归属决定。
-    delta: z.string(),
+    message: messageRecordSchema,
   })
   .strict()
 
-const messageCompletedPayload = z
+const messagePartUpdatedPayload = z
   .object({
-    segment_id: z.string().min(1),
-    content: z.string(),
+    part: messagePartEnvelopeSchema,
   })
   .strict()
 
-const thinkingDeltaPayload = z
+const runLaunchUpdatedPayload = z
   .object({
-    segment_id: z.string().min(1),
-    delta: z.string(),
+    launch: runLaunchProjectionSchema,
   })
   .strict()
 
-const toolInvokedPayload = z
+const runViewUpdatedPayload = z
   .object({
-    segment_id: z.string().min(1),
-    tool_id: z.string().min(1),
-    name: z.string().min(1),
-    args: z.record(z.string(), z.unknown()),
+    run: runViewSchema,
   })
   .strict()
 
-const toolOutputDeltaPayload = z
+const runControlUpdatedPayload = z
   .object({
-    segment_id: z.string().min(1),
-    tool_id: z.string().min(1),
-    name: z.string().min(1),
-    // 长执行工具的增量输出（如 execute）；每工具累计上限同 result 护栏，超限静默停发（终值仍走 tool.returned）。
-    delta: z.string(),
+    control: controlProjectionSchema,
   })
   .strict()
 
-const toolAwaitingApprovalPayload = z
+const runCostUpdatedPayload = z
   .object({
-    segment_id: z.string().min(1),
-    tool_id: z.string().min(1),
-    name: z.string().min(1),
-    args: z.record(z.string(), z.unknown()),
-    description: z.string(),
-    allowed_decisions: z.array(z.enum(["approve", "edit", "reject", "respond", "submit"])),
-    kind: z.enum(["tool_approval", "ask_user_question", "result_review", "input"]),
-    // 面向 web 的风险摘要，非权限判断真源。
-    risk: riskSchema.optional(),
-    editable: z.boolean(),
-    input_schema: z.record(z.string(), z.unknown()).optional(),
-    // 同帧完整待批 tool_id 列表；HITL『凑齐才提交』契约依据，web 读契约而非内嵌算法。
-    pending_tool_ids: z.array(z.string().min(1)),
-    // 仅 kind=result_review 时存在：待人工审核的已执行结果（payload 列表尾缀 ? = 该 kind 局部可选）。
-    result: z.string().optional(),
+    cost: runCostProjectionSchema,
   })
   .strict()
 
-const toolReturnedPayload = z
+const commandReceiptUpdatedPayload = z
   .object({
-    segment_id: z.string().min(1),
-    tool_id: z.string().min(1),
-    name: z.string().min(1),
-    result: z.string(),
-    // 严格必填 fail-loud：生产端始终发送；缺失即报错，绝不用默认 false 掩盖真失败。
-    is_error: z.boolean(),
-    // wire 展示层截断标记：缺席=结果完整，true=已截断（完整结果在工作区文件，预览经 files 端点取）。
-    truncated: z.boolean().optional(),
-    rejected: z.boolean().optional(),
-    reject_reason: z.string().optional(),
-    responded: z.boolean().optional(),
-    summary: z.record(z.string(), z.unknown()).optional(),
-  })
-  .strict()
-
-const deliveryCreatedPayload = z
-  .object({
-    path: z.string().min(1),
-    title: z.string().min(1),
-    mime: z.string().min(1),
-    size: z.number().int(),
-    // 成果冻结键：deliveries/<namespace>/<content_hash> 内容寻址,永不漂移；由 deliver 工具归档时计算,emitter 在 tool.returned 后追发本事件。
-    content_hash: z.string().min(1),
-    note: z.string().optional(),
-  })
-  .strict()
-
-const todoUpdatedPayload = z
-  .object({
-    todos: z.array(todoSchema),
-  })
-  .strict()
-
-const subagentStartedPayload = z
-  .object({
-    segment_id: z.string().min(1),
-    subagent_id: z.string().min(1),
-    name: z.string().min(1),
-    description: z.string(),
-    subagent_type: z.string().min(1),
-    source: z.enum(["built-in", "config-custom", "runtime-custom"]),
-  })
-  .strict()
-
-const subagentFinishedPayload = z
-  .object({
-    segment_id: z.string().min(1),
-    subagent_id: z.string().min(1),
-    name: z.string().min(1),
-    subagent_type: z.string().min(1),
-    source: z.enum(["built-in", "config-custom", "runtime-custom"]),
-    failed: z.boolean().optional(),
-    error: z.string().optional(),
-  })
-  .strict()
-
-const subagentThinkingDeltaPayload = z
-  .object({
-    segment_id: z.string().min(1),
-    subagent_id: z.string().min(1),
-    delta: z.string(),
-  })
-  .strict()
-
-const subagentTextDeltaPayload = z
-  .object({
-    segment_id: z.string().min(1),
-    subagent_id: z.string().min(1),
-    text: z.string(),
-  })
-  .strict()
-
-const subagentTextCompletedPayload = z
-  .object({
-    segment_id: z.string().min(1),
-    subagent_id: z.string().min(1),
-    text: z.string(),
-  })
-  .strict()
-
-const subagentToolInvokedPayload = z
-  .object({
-    segment_id: z.string().min(1),
-    subagent_id: z.string().min(1),
-    tool_id: z.string().min(1),
-    name: z.string().min(1),
-    // 子代理内工具过程可见性通道；HITL 审批仍走主通道嵌套帧，无输出增量通道（终值走 returned）。
-    args: z.record(z.string(), z.unknown()),
-  })
-  .strict()
-
-const subagentToolReturnedPayload = z
-  .object({
-    segment_id: z.string().min(1),
-    subagent_id: z.string().min(1),
-    tool_id: z.string().min(1),
-    name: z.string().min(1),
-    result: z.string(),
-    is_error: z.boolean(),
-    // 同 tool.returned.truncated：缺席=结果完整。
-    truncated: z.boolean().optional(),
-  })
-  .strict()
-
-const runCompletedPayload = z
-  .object({
-    status: z.enum(["completed", "cancelled"]),
-    // agent 认真算的用量全链路贯通；无用量时为 null。
-    token_usage: tokenUsageSchema.nullable().optional(),
-  })
-  .strict()
-
-const runFailedPayload = z
-  .object({
-    // 三层错误语义：code=稳定错误码（web 按码本地化的键，闭集枚举）；error_kind=诊断用异常类名（观测/排障，不作展示）；message=人读原文（未知码/未译码的兜底展示，绝不裸露 key）。
-    code: z.enum(["token_budget_exceeded", "recursion_limit_exceeded", "assembly_failed", "enqueue_failed", "dispatch_exhausted", "contract_incompatible", "internal_error"]),
-    error_kind: z.string().min(1),
-    message: z.string().min(1),
+    receipt: commandReceiptViewSchema,
   })
   .strict()
 
 const envelope = z
   .object({
     event_id: z.string().min(1),
-    seq: z.number().int().nonnegative(),
+    cursor: z.string().min(1),
     session_id: z.string().min(1),
-    run_id: z.string().min(1),
-    timestamp: z.string().min(1),
+    stream_epoch: z.string().min(1),
+    durable_seq: z.string().regex(/^[1-9][0-9]{0,19}$/u).refine((value) => BigInt(value) <= 18446744073709551615n),
+    projection_version: z.number().int().positive(),
+    schema_revision: z.number().int().positive(),
+    recorded_at: z.string().datetime({ offset: true }),
   })
   .strict()
 
 export const sessionEventSchema = z.discriminatedUnion("kind", [
-  envelope.extend({ kind: z.literal("session.created"), payload: sessionCreatedPayload }),
-  envelope.extend({ kind: z.literal("run.created"), payload: runCreatedPayload }),
-  envelope.extend({ kind: z.literal("message.user"), payload: messageUserPayload }),
-  envelope.extend({ kind: z.literal("message.delta"), payload: messageDeltaPayload }),
-  envelope.extend({ kind: z.literal("message.completed"), payload: messageCompletedPayload }),
-  envelope.extend({ kind: z.literal("thinking.delta"), payload: thinkingDeltaPayload }),
-  envelope.extend({ kind: z.literal("tool.invoked"), payload: toolInvokedPayload }),
-  envelope.extend({ kind: z.literal("tool.output.delta"), payload: toolOutputDeltaPayload }),
-  envelope.extend({ kind: z.literal("tool.awaiting_approval"), payload: toolAwaitingApprovalPayload }),
-  envelope.extend({ kind: z.literal("tool.returned"), payload: toolReturnedPayload }),
-  envelope.extend({ kind: z.literal("delivery.created"), payload: deliveryCreatedPayload }),
-  envelope.extend({ kind: z.literal("todo.updated"), payload: todoUpdatedPayload }),
-  envelope.extend({ kind: z.literal("subagent.started"), payload: subagentStartedPayload }),
-  envelope.extend({ kind: z.literal("subagent.finished"), payload: subagentFinishedPayload }),
-  envelope.extend({ kind: z.literal("subagent.thinking.delta"), payload: subagentThinkingDeltaPayload }),
-  envelope.extend({ kind: z.literal("subagent.text.delta"), payload: subagentTextDeltaPayload }),
-  envelope.extend({ kind: z.literal("subagent.text.completed"), payload: subagentTextCompletedPayload }),
-  envelope.extend({ kind: z.literal("subagent.tool.invoked"), payload: subagentToolInvokedPayload }),
-  envelope.extend({ kind: z.literal("subagent.tool.returned"), payload: subagentToolReturnedPayload }),
-  envelope.extend({ kind: z.literal("run.completed"), payload: runCompletedPayload }),
-  envelope.extend({ kind: z.literal("run.failed"), payload: runFailedPayload }),
+  envelope.extend({ kind: z.literal("session.updated"), payload: sessionUpdatedPayload }),
+  envelope.extend({ kind: z.literal("branch.created"), payload: branchCreatedPayload }),
+  envelope.extend({ kind: z.literal("branch.activated"), payload: branchActivatedPayload }),
+  envelope.extend({ kind: z.literal("message.created"), payload: messageCreatedPayload }),
+  envelope.extend({ kind: z.literal("message.part.updated"), payload: messagePartUpdatedPayload }),
+  envelope.extend({ kind: z.literal("run.launch.updated"), payload: runLaunchUpdatedPayload }),
+  envelope.extend({ kind: z.literal("run.view.updated"), payload: runViewUpdatedPayload }),
+  envelope.extend({ kind: z.literal("run.control.updated"), payload: runControlUpdatedPayload }),
+  envelope.extend({ kind: z.literal("run.cost.updated"), payload: runCostUpdatedPayload }),
+  envelope.extend({ kind: z.literal("command.receipt.updated"), payload: commandReceiptUpdatedPayload }),
 ])
 
 export type SessionEvent = z.infer<typeof sessionEventSchema>
@@ -268,4 +125,24 @@ export type SessionEventKind = SessionEvent["kind"]
 
 export function parseSessionEvent(input: unknown): SessionEvent {
   return sessionEventSchema.parse(input)
+}
+
+const streamDrainingControlFrameSchema = z
+  .object({
+    kind: z.literal("stream.draining"),
+    session_id: z.string().min(1),
+    stream_epoch: z.string().min(1),
+    last_durable_cursor: z.string().min(1),
+    action: z.literal("retry_same_cursor"),
+    retry_after_ms: z.number().int().nonnegative().optional(),
+  })
+  .strict()
+
+export const streamControlFrameSchema = streamDrainingControlFrameSchema
+export type StreamControlFrame = z.infer<typeof streamControlFrameSchema>
+export const sessionStreamFrameSchema = z.union([sessionEventSchema, streamControlFrameSchema])
+export type SessionStreamFrame = z.infer<typeof sessionStreamFrameSchema>
+
+export function parseSessionStreamFrame(input: unknown): SessionStreamFrame {
+  return sessionStreamFrameSchema.parse(input)
 }

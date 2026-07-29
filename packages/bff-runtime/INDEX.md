@@ -21,6 +21,8 @@ authority material to a browser.
 - `session-access.ts`: short-lived `session.read|write|control|stream` grant acquisition, validation, refresh, and single-flight cache.
 - `session-proxy.ts`: operation-bound proxy with browser authority rejection, request/response header allowlists, authenticated
   response binding checks, abort propagation, and pull-based SSE backpressure.
+- `session-browser-v3.ts`: exact Root-generated browser operation registry, path/query/body adapters, status-specific JSON/problem
+  validators, complete SSE frame validation, and authenticated transport binding returned out-of-band.
 - `index.ts`: the sole package export and a `server-only` guard. Site browser bundles must never import this package.
 
 ## Dependency direction
@@ -44,12 +46,6 @@ Root-generated Session browser v3 client by operation id; browser-provided arbit
 - The Session transport returns the full authenticated grant binding out-of-band; response headers are never trusted as tenant evidence.
 - JSON is bounded, decoded and validated before re-encoding. SSE adapters emit only complete validated frames, one downstream pull at a
   time, and abort upstream on disconnect/cancel. Credentials, cookies, internal headers and `Set-Cookie` are never proxied.
-
-## Remaining provider integration
-
-The owning generated mirrors must be refreshed from Root's expanded Platform Public contract, and Session browser v3 must provide the
-operation-bound HTTP/SSE adapter, validators and authenticated full-grant response metadata. This package does not claim those provider
-adapters already exist.
 
 ## Verification
 

@@ -48,11 +48,11 @@ Browsers call each app. User BFF calls Session HTTP/SSE; Admin server code calls
 - `apps/user` 上游 `kokoro-session`：契约类型在 `apps/user/src/contract/*`，由根仓 `contract/generate.py` 从
   `contract/spec/*.yaml` 生成，**勿手改**。
 - `packages/session-client/src/generated/*` 是新 Site Chat 的 Root 生成镜像；`packages/chat-surface` 只经该包消费
-  Session 契约，不跨仓导入 Session 源码。当前 legacy flat snapshot/numeric cursor 会 fail closed，等待 Wave 3
-  breaking browser contract 后才可进入 live BFF 接线。
+  Session 契约，不跨仓导入 Session 源码。Session browser v3 的完整 snapshot、opaque cursor、commands 与 SSE
+  schemas 已生成并由 client/BFF adapter 消费；browser 不接触 Session URL、Site 或授权材料。
 - `packages/bff-runtime` 是 brandless server-only trust kernel。它按 Root 的 ProductContext→PersonalContext→
-  SessionAccessGrant 三段权威面组合 bootstrap；生成镜像/Session browser v3 adapter 未接入前只允许窄 port，禁止手写
-  URL 或重复 wire contract。
+  SessionAccessGrant 三段权威面组合 bootstrap；Session browser v3 adapter 只从生成 registry 构造相对路径和 schema，
+  禁止手写 URL、浏览器提供 Site/凭据或重复 wire contract。
 - `apps/admin` 上游 `kokoro-platform`（platform-admin 网关）：`apps/admin/lib/generated/contracts/**` 是根仓 Buf
   契约的生成镜像，必须提交且禁止手改；当前仅覆盖 `kokoro/platform/admin/v1` admin-auth，其余跨仓调用不走此路径。
 
