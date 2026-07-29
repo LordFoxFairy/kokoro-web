@@ -2,6 +2,8 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import { bootstrapSiteRuntimeFromOpaqueSession, createOriginCsrfBrowserRequestVerifier, createSessionBrowserV3Proxy, createSessionBrowserV3Transport, loadSiteDeploymentBinding, ProductContextManager, SessionAccessManager, publicSiteBootstrap, } from "@kokoro/bff-runtime";
 import { createPlatformPublicClient, } from "@kokoro/site-client/server";
+export { createLaunchStateVault } from "./launch-state.js";
+export { createSiteLaunchApi, SITE_LAUNCH_STATE_COOKIE } from "./launch-api.js";
 export class SiteBffError extends Error {
     code;
     constructor(code) {
@@ -109,8 +111,94 @@ export function createSiteBffRuntime(input) {
             webArtifactDigest: input.binding.webArtifactDigest,
             publicOrigin,
         }),
+        bindingIdentity: Object.freeze({
+            siteProjectBindingRef: input.binding.siteProjectBindingRef,
+            siteReleaseRef: input.binding.siteReleaseRef,
+        }),
         issueBrowserCsrf: () => input.provider.issueBrowserCsrf(),
+        verifyBrowserMutation: (verification) => input.provider.verifyBrowserCsrf(verification),
+        createCommand: () => command(anonymousPlatform),
         createOneTimeCommand: () => oneTimeCommand(anonymousPlatform),
+        async publicCapabilities() {
+            const context = await productContexts.acquire();
+            return Object.freeze({
+                enabledSurfaceIds: Object.freeze([...context.enabledSurfaceIds]),
+                featurePolicyRevision: context.featurePolicyRevision,
+            });
+        },
+        register(registration, commandIdentity) {
+            return anonymousPlatform.execute({
+                operationId: "beginRegistration",
+                data: { body: {
+                        email: registration.email.trim().toLowerCase(),
+                        password: registration.password,
+                        legalAcceptanceRefs: [...registration.legalAcceptanceRefs],
+                    } },
+                command: commandIdentity,
+            });
+        },
+        resendVerification(email, commandIdentity) {
+            return anonymousPlatform.execute({
+                operationId: "resendEmailVerification",
+                data: { body: { email: email.trim().toLowerCase() } },
+                command: commandIdentity,
+            });
+        },
+        completeEmailVerification(verification, delivery) {
+            return anonymousPlatform.execute({
+                operationId: "completeEmailVerification",
+                data: { path: { id: verification.transactionRef }, body: { transactionSecret: verification.transactionSecret } },
+                command: delivery.command,
+            });
+        },
+        listSecuritySessions(authSession) {
+            return authenticatedClient(authSession).execute({ operationId: "listIdentitySessions", data: {} });
+        },
+        revokeSessions(authSession, revoke, commandIdentity) {
+            return authenticatedClient(authSession).execute({
+                operationId: "revokeIdentitySessions",
+                data: { body: revoke },
+                command: commandIdentity,
+            });
+        },
+        previewRedemption(authSession, code, commandIdentity) {
+            return authenticatedClient(authSession).execute({
+                operationId: "previewRedemption",
+                data: { body: { code } },
+                command: commandIdentity,
+            });
+        },
+        confirmRedemption(authSession, redemption, commandIdentity) {
+            return authenticatedClient(authSession).execute({
+                operationId: "confirmRedemption",
+                data: { body: {
+                        previewCredential: redemption.previewCredential,
+                        legalAcceptanceRefs: [...redemption.legalAcceptanceRefs],
+                    } },
+                command: commandIdentity,
+            });
+        },
+        recoverRedemption(authSession, idempotencyKey) {
+            return authenticatedClient(authSession).execute({
+                operationId: "recoverRedemptionCommand",
+                data: {},
+                idempotencyKey,
+            });
+        },
+        accountProducts(authSession) {
+            return authenticatedClient(authSession).execute({ operationId: "listAccountProducts", data: {} });
+        },
+        creditSummary(authSession) {
+            return authenticatedClient(authSession).execute({ operationId: "getCreditSummary", data: {} });
+        },
+        commandReceipt(authSession, commandId, receiptRecoveryCapability) {
+            const platform = authSession === null ? anonymousPlatform : authenticatedClient(authSession);
+            return platform.execute({
+                operationId: "getPublicCommandReceipt",
+                data: { path: { id: commandId } },
+                ...(receiptRecoveryCapability === undefined ? {} : { receiptRecoveryCapability }),
+            });
+        },
         async login(loginInput, delivery) {
             const response = await anonymousPlatform.execute({
                 operationId: "createIdentitySession",

@@ -18,10 +18,27 @@ import {
 } from "@kokoro/bff-runtime"
 import {
   createPlatformPublicClient,
+  type PublicCommandContext,
   type SecretPublicCommandContext,
   type PlatformPublicTransport,
 } from "@kokoro/site-client/server"
+import type {
+  AccountProductsResponse,
+  CommandReceiptResponse,
+  CreditSummaryResponse,
+  EmailVerificationTransactionResponse,
+  IdentitySessionList,
+  PublicCommandReceiptResponse,
+  RedemptionCommandResponse,
+  RedemptionPreviewResponse,
+  VerificationActivationResponse,
+} from "@kokoro/site-client"
 import type { NodeSiteRuntimeProvider } from "@kokoro/site-runtime-node"
+
+export { createLaunchStateVault } from "./launch-state.js"
+export type { LaunchCommandState, LaunchOperation, LaunchStateBinding, LaunchStateVault } from "./launch-state.js"
+export { createSiteLaunchApi, SITE_LAUNCH_STATE_COOKIE } from "./launch-api.js"
+export type { SiteLaunchApi } from "./launch-api.js"
 
 export class SiteBffError extends Error {
   constructor(readonly code: "CONFIG_INVALID" | "AUTH_REJECTED" | "AUTH_MFA_REQUIRED" | "AUTH_DELIVERY_UNAVAILABLE") {
@@ -54,6 +71,33 @@ export type SiteSessionRuntime = Readonly<{
   publicBootstrap: Readonly<PublicSiteBootstrap>
   proxy: ReturnType<typeof createSessionBrowserV3Proxy>
 }>
+
+export interface SiteBffRuntime {
+  readonly publicOrigin: string
+  readonly deploymentIdentity: Readonly<{ deploymentRef: string; webArtifactDigest: string; publicOrigin: string }>
+  readonly bindingIdentity: Readonly<{ siteProjectBindingRef: string; siteReleaseRef: string }>
+  issueBrowserCsrf(): string
+  verifyBrowserMutation(input: Readonly<{ operationId: string; token: string }>): boolean
+  createCommand(): PublicCommandContext
+  createOneTimeCommand(): SiteOneTimeCommand
+  publicCapabilities(): Promise<Readonly<{ enabledSurfaceIds: readonly string[]; featurePolicyRevision: string }>>
+  register(input: Readonly<{ email: string; password: string; legalAcceptanceRefs: readonly string[] }>, command: PublicCommandContext): Promise<EmailVerificationTransactionResponse>
+  resendVerification(email: string, command: PublicCommandContext): Promise<EmailVerificationTransactionResponse>
+  completeEmailVerification(input: Readonly<{ transactionRef: string; transactionSecret: string }>, delivery: SiteDeliveryAttempt): Promise<VerificationActivationResponse>
+  listSecuritySessions(auth: OpaqueAuthSession): Promise<IdentitySessionList>
+  revokeSessions(auth: OpaqueAuthSession, input: Readonly<{ target: "current" | "others" | "all" }>, command: PublicCommandContext): Promise<CommandReceiptResponse>
+  previewRedemption(auth: OpaqueAuthSession, code: string, command: PublicCommandContext): Promise<RedemptionPreviewResponse>
+  confirmRedemption(auth: OpaqueAuthSession, input: Readonly<{ previewCredential: string; legalAcceptanceRefs: readonly string[] }>, command: PublicCommandContext): Promise<RedemptionCommandResponse>
+  recoverRedemption(auth: OpaqueAuthSession, idempotencyKey: string): Promise<RedemptionCommandResponse>
+  accountProducts(auth: OpaqueAuthSession): Promise<AccountProductsResponse>
+  creditSummary(auth: OpaqueAuthSession): Promise<CreditSummaryResponse>
+  commandReceipt(auth: OpaqueAuthSession | null, commandId: string, receiptRecoveryCapability?: string): Promise<PublicCommandReceiptResponse>
+  login(input: Readonly<{ email: string; password: string }>, delivery: SiteDeliveryAttempt): Promise<SiteLoginResult>
+  completeMfa(input: Readonly<{ transactionRef: string; code: string }>, delivery: SiteDeliveryAttempt): Promise<SiteCredentialPair>
+  refresh(refreshCredential: string, delivery: SiteDeliveryAttempt): Promise<SiteCredentialPair>
+  revoke(auth: OpaqueAuthSession): Promise<void>
+  assemble(auth: OpaqueAuthSession): Promise<SiteSessionRuntime>
+}
 
 function required(env: NodeJS.ProcessEnv, name: string): string {
   const value = env[name]?.trim()
@@ -135,7 +179,7 @@ export function createSiteBffRuntime(input: Readonly<{
   binding: SiteDeploymentBinding
   publicOrigin: string
   provider: NodeSiteRuntimeProvider
-}>) {
+}>): SiteBffRuntime {
   const publicOrigin = fixedOrigin(input.publicOrigin)
   const anonymousPlatform = createPlatformPublicClient({
     transport: input.provider.platformTransport({ binding: input.binding }),
@@ -165,8 +209,109 @@ export function createSiteBffRuntime(input: Readonly<{
       webArtifactDigest: input.binding.webArtifactDigest,
       publicOrigin,
     }),
+    bindingIdentity: Object.freeze({
+      siteProjectBindingRef: input.binding.siteProjectBindingRef,
+      siteReleaseRef: input.binding.siteReleaseRef,
+    }),
     issueBrowserCsrf: () => input.provider.issueBrowserCsrf(),
+    verifyBrowserMutation: (verification: Readonly<{ operationId: string; token: string }>) =>
+      input.provider.verifyBrowserCsrf(verification),
+    createCommand: () => command(anonymousPlatform),
     createOneTimeCommand: () => oneTimeCommand(anonymousPlatform),
+    async publicCapabilities(): Promise<Readonly<{ enabledSurfaceIds: readonly string[]; featurePolicyRevision: string }>> {
+      const context = await productContexts.acquire()
+      return Object.freeze({
+        enabledSurfaceIds: Object.freeze([...context.enabledSurfaceIds]),
+        featurePolicyRevision: context.featurePolicyRevision,
+      })
+    },
+    register(
+      registration: Readonly<{ email: string; password: string; legalAcceptanceRefs: readonly string[] }>,
+      commandIdentity: ReturnType<typeof command>,
+    ) {
+      return anonymousPlatform.execute({
+        operationId: "beginRegistration",
+        data: { body: {
+          email: registration.email.trim().toLowerCase(),
+          password: registration.password,
+          legalAcceptanceRefs: [...registration.legalAcceptanceRefs],
+        } },
+        command: commandIdentity,
+      })
+    },
+    resendVerification(email: string, commandIdentity: ReturnType<typeof command>) {
+      return anonymousPlatform.execute({
+        operationId: "resendEmailVerification",
+        data: { body: { email: email.trim().toLowerCase() } },
+        command: commandIdentity,
+      })
+    },
+    completeEmailVerification(
+      verification: Readonly<{ transactionRef: string; transactionSecret: string }>,
+      delivery: SiteDeliveryAttempt,
+    ) {
+      return anonymousPlatform.execute({
+        operationId: "completeEmailVerification",
+        data: { path: { id: verification.transactionRef }, body: { transactionSecret: verification.transactionSecret } },
+        command: delivery.command,
+      })
+    },
+    listSecuritySessions(authSession: OpaqueAuthSession) {
+      return authenticatedClient(authSession).execute({ operationId: "listIdentitySessions", data: {} })
+    },
+    revokeSessions(
+      authSession: OpaqueAuthSession,
+      revoke: Readonly<{ target: "current" | "others" | "all" }>,
+      commandIdentity: ReturnType<typeof command>,
+    ) {
+      return authenticatedClient(authSession).execute({
+        operationId: "revokeIdentitySessions",
+        data: { body: revoke },
+        command: commandIdentity,
+      })
+    },
+    previewRedemption(authSession: OpaqueAuthSession, code: string, commandIdentity: ReturnType<typeof command>) {
+      return authenticatedClient(authSession).execute({
+        operationId: "previewRedemption",
+        data: { body: { code } },
+        command: commandIdentity,
+      })
+    },
+    confirmRedemption(
+      authSession: OpaqueAuthSession,
+      redemption: Readonly<{ previewCredential: string; legalAcceptanceRefs: readonly string[] }>,
+      commandIdentity: ReturnType<typeof command>,
+    ) {
+      return authenticatedClient(authSession).execute({
+        operationId: "confirmRedemption",
+        data: { body: {
+          previewCredential: redemption.previewCredential,
+          legalAcceptanceRefs: [...redemption.legalAcceptanceRefs],
+        } },
+        command: commandIdentity,
+      })
+    },
+    recoverRedemption(authSession: OpaqueAuthSession, idempotencyKey: string) {
+      return authenticatedClient(authSession).execute({
+        operationId: "recoverRedemptionCommand",
+        data: {},
+        idempotencyKey,
+      })
+    },
+    accountProducts(authSession: OpaqueAuthSession) {
+      return authenticatedClient(authSession).execute({ operationId: "listAccountProducts", data: {} })
+    },
+    creditSummary(authSession: OpaqueAuthSession) {
+      return authenticatedClient(authSession).execute({ operationId: "getCreditSummary", data: {} })
+    },
+    commandReceipt(authSession: OpaqueAuthSession | null, commandId: string, receiptRecoveryCapability?: string) {
+      const platform = authSession === null ? anonymousPlatform : authenticatedClient(authSession)
+      return platform.execute({
+        operationId: "getPublicCommandReceipt",
+        data: { path: { id: commandId } },
+        ...(receiptRecoveryCapability === undefined ? {} : { receiptRecoveryCapability }),
+      })
+    },
     async login(
       loginInput: Readonly<{ email: string; password: string }>,
       delivery: SiteDeliveryAttempt,
@@ -254,6 +399,5 @@ export function createSiteBffRuntime(input: Readonly<{
   })
 }
 
-export type SiteBffRuntime = ReturnType<typeof createSiteBffRuntime>
 export type { OpaqueAuthSession } from "@kokoro/bff-runtime"
 export type { PlatformPublicTransport }

@@ -24,7 +24,8 @@ async function createPackageArtifact(
     | "@kokoro/site-runtime-node"
     | "@kokoro/chat-surface"
     | "@kokoro/chat-app"
-    | "@kokoro/site-bff",
+    | "@kokoro/site-bff"
+    | "@kokoro/account-app",
 ) {
   const source = join(root, `${archiveName}-source`);
   await mkdir(join(source, "package"), { recursive: true });
@@ -55,6 +56,7 @@ describe("independent Site project scaffold", () => {
       await createPackageArtifact(root, "chat-surface", "@kokoro/chat-surface"),
       await createPackageArtifact(root, "chat-app", "@kokoro/chat-app"),
       await createPackageArtifact(root, "site-bff", "@kokoro/site-bff"),
+      await createPackageArtifact(root, "account-app", "@kokoro/account-app"),
     ] as const;
     const floor = {
       contract: "platform-public-v1" as const,

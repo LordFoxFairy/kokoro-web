@@ -14,6 +14,7 @@ const USER_API_ROUTES = new Set([
   "apps/user/src/app/api/auth/logout/route.ts",
   "apps/user/src/app/api/auth/magic-link/request/route.ts",
   "apps/user/src/app/api/auth/session-state/route.ts",
+  "apps/user/src/app/api/account/[action]/route.ts",
   USER_PLANS_ROUTE,
   "apps/user/src/app/api/dev/status/route.ts",
   "apps/user/src/app/api/hub/[...path]/route.ts",

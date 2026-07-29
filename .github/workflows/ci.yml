@@ -28,7 +28,7 @@ jobs:
       - name: test
         run: pnpm test
       - name: build user site
-        run: pnpm --filter @kokoro/web-user build
+        run: pnpm build
       - name: build admin console
         run: pnpm --filter @kokoro/admin-web build
         env:

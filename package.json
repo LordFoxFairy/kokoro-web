@@ -6,7 +6,7 @@
   "description": "Kokoro web monorepo：apps/user（面向用户）+ apps/admin（后台管理，后续迁入）+ packages/*（共享）。两 app 独立部署，共享层收敛。",
   "scripts": {
     "dev": "pnpm --filter @kokoro/web-user dev",
-    "build": "pnpm --filter @kokoro/web-user build",
+    "build": "pnpm --filter @kokoro/web-user... build",
     "start": "pnpm --filter @kokoro/web-user start",
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",

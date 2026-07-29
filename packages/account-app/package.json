@@ -1,0 +1,30 @@
+{
+  "name": "@kokoro/account-app",
+  "version": "0.1.0",
+  "description": "Brand-neutral Site account, security, redeem, entitlement and credit product UI.",
+  "type": "module",
+  "sideEffects": ["**/*.css"],
+  "engines": { "node": ">=24.0.0" },
+  "files": ["src"],
+  "exports": { ".": { "types": "./src/index.tsx", "development": "./src/index.tsx", "import": "./src/index.tsx" } },
+  "scripts": {
+    "build": "tsc --noEmit",
+    "prepack": "pnpm run build",
+    "lint": "eslint src",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests"
+  },
+  "publishConfig": { "access": "public", "provenance": true },
+  "peerDependencies": { "react": "^19.0.0", "react-dom": "^19.0.0" },
+  "devDependencies": {
+    "@eslint/js": "9.39.5",
+    "@types/react": "19.2.17",
+    "@types/react-dom": "19.2.3",
+    "eslint": "9.39.5",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.65.0",
+    "vitest": "4.1.10"
+  }
+}

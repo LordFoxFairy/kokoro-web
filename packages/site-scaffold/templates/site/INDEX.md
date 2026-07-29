@@ -14,6 +14,9 @@ This project contains the complete reusable product composition: Auth.js owns it
 ceremony; only opaque Platform session/refresh handles enter the server token; the browser receives neither handles nor identity
 authority. The BFF resolves Platform PersonalContext before issuing exact-purpose grants through the generated Session Browser v3
 registry. The shared brand-neutral Chat app is rendered only when Platform publishes both the Chat surface and its model catalog.
+The shared Account app renders registration, email verification, security sessions, Code redemption, entitlements and credits
+only for Platform-enabled Site surfaces. Registration additionally requires server-owned
+`KOKORO_SITE_REGISTRATION_LEGAL_REFS`; browser input cannot choose the legal authority.
 
 One-time login, MFA and refresh delivery is fail-safe: a generic upstream timeout retains the exact secret command identity for the
 next retry. Only Platform's typed `delivery_unavailable` result permits a new secret command bound to the prior command through the

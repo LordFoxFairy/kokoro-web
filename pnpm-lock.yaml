@@ -171,6 +171,9 @@ importers:
       '@ant-design/nextjs-registry':
         specifier: ^1.3.0
         version: 1.3.0(@ant-design/cssinjs@2.1.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(antd@6.5.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(next@16.2.12(@types/node@20.19.43)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@kokoro/account-app':
+        specifier: workspace:*
+        version: link:../../packages/account-app
       '@kokoro/bff-runtime':
         specifier: workspace:*
         version: link:../../packages/bff-runtime
@@ -186,6 +189,9 @@ importers:
       '@kokoro/session-client':
         specifier: workspace:*
         version: link:../../packages/session-client
+      '@kokoro/site-bff':
+        specifier: workspace:*
+        version: link:../../packages/site-bff
       '@kokoro/site-client':
         specifier: workspace:*
         version: link:../../packages/site-client
@@ -256,6 +262,36 @@ importers:
       vitest:
         specifier: 4.1.10
         version: 4.1.10(@types/node@20.19.43)(jsdom@29.1.1)(vite@8.1.3(@types/node@20.19.43)(jiti@2.7.0))
+
+  packages/account-app:
+    devDependencies:
+      '@eslint/js':
+        specifier: 9.39.5
+        version: 9.39.5
+      '@types/react':
+        specifier: 19.2.17
+        version: 19.2.17
+      '@types/react-dom':
+        specifier: 19.2.3
+        version: 19.2.3(@types/react@19.2.17)
+      eslint:
+        specifier: 9.39.5
+        version: 9.39.5(jiti@2.7.0)
+      react:
+        specifier: 19.2.8
+        version: 19.2.8
+      react-dom:
+        specifier: 19.2.8
+        version: 19.2.8(react@19.2.8)
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+      typescript-eslint:
+        specifier: 8.65.0
+        version: 8.65.0(eslint@9.39.5(jiti@2.7.0))(typescript@5.9.3)
+      vitest:
+        specifier: 4.1.10
+        version: 4.1.10(@types/node@24.13.3)(jsdom@29.1.1)(vite@8.1.3(@types/node@24.13.3)(jiti@2.7.0))
 
   packages/bff-runtime:
     dependencies:

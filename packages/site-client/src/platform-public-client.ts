@@ -192,6 +192,8 @@ export function createPlatformPublicClient(options: PlatformPublicClientOptions)
     readonly operationId: Operation;
     readonly data: PlatformPublicOperationInput<Operation>;
     readonly command?: PublicCommandContext | SecretPublicCommandContext;
+    /** Exact reconciliation key for read-only recovery operations that require Idempotency-Key. */
+    readonly idempotencyKey?: string;
     /** Used only for the capability alternative on anonymous receipt lookup. */
     readonly receiptRecoveryCapability?: string;
   }): Promise<PlatformPublicOperationResponseMap[Operation]> {
@@ -199,6 +201,7 @@ export function createPlatformPublicClient(options: PlatformPublicClientOptions)
     assertDataShape(input.operationId, input.data);
     const headers: Record<string, string> = {
       "Kokoro-Contract-Version": PLATFORM_PUBLIC_CONTRACT_METADATA.contractVersion,
+      ...(input.idempotencyKey === undefined ? {} : { "Idempotency-Key": input.idempotencyKey }),
     };
     if (definition.mutation) {
       headers["X-CSRF-Token"] = options.csrfToken();

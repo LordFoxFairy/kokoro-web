@@ -33,6 +33,10 @@
     "@kokoro/site-bff": {
       "version": __SITE_BFF_VERSION_JSON__,
       "sha256": __SITE_BFF_SHA256_JSON__
+    },
+    "@kokoro/account-app": {
+      "version": __ACCOUNT_APP_VERSION_JSON__,
+      "sha256": __ACCOUNT_APP_SHA256_JSON__
     }
   }
 }
