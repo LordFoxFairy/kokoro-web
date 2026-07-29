@@ -1,9 +1,12 @@
 "use client"
 
 import { createSessionClient } from "@kokoro/session-client"
-import type { ChatPart } from "@kokoro/chat-surface"
+import type { ChatPart, ChatProjectionMessage } from "@kokoro/chat-surface"
+import ReactMarkdown from "react-markdown"
+import remarkGfm from "remark-gfm"
 import {
   type FormEvent,
+  type KeyboardEvent,
   useEffect,
   useMemo,
   useState,
@@ -12,11 +15,12 @@ import {
 
 import { createBrowserSessionTransport } from "./browser-session-transport"
 import {
-  createReferenceChatController,
-  type ReferenceModelOptionCatalog,
-  type ReferenceChatController,
-  type ReferenceChatState,
+  createChatController,
+  type ChatController,
+  type ChatState,
+  type ModelOptionCatalog,
 } from "./chat-controller"
+import { resolveChatCopy, type ChatProductCopy } from "./chat-copy"
 import { createReferenceSessionOrganizer } from "./session-organizer"
 import { ReferenceSessionRail } from "./session-rail"
 import styles from "./chat-product.module.css"
@@ -47,11 +51,12 @@ function record(value: unknown): Readonly<Record<string, unknown>> | null {
 function safeOptions(value: unknown): readonly Readonly<{ id: string; label: string }>[] | null {
   if (!Array.isArray(value) || value.length === 0 || value.length > 64) return null
   const options = value.map((raw) => {
-    if (typeof raw === "string" && raw.length > 0) return { id: raw, label: raw }
+    if (typeof raw === "string" && raw.length > 0 && raw.length <= 256) return { id: raw, label: raw }
     const item = record(raw)
     const id = item?.id
     const label = item?.label
-    return typeof id === "string" && id.length > 0 && typeof label === "string" && label.length > 0
+    return typeof id === "string" && id.length > 0 && id.length <= 256 &&
+      typeof label === "string" && label.length > 0 && label.length <= 256
       ? { id, label }
       : null
   })
@@ -68,8 +73,7 @@ function safeInteractionSchema(value: Readonly<Record<string, unknown>> | undefi
   if (kind === "selection" || enumOptions !== null || type === "array") {
     const items = record(value.items)
     const options = enumOptions ?? safeOptions(items?.enum)
-    if (options === null) return null
-    return { kind: "selection", multiple: value.multiple === true || type === "array", options }
+    return options === null ? null : { kind: "selection", multiple: value.multiple === true || type === "array", options }
   }
   if (kind === "text" || type === "string") {
     const requestedMax = typeof value.maxLength === "number" && Number.isInteger(value.maxLength)
@@ -80,12 +84,14 @@ function safeInteractionSchema(value: Readonly<Record<string, unknown>> | undefi
   if (kind !== "form" && type !== "object") return null
   const properties = record(value.properties ?? value.fields)
   if (properties === null) return null
-  const required = new Set(Array.isArray(value.required) ? value.required.filter((item): item is string => typeof item === "string") : [])
+  const required = new Set(Array.isArray(value.required)
+    ? value.required.filter((item): item is string => typeof item === "string")
+    : [])
   const fields: SafeFormField[] = []
   for (const [name, rawField] of Object.entries(properties)) {
     const field = record(rawField)
-    if (field === null || fields.length >= 64) return null
-    const label = typeof field.title === "string" && field.title.length > 0 ? field.title : name
+    if (field === null || fields.length >= 64 || name.length > 128) return null
+    const label = typeof field.title === "string" && field.title.length > 0 && field.title.length <= 256 ? field.title : name
     const options = safeOptions(field.options ?? field.enum) ?? []
     const fieldType = options.length > 0
       ? "selection" as const
@@ -102,11 +108,67 @@ function safeInteractionSchema(value: Readonly<Record<string, unknown>> | undefi
   return fields.length > 0 ? { kind: "form", fields } : null
 }
 
+function safeHref(value: string | undefined): string | null {
+  if (value === undefined || value.length > 4096) return null
+  try {
+    const parsed = new URL(value)
+    return parsed.protocol === "https:" && parsed.username === "" && parsed.password === "" ? parsed.href : null
+  } catch {
+    return null
+  }
+}
+
+function MarkdownText(props: Readonly<{ text: string }>) {
+  return (
+    <div className={styles.markdown}>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          a: ({ href, children }) => {
+            const safe = safeHref(href)
+            return safe === null ? <span>{children}</span> : <a href={safe} rel="noreferrer noopener" target="_blank">{children}</a>
+          },
+        }}
+      >{props.text}</ReactMarkdown>
+    </div>
+  )
+}
+
+function scalarSummary(metadata: Readonly<Record<string, unknown>>): readonly Readonly<{ label: string; value: string }>[] {
+  const labels: Readonly<Record<string, string>> = {
+    title: "Title",
+    label: "Label",
+    summary: "Summary",
+    stage: "Stage",
+    format: "Format",
+    duration: "Duration",
+  }
+  return Object.entries(labels).flatMap(([key, label]) => {
+    const value = metadata[key]
+    return typeof value === "string" && value.length > 0 && value.length <= 512
+      ? [{ label, value }]
+      : []
+  })
+}
+
+function progressValue(metadata: Readonly<Record<string, unknown>>): number | null {
+  const candidate = metadata.progress ?? metadata.progress_percent
+  if (typeof candidate !== "number" || !Number.isFinite(candidate)) return null
+  return Math.max(0, Math.min(100, candidate <= 1 ? candidate * 100 : candidate))
+}
+
+function SafeSummary(props: Readonly<{ metadata: Readonly<Record<string, unknown>> }>) {
+  const rows = scalarSummary(props.metadata)
+  if (rows.length === 0) return null
+  return <dl className={styles.summaryList}>{rows.map(({ label, value }) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
+}
+
 function ActionPartCard(props: {
   readonly part: Extract<ChatPart, { kind: "approval" | "interaction" }>
   readonly runId: string | null
-  readonly controller: ReferenceChatController
+  readonly controller: ChatController
   readonly disabled: boolean
+  readonly copy: ChatProductCopy
 }) {
   const [acknowledgedRisk, setAcknowledgedRisk] = useState(false)
   const [response, setResponse] = useState("")
@@ -131,165 +193,58 @@ function ActionPartCard(props: {
     const value = formValues[field.name]
     return field.type === "number" && value !== undefined && value !== "" && !Number.isFinite(Number(value))
   })
+
+  const decide = (decision: Parameters<ChatController["decideAction"]>[0]["decision"]): void => {
+    if (props.runId !== null) void props.controller.decideAction({ runId: props.runId, part: props.part, decision })
+  }
   const respond = (): void => {
-    if (props.runId === null || props.part.inputSchemaRef === undefined || schema === null) return
-    const formFields: Record<string, unknown> = {}
+    if (props.part.inputSchemaRef === undefined || schema === null) return
+    const fields: Record<string, unknown> = {}
     if (schema.kind === "form") {
       for (const field of schema.fields) {
         const value = formValues[field.name]
         if (value === undefined || value === "") continue
-        if (field.type !== "number") {
-          formFields[field.name] = value
-          continue
-        }
-        const numeric = Number(value)
-        if (Number.isFinite(numeric)) formFields[field.name] = numeric
+        fields[field.name] = field.type === "number" ? Number(value) : value
       }
     }
     const interactionResponse = schema.kind === "text"
       ? { kind: "text" as const, payload: { text: response.trim() } }
       : schema.kind === "selection"
         ? { kind: "selection" as const, payload: { selected_option_ids: [...selectedOptionIds] } }
-        : {
-            kind: "form" as const,
-            payload: { fields: formFields },
-          }
-    void props.controller.decideAction({
-      runId: props.runId,
-      part: props.part,
-      decision: { kind: "respond", payload: { input_schema_ref: props.part.inputSchemaRef, response: interactionResponse } },
-    })
+        : { kind: "form" as const, payload: { fields } }
+    decide({ kind: "respond", payload: { input_schema_ref: props.part.inputSchemaRef, response: interactionResponse } })
   }
   const edit = (): void => {
-    if (props.runId === null || props.part.inputSchemaRef === undefined) return
+    if (props.part.inputSchemaRef === undefined) return
     try {
-      const parsed = JSON.parse(editedInput) as unknown
-      const edited = record(parsed)
-      if (edited === null) throw new Error("Edited input must be a JSON object.")
+      const edited = record(JSON.parse(editedInput) as unknown)
+      if (edited === null) throw new Error("Edited input must be an object.")
       setEditError(null)
-      void props.controller.decideAction({
-        runId: props.runId,
-        part: props.part,
-        decision: { kind: "edit", payload: { input_schema_ref: props.part.inputSchemaRef, edited_input: { ...edited } } },
-      })
+      decide({ kind: "edit", payload: { input_schema_ref: props.part.inputSchemaRef, edited_input: edited } })
     } catch (error) {
-      setEditError(error instanceof Error ? error.message : "Edited input is not valid JSON.")
+      setEditError(error instanceof Error ? error.message : "Edited input is invalid.")
     }
   }
+
   return (
-    <aside className={styles.hitlCard}>
-      <div className={styles.partTitle}>
-        <strong>{props.part.title}</strong><span>{props.part.status}</span>
-      </div>
+    <aside className={styles.controlCard} aria-label={props.part.title}>
+      <div className={styles.cardHeading}><span className={styles.controlDot} aria-hidden /><strong>{props.part.title}</strong><span>{props.part.status}</span></div>
       <p>{props.part.description}</p>
-      {props.part.riskSummary ? <p><strong>Risk:</strong> {props.part.riskSummary}</p> : null}
-      {props.part.safeRequestSummary ? <pre>{JSON.stringify(props.part.safeRequestSummary, null, 2)}</pre> : null}
-      {props.part.kind === "approval" && props.part.allowedActions.includes("approve") ? (
-        <label>
-          <input
-            checked={acknowledgedRisk}
-            onChange={(event) => setAcknowledgedRisk(event.target.checked)}
-            type="checkbox"
-          /> I understand and accept the stated risk
-        </label>
-      ) : null}
-      {props.part.allowedActions.includes("edit") && props.part.inputSchemaRef ? (
-        <label className={styles.fieldStack}>
-          <span>Edited request (JSON object)</span>
-          <textarea aria-label={`Edited input for ${props.part.title}`} onChange={(event) => setEditedInput(event.target.value)} rows={5} value={editedInput} />
-        </label>
-      ) : null}
-      {editError ? <p role="alert">{editError}</p> : null}
-      {props.part.kind === "interaction" && props.part.allowedActions.includes("respond") && props.part.inputSchemaRef && schema?.kind === "text" ? (
-        <textarea
-          aria-label={`Response for ${props.part.title}`}
-          maxLength={schema.maxLength}
-          onChange={(event) => setResponse(event.target.value)}
-          rows={3}
-          value={response}
-        />
-      ) : null}
-      {props.part.kind === "interaction" && props.part.allowedActions.includes("respond") && props.part.inputSchemaRef && schema?.kind === "selection" ? (
-        <fieldset className={styles.fieldStack}>
-          <legend>Choose {schema.multiple ? "one or more options" : "one option"}</legend>
-          {schema.options.map((option) => <label key={option.id}>
-            <input
-              checked={selectedOptionIds.includes(option.id)}
-              name={`interaction-${props.part.id}`}
-              onChange={(event) => setSelectedOptionIds(event.target.checked
-                ? schema.multiple ? [...selectedOptionIds, option.id] : [option.id]
-                : selectedOptionIds.filter((id) => id !== option.id))}
-              type={schema.multiple ? "checkbox" : "radio"}
-            /> {option.label}
-          </label>)}
-        </fieldset>
-      ) : null}
-      {props.part.kind === "interaction" && props.part.allowedActions.includes("respond") && props.part.inputSchemaRef && schema?.kind === "form" ? (
-        <fieldset className={styles.fieldStack}>
-          <legend>Requested information</legend>
-          {schema.fields.map((field) => <label key={field.name}>
-            <span>{field.label}{field.required ? " (required)" : ""}</span>
-            {field.type === "boolean" ? (
-              <select onChange={(event) => setFormValues({ ...formValues, [field.name]: event.target.value === "true" })} value={formValues[field.name] === undefined ? "" : String(formValues[field.name])}>
-                <option disabled value="">Select…</option>
-                <option value="true">Yes</option>
-                <option value="false">No</option>
-              </select>
-            ) : field.type === "selection" ? (
-              <select onChange={(event) => setFormValues({ ...formValues, [field.name]: event.target.value })} value={String(formValues[field.name] ?? "")}>
-                <option disabled value="">Select…</option>
-                {field.options.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
-              </select>
-            ) : (
-              <input
-                inputMode={field.type === "number" ? "decimal" : undefined}
-                onChange={(event) => setFormValues({ ...formValues, [field.name]: event.target.value })}
-                type="text"
-                value={String(formValues[field.name] ?? "")}
-              />
-            )}
-          </label>)}
-        </fieldset>
-      ) : null}
-      {invalidNumber ? <p role="alert">Enter a valid finite number before responding.</p> : null}
-      {props.part.kind === "interaction" && props.part.allowedActions.includes("respond") && (props.part.inputSchemaRef === undefined || schema === null) ? (
-        <p className={styles.quiet} role="status">This interaction schema is unsupported by this client. Refresh or upgrade the client to respond safely.</p>
-      ) : null}
+      {props.part.riskSummary ? <p className={styles.risk}>{props.part.riskSummary}</p> : null}
+      {props.part.allowedActions.includes("approve") ? <label className={styles.riskCheck}><input checked={acknowledgedRisk} onChange={(event) => setAcknowledgedRisk(event.currentTarget.checked)} type="checkbox" /> I understand this action and its scope.</label> : null}
+      {props.part.allowedActions.includes("edit") && props.part.inputSchemaRef ? <textarea aria-label="Edited action input" onChange={(event) => setEditedInput(event.target.value)} rows={5} value={editedInput} /> : null}
+      {editError ? <p className={styles.inlineError} role="alert">{editError}</p> : null}
+      {schema?.kind === "text" ? <textarea maxLength={schema.maxLength} onChange={(event) => setResponse(event.target.value)} rows={3} value={response} /> : null}
+      {schema?.kind === "selection" ? <fieldset className={styles.fieldStack}><legend>Choose a response</legend>{schema.options.map((option) => <label key={option.id}><input checked={selectedOptionIds.includes(option.id)} name="interaction-selection" onChange={(event) => setSelectedOptionIds(schema.multiple ? event.currentTarget.checked ? [...selectedOptionIds, option.id] : selectedOptionIds.filter((id) => id !== option.id) : [option.id])} type={schema.multiple ? "checkbox" : "radio"} /> {option.label}</label>)}</fieldset> : null}
+      {schema?.kind === "form" ? <fieldset className={styles.fieldStack}><legend>Response details</legend>{schema.fields.map((field) => <label key={field.name}><span>{field.label}</span>{field.type === "boolean" ? <select onChange={(event) => setFormValues({ ...formValues, [field.name]: event.target.value === "true" })} value={formValues[field.name] === undefined ? "" : String(formValues[field.name])}><option disabled value="">Select…</option><option value="true">Yes</option><option value="false">No</option></select> : field.type === "selection" ? <select onChange={(event) => setFormValues({ ...formValues, [field.name]: event.target.value })} value={String(formValues[field.name] ?? "")}><option disabled value="">Select…</option>{field.options.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select> : <input inputMode={field.type === "number" ? "decimal" : undefined} onChange={(event) => setFormValues({ ...formValues, [field.name]: event.target.value })} type="text" value={String(formValues[field.name] ?? "")} />}</label>)}</fieldset> : null}
+      {invalidNumber ? <p className={styles.inlineError} role="alert">{props.copy.invalidNumber}</p> : null}
+      {props.part.kind === "interaction" && props.part.allowedActions.includes("respond") && (props.part.inputSchemaRef === undefined || schema === null) ? <p className={styles.quiet} role="status">{props.copy.unsupportedInteraction}</p> : null}
       <div className={styles.actions}>
-        {props.part.allowedActions.includes("approve") ? (
-          <button
-            type="button"
-            disabled={!canDecide || !acknowledgedRisk}
-            onClick={() => props.runId === null ? undefined : void props.controller.decideAction({
-              runId: props.runId,
-              part: props.part,
-              decision: { kind: "approve", payload: { acknowledged_risk: true } },
-            })}
-          >Approve</button>
-        ) : null}
-        {props.part.allowedActions.includes("reject") ? (
-          <button
-            type="button"
-            disabled={!canDecide}
-            onClick={() => props.runId === null ? undefined : void props.controller.decideAction({
-              runId: props.runId,
-              part: props.part,
-              decision: { kind: "reject", payload: { reason_code: "user_rejected" } },
-            })}
-          >Reject</button>
-        ) : null}
-        {props.part.allowedActions.includes("edit") && props.part.inputSchemaRef ? (
-          <button type="button" disabled={!canDecide || editedInput.trim().length === 0} onClick={edit}>Submit edit</button>
-        ) : null}
-        {props.part.kind === "interaction" && props.part.allowedActions.includes("respond") && props.part.inputSchemaRef && schema !== null ? (
-          <button
-            type="button"
-            disabled={!canDecide || !canRespond}
-            onClick={respond}
-          >Respond</button>
-        ) : null}
+        {props.part.allowedActions.includes("approve") ? <button type="button" disabled={!canDecide || !acknowledgedRisk} onClick={() => decide({ kind: "approve", payload: { acknowledged_risk: true } })}>{props.copy.approve}</button> : null}
+        {props.part.allowedActions.includes("reject") ? <button type="button" disabled={!canDecide} onClick={() => decide({ kind: "reject", payload: { reason_code: "user_rejected" } })}>{props.copy.reject}</button> : null}
+        {props.part.allowedActions.includes("edit") && props.part.inputSchemaRef ? <button type="button" disabled={!canDecide || editedInput.trim().length === 0} onClick={edit}>{props.copy.submitEdit}</button> : null}
+        {props.part.kind === "interaction" && props.part.allowedActions.includes("respond") && props.part.inputSchemaRef && schema !== null ? <button type="button" disabled={!canDecide || !canRespond} onClick={respond}>{props.copy.respond}</button> : null}
       </div>
-      <p className={styles.quiet}>Owner {props.part.ownerRef} · Version {props.part.expectedVersion}</p>
     </aside>
   )
 }
@@ -297,243 +252,169 @@ function ActionPartCard(props: {
 function PlanPartCard(props: {
   readonly part: Extract<ChatPart, { kind: "plan" }>
   readonly runId: string | null
-  readonly controller: ReferenceChatController
+  readonly controller: ChatController
   readonly disabled: boolean
+  readonly copy: ChatProductCopy
 }) {
   const canDecide = props.runId !== null && props.part.status === "pending" && !props.disabled
-  return (
-    <aside className={styles.partCard}>
-      <div className={styles.partTitle}><strong>Plan</strong><span>{props.part.status}</span></div>
-      <p>{props.part.summary}</p>
-      <ol>{props.part.steps.map((step) => <li key={step.stepRef}>{step.label} · {step.status}</li>)}</ol>
-      <div className={styles.actions}>
-        {props.part.allowedActions.includes("accept") ? <button type="button" disabled={!canDecide} onClick={() =>
-          props.runId === null ? undefined : void props.controller.decidePlan({
-            runId: props.runId, part: props.part, decision: { kind: "accept", payload: {} },
-          })}>Accept</button> : null}
-        {props.part.allowedActions.includes("reject") ? <button type="button" disabled={!canDecide} onClick={() =>
-          props.runId === null ? undefined : void props.controller.decidePlan({
-            runId: props.runId, part: props.part, decision: { kind: "reject", payload: { reason_code: "user_rejected" } },
-          })}>Reject</button> : null}
-      </div>
-    </aside>
-  )
+  return <aside className={styles.controlCard}><div className={styles.cardHeading}><span className={styles.controlDot} aria-hidden /><strong>{props.copy.plan}</strong><span>{props.part.status}</span></div><p>{props.part.summary}</p><ol className={styles.planSteps}>{props.part.steps.map((step) => <li data-status={step.status} key={step.stepRef}><span>{step.label}</span><small>{step.status}</small></li>)}</ol><div className={styles.actions}>{props.part.allowedActions.includes("accept") ? <button type="button" disabled={!canDecide} onClick={() => props.runId === null ? undefined : void props.controller.decidePlan({ runId: props.runId, part: props.part, decision: { kind: "accept", payload: {} } })}>{props.copy.approve}</button> : null}{props.part.allowedActions.includes("reject") ? <button type="button" disabled={!canDecide} onClick={() => props.runId === null ? undefined : void props.controller.decidePlan({ runId: props.runId, part: props.part, decision: { kind: "reject", payload: { reason_code: "user_rejected" } } })}>{props.copy.reject}</button> : null}</div></aside>
 }
 
 function Part(props: {
   readonly part: ChatPart
   readonly runId: string | null
-  readonly controller: ReferenceChatController
+  readonly controller: ChatController
   readonly disabled: boolean
+  readonly copy: ChatProductCopy
 }) {
   const { part } = props
-  const meta = <span className={styles.partMeta}>v{part.version} · {part.lifecycle}</span>
   switch (part.kind) {
-    case "text":
-      return <p className={styles.text}>{part.text}</p>
-    case "reasoning":
-      return <details className={styles.partCard}><summary>Reasoning summary</summary><p>{part.text}</p>{meta}</details>
-    case "citation":
-      return <aside className={styles.partCard}><strong>{part.title}</strong><p>{part.attribution ?? part.locator ?? part.sourceRef}</p>{meta}</aside>
-    case "tool":
-      return (
-        <aside className={styles.partCard} data-status={part.status}>
-          <div className={styles.partTitle}><strong>{part.name}</strong><span>{part.status}</span></div>
-          <pre>{JSON.stringify(part.args, null, 2)}</pre>
-          {part.result ? <p>{part.result}</p> : null}
-          {meta}
-        </aside>
-      )
+    case "text": return <MarkdownText text={part.text} />
+    case "reasoning": return <details className={styles.reasoning}><summary>{props.copy.reasoning}</summary><MarkdownText text={part.text} /></details>
+    case "citation": {
+      const href = safeHref(part.locator)
+      return <aside className={styles.citation}><span aria-hidden>↗</span><div><strong>{href === null ? part.title : <a href={href} rel="noreferrer noopener" target="_blank">{part.title}</a>}</strong>{part.attribution ? <p>{part.attribution}</p> : null}</div></aside>
+    }
+    case "tool": return <aside className={styles.partCard} data-status={part.status}><div className={styles.cardHeading}><strong>{part.name}</strong><span>{part.status}</span></div><SafeSummary metadata={part.args} />{part.result ? <p>{part.result}</p> : null}</aside>
     case "approval":
-    case "interaction":
-      return <ActionPartCard {...props} part={part} />
-    case "plan":
-      return <PlanPartCard {...props} part={part} />
+    case "interaction": return <ActionPartCard {...props} part={part} />
+    case "plan": return <PlanPartCard {...props} part={part} />
     case "job":
-    case "artifact":
-      return (
-        <aside className={styles.partCard}>
-          <div className={styles.partTitle}><strong>{part.kind}</strong><span>{part.status}</span></div>
-          <p>{part.ownerRef}</p>
-          <pre>{JSON.stringify(part.safeMetadata, null, 2)}</pre>
-          {meta}
-        </aside>
-      )
-    case "cost":
-      return (
-        <aside className={styles.partCard}>
-          <div className={styles.partTitle}><strong>Cost</strong><span>{part.status}</span></div>
-          <p>{part.amount ?? "Pending"} {part.currencyOrCreditUnit ?? ""}</p>
-          <p className={styles.quiet}>Freshness {part.freshness}</p>
-          {meta}
-        </aside>
-      )
+    case "artifact": {
+      const progress = progressValue(part.safeMetadata)
+      return <aside className={styles.productCard}><div className={styles.cardHeading}><strong>{part.kind === "job" ? props.copy.backgroundTask : props.copy.generatedResult}</strong><span>{part.status}</span></div><SafeSummary metadata={part.safeMetadata} />{progress === null ? null : <div className={styles.progress}><span style={{ width: `${progress}%` }} /><small>{Math.round(progress)}%</small></div>}</aside>
+    }
+    case "cost": return <aside className={styles.partCard}><div className={styles.cardHeading}><strong>{props.copy.cost}</strong><span>{part.status}</span></div><p className={styles.costAmount}>{part.amount ?? props.copy.pending} {part.currencyOrCreditUnit ?? ""}</p><p className={styles.quiet}>{props.copy.lastUpdated} {new Date(part.freshness).toLocaleString()}</p></aside>
     case "notice":
-    case "error":
-      return (
-        <aside className={part.kind === "error" ? styles.errorCard : styles.partCard}>
-          <strong>{part.code}</strong><p>{part.message}</p><p className={styles.quiet}>{part.retryClass}</p>{meta}
-        </aside>
-      )
-    case "unsupported":
-      return <aside className={styles.errorCard}><strong>Unsupported part</strong><p>{part.originalKind}</p>{meta}</aside>
-    default:
-      return neverPart(part)
+    case "error": return <aside className={part.kind === "error" ? styles.errorCard : styles.partCard}><strong>{part.message}</strong><p className={styles.quiet}>{part.retryClass}</p></aside>
+    case "unsupported": return <aside className={styles.errorCard}><strong>{props.copy.unsupportedPart}</strong></aside>
+    default: return neverPart(part)
   }
 }
 
-function connectionLabel(state: ReferenceChatState): string {
-  const connection = state.projection.connection
-  switch (connection.kind) {
-    case "idle": return "Idle"
-    case "connecting": return "Connecting"
-    case "live": return "Live"
-    case "reconnecting": return "Reconnecting from the durable cursor"
-    case "closed": return "Closed"
-    case "auth_required": return "Sign in again"
-    case "draining": return "Server is draining; reconnect is scheduled"
-    case "repair_required": return "Snapshot repair required"
-    case "contract_incompatible": return "Client upgrade required"
+function connectionLabel(state: ChatState, copy: ChatProductCopy): string {
+  switch (state.projection.connection.kind) {
+    case "idle": return copy.connectionIdle
+    case "connecting": return copy.connectionConnecting
+    case "live": return copy.connectionLive
+    case "reconnecting": return copy.connectionReconnecting
+    case "closed": return copy.connectionClosed
+    case "auth_required": return copy.connectionAuthRequired
+    case "draining": return copy.connectionDraining
+    case "repair_required": return copy.connectionRepairRequired
+    case "contract_incompatible": return copy.connectionUpgradeRequired
   }
 }
 
-export function ReferenceChatView(props: {
+function runLabel(state: ChatState, copy: ChatProductCopy): string {
+  switch (state.projection.activeRunState) {
+    case "launching": return copy.runLaunching
+    case "running": return copy.runRunning
+    case "paused": return copy.runPaused
+    case "cancelling": return copy.runCancelling
+    case "outcome_unknown": return copy.runUnknown
+    case null: return copy.runIdle
+  }
+}
+
+function messageText(message: ChatProjectionMessage): string {
+  return message.parts.filter((part): part is Extract<ChatPart, { kind: "text" }> => part.kind === "text").map(({ text }) => text).join("\n\n")
+}
+
+function MessageActions(props: Readonly<{
+  message: ChatProjectionMessage
+  controller: ChatController
+  disabled: boolean
+  copy: ChatProductCopy
+}>) {
+  const [copied, setCopied] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [value, setValue] = useState(() => messageText(props.message))
+  const copyText = async (): Promise<void> => {
+    const text = messageText(props.message)
+    if (!text) return
+    await navigator.clipboard.writeText(text)
+    setCopied(true)
+    window.setTimeout(() => setCopied(false), 1_500)
+  }
+  if (editing) return <div className={styles.inlineEditor}><textarea aria-label="Edit message" maxLength={1_048_576} onChange={(event) => setValue(event.target.value)} rows={4} value={value} /><div className={styles.actions}><button type="button" disabled={props.disabled || value.trim().length === 0} onClick={() => void props.controller.editMessage(props.message.id, value).then((applied) => { if (applied) setEditing(false) })}>{props.copy.saveEdit}</button><button type="button" onClick={() => setEditing(false)}>{props.copy.cancelEdit}</button></div></div>
+  return <div className={styles.messageActions}>{messageText(props.message) ? <button type="button" onClick={() => void copyText()}>{copied ? props.copy.copied : props.copy.copy}</button> : null}{props.message.role === "user" ? <button type="button" disabled={props.disabled} onClick={() => setEditing(true)}>{props.copy.edit}</button> : <button type="button" disabled={props.disabled} onClick={() => void props.controller.regenerateMessage(props.message.id)}>{props.copy.regenerate}</button>}</div>
+}
+
+export function ChatView(props: {
   readonly brandName: string
-  readonly controller: ReferenceChatController
-  readonly state: ReferenceChatState
+  readonly controller: ChatController
+  readonly state: ChatState
+  readonly copy: ChatProductCopy
 }) {
   const [draft, setDraft] = useState("")
+  const [composing, setComposing] = useState(false)
   const hasModel = props.state.selectedModelOptionRevisionRef !== null
   const commandPending = props.state.projection.command.state === "pending"
   const connected = props.state.projection.connection.kind === "live"
   const activeRun = props.state.projection.activeRunId !== null
   const sendDisabled = !hasModel || !connected || activeRun || commandPending || draft.trim().length === 0
+  const branch = props.state.snapshot?.branches.find(({ branch_id }) => branch_id === props.state.projection.activeBranchId)
+  const currentOption = props.state.chatCatalog?.options.find(({ modelOptionRevisionRef }) => modelOptionRevisionRef === props.state.selectedModelOptionRevisionRef)
 
-  const submit = (event: FormEvent<HTMLFormElement>): void => {
-    event.preventDefault()
+  const submitDraft = (): void => {
     if (sendDisabled) return
     const content = draft
-    setDraft("")
-    void props.controller.submit(content)
+    void props.controller.submit(content).then((applied) => {
+      if (applied) setDraft((current) => current === content ? "" : current)
+    })
   }
+  const submit = (event: FormEvent<HTMLFormElement>): void => {
+    event.preventDefault()
+    submitDraft()
+  }
+  const onComposerKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>): void => {
+    if (event.key !== "Enter" || event.shiftKey || composing || event.nativeEvent.isComposing) return
+    event.preventDefault()
+    submitDraft()
+  }
+  const mutationDisabled = activeRun || commandPending || !connected
 
-  return (
-    <main className={styles.shell}>
-      <header className={styles.header}>
-        <div>
-          <span className={styles.eyebrow}>Session Browser v3 reference</span>
-          <h1>{props.brandName}</h1>
-        </div>
-        <div className={styles.status} data-connection={props.state.projection.connection.kind}>
-          {connectionLabel(props.state)}
-        </div>
-      </header>
-
-      <section className={styles.context} aria-label="Session context">
-        <span>{props.state.sessionId ?? "No session selected"}</span>
-        <span>{props.state.projection.activeRunState ?? "No active run"}</span>
-        {activeRun ? (
-          <button type="button" className={styles.stop} onClick={() => void props.controller.cancel()} disabled={commandPending}>
-            Stop run
-          </button>
-        ) : null}
-      </section>
-
-      {props.state.failure ? (
-        <section className={styles.failure} role="alert">
-          <strong>{props.state.failure.code}</strong>
-          <p>{props.state.failure.message}</p>
-          <span>Action {props.state.failure.action} · Retry {props.state.failure.retryClass}</span>
-        </section>
-      ) : null}
-
-      {props.state.projection.repair.required ? (
-        <section className={styles.failure} role="status">
-          Snapshot repair required · {props.state.projection.repair.reason}
-        </section>
-      ) : null}
-
-      <section className={styles.thread} aria-label="Conversation">
-        {props.state.phase === "loading" ? <p className={styles.empty}>Loading the complete snapshot…</p> : null}
-        {props.state.phase === "not_found" ? <p className={styles.empty}>Session not found.</p> : null}
-        {props.state.projection.messages.length === 0 && props.state.phase === "ready" ? (
-          <p className={styles.empty}>This branch has no projected messages.</p>
-        ) : null}
-        {props.state.projection.messages.map((message) => (
-          <article className={styles.message} data-role={message.role} data-status={message.status} key={message.id}>
-            <div className={styles.messageMeta}>
-              <strong>{message.role === "user" ? "You" : "Assistant"}</strong>
-              <span>{message.status}</span>
-            </div>
-            {message.parts.map((part) => <Part
-              controller={props.controller}
-              disabled={commandPending}
-              key={part.id}
-              part={part}
-              runId={message.runId}
-            />)}
-          </article>
-        ))}
-      </section>
-
-      <form className={styles.composer} onSubmit={submit}>
-        {props.state.chatCatalog ? (
-          <ModelOptionSelector
-            catalog={props.state.chatCatalog}
-            disabled={activeRun || commandPending}
-            onChange={(value) => props.controller.selectModelOption(value)}
-            value={props.state.selectedModelOptionRevisionRef}
-          />
-        ) : null}
-        {!hasModel && props.state.phase === "ready" ? (
-          <p className={styles.modelNotice}>A published default model option is required before the first message can be sent.</p>
-        ) : null}
-        <textarea
-          aria-label="Message"
-          maxLength={1_048_576}
-          onChange={(event) => setDraft(event.target.value)}
-          placeholder={activeRun ? "Wait for or stop the active run" : "Message the assistant"}
-          rows={3}
-          value={draft}
-        />
-        <button type="submit" disabled={sendDisabled}>Send</button>
-      </form>
-    </main>
-  )
+  return <main className={styles.shell}>
+    <header className={styles.header}><div><span className={styles.eyebrow}>{props.copy.workspaceLabel}</span><h1>{props.state.snapshot?.session.title ?? props.brandName}</h1></div><nav className={styles.headerNav} aria-label="Workspace"><a href="/account">{props.copy.account}</a></nav></header>
+    <section className={styles.runBand} data-run={props.state.projection.activeRunState ?? "idle"} aria-live="polite"><div><span className={styles.liveDot} aria-hidden /><strong>{runLabel(props.state, props.copy)}</strong><small>{connectionLabel(props.state, props.copy)}</small></div><div className={styles.branchControls}><label><span>{props.copy.branch}</span><select aria-label={props.copy.switchBranch} disabled={mutationDisabled} onChange={(event) => void props.controller.activateBranch(event.target.value)} value={props.state.projection.activeBranchId ?? ""}>{props.state.snapshot?.branches.map((candidate, index) => <option key={candidate.branch_id} value={candidate.branch_id}>{candidate.branch_id === props.state.projection.activeBranchId ? `${props.copy.currentBranch} · ` : ""}${candidate.origin} ${index + 1}</option>)}</select></label>{branch ? <button type="button" disabled={mutationDisabled} onClick={() => void props.controller.forkBranch(branch.branch_id)}>{props.copy.forkBranch}</button> : null}{activeRun ? <button type="button" className={styles.stop} onClick={() => void props.controller.cancel()} disabled={commandPending}>{props.copy.stop}</button> : null}</div></section>
+    {props.state.failure ? <section className={styles.failure} role="alert"><strong>{props.state.failure.message}</strong><span>{props.state.failure.action}</span></section> : null}
+    {props.state.projection.repair.required ? <section className={styles.repair} role="status">{props.copy.repairRequired}</section> : null}
+    <section className={styles.thread} aria-label={props.copy.conversation}>
+      {props.state.phase === "loading" ? <p className={styles.empty}>{props.copy.loading}</p> : null}
+      {props.state.phase === "not_found" ? <p className={styles.empty}>{props.copy.notFound}</p> : null}
+      {props.state.projection.messages.length === 0 && props.state.phase === "ready" ? <div className={styles.emptyState}><span aria-hidden>✦</span><h2>{props.copy.emptyTitle}</h2><p>{props.copy.emptyDescription}</p></div> : null}
+      {props.state.projection.messages.map((message) => <article className={styles.message} data-role={message.role} data-status={message.status} key={message.id}><div className={styles.messageMeta}><strong>{message.role === "user" ? props.copy.you : props.copy.assistant}</strong><span>{message.status}</span></div>{message.parts.map((part) => <Part controller={props.controller} copy={props.copy} disabled={commandPending} key={part.id} part={part} runId={message.runId} />)}<MessageActions controller={props.controller} copy={props.copy} disabled={mutationDisabled} message={message} /></article>)}
+    </section>
+    <form className={styles.composer} onSubmit={submit}>
+      <div className={styles.composerControls}>{props.state.chatCatalog ? <ModelOptionSelector catalog={props.state.chatCatalog} copy={props.copy} disabled={activeRun || commandPending} onChange={(value) => props.controller.selectModelOption(value)} value={props.state.selectedModelOptionRevisionRef} /> : null}{currentOption && currentOption.supportedEfforts.length > 0 ? <label className={styles.compactSelector}><span>{props.copy.effort}</span><select disabled={activeRun || commandPending} onChange={(event) => props.controller.selectEffort(event.target.value)} value={props.state.selectedEffort ?? ""}>{currentOption.supportedEfforts.map((effort) => <option key={effort} value={effort}>{effort}</option>)}</select></label> : null}</div>
+      {!hasModel && props.state.phase === "ready" ? <p className={styles.modelNotice}>{props.copy.modelRequired}</p> : null}
+      <div className={styles.composerBox}><textarea aria-label={props.copy.messageLabel} maxLength={1_048_576} onChange={(event) => setDraft(event.target.value)} onCompositionEnd={() => setComposing(false)} onCompositionStart={() => setComposing(true)} onKeyDown={onComposerKeyDown} placeholder={activeRun ? props.copy.activeRunPlaceholder : props.copy.messagePlaceholder} rows={3} value={draft} /><button type="submit" disabled={sendDisabled}>{commandPending ? props.copy.sending : props.copy.send}<span aria-hidden>↗</span></button></div><p className={styles.composerHint}>Enter to send · Shift + Enter for a new line</p>
+    </form>
+  </main>
 }
 
-export function ReferenceChat(props: {
-  readonly bootstrap: Readonly<{
-    readonly defaultProjectRef: string
-    readonly modelOptionCatalogs: readonly ReferenceModelOptionCatalog[]
-  }> | null
-  readonly brandName: string
-  readonly csrfToken?: string
-  readonly initialSessionId?: string
-}) {
+export type ChatProductProps = Readonly<{
+  bootstrap: Readonly<{ defaultProjectRef: string; modelOptionCatalogs: readonly ModelOptionCatalog[] }> | null
+  brandName: string
+  csrfToken?: string
+  initialSessionId?: string
+  copy?: Partial<ChatProductCopy>
+}>
+
+export function ChatProduct(props: ChatProductProps) {
+  const copy = useMemo(() => resolveChatCopy(props.copy), [props.copy])
   const chatCatalog = props.bootstrap?.modelOptionCatalogs.find(({ surfaceId }) => surfaceId === "chat") ?? null
-  const client = useMemo(() => createSessionClient({
-    transport: createBrowserSessionTransport({ csrfToken: props.csrfToken }),
-  }), [props.csrfToken])
-  const controller = useMemo(() => createReferenceChatController({
-    client,
-    trustedLocale: typeof document === "undefined" ? "en-US" : document.documentElement.lang || "en-US",
-    chatCatalog,
-    defaultProjectRef: props.bootstrap?.defaultProjectRef ?? null,
-  }), [chatCatalog, client, props.bootstrap?.defaultProjectRef])
+  const client = useMemo(() => createSessionClient({ transport: createBrowserSessionTransport({ csrfToken: props.csrfToken }) }), [props.csrfToken])
+  const controller = useMemo(() => createChatController({ client, trustedLocale: typeof document === "undefined" ? "en-US" : document.documentElement.lang || "en-US", chatCatalog, defaultProjectRef: props.bootstrap?.defaultProjectRef ?? null }), [chatCatalog, client, props.bootstrap?.defaultProjectRef])
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot)
-  const organizer = useMemo(() => createReferenceSessionOrganizer({
-    client,
-    projectRef: props.bootstrap?.defaultProjectRef ?? null,
-  }), [client, props.bootstrap?.defaultProjectRef])
+  const organizer = useMemo(() => createReferenceSessionOrganizer({ client, projectRef: props.bootstrap?.defaultProjectRef ?? null }), [client, props.bootstrap?.defaultProjectRef])
   const organizerState = useSyncExternalStore(organizer.subscribe, organizer.getSnapshot, organizer.getSnapshot)
-  const [sessionInput, setSessionInput] = useState(props.initialSessionId ?? "")
 
   useEffect(() => {
     if (props.initialSessionId) void controller.open(props.initialSessionId)
     return () => controller.close()
   }, [controller, props.initialSessionId])
-
   useEffect(() => {
     void organizer.load()
     return () => organizer.close()
@@ -550,87 +431,23 @@ export function ReferenceChat(props: {
       void organizer.refresh()
     })
   }
+  const productAvailable = props.bootstrap !== null && chatCatalog !== null
+  const rail = <ReferenceSessionRail activeSessionId={state.sessionId} available={productAvailable && state.projection.command.state !== "pending"} brandName={props.brandName} controller={organizer} copy={copy} onNew={createSession} onOpen={openSession} state={organizerState} />
 
-  const rail = <ReferenceSessionRail
-    activeSessionId={state.sessionId}
-    available={props.bootstrap !== null && chatCatalog !== null && state.projection.command.state !== "pending"}
-    brandName={props.brandName}
-    controller={organizer}
-    onNew={createSession}
-    onOpen={openSession}
-    state={organizerState}
-  />
-
-  if (state.phase === "idle") {
-    const productAvailable = props.bootstrap !== null && chatCatalog !== null
-    const commandPending = state.projection.command.state === "pending"
-    return (
-      <div className={styles.appShell}>
-        {rail}
-        <main className={styles.connectShell}>
-        <span className={styles.eyebrow}>Session Browser v3 reference</span>
-        <h1>{props.brandName}</h1>
-        <p>Start a new chat with this product&apos;s published default, or open an existing Session.</p>
-        <button
-          type="button"
-          disabled={!productAvailable || commandPending}
-          onClick={createSession}
-        >{commandPending ? "Creating…" : "New chat"}</button>
-        <form onSubmit={(event) => {
-          event.preventDefault()
-          const sessionId = sessionInput.trim()
-          if (!sessionId) return
-          openSession(sessionId)
-        }}>
-          <input aria-label="Session ID" value={sessionInput} onChange={(event) => setSessionInput(event.target.value)} />
-          <button type="submit" disabled={!productAvailable || commandPending || sessionInput.trim().length === 0}>Open session</button>
-        </form>
-        {!productAvailable ? <p className={styles.quiet} role="status">Product context or its published chat catalog is unavailable. Chat is closed safely.</p> : null}
-        {state.failure ? <p className={styles.failure} role="alert">{state.failure.code}: {state.failure.message}</p> : null}
-        </main>
-      </div>
-    )
-  }
-
-  return (
-    <div className={styles.appShell}>
-      {rail}
-      <ReferenceChatView brandName={props.brandName} controller={controller} state={state} />
-    </div>
-  )
+  if (state.phase === "idle") return <div className={styles.appShell}>{rail}<main className={styles.startShell}><span className={styles.startMark} aria-hidden>✦</span><span className={styles.eyebrow}>{props.brandName}</span><h1>{copy.startTitle}</h1><p>{copy.startDescription}</p><button type="button" disabled={!productAvailable || state.projection.command.state === "pending"} onClick={createSession}>{state.projection.command.state === "pending" ? copy.creatingChat : copy.newChat}</button>{!productAvailable ? <p className={styles.failure} role="status">{copy.unavailable}</p> : null}{state.failure ? <p className={styles.failure} role="alert">{state.failure.message}</p> : null}</main></div>
+  return <div className={styles.appShell}>{rail}<ChatView brandName={props.brandName} controller={controller} copy={copy} state={state} /></div>
 }
 
-/** Public, brand-neutral product name. ReferenceChat remains an internal compatibility alias. */
-export const ChatProduct = ReferenceChat
+/** Compatibility aliases for Site projects generated before the product naming cut. */
+export const ReferenceChat = ChatProduct
+export const ReferenceChatView = ChatView
 
 function ModelOptionSelector(props: {
-  readonly catalog: ReferenceModelOptionCatalog
+  readonly catalog: ModelOptionCatalog
   readonly value: string | null
   readonly disabled: boolean
   readonly onChange: (value: string) => void
+  readonly copy: ChatProductCopy
 }) {
-  return (
-    <label className={styles.modelSelector}>
-      <span>Model</span>
-      <select
-        aria-label="Model option"
-        disabled={props.disabled}
-        onChange={(event) => props.onChange(event.target.value)}
-        value={props.value ?? ""}
-      >
-        {props.value === null ? <option disabled value="">No available model option</option> : null}
-        {props.catalog.options.map((option) => (
-          <option
-            disabled={option.availability !== "available"}
-            key={option.modelOptionRevisionRef}
-            value={option.modelOptionRevisionRef}
-          >
-            {option.label} · {option.inputModalities.join(", ")} → {option.outputModalities.join(", ")}
-            {option.supportedEfforts.length > 0 ? ` · ${option.supportedEfforts.join(", ")}` : ""}
-            {option.badges.length > 0 ? ` · ${option.badges.join(", ")}` : ""}
-          </option>
-        ))}
-      </select>
-    </label>
-  )
+  return <label className={styles.compactSelector}><span>{props.copy.model}</span><select aria-label={props.copy.model} disabled={props.disabled} onChange={(event) => props.onChange(event.target.value)} value={props.value ?? ""}>{props.value === null ? <option disabled value="">{props.copy.noModel}</option> : null}{props.catalog.options.map((option) => <option disabled={option.availability !== "available"} key={option.modelOptionRevisionRef} value={option.modelOptionRevisionRef}>{option.label}{option.badges.length > 0 ? ` · ${option.badges.join(", ")}` : ""}</option>)}</select></label>
 }

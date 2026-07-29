@@ -23,7 +23,9 @@
   "publishConfig": { "access": "public", "provenance": true },
   "dependencies": {
     "@kokoro/chat-surface": "workspace:*",
-    "@kokoro/session-client": "workspace:*"
+    "@kokoro/session-client": "workspace:*",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1"
   },
   "peerDependencies": {
     "react": "^19.0.0",

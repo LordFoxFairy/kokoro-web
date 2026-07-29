@@ -332,6 +332,12 @@ importers:
       '@kokoro/session-client':
         specifier: workspace:*
         version: link:../session-client
+      react-markdown:
+        specifier: ^10.1.0
+        version: 10.1.0(@types/react@19.2.17)(react@19.2.8)
+      remark-gfm:
+        specifier: ^4.0.1
+        version: 4.0.1
     devDependencies:
       '@eslint/js':
         specifier: 9.39.5

@@ -7,6 +7,7 @@ import type {
   ActionDecision,
   CommandIdentity,
   ErrorDetail,
+  MessageInputPart,
   PlanDecision,
   SessionCommandResponse,
   SessionEvent,
@@ -26,7 +27,7 @@ import {
 
 const commandIdentity = createReferenceCommandIdentity
 
-export type ReferenceModelOption = Readonly<{
+export type ModelOption = Readonly<{
   modelOptionRevisionRef: string
   optionKey: string
   label: string
@@ -38,11 +39,11 @@ export type ReferenceModelOption = Readonly<{
   availability: "available" | "temporarily_unavailable"
 }>
 
-export type ReferenceModelOptionCatalog = Readonly<{
+export type ModelOptionCatalog = Readonly<{
   surfaceId: string
   catalogRevisionRef: string
   defaultModelOptionRevisionRef: string
-  options: readonly ReferenceModelOption[]
+  options: readonly ModelOption[]
   publishedAt: string
 }>
 
@@ -50,23 +51,30 @@ type StableCode = ErrorDetail["code"]
 type StableAction = ErrorDetail["action"]
 type RetryClass = ErrorDetail["retry_class"]
 
-export type ReferenceChatFailure = Readonly<{
+export type ChatFailure = Readonly<{
   code: StableCode
   action: StableAction
   retryClass: RetryClass
   message: string
 }>
 
-export type ReferenceChatState = Readonly<{
+export type ChatState = Readonly<{
   phase: "idle" | "loading" | "ready" | "not_found"
   sessionId: string | null
   snapshot: SessionSnapshot | null
   projection: ChatProjection
-  failure: ReferenceChatFailure | null
-  chatCatalog: ReferenceModelOptionCatalog | null
+  failure: ChatFailure | null
+  chatCatalog: ModelOptionCatalog | null
   selectedModelOptionRevisionRef: string | null
+  selectedEffort: string | null
   hitlDecisionSupported: true
 }>
+
+/** Compatibility aliases for Site projects published before the product naming cut. */
+export type ReferenceModelOption = ModelOption
+export type ReferenceModelOptionCatalog = ModelOptionCatalog
+export type ReferenceChatFailure = ChatFailure
+export type ReferenceChatState = ChatState
 
 type FailureLike = Readonly<{
   stableCode?: string
@@ -128,7 +136,7 @@ function asRetryClass(value: string | undefined): RetryClass {
     : "never"
 }
 
-export function describeSessionFailure(input: FailureLike): ReferenceChatFailure {
+export function describeSessionFailure(input: FailureLike): ChatFailure {
   const code = asStableCode(input.stableCode)
   return {
     code,
@@ -138,13 +146,13 @@ export function describeSessionFailure(input: FailureLike): ReferenceChatFailure
   }
 }
 
-function failureFromError(error: unknown): ReferenceChatFailure {
+function failureFromError(error: unknown): ChatFailure {
   return error instanceof SessionClientError
     ? describeSessionFailure(error)
     : describeSessionFailure({})
 }
 
-function deniedFailure(response: SessionCommandResponse): ReferenceChatFailure | null {
+function deniedFailure(response: SessionCommandResponse): ChatFailure | null {
   const receipt = response.command_receipt
   if (receipt.status === "denied") {
     return describeSessionFailure({
@@ -163,14 +171,19 @@ function deniedFailure(response: SessionCommandResponse): ReferenceChatFailure |
   return null
 }
 
-export type ReferenceChatController = Readonly<{
-  getSnapshot(): ReferenceChatState
+export type ChatController = Readonly<{
+  getSnapshot(): ChatState
   subscribe(listener: () => void): () => void
   create(): Promise<string | null>
   open(sessionId: string): Promise<void>
-  submit(content: string): Promise<void>
+  submit(content: string): Promise<boolean>
+  editMessage(messageId: string, content: string): Promise<boolean>
+  regenerateMessage(messageId: string): Promise<boolean>
+  forkBranch(branchId: string): Promise<boolean>
+  activateBranch(branchId: string): Promise<boolean>
   cancel(): Promise<void>
   selectModelOption(modelOptionRevisionRef: string): void
+  selectEffort(effort: string | null): void
   decideAction(input: Readonly<{
     runId: string
     part: Extract<ChatPart, { kind: "approval" | "interaction" }>
@@ -184,13 +197,15 @@ export type ReferenceChatController = Readonly<{
   close(): void
 }>
 
-export function createReferenceChatController(options: {
+export type ReferenceChatController = ChatController
+
+export function createChatController(options: {
   readonly client: SessionClient
   readonly trustedLocale: string
-  readonly chatCatalog: ReferenceModelOptionCatalog | null
+  readonly chatCatalog: ModelOptionCatalog | null
   readonly defaultProjectRef: string | null
-}): ReferenceChatController {
-  let state: ReferenceChatState = {
+}): ChatController {
+  let state: ChatState = {
     phase: "idle",
     sessionId: null,
     snapshot: null,
@@ -198,6 +213,7 @@ export function createReferenceChatController(options: {
     failure: null,
     chatCatalog: options.chatCatalog,
     selectedModelOptionRevisionRef: null,
+    selectedEffort: null,
     hitlDecisionSupported: true,
   }
   let stream: EventStreamHandle | null = null
@@ -205,14 +221,14 @@ export function createReferenceChatController(options: {
   const runProjectionVersions = new Map<string, number>()
   const listeners = new Set<() => void>()
 
-  const publish = (next: ReferenceChatState): void => {
+  const publish = (next: ChatState): void => {
     state = next
     for (const listener of listeners) listener()
   }
   const project = (action: Parameters<typeof reduceChatProjection>[1]): void => {
     publish({ ...state, projection: reduceChatProjection(state.projection, action) })
   }
-  const fail = (failure: ReferenceChatFailure): void => {
+  const fail = (failure: ChatFailure): void => {
     publish({ ...state, failure })
     project({
       type: "command",
@@ -238,6 +254,19 @@ export function createReferenceChatController(options: {
           : options.chatCatalog !== null && availableOptions.has(options.chatCatalog.defaultModelOptionRevisionRef)
             ? options.chatCatalog.defaultModelOptionRevisionRef
             : null
+    const selectedOption = options.chatCatalog?.options.find(
+      (option) => option.modelOptionRevisionRef === selectedModelOptionRevisionRef,
+    )
+    const persistedEffort = snapshot.model_history.at(-1)?.effort
+    const selectedEffort = selectedOption === undefined || selectedOption.supportedEfforts.length === 0
+      ? null
+      : state.selectedEffort !== null && selectedOption.supportedEfforts.includes(state.selectedEffort)
+        ? state.selectedEffort
+        : persistedEffort !== undefined && selectedOption.supportedEfforts.includes(persistedEffort)
+          ? persistedEffort
+          : selectedOption.supportedEfforts.includes("medium")
+            ? "medium"
+            : selectedOption.supportedEfforts[0] ?? null
     publish({
       ...state,
       phase: "ready",
@@ -245,6 +274,7 @@ export function createReferenceChatController(options: {
       snapshot,
       failure: null,
       selectedModelOptionRevisionRef,
+      selectedEffort,
       projection: reduceChatProjection(state.projection, { type: "snapshot", snapshot }),
     })
     stream?.close()
@@ -340,7 +370,7 @@ export function createReferenceChatController(options: {
   const pendingFailure = (
     response: SessionCommandResponse,
     pendingCode: StableCode,
-  ): ReferenceChatFailure | null => {
+  ): ChatFailure | null => {
     const receipt = response.command_receipt
     if (receipt.status === "pending" || receipt.status === "outcome_unknown") {
       return describeSessionFailure({
@@ -350,6 +380,89 @@ export function createReferenceChatController(options: {
       })
     }
     return deniedFailure(response)
+  }
+
+  type ReceiptOperation = Parameters<SessionClient["getCommandReceipt"]>[1]["operation"]
+
+  const sendCommand = async (
+    effect: Readonly<Record<string, unknown>>,
+    operation: ReceiptOperation,
+    pendingCode: StableCode,
+    sender: (command: CommandIdentity) => Promise<SessionCommandResponse>,
+  ): Promise<SessionCommandResponse | null> => {
+    const command = await commandIdentity(effect)
+    let response: SessionCommandResponse
+    try {
+      response = await sender(command)
+    } catch {
+      // An ambiguous transport failure is reconciled with the same command identity. It is
+      // never retried as a new mutation because the first effect may already be committed.
+      try {
+        response = await options.client.getCommandReceipt(command.command_id, {
+          operation,
+          idempotency_key: command.idempotency_key,
+          digest_algorithm: command.digest_algorithm,
+          request_digest: command.request_digest,
+        })
+      } catch {
+        fail(describeSessionFailure({
+          stableCode: pendingCode,
+          action: "reconcile_receipt",
+          retryClass: "reconcile_receipt",
+        }))
+        return null
+      }
+    }
+    const reconciled = await reconcileReceipt(response, command, operation)
+    const failure = pendingFailure(reconciled, pendingCode)
+    if (failure !== null) {
+      fail(failure)
+      return null
+    }
+    return reconciled
+  }
+
+  const selectedExecutionInput = (): Readonly<{
+    modelOptionRevisionRef: string
+    effort?: string
+  }> | null => {
+    const modelOptionRevisionRef = state.selectedModelOptionRevisionRef
+    if (modelOptionRevisionRef === null) {
+      fail(describeSessionFailure({
+        stableCode: "MODEL_OPTION_UNAVAILABLE",
+        action: "choose_model",
+        retryClass: "after_user_action",
+      }))
+      return null
+    }
+    return {
+      modelOptionRevisionRef,
+      ...(state.selectedEffort === null ? {} : { effort: state.selectedEffort }),
+    }
+  }
+
+  const inputParts = (messageId: string): MessageInputPart[] | null => {
+    const message = state.snapshot?.messages.find((candidate) => candidate.message_id === messageId)
+    if (message === undefined) return null
+    const parts = message.parts.flatMap((part): MessageInputPart[] => part.kind === "text"
+      ? [{ schema_version: 1, kind: "text", payload: { text: part.payload.spans.map(({ text }) => text).join("") } }]
+      : [])
+    return parts.length === 0 ? null : parts
+  }
+
+  const attachmentIntents = (messageId: string) => {
+    const message = state.snapshot?.messages.find((candidate) => candidate.message_id === messageId)
+    return message?.attachments.map(({ asset_ref, asset_version_ref, asset_grant_ref }) => ({
+      asset_ref,
+      asset_version_ref,
+      asset_grant_ref,
+    })) ?? []
+  }
+
+  const finishMutation = async (): Promise<boolean> => {
+    project({ type: "command", state: "idle" })
+    await refresh()
+    return true
   }
 
   const create = async (): Promise<string | null> => {
@@ -390,20 +503,13 @@ export function createReferenceChatController(options: {
     }
   }
 
-  const submit = async (content: string): Promise<void> => {
+  const submit = async (content: string): Promise<boolean> => {
     const snapshot = state.snapshot
     const sessionId = state.sessionId
     const text = content.trim()
-    if (snapshot === null || sessionId === null || text.length === 0) return
-    const modelOptionRevisionRef = state.selectedModelOptionRevisionRef
-    if (modelOptionRevisionRef === null) {
-      fail(describeSessionFailure({
-        stableCode: "MODEL_OPTION_UNAVAILABLE",
-        action: "choose_model",
-        retryClass: "after_user_action",
-      }))
-      return
-    }
+    if (snapshot === null || sessionId === null || text.length === 0) return false
+    const execution = selectedExecutionInput()
+    if (execution === null) return false
     const effect = {
       expected_session_version: snapshot.session.version,
       branch_id: snapshot.session.active_branch_id,
@@ -411,24 +517,112 @@ export function createReferenceChatController(options: {
       trusted_locale: options.trustedLocale,
       parts: [{ schema_version: 1 as const, kind: "text" as const, payload: { text } }],
       attachment_refs: [],
-      model_option_revision_ref: modelOptionRevisionRef,
+      model_option_revision_ref: execution.modelOptionRevisionRef,
+      ...(execution.effort === undefined ? {} : { effort: execution.effort }),
     }
     project({ type: "command", state: "pending" })
     try {
-      const command = await commandIdentity(effect)
-      const response = await reconcileReceipt(await options.client.submitMessage(sessionId, {
-        command,
-        ...effect,
-      }), command, "submit_message")
-      const failure = pendingFailure(response, "LAUNCH_OUTCOME_UNKNOWN")
-      if (failure !== null) {
-        fail(failure)
-        return
-      }
-      project({ type: "command", state: "idle" })
-      await refresh()
+      const response = await sendCommand(effect, "submit_message", "LAUNCH_OUTCOME_UNKNOWN", (command) =>
+        options.client.submitMessage(sessionId, { command, ...effect }))
+      return response === null ? false : finishMutation()
     } catch (error) {
       fail(failureFromError(error))
+      return false
+    }
+  }
+
+  const editMessage = async (messageId: string, content: string): Promise<boolean> => {
+    const snapshot = state.snapshot
+    const sessionId = state.sessionId
+    const source = snapshot?.messages.find((message) => message.message_id === messageId)
+    const branch = snapshot?.branches.find((candidate) => candidate.branch_id === source?.branch_id)
+    const text = content.trim()
+    const execution = selectedExecutionInput()
+    if (
+      snapshot === null || sessionId === null || source?.role !== "user" || branch === undefined ||
+      text.length === 0 || execution === null || state.projection.activeRunId !== null
+    ) return false
+    const effect = {
+      expected_session_version: snapshot.session.version,
+      expected_branch_version: branch.version,
+      source_branch_id: source.branch_id,
+      source_message_id: source.message_id,
+      parent_message_id: source.parent_message_id ?? null,
+      trusted_locale: options.trustedLocale,
+      replacement_parts: [{ schema_version: 1 as const, kind: "text" as const, payload: { text } }],
+      replacement_attachment_refs: attachmentIntents(source.message_id),
+      model_option_revision_ref: execution.modelOptionRevisionRef,
+      ...(execution.effort === undefined ? {} : { effort: execution.effort }),
+    }
+    project({ type: "command", state: "pending" })
+    try {
+      const response = await sendCommand(effect, "edit_message", "LAUNCH_OUTCOME_UNKNOWN", (command) =>
+        options.client.editMessage(sessionId, source.message_id, { command, ...effect }))
+      return response === null ? false : finishMutation()
+    } catch (error) {
+      fail(failureFromError(error))
+      return false
+    }
+  }
+
+  const regenerateMessage = async (messageId: string): Promise<boolean> => {
+    const snapshot = state.snapshot
+    const sessionId = state.sessionId
+    const source = snapshot?.messages.find((message) => message.message_id === messageId)
+    const trigger = snapshot?.messages.find((message) => message.message_id === source?.trigger_message_id)
+    const branch = snapshot?.branches.find((candidate) => candidate.branch_id === source?.branch_id)
+    const parts = trigger === undefined ? null : inputParts(trigger.message_id)
+    const execution = selectedExecutionInput()
+    if (
+      snapshot === null || sessionId === null || source?.role !== "assistant" || trigger?.role !== "user" ||
+      branch === undefined || parts === null || execution === null || state.projection.activeRunId !== null
+    ) return false
+    const effect = {
+      expected_session_version: snapshot.session.version,
+      expected_branch_version: branch.version,
+      source_branch_id: source.branch_id,
+      source_assistant_message_id: source.message_id,
+      trigger_message_id: trigger.message_id,
+      parent_message_id: trigger.parent_message_id ?? null,
+      trusted_locale: options.trustedLocale,
+      input_parts: parts,
+      attachment_refs: attachmentIntents(trigger.message_id),
+      model_option_revision_ref: execution.modelOptionRevisionRef,
+      ...(execution.effort === undefined ? {} : { effort: execution.effort }),
+    }
+    project({ type: "command", state: "pending" })
+    try {
+      const response = await sendCommand(effect, "regenerate_message", "LAUNCH_OUTCOME_UNKNOWN", (command) =>
+        options.client.regenerateMessage(sessionId, source.message_id, { command, ...effect }))
+      return response === null ? false : finishMutation()
+    } catch (error) {
+      fail(failureFromError(error))
+      return false
+    }
+  }
+
+  const branchMutation = async (
+    branchId: string,
+    operation: "fork_branch" | "activate_branch",
+  ): Promise<boolean> => {
+    const snapshot = state.snapshot
+    const sessionId = state.sessionId
+    const branch = snapshot?.branches.find((candidate) => candidate.branch_id === branchId)
+    if (snapshot === null || sessionId === null || branch === undefined || state.projection.activeRunId !== null) return false
+    const effect = {
+      expected_session_version: snapshot.session.version,
+      expected_branch_version: branch.version,
+    }
+    project({ type: "command", state: "pending" })
+    try {
+      const response = await sendCommand(effect, operation, "INTERNAL_UNAVAILABLE", (command) =>
+        operation === "fork_branch"
+          ? options.client.forkBranch(sessionId, branchId, { command, ...effect })
+          : options.client.activateBranch(sessionId, branchId, { command, ...effect }))
+      return response === null ? false : finishMutation()
+    } catch (error) {
+      fail(failureFromError(error))
+      return false
     }
   }
 
@@ -546,6 +740,10 @@ export function createReferenceChatController(options: {
     create,
     open,
     submit,
+    editMessage,
+    regenerateMessage,
+    forkBranch: (branchId) => branchMutation(branchId, "fork_branch"),
+    activateBranch: (branchId) => branchMutation(branchId, "activate_branch"),
     cancel,
     selectModelOption(modelOptionRevisionRef) {
       const selectable = options.chatCatalog?.options.some(
@@ -555,7 +753,27 @@ export function createReferenceChatController(options: {
         fail(describeSessionFailure({ stableCode: "MODEL_OPTION_UNAVAILABLE", action: "choose_model", retryClass: "after_user_action" }))
         return
       }
-      publish({ ...state, selectedModelOptionRevisionRef: modelOptionRevisionRef, failure: null })
+      const selected = options.chatCatalog?.options.find(
+        (option) => option.modelOptionRevisionRef === modelOptionRevisionRef,
+      )
+      const selectedEffort = selected === undefined || selected.supportedEfforts.length === 0
+        ? null
+        : state.selectedEffort !== null && selected.supportedEfforts.includes(state.selectedEffort)
+          ? state.selectedEffort
+          : selected.supportedEfforts.includes("medium")
+            ? "medium"
+            : selected.supportedEfforts[0] ?? null
+      publish({ ...state, selectedModelOptionRevisionRef: modelOptionRevisionRef, selectedEffort, failure: null })
+    },
+    selectEffort(effort) {
+      const selected = options.chatCatalog?.options.find(
+        (option) => option.modelOptionRevisionRef === state.selectedModelOptionRevisionRef,
+      )
+      if (effort !== null && selected?.supportedEfforts.includes(effort) !== true) {
+        fail(describeSessionFailure({ stableCode: "REQUEST_INVALID", action: "choose_model", retryClass: "after_user_action" }))
+        return
+      }
+      publish({ ...state, selectedEffort: effort, failure: null })
     },
     decideAction,
     decidePlan,
@@ -567,3 +785,6 @@ export function createReferenceChatController(options: {
     },
   })
 }
+
+/** Compatibility constructor for previously generated Site projects. */
+export const createReferenceChatController = createChatController

@@ -6,6 +6,7 @@ import type {
   ReferenceSessionOrganizer,
   ReferenceSessionOrganizerState,
 } from "./session-organizer"
+import type { ChatProductCopy } from "./chat-copy"
 import styles from "./session-rail.module.css"
 
 export function ReferenceSessionRail(props: {
@@ -13,6 +14,7 @@ export function ReferenceSessionRail(props: {
   readonly available: boolean
   readonly brandName: string
   readonly controller: ReferenceSessionOrganizer
+  readonly copy: ChatProductCopy
   readonly onNew: () => void
   readonly onOpen: (sessionId: string) => void
   readonly state: ReferenceSessionOrganizerState
@@ -48,26 +50,26 @@ export function ReferenceSessionRail(props: {
   return (
     <aside className={styles.rail} aria-label="Chats and folders">
       <header className={styles.header}>
-        <div className={styles.brandMark} aria-hidden>心</div>
+        <div className={styles.brandMark} aria-hidden>✦</div>
         <div>
           <strong>{props.brandName}</strong>
-          <span>こころ</span>
+          <span>{props.copy.workspaceLabel}</span>
         </div>
       </header>
 
       <button className={styles.newChat} type="button" onClick={props.onNew} disabled={disabled}>
-        <span aria-hidden>＋</span> New chat
+        <span aria-hidden>＋</span> {props.copy.newChat}
       </button>
 
       <form className={styles.search} role="search" onSubmit={submitSearch}>
         <input
-          aria-label="Search chats"
+          aria-label={props.copy.searchChats}
           maxLength={512}
           onChange={(event) => setSearch(event.target.value)}
-          placeholder="Search server history"
+          placeholder={props.copy.searchChats}
           value={search}
         />
-        <button type="submit" disabled={disabled}>Search</button>
+        <button type="submit" disabled={disabled}>{props.copy.search}</button>
       </form>
 
       <nav className={styles.filters} aria-label="Chat filters">
@@ -75,17 +77,17 @@ export function ReferenceSessionRail(props: {
           aria-current={props.state.filter.kind === "all" ? "page" : undefined}
           type="button"
           onClick={() => void props.controller.setFilter({ kind: "all" })}
-        >All chats</button>
+        >{props.copy.allChats}</button>
         <button
           aria-current={props.state.filter.kind === "pinned" ? "page" : undefined}
           type="button"
           onClick={() => void props.controller.setFilter({ kind: "pinned" })}
-        >Pinned</button>
+        >{props.copy.pinned}</button>
       </nav>
 
       <section className={styles.folderSection} aria-labelledby="folder-heading">
         <div className={styles.sectionHeading}>
-          <h2 id="folder-heading">Folders</h2>
+          <h2 id="folder-heading">{props.copy.folders}</h2>
         </div>
         <form className={styles.addFolder} onSubmit={submitFolder}>
           <input
@@ -93,10 +95,10 @@ export function ReferenceSessionRail(props: {
             disabled={disabled}
             maxLength={128}
             onChange={(event) => setNewFolderName(event.target.value)}
-            placeholder="New folder"
+            placeholder={props.copy.newFolder}
             value={newFolderName}
           />
-          <button type="submit" disabled={disabled || newFolderName.trim().length === 0}>Add</button>
+          <button type="submit" disabled={disabled || newFolderName.trim().length === 0}>{props.copy.add}</button>
         </form>
         <div className={styles.folderList}>
           {props.state.folders.map((folder) => (
@@ -160,12 +162,12 @@ export function ReferenceSessionRail(props: {
 
       <section className={styles.chatSection} aria-labelledby="chat-heading">
         <div className={styles.sectionHeading}>
-          <h2 id="chat-heading">Chats</h2>
+          <h2 id="chat-heading">{props.copy.chats}</h2>
           {props.state.phase === "loading" ? <span>Refreshing…</span> : null}
         </div>
         {props.state.failure ? <p className={styles.failure} role="alert">{props.state.failure}</p> : null}
         {props.state.phase === "ready" && props.state.sessions.length === 0 ? (
-          <p className={styles.empty}>No chats in this view.</p>
+          <p className={styles.empty}>{props.copy.noChats}</p>
         ) : null}
         <div className={styles.chatList}>
           {props.state.sessions.map((session) => (
@@ -211,7 +213,7 @@ export function ReferenceSessionRail(props: {
             type="button"
             disabled={props.state.loadingMore}
             onClick={() => void props.controller.loadMore()}
-          >{props.state.loadingMore ? "Loading…" : "Load more"}</button>
+          >{props.state.loadingMore ? "Loading…" : props.copy.loadMore}</button>
         ) : null}
       </section>
     </aside>
