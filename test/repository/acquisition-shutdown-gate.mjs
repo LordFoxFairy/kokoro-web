@@ -260,9 +260,9 @@ const RULES = [
   },
 ];
 
-export async function acquisitionShutdownViolations(root) {
+export async function acquisitionShutdownViolations(root, scanRoots = SCAN_ROOTS) {
   const files = (
-    await Promise.all(SCAN_ROOTS.map((path) => filesUnder(resolve(root, path))))
+    await Promise.all(scanRoots.map((path) => filesUnder(resolve(root, path))))
   )
     .flat()
     .filter(
@@ -281,13 +281,18 @@ export async function acquisitionShutdownViolations(root) {
   return violations.sort((left, right) => `${left.rule}:${left.path}`.localeCompare(`${right.rule}:${right.path}`));
 }
 
-export async function acquisitionShutdownTopologyViolations(root) {
+export async function acquisitionShutdownTopologyViolations(
+  root,
+  { includeUserTopology = true } = {},
+) {
   const violations = [];
-  const userRouteFiles = (await filesUnder(resolve(root, "apps/user/src/app/api")))
-    .filter(isNextRouteSource)
-    .map((path) => relative(root, path).replaceAll("\\", "/"));
-  if (!sameSet(new Set(userRouteFiles), USER_API_ROUTES)) {
-    violations.push({ rule: "user-api-route-inventory", path: "apps/user/src/app/api" });
+  if (includeUserTopology) {
+    const userRouteFiles = (await filesUnder(resolve(root, "apps/user/src/app/api")))
+      .filter(isNextRouteSource)
+      .map((path) => relative(root, path).replaceAll("\\", "/"));
+    if (!sameSet(new Set(userRouteFiles), USER_API_ROUTES)) {
+      violations.push({ rule: "user-api-route-inventory", path: "apps/user/src/app/api" });
+    }
   }
 
   const adminRouteFiles = (await filesUnder(resolve(root, "apps/admin/app/api")))
@@ -297,27 +302,29 @@ export async function acquisitionShutdownTopologyViolations(root) {
     violations.push({ rule: "admin-api-route-inventory", path: "apps/admin/app/api" });
   }
 
-  const billingFiles = (await filesUnder(resolve(root, "apps/user/src/app/api/billing")))
-    .filter((path) => SOURCE_EXTENSIONS.test(path))
-    .map((path) => relative(root, path).replaceAll("\\", "/"))
-    .sort();
-  if (billingFiles.length !== 1 || billingFiles[0] !== USER_PLANS_ROUTE) {
-    violations.push({ rule: "user-billing-route-allowlist", path: "apps/user/src/app/api/billing" });
-  }
+  if (includeUserTopology) {
+    const billingFiles = (await filesUnder(resolve(root, "apps/user/src/app/api/billing")))
+      .filter((path) => SOURCE_EXTENSIONS.test(path))
+      .map((path) => relative(root, path).replaceAll("\\", "/"))
+      .sort();
+    if (billingFiles.length !== 1 || billingFiles[0] !== USER_PLANS_ROUTE) {
+      violations.push({ rule: "user-billing-route-allowlist", path: "apps/user/src/app/api/billing" });
+    }
 
-  let plansSource = "";
-  try {
-    plansSource = await readFile(resolve(root, USER_PLANS_ROUTE), "utf8");
-  } catch {
-    // Missing route is reported by the allowlist shape above.
-  }
-  if (
-    !/export\s+async\s+function\s+GET\b/u.test(plansSource) ||
-    /export\s+(?:async\s+function|const)\s+(?:POST|PUT|PATCH|DELETE|OPTIONS)\b/u.test(plansSource) ||
-    /export\s*\{[^}]*\b(?:POST|PUT|PATCH|DELETE|OPTIONS)\b[^}]*\}/u.test(plansSource) ||
-    /export\s*\*/u.test(plansSource)
-  ) {
-    violations.push({ rule: "user-plans-get-only", path: USER_PLANS_ROUTE });
+    let plansSource = "";
+    try {
+      plansSource = await readFile(resolve(root, USER_PLANS_ROUTE), "utf8");
+    } catch {
+      // Missing route is reported by the allowlist shape above.
+    }
+    if (
+      !/export\s+async\s+function\s+GET\b/u.test(plansSource) ||
+      /export\s+(?:async\s+function|const)\s+(?:POST|PUT|PATCH|DELETE|OPTIONS)\b/u.test(plansSource) ||
+      /export\s*\{[^}]*\b(?:POST|PUT|PATCH|DELETE|OPTIONS)\b[^}]*\}/u.test(plansSource) ||
+      /export\s*\*/u.test(plansSource)
+    ) {
+      violations.push({ rule: "user-plans-get-only", path: USER_PLANS_ROUTE });
+    }
   }
 
   for (const [path, expected] of ADMIN_FILTERED_ROUTES) {

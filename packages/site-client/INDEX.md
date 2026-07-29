@@ -25,7 +25,7 @@ The package never accepts a raw Platform URL and never selects a Site. A registe
 
 ## Generated source
 
-`src/generated/platform-public/*` is produced by Root contract authority and must not be hand edited. `apps/user/src/contract/*` remains a legacy mirror until the existing Host-routed user app migrates to Platform Public.
+`src/generated/platform-public/*` is produced by Root contract authority and must not be hand edited. It is the Site-facing Platform Public client mirror.
 
 ## Verification
 

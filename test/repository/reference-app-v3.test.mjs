@@ -1,42 +1,30 @@
 import assert from "node:assert/strict"
-import { readFile, readdir } from "node:fs/promises"
+import { readFile } from "node:fs/promises"
 import path from "node:path"
 import test from "node:test"
 import { fileURLToPath } from "node:url"
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..")
-const user = path.join(root, "apps/user")
 
-test("the user root page is a Browser v3 reference harness", async () => {
-  const [page, manifest] = await Promise.all([
-    readFile(path.join(user, "src/app/page.tsx"), "utf8"),
-    readFile(path.join(user, "package.json"), "utf8").then(JSON.parse),
+test("the formal workspace contains only Admin, the reference fixture, and shared packages", async () => {
+  const workspace = await readFile(path.join(root, "pnpm-workspace.yaml"), "utf8")
+  assert.match(workspace, /^packages:\n  - apps\/admin\n  - apps\/reference-site\n  - packages\/\*/u)
+  assert.doesNotMatch(workspace, /apps\/\*/u)
+})
+
+test("the independently generated Site template owns the complete Browser v3 product composition", async () => {
+  const [manifest, page] = await Promise.all([
+    readFile(path.join(root, "packages/site-scaffold/templates/site/package.json"), "utf8"),
+    readFile(path.join(root, "packages/site-scaffold/templates/site/src/app/page.tsx"), "utf8"),
   ])
+  for (const packageName of [
+    "@kokoro/site-bff",
+    "@kokoro/session-client",
+    "@kokoro/chat-surface",
+    "@kokoro/chat-app",
+    "@kokoro/account-app",
+  ]) assert.match(manifest, new RegExp(packageName.replace("/", "\\/"), "u"))
   assert.match(page, /ChatProduct/u)
-  assert.doesNotMatch(page, /HomeGate|SessionShell/u)
-  assert.equal(manifest.dependencies["@kokoro/session-client"], "workspace:*")
-  assert.equal(manifest.dependencies["@kokoro/chat-surface"], "workspace:*")
-  assert.equal(manifest.dependencies["@kokoro/chat-app"], "workspace:*")
-})
-
-test("legacy user code is quarantined rather than made contract-compatible", async () => {
-  const [tsconfig, vitest, legacyReducer] = await Promise.all([
-    readFile(path.join(user, "tsconfig.json"), "utf8").then(JSON.parse),
-    readFile(path.join(user, "vitest.config.ts"), "utf8"),
-    readFile(path.join(user, "src/core/reducer.ts"), "utf8"),
-  ])
-  assert.ok(tsconfig.exclude.includes("src/core/**"))
-  assert.ok(tsconfig.exclude.includes("src/billing/**"))
-  assert.match(vitest, /tests\/reference/u)
-  assert.match(legacyReducer, /message\.delta/u)
-})
-
-test("active reference modules cannot import legacy application domains", async () => {
-  const referenceRoot = path.join(user, "src/reference")
-  const files = (await readdir(referenceRoot)).filter((name) => /\.(?:ts|tsx)$/u.test(name))
-  const forbidden = /(?:@\/|\.\.\/)(?:billing|core|dev|engine|hub|team|ui\/)/u
-  for (const file of files) {
-    const source = await readFile(path.join(referenceRoot, file), "utf8")
-    assert.doesNotMatch(source, forbidden, file)
-  }
+  assert.match(page, /readOpaqueAuthSession/u)
+  assert.doesNotMatch(page, /apps\/user|HomeGate|SessionShell/u)
 })

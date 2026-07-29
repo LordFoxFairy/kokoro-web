@@ -19,7 +19,7 @@ The fixture signature and `.invalid` domain are intentionally non-production. Th
 
 ## Legacy status
 
-`apps/user` remains the existing Host-routed legacy app until Platform cutover. This fixture does not silently replace or qualify it.
+This fixture qualifies the shared Site composition only. Production Sites are generated as independent projects and never deploy this fixture.
 
 ## Verification
 

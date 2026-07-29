@@ -20,8 +20,15 @@ test("route inventory recognizes every Next.js source extension", () => {
 
 test("production sources expose no Web acquisition channel or Admin payment control surface", async () => {
   const violations = [
-    ...(await acquisitionShutdownViolations(root)),
-    ...(await acquisitionShutdownTopologyViolations(root)),
+    ...(await acquisitionShutdownViolations(root, [
+      "package.json",
+      "apps/admin",
+      "apps/reference-site",
+      "packages/account-app",
+      "packages/site-bff",
+      "packages/site-scaffold/templates/site",
+    ])),
+    ...(await acquisitionShutdownTopologyViolations(root, { includeUserTopology: false })),
   ];
   assert.deepEqual(
     violations,

@@ -9,15 +9,19 @@ owners:
 
 ## Responsibilities
 
-Own independently deployable user/admin Next.js applications and Web-only shared packages under one independently released Web repository.
+Own the Site application factory, brand-neutral product packages, a reference fixture, and the independently deployed Admin console.
 
-工作区成员（`pnpm-workspace.yaml` = `apps/*` + `packages/*`）：
+正式工作区成员（`apps/user` 已退出 workspace，不参与安装、构建、测试或发布）：
 
 ```
 apps/
-  user/     @kokoro/web-user   面向用户的工作台。走 session BFF，从不直连 DB。
-  admin/    @kokoro/admin-web  运营后台。NextAuth + 本仓 generated Connect client 的 RBAC 特权面。
+  admin/          @kokoro/admin-web      运营后台，独立部署的 RBAC 特权面。
+  reference-site/ @kokoro/reference-site Site factory 的非生产资格夹具。
 packages/
+  site-scaffold/ @kokoro/site-scaffold 为每个 Site 生成独立项目、artifact 与 CI。
+  site-bff/      @kokoro/site-bff      Site server-only 组合根。
+  chat-app/      @kokoro/chat-app      brand-neutral Chat 产品。
+  account-app/   @kokoro/account-app   brand-neutral Account 产品。
   tsconfig/ @kokoro/tsconfig   共享 TS 基线 base.json（app 各自 extends，只留 app 专属）。
   i18n/     @kokoro/i18n       framework-agnostic i18n 引擎（createI18n：negotiate/translate/interpolate）。见其 INDEX。
   session-client/              Root contract-bound Session HTTP/SSE client；只收 path transport，不收 URL/凭据/Site。
@@ -25,9 +29,8 @@ packages/
   bff-runtime/                 server-only Site bootstrap、SessionAccessGrant 与 fail-closed proxy trust kernel。
 ```
 
-两 app 锁在同一套栈：Next 16.2.12、React 19.2.8、antd ^6.5.0、Vitest 4.1.10。根 `package.json`（`@kokoro/web`）：
-`dev`/`build`/`start` 委派 `apps/user`；`lint`/`typecheck` 为 `-r` 全量；`test` 先跑仓库契约
-`test/repository/*.test.mjs`（CI workflow 形状 + 依赖安全）再跑各 workspace 包测试。
+正式 Next.js surfaces 锁在 Next 16.2.12 / React 19.2.8。根 `dev`/`start` 只启动 reference fixture；
+`build:site` 验证 Site factory、共享依赖与 reference fixture，`build:admin` 独立验证 Admin。
 
 ## Non-responsibilities
 
@@ -35,18 +38,16 @@ Web does not execute Agent graphs, own Session/Platform business persistence, or
 
 ## Public boundary
 
-`apps/user` is the Site user surface and BFF; `apps/admin` is the privileged operator surface; `packages/*` are repository-local shared Web packages.
+每个生产 Site 是 `@kokoro/site-scaffold` 生成的独立外部项目；`apps/admin` 是特权运营面；`packages/*`
+是 Web 仓发布的稳定构件。`apps/reference-site` 只验证 factory composition，不是共享用户站部署单元。
 
-**两 app 信任边界不同，不可混**：`apps/user` 只消费 session HTTP/SSE（web BFF 密封 cookie，浏览器不持 bearer）；
-`apps/admin` 使用 NextAuth，并通过本仓生成镜像调用 Platform Admin 私有 Connect 控制面。因此保持两个独立部署目标
-（admin 宜挂内网/子域），绝不合成单 app。
+**Site 与 Admin 信任边界不可混**：每个 Site 的同源 BFF 密封 cookie/credential，浏览器只见 HTTP/SSE；Admin
+使用 NextAuth，并通过本仓生成镜像调用 Platform Admin 私有 Connect 控制面。
 
 ## Callers and dependencies
 
 Browsers call each app. User BFF calls Session HTTP/SSE; Admin server code calls Platform generated Connect services.
 
-- `apps/user` 上游 `kokoro-session`：契约类型在 `apps/user/src/contract/*`，由根仓 `contract/generate.py` 从
-  `contract/spec/*.yaml` 生成，**勿手改**。
 - `packages/session-client/src/generated/*` 是新 Site Chat 的 Root 生成镜像；`packages/chat-surface` 只经该包消费
   Session 契约，不跨仓导入 Session 源码。Session browser v3 的完整 snapshot、opaque cursor、commands 与 SSE
   schemas 已生成并由 client/BFF adapter 消费；browser 不接触 Session URL、Site 或授权材料。
@@ -81,8 +82,8 @@ Put app-specific behavior in its app and truly shared Web code in `packages/*`. 
 ## Current gotchas
 
 - **Acquisition shutdown**：User Web 保留固定 Site 的只读套餐/credit/account 展示与 Platform Public 合同绑定的卡密 preview→confirm→recover；checkout/mock-pay/refund BFF、购买 CTA、provider secret/SDK 仍禁止。卡密只走 server-only generated client，raw Code 不落状态/日志/响应。仓库门禁对两 app 的完整 API route inventory、Admin rewrite 清单、proxy egress 和 plans GET-only export 采用闭合 allowlist。Admin 的 manifests/billing-overview/user360/resource/action 先经过本地 BFF 深度正向 schema 过滤，payment module/metrics/orders/action 对浏览器恒不可达。
-- **每 Site 一个独立 Web 项目**：仓内是共享能力源码（一个 user app + 一个 admin app）；生产 Fleet 仍需为每个 Site
-  提供独立产品命名的 project、artifact、release 与 rollback 权。
+- **每 Site 一个独立 Web 项目**：Site factory 输出独立产品名、repository、artifact、release、cookie/account
+  边界与 rollback 权；Web 仓不再提供一个共享 `apps/user` 作为生产部署入口。
 - **`.npmrc` 使用 `node-linker=isolated`**（非 hoisted），防止 app/private package 依赖被根级幽灵依赖掩盖。切换
   linker 属根工具链迁移，必须以 clean install、两 app build/test 与 dependency-boundary evidence 证明，不能直接改。
 - **jest-dom matchers 挂载**（`apps/user/tests/setup.ts`）：必须 `import * as m from "@testing-library/jest-dom/matchers"`
@@ -90,10 +91,9 @@ Put app-specific behavior in its app and truly shared Web code in `packages/*`. 
   matcher 静默不注册（报 "Invalid Chai property: toBeInTheDocument"）。
 - **i18n 分层**：解析引擎单一实现在 `@kokoro/i18n`（泛型于各 app 的 `Locale`/`MessageKey`），两 app 各自持有消息字典
   与 React 绑定（`apps/user/src/i18n`、`apps/admin/lib/i18n`）——字典属 app 专属，不上收共享包。
-- **dev 起环**：主仓 `scripts/closure-up.py` 在 web 仓根 spawn `pnpm run dev`，经根 `package.json` 委派到 `apps/user`；
-  admin 不由 closure-up 托管（需另起 platform-admin 栈）。
+- **dev 起环**：仓根 `pnpm run dev` 只启动 reference fixture。真实 Site 必须在自己的项目中启动；Admin 独立启动。
 
 ## Verification
 
-Run `pnpm -r lint`, `pnpm -r typecheck`, `pnpm test`, and production builds for every deployable app.
-CI（`.github/workflows/ci.yml`）另跑 `pnpm audit --prod --audit-level high`，并分别 build `@kokoro/web-user` 与 `@kokoro/admin-web`。
+Run `pnpm -r lint`, `pnpm -r typecheck`, `pnpm test`, `pnpm run build:site`, and `pnpm run build:admin`.
+CI 另跑 `pnpm audit --prod --audit-level high`；外部 Site 项目还必须执行模板内自己的 CI/artifact verification。

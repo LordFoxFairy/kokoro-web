@@ -11,7 +11,6 @@ async function readPackage(path) {
 
 const rootPackage = await readPackage(".");
 const adminPackage = await readPackage("apps/admin");
-const userPackage = await readPackage("apps/user");
 const i18nPackage = await readPackage("packages/i18n");
 const siteAppKitPackage = await readPackage("packages/site-app-kit");
 const siteClientPackage = await readPackage("packages/site-client");
@@ -26,7 +25,7 @@ const referenceSitePackage = await readPackage("apps/reference-site");
 const workspace = await readFile(resolve(root, "pnpm-workspace.yaml"), "utf8");
 
 test("deployable apps pin the reviewed security patch line", () => {
-  for (const app of [adminPackage, userPackage]) {
+  for (const app of [adminPackage, referenceSitePackage]) {
     assert.equal(app.dependencies.next, "16.2.12");
     assert.equal(app.dependencies.react, "19.2.8");
     assert.equal(app.dependencies["react-dom"], "19.2.8");
@@ -101,7 +100,6 @@ test("new Site packages use one Node 24 toolchain and the generated client owns 
   assert.equal(referenceSitePackage.dependencies.next, "16.2.12");
   assert.equal(referenceSitePackage.dependencies.react, "19.2.8");
   assert.equal(referenceSitePackage.dependencies["react-dom"], "19.2.8");
-  assert.equal(userPackage.dependencies.zod, "^3.25.76");
 });
 
 test("the normal root test command executes repository contracts", () => {

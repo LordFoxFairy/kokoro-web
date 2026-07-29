@@ -1,12 +1,12 @@
 # packages/
 
-Kokoro web monorepo 的共享包。被 `apps/user`（面向用户）与 `apps/admin`（后台管理，后续迁入）消费，
+Kokoro Web 的共享包。生产 Site 由 `site-scaffold` 生成独立项目，Admin 仍是本仓独立 app；
 收敛两 app 的重复实现，是"一个 web 子仓、方便管理"的落点。
 
 ## 现有
 
 - **`@kokoro/tsconfig`** — 共享 TypeScript 基线（`base.json`）。app 各自 `extends`，只保留 app 专属
-  （`paths` / Next `plugins` / test `types` / `include`）。已被 `apps/user` 消费。
+  （`paths` / Next `plugins` / test `types` / `include`）。
 
 ## 规划（随 admin 迁入 apps/admin 时落地——届时两个消费者都在，共享才有意义）
 

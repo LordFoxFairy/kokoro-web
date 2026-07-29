@@ -8,6 +8,7 @@ const root = resolve(import.meta.dirname, "../..");
 test("web CI installs and verifies with its pinned pnpm lock", async () => {
   const workflow = await readFile(resolve(root, ".github/workflows/ci.yml"), "utf8");
   const packageJson = JSON.parse(await readFile(resolve(root, "package.json"), "utf8"));
+  const workspace = await readFile(resolve(root, "pnpm-workspace.yaml"), "utf8");
 
   assert.equal(packageJson.packageManager, "pnpm@11.2.2");
   assert.match(workflow, /uses:\s*pnpm\/action-setup@8912a9102ac27614460f54aedde9e1e7f9aec20d\s*# v6\.0\.5/u);
@@ -25,10 +26,18 @@ test("web CI installs and verifies with its pinned pnpm lock", async () => {
   assert.match(workflow, /pnpm -r lint/u);
   assert.match(workflow, /pnpm audit --prod --audit-level high/u);
   assert.match(workflow, /run:\s*pnpm test/u);
-  assert.equal(packageJson.scripts.build, "pnpm --filter @kokoro/web-user... build");
-  assert.match(workflow, /- name: build user site\s+run:\s*pnpm build/u);
-  assert.match(workflow, /pnpm --filter @kokoro\/admin-web build/u);
-  assert.match(workflow, /pnpm --filter @kokoro\/reference-site build/u);
+  assert.match(workspace, /^packages:\n  - apps\/admin\n  - apps\/reference-site\n  - packages\/\*/u);
+  assert.doesNotMatch(workspace, /apps\/\*/u);
+  assert.equal(packageJson.scripts.dev, "pnpm --filter @kokoro/reference-site dev");
+  assert.equal(
+    packageJson.scripts["build:site"],
+    "pnpm --filter @kokoro/site-scaffold... --filter @kokoro/reference-site... build",
+  );
+  assert.equal(packageJson.scripts["build:admin"], "pnpm --filter @kokoro/admin-web... build");
+  assert.equal(packageJson.scripts.build, "pnpm run build:site && pnpm run build:admin");
+  assert.match(workflow, /- name: build Site factory and reference fixture\s+run:\s*pnpm run build:site/u);
+  assert.match(workflow, /- name: build admin console\s+run:\s*pnpm run build:admin/u);
+  assert.doesNotMatch(workflow, /@kokoro\/web-user|build user site/u);
   assert.match(workflow, /AUTH_SECRET:\s*example-/u);
   assert.doesNotMatch(workflow, /DATABASE_URL_ADMIN/u);
   assert.match(workflow, /KOKORO_GATEWAY_URL:\s*http:\/\/127\.0\.0\.1:/u);
