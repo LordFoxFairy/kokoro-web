@@ -134,6 +134,8 @@ function SecuritySettings(props: Readonly<{
       } else if (result.state === "succeeded") {
         setCeremony(null); setMessage("Security settings updated.")
         await props.onCompleted()
+      } else if (result.retry === "same_action") {
+        setMessage("The update was committed, but its one-time response is still being recovered. Continue this same action.")
       } else {
         setMessage("This security ceremony must be restarted safely.")
         setCeremony(null)

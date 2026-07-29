@@ -35,11 +35,23 @@ const OPERATIONS = new Set<LaunchOperation>([
 ])
 
 export type SecurityLaunchState =
-  | Readonly<{ phase: "reauthenticate_password" }>
+  | Readonly<{ phase: "reauthenticate_password"; supersedePriorCommandId?: string }>
   | Readonly<{
       phase: "reauthenticate_mfa"
       challengeKind: "totp" | "recovery"
       transactionRef: string
+      supersedePriorCommandId?: string
+    }>
+  | Readonly<{
+      phase: "totp_enrollment_delivery"
+      reauthenticationProof: string
+      supersedePriorCommandId?: string
+      priorTransactionRef?: string
+    }>
+  | Readonly<{
+      phase: "recovery_code_delivery"
+      reauthenticationProof: string
+      supersedePriorCommandId?: string
     }>
   | Readonly<{
       phase: "totp_confirmation"
@@ -121,17 +133,42 @@ function validEntry(value: unknown): value is LaunchCommandState {
   const securityOperation = item.operation === "identity.enroll-totp" || item.operation === "identity.disable-totp" ||
     item.operation === "identity.regenerate-recovery-codes"
   if (securityOperation !== (security !== undefined)) return false
-  if (securityOperation && (preview !== undefined || commandValue.receiptRecoveryCapability === undefined)) return false
+  if (securityOperation && preview !== undefined) return false
   if (security !== undefined) {
     if (security === null || typeof security !== "object" || Array.isArray(security)) return false
     const securityValue = security as Record<string, unknown>
     if (securityValue.phase === "reauthenticate_password") {
-      if (Object.keys(securityValue).length !== 1) return false
+      if (
+        (securityValue.supersedePriorCommandId !== undefined &&
+          (typeof securityValue.supersedePriorCommandId !== "string" || !COMMAND_ID.test(securityValue.supersedePriorCommandId))) ||
+        Object.keys(securityValue).some((name) => !["phase", "supersedePriorCommandId"].includes(name))
+      ) return false
     } else if (securityValue.phase === "reauthenticate_mfa") {
       if (
         (securityValue.challengeKind !== "totp" && securityValue.challengeKind !== "recovery") ||
         typeof securityValue.transactionRef !== "string" || securityValue.transactionRef.length < 1 || securityValue.transactionRef.length > 256 ||
-        Object.keys(securityValue).some((name) => !["phase", "challengeKind", "transactionRef"].includes(name))
+        (securityValue.supersedePriorCommandId !== undefined &&
+          (typeof securityValue.supersedePriorCommandId !== "string" || !COMMAND_ID.test(securityValue.supersedePriorCommandId))) ||
+        Object.keys(securityValue).some((name) => !["phase", "challengeKind", "transactionRef", "supersedePriorCommandId"].includes(name))
+      ) return false
+    } else if (securityValue.phase === "totp_enrollment_delivery") {
+      if (
+        item.operation !== "identity.enroll-totp" || typeof securityValue.reauthenticationProof !== "string" ||
+        securityValue.reauthenticationProof.length < 32 || securityValue.reauthenticationProof.length > 4096 ||
+        (securityValue.supersedePriorCommandId !== undefined &&
+          (typeof securityValue.supersedePriorCommandId !== "string" || !COMMAND_ID.test(securityValue.supersedePriorCommandId))) ||
+        (securityValue.priorTransactionRef !== undefined &&
+          (typeof securityValue.priorTransactionRef !== "string" || securityValue.priorTransactionRef.length < 1 || securityValue.priorTransactionRef.length > 256)) ||
+        ((securityValue.supersedePriorCommandId === undefined) !== (securityValue.priorTransactionRef === undefined)) ||
+        Object.keys(securityValue).some((name) => !["phase", "reauthenticationProof", "supersedePriorCommandId", "priorTransactionRef"].includes(name))
+      ) return false
+    } else if (securityValue.phase === "recovery_code_delivery") {
+      if (
+        item.operation !== "identity.regenerate-recovery-codes" || typeof securityValue.reauthenticationProof !== "string" ||
+        securityValue.reauthenticationProof.length < 32 || securityValue.reauthenticationProof.length > 4096 ||
+        (securityValue.supersedePriorCommandId !== undefined &&
+          (typeof securityValue.supersedePriorCommandId !== "string" || !COMMAND_ID.test(securityValue.supersedePriorCommandId))) ||
+        Object.keys(securityValue).some((name) => !["phase", "reauthenticationProof", "supersedePriorCommandId"].includes(name))
       ) return false
     } else if (securityValue.phase === "totp_confirmation") {
       if (
@@ -146,6 +183,7 @@ function validEntry(value: unknown): value is LaunchCommandState {
         Object.keys(securityValue).some((name) => !["phase", "reauthenticationProof"].includes(name))
       ) return false
     } else return false
+    if (securityValue.phase !== "disable_confirmation" && commandValue.receiptRecoveryCapability === undefined) return false
   }
   return true
 }

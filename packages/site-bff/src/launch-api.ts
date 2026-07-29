@@ -349,7 +349,7 @@ export function createSiteLaunchApi(input: Readonly<{
         case "identity.regenerate-recovery-codes": {
           const target = securityTarget(requestedOperation)
           const command = secretCommand(state.command)
-          if (target === null || command === null || state.security === undefined) return unavailable(409)
+          if (target === null || state.security === undefined) return unavailable(409)
 
           const finish = (response: Response) => setState(
             response,
@@ -357,9 +357,146 @@ export function createSiteLaunchApi(input: Readonly<{
           )
           const persist = (updated: LaunchCommandState, response: Response) =>
             setState(response, vault.seal(vault.put(entries, updated)))
+          const recoveryRecipe = async (
+            expectedOperationId: "reauthenticateIdentitySession" | "beginTotpEnrollment" | "regenerateRecoveryCodes",
+            priorCommand: SiteOneTimeCommand,
+          ) => {
+            const receipt = await input.runtime.commandReceipt(auth, priorCommand.commandId, priorCommand.receiptRecoveryCapability)
+            if (
+              receipt.reconciliation.kind !== "superseding_ceremony_required" ||
+              receipt.reconciliation.ceremony.operationId !== expectedOperationId
+            ) return { receipt, supersede: null }
+            const fresh = input.runtime.createOneTimeCommand()
+            return {
+              receipt,
+              supersede: {
+                command: Object.freeze({
+                  ...fresh,
+                  receiptRecoveryCapability: priorCommand.receiptRecoveryCapability,
+                }),
+                priorCommandId: priorCommand.commandId,
+                priorTransactionRef: receipt.reconciliation.ceremony.transactionRef,
+              },
+            }
+          }
+
+          const persistOneTimeUnavailable = (
+            updated: LaunchCommandState,
+            stateName: "reauthentication_recovery_required" | "enrollment_recovery_required" | "recovery_code_delivery_recovery_required",
+          ) => persist(updated, json({ state: stateName, retry: "same_action" }, 202))
+
+          const runEnrollmentDelivery = async (
+            security: Readonly<{
+              reauthenticationProof: string
+              supersedePriorCommandId?: string
+              priorTransactionRef?: string
+            }>,
+            deliveryCommand: SiteOneTimeCommand,
+          ): Promise<Response> => {
+            let enrolled = await input.runtime.beginTotpEnrollment(
+              auth as OpaqueAuthSession,
+              security.priorTransactionRef === undefined
+                ? { reauthenticationProof: security.reauthenticationProof }
+                : { reauthenticationProof: security.reauthenticationProof, priorTransactionRef: security.priorTransactionRef },
+              security.supersedePriorCommandId === undefined
+                ? { command: deliveryCommand }
+                : { command: deliveryCommand, priorCommandId: security.supersedePriorCommandId },
+            )
+            if (!("transaction" in enrolled)) {
+              const recovered = await recoveryRecipe("beginTotpEnrollment", deliveryCommand)
+              if (recovered.supersede === null) {
+                return recovered.receipt.reconciliation.kind === "pending"
+                  ? persistOneTimeUnavailable({ ...state, command: deliveryCommand, lastUsedAt: now(),
+                      security: { phase: "totp_enrollment_delivery", ...security } }, "enrollment_recovery_required")
+                  : finish(json({ state: "enrollment_delivery_unavailable", nextAction: "restart_reauthentication" }, 409))
+              }
+              enrolled = await input.runtime.beginTotpEnrollment(
+                auth as OpaqueAuthSession,
+                { reauthenticationProof: security.reauthenticationProof,
+                  priorTransactionRef: recovered.supersede.priorTransactionRef },
+                { command: recovered.supersede.command, priorCommandId: recovered.supersede.priorCommandId },
+              )
+              if (!("transaction" in enrolled)) {
+                return persistOneTimeUnavailable({
+                  ...state,
+                  command: recovered.supersede.command,
+                  lastUsedAt: now(),
+                  security: {
+                    phase: "totp_enrollment_delivery",
+                    reauthenticationProof: security.reauthenticationProof,
+                    supersedePriorCommandId: recovered.supersede.priorCommandId,
+                    priorTransactionRef: recovered.supersede.priorTransactionRef,
+                  },
+                }, "enrollment_recovery_required")
+              }
+            }
+            const updated: LaunchCommandState = {
+              ...state,
+              command: input.runtime.createOneTimeCommand(),
+              lastUsedAt: now(),
+              expiresAt: ceremonyExpiresAt(now(), enrolled.transaction.expiresAt),
+              security: { phase: "totp_confirmation", transactionRef: enrolled.transaction.transactionRef },
+            }
+            return persist(updated, json({
+              state: "totp_confirmation_required",
+              manualEntrySecret: enrolled.transaction.manualEntrySecret,
+              otpauthUri: enrolled.transaction.otpauthUri,
+              expiresAt: enrolled.transaction.expiresAt,
+            }))
+          }
+
+          const runRecoveryCodeDelivery = async (
+            security: Readonly<{ reauthenticationProof: string; supersedePriorCommandId?: string }>,
+            deliveryCommand: SiteOneTimeCommand,
+          ): Promise<Response> => {
+            let regenerated = await input.runtime.regenerateRecoveryCodes(
+              auth as OpaqueAuthSession,
+              { reauthenticationProof: security.reauthenticationProof },
+              security.supersedePriorCommandId === undefined
+                ? { command: deliveryCommand }
+                : { command: deliveryCommand, priorCommandId: security.supersedePriorCommandId },
+            )
+            if (!("recoveryCodes" in regenerated)) {
+              const recovered = await recoveryRecipe("regenerateRecoveryCodes", deliveryCommand)
+              if (recovered.supersede === null) {
+                return recovered.receipt.reconciliation.kind === "pending"
+                  ? persistOneTimeUnavailable({ ...state, command: deliveryCommand, lastUsedAt: now(),
+                      security: { phase: "recovery_code_delivery", ...security } }, "recovery_code_delivery_recovery_required")
+                  : finish(json({ state: "recovery_codes_unavailable", nextAction: "restart_reauthentication" }, 409))
+              }
+              regenerated = await input.runtime.regenerateRecoveryCodes(
+                auth as OpaqueAuthSession,
+                { reauthenticationProof: security.reauthenticationProof },
+                { command: recovered.supersede.command, priorCommandId: recovered.supersede.priorCommandId },
+              )
+              if (!("recoveryCodes" in regenerated)) {
+                return persistOneTimeUnavailable({
+                  ...state,
+                  command: recovered.supersede.command,
+                  lastUsedAt: now(),
+                  security: {
+                    phase: "recovery_code_delivery",
+                    reauthenticationProof: security.reauthenticationProof,
+                    supersedePriorCommandId: recovered.supersede.priorCommandId,
+                  },
+                }, "recovery_code_delivery_recovery_required")
+              }
+            }
+            return finish(json({ state: "succeeded", generatedAt: regenerated.generatedAt, recoveryCodes: regenerated.recoveryCodes }))
+          }
+
+          if (state.security.phase === "totp_enrollment_delivery") {
+            if (requestedOperation !== "identity.enroll-totp" || command === null) return unavailable(409)
+            return runEnrollmentDelivery(state.security, command)
+          }
+
+          if (state.security.phase === "recovery_code_delivery") {
+            if (requestedOperation !== "identity.regenerate-recovery-codes" || command === null) return unavailable(409)
+            return runRecoveryCodeDelivery(state.security, command)
+          }
 
           if (state.security.phase === "totp_confirmation") {
-            if (requestedOperation !== "identity.enroll-totp") return unavailable(409)
+            if (requestedOperation !== "identity.enroll-totp" || command === null) return unavailable(409)
             const code = text(body.code, 6, 64)
             if (code === null) return unavailable(400)
             const response = await input.runtime.confirmTotpEnrollment(
@@ -388,6 +525,8 @@ export function createSiteLaunchApi(input: Readonly<{
             return finish(json({ state: "succeeded" }))
           }
 
+          if (command === null) return unavailable(409)
+
           const reauthentication = state.security.phase === "reauthenticate_password"
             ? (() => {
                 const password = text(body.password, 1, 1024)
@@ -404,14 +543,35 @@ export function createSiteLaunchApi(input: Readonly<{
                 }
               })()
           if (reauthentication === null) return unavailable(400)
-          const reauthenticated = await input.runtime.reauthenticate(
+          let reauthenticationCommand = command
+          let reauthenticated = await input.runtime.reauthenticate(
             auth as OpaqueAuthSession,
             reauthentication,
-            { command },
+            state.security.supersedePriorCommandId === undefined
+              ? { command: reauthenticationCommand }
+              : { command: reauthenticationCommand, priorCommandId: state.security.supersedePriorCommandId },
           )
           if ("kind" in reauthenticated) {
-            const receipt = await input.runtime.commandReceipt(auth, command.commandId, command.receiptRecoveryCapability)
-            return json(publicReceipt(receipt), receipt.reconciliation.kind === "terminal" ? 409 : 202)
+            const recovered = await recoveryRecipe("reauthenticateIdentitySession", reauthenticationCommand)
+            if (recovered.supersede === null) {
+              return recovered.receipt.reconciliation.kind === "pending"
+                ? persistOneTimeUnavailable({ ...state, lastUsedAt: now() }, "reauthentication_recovery_required")
+                : finish(json({ state: "reauthentication_expired", nextAction: "restart" }, 409))
+            }
+            reauthenticationCommand = recovered.supersede.command
+            reauthenticated = await input.runtime.reauthenticate(
+              auth as OpaqueAuthSession,
+              reauthentication,
+              { command: reauthenticationCommand, priorCommandId: recovered.supersede.priorCommandId },
+            )
+            if ("kind" in reauthenticated) {
+              return persistOneTimeUnavailable({
+                ...state,
+                command: reauthenticationCommand,
+                lastUsedAt: now(),
+                security: { ...state.security, supersedePriorCommandId: recovered.supersede.priorCommandId },
+              }, "reauthentication_recovery_required")
+            }
           }
           if ("pending" in reauthenticated) {
             const nextCommand = input.runtime.createOneTimeCommand()
@@ -448,38 +608,10 @@ export function createSiteLaunchApi(input: Readonly<{
           }
 
           if (requestedOperation === "identity.regenerate-recovery-codes") {
-            const regenerated = await input.runtime.regenerateRecoveryCodes(
-              auth as OpaqueAuthSession,
-              { reauthenticationProof },
-              { command: input.runtime.createOneTimeCommand() },
-            )
-            if (!("recoveryCodes" in regenerated)) {
-              return finish(json({ state: "recovery_codes_unavailable", nextAction: "restart_reauthentication" }, 409))
-            }
-            return finish(json({ state: "succeeded", generatedAt: regenerated.generatedAt, recoveryCodes: regenerated.recoveryCodes }))
+            return runRecoveryCodeDelivery({ reauthenticationProof }, input.runtime.createOneTimeCommand())
           }
 
-          const enrolled = await input.runtime.beginTotpEnrollment(
-            auth as OpaqueAuthSession,
-            { reauthenticationProof },
-            { command: input.runtime.createOneTimeCommand() },
-          )
-          if (!("transaction" in enrolled)) {
-            return finish(json({ state: "enrollment_delivery_unavailable", nextAction: "restart_reauthentication" }, 409))
-          }
-          const updated: LaunchCommandState = {
-            ...state,
-            command: input.runtime.createOneTimeCommand(),
-            lastUsedAt: now(),
-            expiresAt: ceremonyExpiresAt(now(), enrolled.transaction.expiresAt),
-            security: { phase: "totp_confirmation", transactionRef: enrolled.transaction.transactionRef },
-          }
-          return persist(updated, json({
-            state: "totp_confirmation_required",
-            manualEntrySecret: enrolled.transaction.manualEntrySecret,
-            otpauthUri: enrolled.transaction.otpauthUri,
-            expiresAt: enrolled.transaction.expiresAt,
-          }))
+          return runEnrollmentDelivery({ reauthenticationProof }, input.runtime.createOneTimeCommand())
         }
         case "redemption.preview": {
           const code = text(body.code, 16, 256)

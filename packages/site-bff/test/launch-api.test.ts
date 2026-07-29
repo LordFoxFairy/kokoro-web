@@ -191,4 +191,57 @@ describe("Site launch HTTP boundary", () => {
       { transactionRef: "totp-enrollment-12345678", code: "234567" },
     ])
   })
+
+  it("supersedes a lost one-time reauthentication proof without exposing recovery authority", async () => {
+    let sequence = 0
+    const deliveries: unknown[] = []
+    const runtime = {
+      publicOrigin: "https://site.example",
+      deploymentIdentity: { deploymentRef: "deployment-12345678", webArtifactDigest: "a".repeat(64), publicOrigin: "https://site.example" },
+      bindingIdentity: { siteProjectBindingRef: "binding-12345678", siteReleaseRef: "release-12345678" },
+      createCommand: () => ({ commandId: String(++sequence).padStart(32, "0"), idempotencyKey: String(sequence).padStart(48, "0") }),
+      createOneTimeCommand: () => ({ commandId: String(++sequence).padStart(32, "0"), idempotencyKey: String(sequence).padStart(48, "0"), receiptRecoveryCapability: String(sequence).padStart(64, "0") }),
+      verifyBrowserMutation: () => true,
+      publicCapabilities: async () => ({ enabledSurfaceIds: ["security"], featurePolicyRevision: "policy-1" }),
+      reauthenticate: async (_auth: OpaqueAuthSession, reauthentication: unknown, delivery: unknown) => {
+        deliveries.push({ reauthentication, delivery })
+        if (deliveries.length === 1) return { kind: "delivery_unavailable", commandId: "1".repeat(32), requestDigest: "d".repeat(64), receiptRef: "receipt-12345678" }
+        return { commandId: "2".repeat(32), requestDigest: "e".repeat(64), proof: {
+          audience: "platform-public", operationId: "disableTotp", resourceKind: "identity_account",
+          reauthenticationProof: "recovered-server-proof-12345678901234567890", authStrengthPolicyRevision: "auth-policy-1",
+          issuedAt: "2026-07-29T00:00:00.000Z", expiresAt: "2026-07-29T00:05:00.000Z",
+          sessionRef: "identity-session-12345678", sessionEpoch: "1", userSecurityEpoch: "1",
+        } }
+      },
+      commandReceipt: async () => ({
+        receipt: {},
+        reconciliation: { kind: "superseding_ceremony_required", ceremony: {
+          operationId: "reauthenticateIdentitySession", transactionRef: "reauth-recovery-12345678",
+          bindingDigest: "b".repeat(64), expiresAt: "2026-07-29T00:05:00.000Z", invalidatesPriorDelivery: true,
+        } },
+      }),
+      disableTotp: async (_auth: OpaqueAuthSession, input: unknown) => {
+        deliveries.push(input)
+        return { receipt: {} }
+      },
+    }
+    const api = createSiteLaunchApi({ runtime: runtime as never, stateSecret: "k".repeat(64), readAuthSession: () => auth,
+      now: () => 1_000, nonce: () => Buffer.alloc(12, 6) })
+    const headers = { origin: "https://site.example", "sec-fetch-site": "same-origin", "x-kokoro-browser-csrf": "csrf-ok", "content-type": "application/json" }
+    const call = (action: "prepare" | "execute", body: unknown, cookieValue = "") => api.handle(new Request(`https://site.example/api/account/${action}`, { method: "POST", headers: { ...headers, cookie: cookieValue }, body: JSON.stringify(body) }), action)
+
+    const prepared = await call("prepare", { operation: "identity.disable-totp", flowRef: "disable-flow-12345678" })
+    const recovered = await call("execute", { operation: "identity.disable-totp", flowRef: "disable-flow-12345678", password: "correct horse battery staple" }, responseCookie(prepared))
+    const recoveredBody = await recovered.text()
+    expect(JSON.parse(recoveredBody)).toEqual({ state: "totp_confirmation_required" })
+    expect(deliveries[1]).toEqual(expect.objectContaining({ delivery: expect.objectContaining({
+      priorCommandId: "1".padStart(32, "0"),
+      command: expect.objectContaining({ receiptRecoveryCapability: "1".padStart(64, "0") }),
+    }) }))
+    expect(recoveredBody).not.toContain("recovered-server-proof")
+
+    const disabled = await call("execute", { operation: "identity.disable-totp", flowRef: "disable-flow-12345678", code: "123456" }, responseCookie(recovered))
+    expect(await disabled.json()).toEqual({ state: "succeeded" })
+    expect(deliveries[2]).toEqual({ reauthenticationProof: "recovered-server-proof-12345678901234567890", code: "123456" })
+  })
 })
