@@ -171,9 +171,15 @@ importers:
       '@ant-design/nextjs-registry':
         specifier: ^1.3.0
         version: 1.3.0(@ant-design/cssinjs@2.1.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(antd@6.5.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(next@16.2.12(@types/node@20.19.43)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@kokoro/chat-surface':
+        specifier: workspace:*
+        version: link:../../packages/chat-surface
       '@kokoro/i18n':
         specifier: workspace:*
         version: link:../../packages/i18n
+      '@kokoro/session-client':
+        specifier: workspace:*
+        version: link:../../packages/session-client
       antd:
         specifier: ^6.5.0
         version: 6.5.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)

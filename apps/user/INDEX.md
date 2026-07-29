@@ -8,7 +8,7 @@ owners:
 # User Web application
 
 ## Responsibilities
-Render the user workspace/chat experience, own browser interaction state, and bridge authenticated users to Session HTTP/SSE through a server BFF.
+Render the Browser v3 reference Chat harness, own browser interaction state, and bridge authenticated users to Session HTTP/SSE through a server BFF.
 
 ## Non-responsibilities
 The app does not own conversation persistence, execute Agent runs, decide credit/model policy, or call Agent directly.
@@ -20,7 +20,7 @@ Next.js routes are the browser boundary; `src/lib/server` is the server-only BFF
 Site users call this app. Its BFF calls Session and the Site-scoped plan catalogue read endpoint; shared translation behavior comes from repository-local packages where adopted.
 
 ## Data ownership and events
-The app owns drafts, presentation state, and caches. Session owns messages/runs/replay and Platform owns Site/account/entitlement facts.
+The active harness owns only its composer draft and typed Chat projection. Session owns messages/runs/replay and Platform owns Site/account/entitlement facts.
 
 ## Runtime and security
 Browser input is untrusted; cookies are sealed server-side, bearer/service credentials stay in the BFF, and trusted host resolution determines Site context.
@@ -34,6 +34,7 @@ Add UI under focused `src/ui` components and remote access behind `src/lib/serve
 ## Current gotchas
 This source is shared capability code; each production Site still requires an independent product-named project, lock, artifact, release, and rollback authority.
 Web acquisition is intentionally shut down: there are no checkout/mock-pay routes, payment-provider secrets, purchase CTAs, or payment SDK initialization. Keep credit/account and plan catalogue views read-only; do not invent a redeem endpoint or generic commerce proxy.
+The pre-v3 universal skin remains under explicit quarantine (see `LEGACY_QUARANTINE.md`) and is outside active TypeScript/Vitest surfaces; the root page may import only `src/reference/**`, not raw GA reducers or legacy billing/delivery/Hub/Team UI.
 
 ## Verification
 Run user tests, lint, typecheck, production build, and Web-to-Session HTTP/SSE compatibility.

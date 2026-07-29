@@ -1,17 +1,20 @@
 import { headers } from "next/headers"
 import { notFound } from "next/navigation"
 
-import { HomeGate } from "@/ui/auth/home-gate"
 import { resolveSite } from "@/lib/server/site"
+import { ReferenceChat } from "@/reference/reference-chat"
 
-export default async function Home() {
-  // 服务端按请求 Host 解析站点品牌（SITE-REAL）：缺省档未接 site 服务时回退默认 Kokoro。
+export default async function Home(props: {
+  readonly searchParams: Promise<{ readonly session?: string | string[] }>
+}) {
   const host = (await headers()).get("host")
   const site = await resolveSite(host)
-  if (site === null) {
-    // strict 档 fail-closed：解析失败不退默认品牌，渲染中性无品牌 404（防多租户品牌串味）。
-    notFound()
-  }
-  // 会话态分流交客户端 HomeGate：有效信封→工作台，匿名→营销落地页（登录卡在 /login）。
-  return <HomeGate brandName={site.brand.name} />
+  if (site === null) notFound()
+  const rawSessionId = (await props.searchParams).session
+  return (
+    <ReferenceChat
+      brandName={site.brand.name}
+      initialSessionId={typeof rawSessionId === "string" ? rawSessionId : undefined}
+    />
+  )
 }

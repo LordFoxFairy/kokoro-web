@@ -1,6 +1,7 @@
 {
   "extends": "@kokoro/tsconfig/base.json",
   "compilerOptions": {
+    "target": "ES2022",
     "plugins": [
       {
         "name": "next"
@@ -13,11 +14,47 @@
   },
   "include": [
     "next-env.d.ts",
-    "**/*.ts",
-    "**/*.tsx",
-    ".next/types/**/*.ts",
-    ".next/dev/types/**/*.ts",
-    "**/*.mts"
+    "src/app/page.tsx",
+    "src/app/layout.tsx",
+    "src/app/api/session/[...path]/route.ts",
+    "src/reference/**/*.ts",
+    "src/reference/**/*.tsx",
+    "src/lib/server/**/*.ts",
+    "tests/reference/**/*.ts",
+    "tests/reference/**/*.tsx",
+    "tests/setup.ts"
   ],
-  "exclude": ["node_modules", "tmp"]
+  "exclude": [
+    "node_modules",
+    "tmp",
+    "src/billing/**",
+    "src/core/**",
+    "src/dev/**",
+    "src/engine/**",
+    "src/hub/**",
+    "src/team/**",
+    "src/ui/billing/**",
+    "src/ui/canvas/**",
+    "src/ui/composer/**",
+    "src/ui/hitl/**",
+    "src/ui/library/**",
+    "src/ui/mcp/**",
+    "src/ui/rail/**",
+    "src/ui/settings/**",
+    "src/ui/share/**",
+    "src/ui/shared/**",
+    "src/ui/shell/**",
+    "src/ui/skills/**",
+    "src/ui/thread/**",
+    "src/ui/todo/**",
+    "tests/app/**",
+    "tests/billing/**",
+    "tests/core/**",
+    "tests/engine/**",
+    "tests/hub/**",
+    "tests/i18n/**",
+    "tests/lib/**",
+    "tests/team/**",
+    "tests/ui/**"
+  ]
 }

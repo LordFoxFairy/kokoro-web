@@ -3,16 +3,9 @@
 // 从 /matchers 取纯 matcher(不 import vitest)+ 本 app 的 expect.extend,跨包管理器稳定。
 import * as jestDomMatchers from "@testing-library/jest-dom/matchers"
 
-import { afterEach, expect } from "vitest"
+import { expect } from "vitest"
 
 expect.extend(jestDomMatchers)
-
-import { __resetResourceStore } from "@/lib/query/resource-store"
-
-// 查询层模块级缓存跨用例隔离：每例后清空，避免上例数据/在飞态污染下例（与 cleanup 同级）。
-afterEach(() => {
-  __resetResourceStore()
-})
 
 if (!window.matchMedia) {
   Object.defineProperty(window, "matchMedia", {
