@@ -2,11 +2,14 @@
 
 import { createSessionClient } from "@kokoro/session-client"
 import type { ChatPart, ChatProjectionMessage } from "@kokoro/chat-surface"
+import rehypeHighlight from "rehype-highlight"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import {
   type FormEvent,
+  isValidElement,
   type KeyboardEvent,
+  type ReactNode,
   useEffect,
   useMemo,
   useState,
@@ -118,16 +121,51 @@ function safeHref(value: string | undefined): string | null {
   }
 }
 
-function MarkdownText(props: Readonly<{ text: string }>) {
+function renderedText(node: ReactNode): string {
+  if (typeof node === "string" || typeof node === "number") return String(node)
+  if (Array.isArray(node)) return node.map(renderedText).join("")
+  return isValidElement<{ children?: ReactNode }>(node) ? renderedText(node.props.children) : ""
+}
+
+function codeLanguage(node: ReactNode): string | null {
+  const child = Array.isArray(node) && node.length === 1 ? node[0] : node
+  if (!isValidElement<{ className?: string }>(child)) return null
+  return /(?:^|\s)language-([A-Za-z0-9_+-]+)/u.exec(child.props.className ?? "")?.[1] ?? null
+}
+
+function CodeBlock(props: Readonly<{ children?: ReactNode }>) {
+  const [copied, setCopied] = useState(false)
+  const language = codeLanguage(props.children)
+  const copy = async (): Promise<void> => {
+    try {
+      await navigator.clipboard.writeText(renderedText(props.children).replace(/\n$/u, ""))
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1_500)
+    } catch {
+      setCopied(false)
+    }
+  }
+  return <div className={styles.codeBlock} data-language={language ?? "plain-text"}>
+    <div className={styles.codeBlockHeader}>
+      <span>{language ?? "Code"}</span>
+      <button aria-live="polite" type="button" onClick={() => void copy()}>{copied ? "Copied" : "Copy"}</button>
+    </div>
+    <pre>{props.children}</pre>
+  </div>
+}
+
+export function MarkdownText(props: Readonly<{ text: string }>) {
   return (
     <div className={styles.markdown}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
+        rehypePlugins={[[rehypeHighlight, { detect: false, ignoreMissing: true }]]}
         components={{
           a: ({ href, children }) => {
             const safe = safeHref(href)
             return safe === null ? <span>{children}</span> : <a href={safe} rel="noreferrer noopener" target="_blank">{children}</a>
           },
+          pre: ({ children }) => <CodeBlock>{children}</CodeBlock>,
         }}
       >{props.text}</ReactMarkdown>
     </div>
