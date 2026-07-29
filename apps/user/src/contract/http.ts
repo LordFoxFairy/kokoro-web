@@ -6,7 +6,7 @@ import { z } from "zod"
 export const sessionHttpContractMetadata = Object.freeze({
   schemaId: "kokoro.session.browser.v3",
   schemaVersion: 3,
-  sourceDigestSha256: "bb1c7c75369fee3082587d5e1dfaa873737e438b78161c91548bd4838d2d1378",
+  sourceDigestSha256: "758e2b2f8fe7718139dd617a46d9f77c86e186289f559f60ed3d271758c49926",
 })
 
 export const commandIdentitySchema = z
@@ -812,6 +812,7 @@ export const sessionListItemSchema = z
     session: sessionMetadataSchema,
     pinned: z.boolean(),
     folder_id: z.string().min(1).optional(),
+    preference_version: z.number().int().positive(),
     safe_text_highlight: z.string().optional(),
   })
   .strict()
