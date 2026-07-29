@@ -47,4 +47,25 @@ describe("launch command state vault", () => {
     const sealed = vault.seal([state(1)])
     expect(Buffer.from(sealed).includes(Buffer.from("RAW-REDEEM-CODE"))).toBe(false)
   })
+
+  it("accepts security ceremony state only with a secret command and matching operation", () => {
+    const vault = createLaunchStateVault({ secret: "s".repeat(64), binding, now: () => 1_000, nonce: () => Buffer.alloc(12, 7) })
+    const security: LaunchCommandState = {
+      operation: "identity.enroll-totp",
+      flowRef: "security-flow-12345678",
+      command: {
+        commandId: "a".repeat(32),
+        idempotencyKey: "b".repeat(48),
+        receiptRecoveryCapability: "c".repeat(64),
+      },
+      createdAt: 1_000,
+      lastUsedAt: 1_000,
+      expiresAt: 10_000,
+      security: { phase: "reauthenticate_password" },
+    }
+
+    expect(vault.open(vault.seal(vault.put([], security)))).toEqual([security])
+    expect(() => vault.put([], { ...security, command: { commandId: "a".repeat(32), idempotencyKey: "b".repeat(48) } })).toThrow()
+    expect(() => vault.put([], { ...state(1), security: { phase: "reauthenticate_password" } })).toThrow()
+  })
 })

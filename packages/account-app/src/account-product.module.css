@@ -6,6 +6,15 @@
 .form input, .form select { width: 100%; box-sizing: border-box; border: 1px solid #d8d8d8; border-radius: 10px; padding: 11px 12px; }
 .form button, .button { border: 0; border-radius: 10px; padding: 11px 14px; background: #171717; color: white; cursor: pointer; }
 .buttonSecondary { border: 1px solid #d8d8d8; border-radius: 10px; padding: 9px 12px; background: white; color: #171717; cursor: pointer; }
+.dangerButton { border: 1px solid #f0b8b2; border-radius: 10px; padding: 9px 12px; background: #fff7f6; color: #9f2016; cursor: pointer; }
+.securitySettings { display: grid; gap: 12px; border-top: 1px solid #eee; margin-top: 20px; padding-top: 16px; }
+.actionList { display: flex; flex-wrap: wrap; gap: 8px; }
+.enrollmentSecret { display: grid; justify-items: center; gap: 8px; border: 1px solid #eee; border-radius: 14px; padding: 16px; background: #fafafa; }
+.enrollmentSecret img { max-width: 100%; height: auto; image-rendering: pixelated; }
+.manualSecret { max-width: 100%; overflow-wrap: anywhere; border-radius: 8px; padding: 8px 10px; background: #f1f1f1; }
+.recoveryPanel { display: grid; gap: 12px; border: 1px solid #d8d8d8; border-radius: 14px; padding: 16px; background: #fafafa; }
+.codeList { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin: 0; padding: 0; list-style: none; }
+.codeList code { display: block; border: 1px solid #e2e2e2; border-radius: 8px; padding: 8px; background: white; user-select: all; }
 .quiet { color: #6b6b6b; font-size: 14px; }
 .list { display: grid; gap: 10px; padding: 0; list-style: none; }
 .row { border-top: 1px solid #eee; padding-top: 10px; }

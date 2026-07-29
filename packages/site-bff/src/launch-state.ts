@@ -16,6 +16,9 @@ export type LaunchOperation =
   | "identity.verify-email"
   | "identity.resend-verification"
   | "identity.revoke-sessions"
+  | "identity.enroll-totp"
+  | "identity.disable-totp"
+  | "identity.regenerate-recovery-codes"
   | "redemption.preview"
   | "redemption.confirm"
 
@@ -24,9 +27,28 @@ const OPERATIONS = new Set<LaunchOperation>([
   "identity.verify-email",
   "identity.resend-verification",
   "identity.revoke-sessions",
+  "identity.enroll-totp",
+  "identity.disable-totp",
+  "identity.regenerate-recovery-codes",
   "redemption.preview",
   "redemption.confirm",
 ])
+
+export type SecurityLaunchState =
+  | Readonly<{ phase: "reauthenticate_password" }>
+  | Readonly<{
+      phase: "reauthenticate_mfa"
+      challengeKind: "totp" | "recovery"
+      transactionRef: string
+    }>
+  | Readonly<{
+      phase: "totp_confirmation"
+      transactionRef: string
+    }>
+  | Readonly<{
+      phase: "disable_confirmation"
+      reauthenticationProof: string
+    }>
 
 export interface LaunchCommandState {
   readonly operation: LaunchOperation
@@ -40,6 +62,8 @@ export interface LaunchCommandState {
     previewCredential: string
     legalAcceptanceRefs: readonly string[]
   }>
+  /** Sensitive ceremony state is encrypted into the HttpOnly Site cookie and never exposed to browser code. */
+  readonly security?: SecurityLaunchState
 }
 
 export interface LaunchStateBinding {
@@ -69,6 +93,7 @@ function validEntry(value: unknown): value is LaunchCommandState {
   const item = value as Record<string, unknown>
   const command = item.command
   const preview = item.preview
+  const security = item.security
   if (
     typeof item.operation !== "string" || !OPERATIONS.has(item.operation as LaunchOperation) ||
     typeof item.flowRef !== "string" || !FLOW_REF.test(item.flowRef) ||
@@ -92,6 +117,35 @@ function validEntry(value: unknown): value is LaunchCommandState {
       !Array.isArray(previewValue.legalAcceptanceRefs) || previewValue.legalAcceptanceRefs.length > 64 ||
       previewValue.legalAcceptanceRefs.some((value) => typeof value !== "string" || value.length < 1 || value.length > 256)
     ) return false
+  }
+  const securityOperation = item.operation === "identity.enroll-totp" || item.operation === "identity.disable-totp" ||
+    item.operation === "identity.regenerate-recovery-codes"
+  if (securityOperation !== (security !== undefined)) return false
+  if (securityOperation && (preview !== undefined || commandValue.receiptRecoveryCapability === undefined)) return false
+  if (security !== undefined) {
+    if (security === null || typeof security !== "object" || Array.isArray(security)) return false
+    const securityValue = security as Record<string, unknown>
+    if (securityValue.phase === "reauthenticate_password") {
+      if (Object.keys(securityValue).length !== 1) return false
+    } else if (securityValue.phase === "reauthenticate_mfa") {
+      if (
+        (securityValue.challengeKind !== "totp" && securityValue.challengeKind !== "recovery") ||
+        typeof securityValue.transactionRef !== "string" || securityValue.transactionRef.length < 1 || securityValue.transactionRef.length > 256 ||
+        Object.keys(securityValue).some((name) => !["phase", "challengeKind", "transactionRef"].includes(name))
+      ) return false
+    } else if (securityValue.phase === "totp_confirmation") {
+      if (
+        item.operation !== "identity.enroll-totp" || typeof securityValue.transactionRef !== "string" ||
+        securityValue.transactionRef.length < 1 || securityValue.transactionRef.length > 256 ||
+        Object.keys(securityValue).some((name) => !["phase", "transactionRef"].includes(name))
+      ) return false
+    } else if (securityValue.phase === "disable_confirmation") {
+      if (
+        item.operation !== "identity.disable-totp" || typeof securityValue.reauthenticationProof !== "string" ||
+        securityValue.reauthenticationProof.length < 32 || securityValue.reauthenticationProof.length > 4096 ||
+        Object.keys(securityValue).some((name) => !["phase", "reauthenticationProof"].includes(name))
+      ) return false
+    } else return false
   }
   return true
 }
@@ -119,6 +173,7 @@ export function createLaunchStateVault(input: Readonly<{
           ...entry.preview,
           legalAcceptanceRefs: Object.freeze([...entry.preview.legalAcceptanceRefs]),
         }) }),
+        ...(entry.security === undefined ? {} : { security: Object.freeze({ ...entry.security }) }),
       })))
   }
 

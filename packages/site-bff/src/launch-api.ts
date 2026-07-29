@@ -2,7 +2,7 @@ import "server-only"
 
 import type { OpaqueAuthSession } from "@kokoro/bff-runtime"
 
-import type { SiteBffRuntime } from "./index.js"
+import type { SiteBffRuntime, SiteOneTimeCommand, SiteReauthenticationTarget } from "./index.js"
 import { createLaunchStateVault, type LaunchCommandState, type LaunchOperation } from "./launch-state.js"
 import type { SiteLegalDocument } from "./site-legal-documents.js"
 
@@ -96,7 +96,8 @@ function text(value: unknown, minimum: number, maximum: number): string | null {
 function operation(value: unknown): LaunchOperation | null {
   return typeof value === "string" && [
     "identity.register", "identity.verify-email", "identity.resend-verification",
-    "identity.revoke-sessions", "redemption.preview", "redemption.confirm",
+    "identity.revoke-sessions", "identity.enroll-totp", "identity.disable-totp",
+    "identity.regenerate-recovery-codes", "redemption.preview", "redemption.confirm",
   ].includes(value) ? value as LaunchOperation : null
 }
 
@@ -105,7 +106,34 @@ function flow(value: unknown): string | null {
 }
 
 function authRequired(value: LaunchOperation): boolean {
-  return value.startsWith("redemption.") || value === "identity.revoke-sessions"
+  return value.startsWith("redemption.") || [
+    "identity.revoke-sessions", "identity.enroll-totp", "identity.disable-totp",
+    "identity.regenerate-recovery-codes",
+  ].includes(value)
+}
+
+function securityTarget(operationId: LaunchOperation): SiteReauthenticationTarget | null {
+  const targetOperation = operationId === "identity.enroll-totp"
+    ? "beginTotpEnrollment"
+    : operationId === "identity.disable-totp"
+      ? "disableTotp"
+      : operationId === "identity.regenerate-recovery-codes"
+        ? "regenerateRecoveryCodes"
+        : null
+  return targetOperation === null ? null : Object.freeze({
+    audience: "platform-public" as const,
+    operationId: targetOperation,
+    resource: Object.freeze({ kind: "identity_account" as const }),
+  })
+}
+
+function secretCommand(command: LaunchCommandState["command"]): SiteOneTimeCommand | null {
+  return "receiptRecoveryCapability" in command ? command as SiteOneTimeCommand : null
+}
+
+function ceremonyExpiresAt(now: number, upstreamExpiresAt: string): number {
+  const upstream = Date.parse(upstreamExpiresAt)
+  return Number.isFinite(upstream) ? Math.min(now + STATE_TTL_MS, upstream) : now
 }
 
 function publicPreview(
@@ -244,13 +272,14 @@ export function createSiteLaunchApi(input: Readonly<{
       const enabled = new Set(capabilities.enabledSurfaceIds)
       const operationEnabled = requestedOperation.startsWith("redemption.")
         ? enabled.has("redeem") || enabled.has("redemption")
-        : requestedOperation === "identity.revoke-sessions"
+        : requestedOperation === "identity.revoke-sessions" || securityTarget(requestedOperation) !== null
           ? enabled.has("account") || enabled.has("security")
           : enabled.has("account") || enabled.has("identity")
       if (!operationEnabled) return unavailable(404)
 
       if (action === "prepare") {
-        const secret = requestedOperation === "identity.verify-email"
+        const target = securityTarget(requestedOperation)
+        const secret = requestedOperation === "identity.verify-email" || target !== null
         const command = secret ? input.runtime.createOneTimeCommand() : input.runtime.createCommand()
         const retained = requestedOperation === "redemption.preview"
           ? entries.filter((entry) => entry.operation !== "redemption.preview")
@@ -262,6 +291,7 @@ export function createSiteLaunchApi(input: Readonly<{
           createdAt: now(),
           lastUsedAt: now(),
           expiresAt: now() + STATE_TTL_MS,
+          ...(target === null ? {} : { security: { phase: "reauthenticate_password" as const } }),
         })
         return setState(new Response(null, { status: 204 }), vault.seal(next))
       }
@@ -313,6 +343,143 @@ export function createSiteLaunchApi(input: Readonly<{
           if (target !== "current" && target !== "others" && target !== "all") return unavailable(400)
           await input.runtime.revokeSessions(auth as OpaqueAuthSession, { target }, state.command)
           return json({ state: "committed" })
+        }
+        case "identity.enroll-totp":
+        case "identity.disable-totp":
+        case "identity.regenerate-recovery-codes": {
+          const target = securityTarget(requestedOperation)
+          const command = secretCommand(state.command)
+          if (target === null || command === null || state.security === undefined) return unavailable(409)
+
+          const finish = (response: Response) => setState(
+            response,
+            vault.seal(entries.filter((entry) => entry.operation !== requestedOperation || entry.flowRef !== flowRef)),
+          )
+          const persist = (updated: LaunchCommandState, response: Response) =>
+            setState(response, vault.seal(vault.put(entries, updated)))
+
+          if (state.security.phase === "totp_confirmation") {
+            if (requestedOperation !== "identity.enroll-totp") return unavailable(409)
+            const code = text(body.code, 6, 64)
+            if (code === null) return unavailable(400)
+            const response = await input.runtime.confirmTotpEnrollment(
+              auth as OpaqueAuthSession,
+              { transactionRef: state.security.transactionRef, code },
+              { command },
+            )
+            if (!("recoveryCodes" in response)) {
+              return finish(json({
+                state: "totp_enabled_recovery_codes_unavailable",
+                nextAction: "reauthenticate_and_regenerate_recovery_codes",
+              }, 409))
+            }
+            return finish(json({ state: "succeeded", generatedAt: response.generatedAt, recoveryCodes: response.recoveryCodes }))
+          }
+
+          if (state.security.phase === "disable_confirmation") {
+            if (requestedOperation !== "identity.disable-totp") return unavailable(409)
+            const code = text(body.code, 6, 64)
+            if (code === null) return unavailable(400)
+            await input.runtime.disableTotp(
+              auth as OpaqueAuthSession,
+              { reauthenticationProof: state.security.reauthenticationProof, code },
+              state.command,
+            )
+            return finish(json({ state: "succeeded" }))
+          }
+
+          const reauthentication = state.security.phase === "reauthenticate_password"
+            ? (() => {
+                const password = text(body.password, 1, 1024)
+                return password === null ? null : { stage: "password" as const, password, target }
+              })()
+            : (() => {
+                const code = text(body.code, 6, 128)
+                return code === null ? null : {
+                  stage: "mfa" as const,
+                  challengeKind: state.security.challengeKind,
+                  proofCode: code,
+                  transactionRef: state.security.transactionRef,
+                  target,
+                }
+              })()
+          if (reauthentication === null) return unavailable(400)
+          const reauthenticated = await input.runtime.reauthenticate(
+            auth as OpaqueAuthSession,
+            reauthentication,
+            { command },
+          )
+          if ("kind" in reauthenticated) {
+            const receipt = await input.runtime.commandReceipt(auth, command.commandId, command.receiptRecoveryCapability)
+            return json(publicReceipt(receipt), receipt.reconciliation.kind === "terminal" ? 409 : 202)
+          }
+          if ("pending" in reauthenticated) {
+            const nextCommand = input.runtime.createOneTimeCommand()
+            const expiresAt = ceremonyExpiresAt(now(), reauthenticated.pending.expiresAt)
+            const updated: LaunchCommandState = {
+              ...state,
+              command: nextCommand,
+              lastUsedAt: now(),
+              expiresAt,
+              security: {
+                phase: "reauthenticate_mfa",
+                challengeKind: reauthenticated.pending.challengeKind,
+                transactionRef: reauthenticated.pending.transactionRef,
+              },
+            }
+            return persist(updated, json({
+              state: "mfa_required",
+              challengeKind: reauthenticated.pending.challengeKind,
+              expiresAt: reauthenticated.pending.expiresAt,
+            }))
+          }
+          if (!("proof" in reauthenticated) || reauthenticated.proof.operationId !== target.operationId) return unavailable(409)
+          const reauthenticationProof = reauthenticated.proof.reauthenticationProof
+
+          if (requestedOperation === "identity.disable-totp") {
+            const updated: LaunchCommandState = {
+              ...state,
+              command: input.runtime.createCommand(),
+              lastUsedAt: now(),
+              expiresAt: ceremonyExpiresAt(now(), reauthenticated.proof.expiresAt),
+              security: { phase: "disable_confirmation", reauthenticationProof },
+            }
+            return persist(updated, json({ state: "totp_confirmation_required" }))
+          }
+
+          if (requestedOperation === "identity.regenerate-recovery-codes") {
+            const regenerated = await input.runtime.regenerateRecoveryCodes(
+              auth as OpaqueAuthSession,
+              { reauthenticationProof },
+              { command: input.runtime.createOneTimeCommand() },
+            )
+            if (!("recoveryCodes" in regenerated)) {
+              return finish(json({ state: "recovery_codes_unavailable", nextAction: "restart_reauthentication" }, 409))
+            }
+            return finish(json({ state: "succeeded", generatedAt: regenerated.generatedAt, recoveryCodes: regenerated.recoveryCodes }))
+          }
+
+          const enrolled = await input.runtime.beginTotpEnrollment(
+            auth as OpaqueAuthSession,
+            { reauthenticationProof },
+            { command: input.runtime.createOneTimeCommand() },
+          )
+          if (!("transaction" in enrolled)) {
+            return finish(json({ state: "enrollment_delivery_unavailable", nextAction: "restart_reauthentication" }, 409))
+          }
+          const updated: LaunchCommandState = {
+            ...state,
+            command: input.runtime.createOneTimeCommand(),
+            lastUsedAt: now(),
+            expiresAt: ceremonyExpiresAt(now(), enrolled.transaction.expiresAt),
+            security: { phase: "totp_confirmation", transactionRef: enrolled.transaction.transactionRef },
+          }
+          return persist(updated, json({
+            state: "totp_confirmation_required",
+            manualEntrySecret: enrolled.transaction.manualEntrySecret,
+            otpauthUri: enrolled.transaction.otpauthUri,
+            expiresAt: enrolled.transaction.expiresAt,
+          }))
         }
         case "redemption.preview": {
           const code = text(body.code, 16, 256)

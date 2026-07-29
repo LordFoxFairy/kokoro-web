@@ -146,4 +146,49 @@ describe("Site launch HTTP boundary", () => {
     expect(accepted.status).toBe(200)
     expect(confirmations).toEqual([{ previewCredential: "opaque-preview-credential-1234567890", legalAcceptanceRefs: ["terms-authoritative-2026"] }])
   })
+
+  it("keeps reauthentication proof server-side through TOTP enrollment and returns recovery codes once", async () => {
+    let command = 0
+    const calls: unknown[] = []
+    const runtime = {
+      publicOrigin: "https://site.example",
+      deploymentIdentity: { deploymentRef: "deployment-12345678", webArtifactDigest: "a".repeat(64), publicOrigin: "https://site.example" },
+      bindingIdentity: { siteProjectBindingRef: "binding-12345678", siteReleaseRef: "release-12345678" },
+      createCommand: () => ({ commandId: String(++command).padStart(32, "0"), idempotencyKey: String(command).padStart(48, "0") }),
+      createOneTimeCommand: () => ({ commandId: String(++command).padStart(32, "0"), idempotencyKey: String(command).padStart(48, "0"), receiptRecoveryCapability: String(command).padStart(64, "0") }),
+      verifyBrowserMutation: () => true,
+      publicCapabilities: async () => ({ enabledSurfaceIds: ["security"], featurePolicyRevision: "policy-1" }),
+      reauthenticate: async (_auth: OpaqueAuthSession, input: { stage: string }) => {
+        calls.push(input)
+        if (input.stage === "password") return { receipt: {}, pending: { transactionRef: "reauth-transaction-12345678", challengeKind: "totp", expiresAt: "2026-07-29T00:05:00.000Z" } }
+        return { commandId: "2".repeat(32), requestDigest: "d".repeat(64), proof: { audience: "platform-public", operationId: "beginTotpEnrollment", resourceKind: "identity_account", reauthenticationProof: "server-only-proof-12345678901234567890", authStrengthPolicyRevision: "auth-policy-1", issuedAt: "2026-07-29T00:00:00.000Z", expiresAt: "2026-07-29T00:05:00.000Z", sessionRef: "identity-session-12345678", sessionEpoch: "1", userSecurityEpoch: "1" } }
+      },
+      beginTotpEnrollment: async (_auth: OpaqueAuthSession, input: unknown) => {
+        calls.push(input)
+        return { commandId: "3".repeat(32), requestDigest: "e".repeat(64), transaction: { transactionRef: "totp-enrollment-12345678", expiresAt: "2026-07-29T00:10:00.000Z", manualEntrySecret: "JBSWY3DPEHPK3PXP", otpauthUri: "otpauth://totp/Image%20Studio:user?secret=JBSWY3DPEHPK3PXP" } }
+      },
+      confirmTotpEnrollment: async (_auth: OpaqueAuthSession, input: unknown) => {
+        calls.push(input)
+        return { commandId: "4".repeat(32), requestDigest: "f".repeat(64), generatedAt: "2026-07-29T00:02:00.000Z", recoveryCodes: Array.from({ length: 8 }, (_, index) => `recovery-${index}-code`) }
+      },
+    }
+    const api = createSiteLaunchApi({ runtime: runtime as never, stateSecret: "k".repeat(64), readAuthSession: () => auth,
+      now: () => 1_000, nonce: () => Buffer.alloc(12, 7) })
+    const headers = { origin: "https://site.example", "sec-fetch-site": "same-origin", "x-kokoro-browser-csrf": "csrf-ok", "content-type": "application/json" }
+    const call = (action: "prepare" | "execute", body: unknown, cookieValue = "") => api.handle(new Request(`https://site.example/api/account/${action}`, { method: "POST", headers: { ...headers, cookie: cookieValue }, body: JSON.stringify(body) }), action)
+
+    const prepared = await call("prepare", { operation: "identity.enroll-totp", flowRef: "security-flow-12345678" })
+    expect(prepared.status).toBe(204)
+    const password = await call("execute", { operation: "identity.enroll-totp", flowRef: "security-flow-12345678", password: "correct horse battery staple" }, responseCookie(prepared))
+    expect(await password.json()).toEqual({ state: "mfa_required", challengeKind: "totp", expiresAt: "2026-07-29T00:05:00.000Z" })
+    const mfa = await call("execute", { operation: "identity.enroll-totp", flowRef: "security-flow-12345678", code: "123456" }, responseCookie(password))
+    expect(await mfa.json()).toEqual({ state: "totp_confirmation_required", manualEntrySecret: "JBSWY3DPEHPK3PXP", otpauthUri: "otpauth://totp/Image%20Studio:user?secret=JBSWY3DPEHPK3PXP", expiresAt: "2026-07-29T00:10:00.000Z" })
+    expect(JSON.stringify(await call("execute", { operation: "identity.enroll-totp", flowRef: "security-flow-12345678", code: "234567" }, responseCookie(mfa)).then((response) => response.json()))).toContain("recovery-7-code")
+    expect(calls).toEqual([
+      expect.objectContaining({ stage: "password" }),
+      expect.objectContaining({ stage: "mfa", transactionRef: "reauth-transaction-12345678" }),
+      { reauthenticationProof: "server-only-proof-12345678901234567890" },
+      { transactionRef: "totp-enrollment-12345678", code: "234567" },
+    ])
+  })
 })

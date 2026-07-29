@@ -39,7 +39,7 @@ import type {
 import type { NodeSiteRuntimeProvider } from "@kokoro/site-runtime-node"
 
 export { createLaunchStateVault } from "./launch-state.js"
-export type { LaunchCommandState, LaunchOperation, LaunchStateBinding, LaunchStateVault } from "./launch-state.js"
+export type { LaunchCommandState, LaunchOperation, LaunchStateBinding, LaunchStateVault, SecurityLaunchState } from "./launch-state.js"
 export { createSiteLaunchApi, SITE_LAUNCH_STATE_COOKIE } from "./launch-api.js"
 export type { SiteLaunchApi } from "./launch-api.js"
 

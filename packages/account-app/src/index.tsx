@@ -1,6 +1,7 @@
 "use client"
 
 import { type FormEvent, useCallback, useEffect, useRef, useState } from "react"
+import QRCode from "qrcode"
 
 import styles from "./account-product.module.css"
 export type LegalDocument = Readonly<{ label: string; href: string }>
@@ -25,6 +26,17 @@ type RedemptionPreview = Readonly<{
   credits: readonly Readonly<{ amount: string; unit: string; bucketClass: string; expiresAt: string | null }>[]
   legalAcceptanceRequired: boolean
   legalDocuments: readonly LegalDocument[]
+}>
+
+type SecurityOperation = "identity.enroll-totp" | "identity.disable-totp" | "identity.regenerate-recovery-codes"
+type SecurityCeremonyState = Readonly<{
+  operation: SecurityOperation
+  flow: string
+  step: "password" | "mfa" | "totp_confirmation" | "recovery_codes"
+  challengeKind?: "totp" | "recovery"
+  manualEntrySecret?: string
+  otpauthUri?: string
+  recoveryCodes?: readonly string[]
 }>
 
 function flowRef(): string {
@@ -60,6 +72,122 @@ async function execute(prefix: string, csrfToken: string, operation: string, flo
   } catch { response = await reconcile() }
   if (!response.ok) throw new Error("The result is unavailable. Continue to reconcile the same action.")
   return await response.json() as Record<string, unknown>
+}
+
+function SecuritySettings(props: Readonly<{
+  prefix: string
+  csrfToken: string
+  onCompleted(): Promise<void>
+}>) {
+  const [ceremony, setCeremony] = useState<SecurityCeremonyState | null>(null)
+  const [pending, setPending] = useState(false)
+  const [message, setMessage] = useState("")
+  const [qrCode, setQrCode] = useState("")
+  const [acknowledged, setAcknowledged] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    const uri = ceremony?.otpauthUri
+    if (!uri) { setQrCode(""); return () => { active = false } }
+    void QRCode.toDataURL(uri, { errorCorrectionLevel: "M", margin: 2, width: 220 })
+      .then((data) => { if (active) setQrCode(data) })
+      .catch(() => { if (active) setQrCode("") })
+    return () => { active = false }
+  }, [ceremony?.otpauthUri])
+
+  async function start(operation: SecurityOperation) {
+    const flow = flowRef()
+    setPending(true); setMessage(""); setAcknowledged(false)
+    try {
+      await prepare(props.prefix, props.csrfToken, operation, flow)
+      setCeremony({ operation, flow, step: "password" })
+    } catch (error) { setMessage(error instanceof Error ? error.message : "Unavailable") }
+    finally { setPending(false) }
+  }
+
+  async function advance(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (ceremony === null) return
+    const data = new FormData(event.currentTarget)
+    const payload = ceremony.step === "password"
+      ? { password: String(data.get("password") ?? "") }
+      : { code: String(data.get("code") ?? "") }
+    setPending(true); setMessage("")
+    try {
+      const result = await execute(props.prefix, props.csrfToken, ceremony.operation, ceremony.flow, payload)
+      if (result.state === "mfa_required") {
+        setCeremony({ ...ceremony, step: "mfa", challengeKind: result.challengeKind === "recovery" ? "recovery" : "totp" })
+        setMessage(`Enter your ${result.challengeKind === "recovery" ? "recovery code" : "authenticator code"}.`)
+      } else if (result.state === "totp_confirmation_required") {
+        setCeremony({
+          ...ceremony,
+          step: "totp_confirmation",
+          ...(typeof result.manualEntrySecret === "string" ? { manualEntrySecret: result.manualEntrySecret } : {}),
+          ...(typeof result.otpauthUri === "string" ? { otpauthUri: result.otpauthUri } : {}),
+        })
+        setMessage(ceremony.operation === "identity.enroll-totp"
+          ? "Scan the QR code, then confirm with the new authenticator code."
+          : "Enter a current authenticator code to confirm disabling it.")
+      } else if (result.state === "succeeded" && Array.isArray(result.recoveryCodes) && result.recoveryCodes.every((value) => typeof value === "string")) {
+        setCeremony({ ...ceremony, step: "recovery_codes", recoveryCodes: result.recoveryCodes as string[] })
+        setMessage("Save these recovery codes now. They will not be shown again.")
+      } else if (result.state === "succeeded") {
+        setCeremony(null); setMessage("Security settings updated.")
+        await props.onCompleted()
+      } else {
+        setMessage("This security ceremony must be restarted safely.")
+        setCeremony(null)
+      }
+      event.currentTarget.reset()
+    } catch (error) { setMessage(error instanceof Error ? error.message : "Unavailable") }
+    finally { setPending(false) }
+  }
+
+  async function copyRecoveryCodes() {
+    if (!ceremony?.recoveryCodes) return
+    try {
+      await navigator.clipboard.writeText(ceremony.recoveryCodes.join("\n"))
+      setMessage("Recovery codes copied. Keep them somewhere private.")
+    } catch { setMessage("Copy failed. Download or save each code manually.") }
+  }
+
+  function downloadRecoveryCodes() {
+    if (!ceremony?.recoveryCodes) return
+    const url = URL.createObjectURL(new Blob([`${ceremony.recoveryCodes.join("\n")}\n`], { type: "text/plain" }))
+    const link = document.createElement("a")
+    link.href = url; link.download = "kokoro-recovery-codes.txt"; link.click()
+    URL.revokeObjectURL(url)
+  }
+
+  async function closeRecoveryCodes() {
+    if (!acknowledged) return
+    setCeremony(null); setAcknowledged(false); setMessage("Recovery codes saved.")
+    await props.onCompleted()
+  }
+
+  return <div className={styles.securitySettings}>
+    <h3>Authenticator and recovery</h3>
+    {ceremony === null ? <div className={styles.actionList}>
+      <button className={styles.buttonSecondary} disabled={pending} onClick={() => void start("identity.enroll-totp")} type="button">Set up authenticator</button>
+      <button className={styles.buttonSecondary} disabled={pending} onClick={() => void start("identity.regenerate-recovery-codes")} type="button">Generate new recovery codes</button>
+      <button className={styles.dangerButton} disabled={pending} onClick={() => void start("identity.disable-totp")} type="button">Disable authenticator</button>
+    </div> : ceremony.step === "recovery_codes" ? <div className={styles.recoveryPanel}>
+      <p><strong>Recovery codes</strong></p>
+      <ul className={styles.codeList}>{ceremony.recoveryCodes?.map((code) => <li key={code}><code>{code}</code></li>)}</ul>
+      <div className={styles.actionList}><button className={styles.buttonSecondary} onClick={() => void copyRecoveryCodes()} type="button">Copy codes</button><button className={styles.buttonSecondary} onClick={downloadRecoveryCodes} type="button">Download .txt</button></div>
+      <label className={styles.legalAcceptance}><input checked={acknowledged} onChange={(event) => setAcknowledged(event.currentTarget.checked)} type="checkbox" /><span>I saved these codes in a private place.</span></label>
+      <button className={styles.button} disabled={!acknowledged} onClick={() => void closeRecoveryCodes()} type="button">Done</button>
+    </div> : <form className={styles.form} onSubmit={advance}>
+      {ceremony.step === "password" ? <label>Current password<input autoComplete="current-password" name="password" required type="password" /></label> : null}
+      {ceremony.step === "totp_confirmation" && ceremony.otpauthUri ? <div className={styles.enrollmentSecret}>
+        {qrCode ? <img alt="Authenticator setup QR code" height="220" src={qrCode} width="220" /> : <p className={styles.quiet}>Preparing QR code…</p>}
+        <p className={styles.quiet}>Manual setup key</p><code className={styles.manualSecret}>{ceremony.manualEntrySecret}</code>
+      </div> : null}
+      {ceremony.step !== "password" ? <label>{ceremony.challengeKind === "recovery" ? "Recovery code" : "Authenticator code"}<input autoComplete="one-time-code" inputMode="numeric" name="code" required /></label> : null}
+      <div className={styles.actionList}><button disabled={pending} type="submit">{pending ? "Checking…" : "Continue"}</button><button className={styles.buttonSecondary} disabled={pending} onClick={() => setCeremony(null)} type="button">Cancel</button></div>
+    </form>}
+    <p className={styles.status} role="status">{message}</p>
+  </div>
 }
 
 export function IdentityLaunch(props: Readonly<{
@@ -216,7 +344,7 @@ export function AccountProduct(props: Readonly<{ brandName: string; csrfToken: s
             <button className={styles.button} disabled={preview.legalAcceptanceRequired && !redemptionAccepted} onClick={() => { if (previewFlow) void effect("redemption.confirm", { previewFlowRef: previewFlow, legalAccepted: !preview.legalAcceptanceRequired || redemptionAccepted }) }} type="button">Confirm redemption</button>
           </div>}
       </section> : null}
-      {dashboard.features.security ? <section className={styles.card}><h2>Security sessions</h2>{dashboard.availability.security === "unavailable" ? <p className={styles.quiet}>Session security is temporarily unavailable.</p> : <><ul className={styles.list}>{dashboard.sessions.map((session, index) => <li className={styles.row} key={`${session.createdAt}-${index}`}><strong>{session.deviceLabel}</strong> {session.current ? "(current)" : ""}<br/><span className={styles.quiet}>Last active {session.lastSeenAt}</span></li>)}</ul><button className={styles.buttonSecondary} onClick={() => void effect("identity.revoke-sessions", { target: "others" })} type="button">Sign out other sessions</button></>}</section> : null}
+      {dashboard.features.security ? <section className={styles.card}><h2>Security</h2>{dashboard.availability.security === "unavailable" ? <p className={styles.quiet}>Account security is temporarily unavailable.</p> : <><h3>Signed-in sessions</h3><ul className={styles.list}>{dashboard.sessions.map((session, index) => <li className={styles.row} key={`${session.createdAt}-${index}`}><strong>{session.deviceLabel}</strong> {session.current ? "(current)" : ""}<br/><span className={styles.quiet}>Last active {session.lastSeenAt}</span></li>)}</ul><button className={styles.buttonSecondary} onClick={() => void effect("identity.revoke-sessions", { target: "others" })} type="button">Sign out other sessions</button><SecuritySettings csrfToken={props.csrfToken} onCompleted={load} prefix={prefix} /></>}</section> : null}
       {dashboard.features.products ? <section className={styles.card}><h2>Products & entitlements</h2>{dashboard.availability.products === "unavailable" ? <p className={styles.quiet}>Products are temporarily unavailable.</p> : <ul className={styles.list}>{dashboard.products.map((product, index) => <li className={styles.row} key={`${product.safeLabel}-${index}`}><strong>{product.safeLabel}</strong><br/><span className={styles.quiet}>{product.state} · {product.kind}</span>{product.entitlements.map((item, itemIndex) => <div key={`${item.safeLabel}-${itemIndex}`}>{item.safeLabel}</div>)}</li>)}</ul>}</section> : null}
       {dashboard.features.credits ? <section className={styles.card}><h2>Credits</h2>{dashboard.availability.credits === "unavailable" ? <p className={styles.quiet}>Credits are temporarily unavailable.</p> : dashboard.credits.map((unit) => <div key={unit.unit}><h3>{unit.unit}</h3>{unit.buckets.map((bucket) => <p key={bucket.bucketClass}>{bucket.bucketClass}: <strong>{bucket.available}</strong> available</p>)}</div>)}</section> : null}
     </div> : null}
