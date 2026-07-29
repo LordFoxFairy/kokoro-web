@@ -72,6 +72,45 @@ describe("Site launch HTTP boundary", () => {
     expect(response.status).toBe(403)
   })
 
+  it("cancels an undeclared streaming body as soon as the bounded envelope is exceeded", async () => {
+    let cancelled = false
+    let pulls = 0
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulls += 1
+        if (pulls <= 5) controller.enqueue(new Uint8Array(8_192))
+        else controller.close()
+      },
+      cancel() { cancelled = true },
+    })
+    const api = createSiteLaunchApi({
+      runtime: {
+        publicOrigin: "https://site.example",
+        deploymentIdentity: { deploymentRef: "deployment-12345678", webArtifactDigest: "a".repeat(64) },
+        bindingIdentity: { siteProjectBindingRef: "binding-12345678", siteReleaseRef: "release-12345678" },
+        verifyBrowserMutation: () => true,
+      } as never,
+      stateSecret: "k".repeat(64),
+      readAuthSession: async () => auth,
+    })
+
+    const response = await api.handle(new Request("https://site.example/api/account/prepare", {
+      method: "POST",
+      headers: {
+        origin: "https://site.example",
+        "sec-fetch-site": "same-origin",
+        "x-kokoro-browser-csrf": "csrf-ok",
+        "content-type": "application/json",
+      },
+      body,
+      duplex: "half",
+    } as RequestInit & { duplex: "half" }), "prepare")
+
+    expect(response.status).toBe(503)
+    expect(cancelled).toBe(true)
+    expect(pulls).toBeLessThan(6)
+  })
+
   it("requires explicit legal acceptance while taking authoritative term refs only from sealed preview state", async () => {
     const confirmations: unknown[] = []
     const runtime = {

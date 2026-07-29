@@ -60,10 +60,31 @@ function unavailable(status = 503): Response {
 
 async function boundedJson(request: Request): Promise<Record<string, unknown>> {
   const declared = request.headers.get("content-length")
-  if (declared !== null && (!/^\d+$/u.test(declared) || Number(declared) > MAXIMUM_BODY_BYTES)) throw new Error("invalid")
-  const bytes = new Uint8Array(await request.arrayBuffer())
-  if (bytes.byteLength < 2 || bytes.byteLength > MAXIMUM_BODY_BYTES) throw new Error("invalid")
-  const value = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)) as unknown
+  if (declared !== null && (!/^\d+$/u.test(declared) || Number(declared) > MAXIMUM_BODY_BYTES)) {
+    await request.body?.cancel("request body exceeds the bounded JSON envelope").catch(() => undefined)
+    throw new Error("invalid")
+  }
+  if (request.body === null) throw new Error("invalid")
+
+  const reader = request.body.getReader()
+  const envelope = new Uint8Array(MAXIMUM_BODY_BYTES)
+  let length = 0
+  try {
+    while (true) {
+      const next = await reader.read()
+      if (next.done) break
+      if (length + next.value.byteLength > MAXIMUM_BODY_BYTES) {
+        await reader.cancel("request body exceeds the bounded JSON envelope").catch(() => undefined)
+        throw new Error("invalid")
+      }
+      envelope.set(next.value, length)
+      length += next.value.byteLength
+    }
+  } finally {
+    reader.releaseLock()
+  }
+  if (length < 2) throw new Error("invalid")
+  const value = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(envelope.subarray(0, length))) as unknown
   if (value === null || typeof value !== "object" || Array.isArray(value)) throw new Error("invalid")
   return value as Record<string, unknown>
 }
