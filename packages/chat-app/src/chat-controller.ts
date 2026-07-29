@@ -25,6 +25,10 @@ import {
   createCommandIdentity,
   reconcileCommandReceipt,
 } from "./command"
+import type {
+  SessionCommandRecoveryRecord,
+  SessionCommandRecoveryStore,
+} from "./command-recovery"
 
 const commandIdentity = createCommandIdentity
 
@@ -209,6 +213,7 @@ export type ChatController = Readonly<{
   activateBranch(branchId: string): Promise<boolean>
   cancel(): Promise<void>
   recover(): Promise<boolean>
+  resumePendingCommand(): Promise<boolean>
   selectModelOption(modelOptionRevisionRef: string): void
   selectEffort(effort: string | null): void
   decideAction(input: Readonly<{
@@ -229,6 +234,7 @@ export function createChatController(options: {
   readonly trustedLocale: string
   readonly chatCatalog: ModelOptionCatalog | null
   readonly defaultProjectRef: string | null
+  readonly commandRecoveryStore?: SessionCommandRecoveryStore
 }): ChatController {
   let state: ChatState = {
     phase: "idle",
@@ -243,6 +249,7 @@ export function createChatController(options: {
   }
   let stream: EventStreamHandle | null = null
   let repairTask: Promise<boolean> | null = null
+  let pendingCommand = options.commandRecoveryStore?.load() ?? null
   let generation = 0
   const runProjectionVersions = new Map<string, number>()
   const listeners = new Set<() => void>()
@@ -447,6 +454,27 @@ export function createChatController(options: {
 
   type ReceiptOperation = BrowserCommandOperation
 
+  const rememberCommand = (
+    operation: ReceiptOperation,
+    targets: Readonly<Record<string, string>>,
+    command: CommandIdentity,
+  ): void => {
+    const record: SessionCommandRecoveryRecord = Object.freeze({
+      schemaVersion: 1,
+      operation,
+      command,
+      ...(targets.session_id === undefined ? {} : { sessionId: targets.session_id }),
+      createdAt: Date.now(),
+    })
+    pendingCommand = record
+    options.commandRecoveryStore?.save(record)
+  }
+
+  const forgetCommand = (commandId: string): void => {
+    if (pendingCommand?.command.command_id === commandId) pendingCommand = null
+    options.commandRecoveryStore?.clear(commandId)
+  }
+
   const sendCommand = async (
     operation: ReceiptOperation,
     targets: Readonly<Record<string, string>>,
@@ -454,7 +482,16 @@ export function createChatController(options: {
     pendingCode: StableCode,
     sender: (command: CommandIdentity) => Promise<SessionCommandResponse>,
   ): Promise<SessionCommandResponse | null> => {
+    if (pendingCommand !== null) {
+      fail(describeSessionFailure({
+        stableCode: "RUN_OUTCOME_UNKNOWN",
+        action: "reconcile_receipt",
+        retryClass: "reconcile_receipt",
+      }))
+      return null
+    }
     const command = await commandIdentity({ operation, targets, effect })
+    rememberCommand(operation, targets, command)
     let response: SessionCommandResponse
     try {
       response = await sender(command)
@@ -490,10 +527,65 @@ export function createChatController(options: {
     }
     const failure = pendingFailure(reconciled, pendingCode)
     if (failure !== null) {
+      if (reconciled.command_receipt.status === "denied") forgetCommand(command.command_id)
       fail(failure)
       return null
     }
+    forgetCommand(command.command_id)
     return reconciled
+  }
+
+  const resumePendingCommand = async (): Promise<boolean> => {
+    const pending = pendingCommand
+    if (pending === null) return false
+    project({ type: "command", state: "pending" })
+    let response: SessionCommandResponse
+    try {
+      response = await options.client.getCommandReceipt(pending.command.command_id, {
+        operation: pending.operation,
+        idempotency_key: pending.command.idempotency_key,
+        digest_algorithm: pending.command.digest_algorithm,
+        request_digest: pending.command.request_digest,
+      })
+      response = await reconcileReceipt(response, pending.command, pending.operation)
+    } catch {
+      fail(describeSessionFailure({
+        stableCode: "RUN_OUTCOME_UNKNOWN",
+        action: "reconcile_receipt",
+        retryClass: "reconcile_receipt",
+      }))
+      return false
+    }
+    const failure = pendingFailure(response, "RUN_OUTCOME_UNKNOWN")
+    if (failure !== null) {
+      if (response.command_receipt.status === "denied") forgetCommand(pending.command.command_id)
+      fail(failure)
+      return false
+    }
+    if (response.command_receipt.status !== "accepted" && response.command_receipt.status !== "applied") {
+      fail(describeSessionFailure({
+        stableCode: "RUN_OUTCOME_UNKNOWN",
+        action: "reconcile_receipt",
+        retryClass: "reconcile_receipt",
+      }))
+      return false
+    }
+    forgetCommand(pending.command.command_id)
+    const effect = response.command_receipt.payload
+    if (effect.kind === "session-created") {
+      await open(effect.payload.session_id)
+      return state.phase === "ready" && state.sessionId === effect.payload.session_id
+    }
+    const sessionId = pending.sessionId ?? state.sessionId
+    if (sessionId === null) {
+      project({ type: "command", state: "idle" })
+      return true
+    }
+    if (state.sessionId !== sessionId) {
+      await open(sessionId)
+      return state.phase === "ready" && state.sessionId === sessionId
+    }
+    return finishMutation()
   }
 
   const selectedExecutionInput = (): Readonly<{
@@ -802,12 +894,14 @@ export function createChatController(options: {
     activateBranch: (branchId) => branchMutation(branchId, "activate_branch"),
     cancel,
     recover() {
+      if (state.failure?.action === "reconcile_receipt") return resumePendingCommand()
       if (
         state.failure === null ||
         !["refetch_snapshot", "refresh_grant", "retry_same_cursor", "poll_or_stream"].includes(state.failure.action)
       ) return Promise.resolve(false)
       return repairFromSnapshot(generation)
     },
+    resumePendingCommand,
     selectModelOption(modelOptionRevisionRef) {
       const selectable = options.chatCatalog?.options.some(
         (option) => option.modelOptionRevisionRef === modelOptionRevisionRef && option.availability === "available",

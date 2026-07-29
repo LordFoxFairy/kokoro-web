@@ -34,12 +34,25 @@ export async function reconcileCommandReceipt(
   command: CommandIdentity,
   operation: Parameters<SessionClient["getCommandReceipt"]>[1]["operation"],
 ): Promise<SessionCommandResponse> {
+  const assertIdentity = (candidate: SessionCommandResponse): SessionCommandResponse => {
+    const receipt = candidate.command_receipt
+    if (
+      receipt.operation !== operation ||
+      receipt.command_id !== command.command_id ||
+      receipt.idempotency_key !== command.idempotency_key ||
+      receipt.digest_algorithm !== command.digest_algorithm ||
+      receipt.request_digest !== command.request_digest
+    ) throw new Error("Session command receipt identity mismatch")
+    return candidate
+  }
+
+  assertIdentity(response)
   const receipt = response.command_receipt
   if (receipt.status !== "pending" && receipt.status !== "outcome_unknown") return response
-  return client.getCommandReceipt(command.command_id, {
+  return assertIdentity(await client.getCommandReceipt(command.command_id, {
     operation,
     idempotency_key: command.idempotency_key,
     digest_algorithm: command.digest_algorithm,
     request_digest: command.request_digest,
-  })
+  }))
 }

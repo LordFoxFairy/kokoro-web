@@ -13,6 +13,12 @@ export type { ChatProductProps } from "./chat-product"
 export { DEFAULT_CHAT_COPY, resolveChatCopy } from "./chat-copy"
 export type { ChatProductCopy } from "./chat-copy"
 export { createCommandIdentity, reconcileCommandReceipt } from "./command"
+export { createSessionCommandRecoveryStore } from "./command-recovery"
+export type {
+  SessionCommandRecoveryRecord,
+  SessionCommandRecoveryStore,
+  SessionCommandStorage,
+} from "./command-recovery"
 export { createSessionOrganizer } from "./session-organizer"
 export type {
   SessionEntry,

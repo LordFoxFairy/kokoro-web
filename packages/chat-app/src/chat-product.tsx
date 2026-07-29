@@ -23,6 +23,7 @@ import {
   type ChatState,
   type ModelOptionCatalog,
 } from "./chat-controller"
+import { createSessionCommandRecoveryStore } from "./command-recovery"
 import { resolveChatCopy, type ChatProductCopy } from "./chat-copy"
 import { createSessionOrganizer } from "./session-organizer"
 import { SessionRail } from "./session-rail"
@@ -416,7 +417,7 @@ export function ChatView(props: {
   return <main className={styles.shell}>
     <header className={styles.header}><div><span className={styles.eyebrow}>{props.copy.workspaceLabel}</span><h1>{props.state.snapshot?.session.title ?? props.brandName}</h1></div><nav className={styles.headerNav} aria-label="Workspace"><a href="/account">{props.copy.account}</a></nav></header>
     <section className={styles.runBand} data-run={props.state.projection.activeRunState ?? "idle"} aria-live="polite"><div><span className={styles.liveDot} aria-hidden /><strong>{runLabel(props.state, props.copy)}</strong><small>{connectionLabel(props.state, props.copy)}</small></div><div className={styles.branchControls}><label><span>{props.copy.branch}</span><select aria-label={props.copy.switchBranch} disabled={mutationDisabled} onChange={(event) => void props.controller.activateBranch(event.target.value)} value={props.state.projection.activeBranchId ?? ""}>{props.state.snapshot?.branches.map((candidate, index) => <option key={candidate.branch_id} value={candidate.branch_id}>{candidate.branch_id === props.state.projection.activeBranchId ? `${props.copy.currentBranch} · ` : ""}${candidate.origin} ${index + 1}</option>)}</select></label>{branch ? <button type="button" disabled={mutationDisabled} onClick={() => void props.controller.forkBranch(branch.branch_id)}>{props.copy.forkBranch}</button> : null}{activeRun ? <button type="button" className={styles.stop} onClick={() => void props.controller.cancel()} disabled={commandPending}>{props.copy.stop}</button> : null}</div></section>
-    {props.state.failure ? <section className={styles.failure} role="alert"><strong>{props.state.failure.message}</strong>{["refetch_snapshot", "refresh_grant", "retry_same_cursor", "poll_or_stream"].includes(props.state.failure.action) ? <button type="button" onClick={() => void props.controller.recover()}>{props.copy.refreshConversation}</button> : null}</section> : null}
+    {props.state.failure ? <section className={styles.failure} role="alert"><strong>{props.state.failure.message}</strong>{["refetch_snapshot", "refresh_grant", "retry_same_cursor", "poll_or_stream", "reconcile_receipt"].includes(props.state.failure.action) ? <button type="button" onClick={() => void props.controller.recover()}>{props.copy.refreshConversation}</button> : null}</section> : null}
     {props.state.projection.repair.required ? <section className={styles.repair} role="status">{props.copy.repairRequired}</section> : null}
     <section className={styles.thread} aria-label={props.copy.conversation}>
       {props.state.phase === "loading" ? <p className={styles.empty}>{props.copy.loading}</p> : null}
@@ -444,13 +445,24 @@ export function ChatProduct(props: ChatProductProps) {
   const copy = useMemo(() => resolveChatCopy(props.copy), [props.copy])
   const chatCatalog = props.bootstrap?.modelOptionCatalogs.find(({ surfaceId }) => surfaceId === "chat") ?? null
   const client = useMemo(() => createSessionClient({ transport: createBrowserSessionTransport({ csrfToken: props.csrfToken }) }), [props.csrfToken])
-  const controller = useMemo(() => createChatController({ client, trustedLocale: typeof document === "undefined" ? "en-US" : document.documentElement.lang || "en-US", chatCatalog, defaultProjectRef: props.bootstrap?.defaultProjectRef ?? null }), [chatCatalog, client, props.bootstrap?.defaultProjectRef])
+  const commandRecoveryStore = useMemo(() => {
+    if (typeof window === "undefined") return undefined
+    try {
+      return createSessionCommandRecoveryStore({ storage: window.sessionStorage })
+    } catch {
+      return undefined
+    }
+  }, [])
+  const controller = useMemo(() => createChatController({ client, trustedLocale: typeof document === "undefined" ? "en-US" : document.documentElement.lang || "en-US", chatCatalog, defaultProjectRef: props.bootstrap?.defaultProjectRef ?? null, ...(commandRecoveryStore === undefined ? {} : { commandRecoveryStore }) }), [chatCatalog, client, commandRecoveryStore, props.bootstrap?.defaultProjectRef])
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot)
   const organizer = useMemo(() => createSessionOrganizer({ client, projectRef: props.bootstrap?.defaultProjectRef ?? null }), [client, props.bootstrap?.defaultProjectRef])
   const organizerState = useSyncExternalStore(organizer.subscribe, organizer.getSnapshot, organizer.getSnapshot)
 
   useEffect(() => {
-    if (props.initialSessionId) void controller.open(props.initialSessionId)
+    void (async () => {
+      if (props.initialSessionId) await controller.open(props.initialSessionId)
+      await controller.resumePendingCommand()
+    })()
     return () => controller.close()
   }, [controller, props.initialSessionId])
   useEffect(() => {

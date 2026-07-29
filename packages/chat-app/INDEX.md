@@ -18,5 +18,9 @@ branch, part-version, or authorization projection repair closes the stale stream
 complete snapshot before attaching again. A failed repair remains an explicit user-retryable state; the UI
 never displays internal recovery action tokens or treats a browser reconnect as a new Run.
 
+Before a Chat mutation crosses the BFF, its non-secret receipt lookup identity is bounded and stored in the
+current browser session. An ambiguous response can therefore only query the exact command/digest after a
+refresh; it never creates a replacement command or stores prompt/effect input in browser recovery state.
+
 Product wording is supplied through a typed copy dictionary. Asset attachment controls remain absent
 until the Asset owner exposes its grant-backed intake contract; Chat never invents upload authority.
