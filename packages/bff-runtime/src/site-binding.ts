@@ -11,7 +11,9 @@ const credential = z.string().min(32).max(4096).refine(
   "credential contains whitespace or control characters",
 );
 const sha256 = z.string().regex(/^[0-9a-f]{64}$/u);
-const generation = z.string().regex(/^(?:0|[1-9][0-9]{0,18})$/u);
+const generation = z.string().min(1).max(20)
+  .regex(/^[1-9][0-9]{0,19}$/u)
+  .refine((value) => value.length < 20 || value <= "18446744073709551615", "must fit a positive uint64");
 const instant = z.iso.datetime({ offset: true });
 const runtimeEnvironmentSchema = z.enum(["development", "preview", "production"]);
 

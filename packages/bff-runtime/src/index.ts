@@ -34,6 +34,7 @@ export type {
   SessionAccessManagerOptions,
   SessionAudience,
   SessionGrantAuthorityPort,
+  SessionGrantResource,
   SessionPurpose,
 } from "./session-access.js";
 export {
@@ -58,6 +59,7 @@ export {
   createSessionBrowserV3Proxy,
   createSessionBrowserV3SseFrameValidator,
   createSessionBrowserV3Transport,
+  matchSessionBrowserV3Request,
   SESSION_BROWSER_V3_OPERATION_IDS,
   SESSION_BROWSER_V3_ROUTES,
 } from "./session-browser-v3.js";
@@ -67,4 +69,5 @@ export type {
   SessionBrowserV3HttpRequest,
   SessionBrowserV3OperationId,
   SessionBrowserV3OperationInput,
+  MatchedSessionBrowserV3Request,
 } from "./session-browser-v3.js";

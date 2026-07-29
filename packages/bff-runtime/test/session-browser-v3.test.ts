@@ -5,6 +5,7 @@ import {
   createSessionBrowserV3Proxy,
   createSessionBrowserV3SseFrameValidator,
   createSessionBrowserV3Transport,
+  matchSessionBrowserV3Request,
   SESSION_BROWSER_V3_OPERATION_IDS,
   SESSION_BROWSER_V3_ROUTES,
   type AuthenticatedSessionBrowserV3HttpPort,
@@ -55,8 +56,10 @@ const bootstrap: SiteBootstrap = {
 function grant(purpose: "read" | "write" | "control" | "stream"): SessionAccessGrant {
   return {
     grantRef: `grant-${purpose}-12345678`,
-    credential: "g".repeat(64),
+    credential: "headerheader.payloadpayload.signaturesignature",
     binding: {
+      authorizationEpoch: "1",
+      credentialEpoch: "1",
       productContextRef: bootstrap.productContextRef,
       siteProjectBindingRef: bootstrap.siteProjectBindingRef,
       deploymentRef: bootstrap.deploymentRef,
@@ -70,8 +73,16 @@ function grant(purpose: "read" | "write" | "control" | "stream"): SessionAccessG
       subjectRef: bootstrap.actor.subjectRef,
       subjectGeneration: bootstrap.actor.subjectGeneration,
       identitySessionRef: "auth-session-12345678",
+      identitySessionEpoch: "1",
+      issuer: "https://platform.example.test",
+      keyRevision: "key-1",
+      membershipEpoch: "1",
+      notBefore: "2026-07-28T12:00:00.000Z",
       policyEpoch: bootstrap.policyEpoch,
+      restrictionEpoch: "1",
       revocationEpoch: bootstrap.revocationEpoch,
+      siteSecurityEpoch: "1",
+      resource: { kind: "project" },
       issuedAt: "2026-07-28T12:00:00.000Z",
       expiresAt: "2026-07-28T12:01:00.000Z",
     },
@@ -123,6 +134,23 @@ function sseFrame(value: unknown, options: { readonly id?: string; readonly even
 }
 
 describe("Session browser v3 operation authority", () => {
+  it("matches only exact generated method/path pairs", () => {
+    expect(matchSessionBrowserV3Request({
+      method: "POST",
+      pathname: "/v1/sessions/session-1/runs/run-1:cancel",
+      searchParams: new URLSearchParams(),
+    })).toEqual({
+      operationId: "cancelRun",
+      pathParameters: { session_id: "session-1", run_id: "run-1" },
+      query: {},
+    });
+    expect(() => matchSessionBrowserV3Request({
+      method: "DELETE",
+      pathname: "/v1/arbitrary/internal/path",
+      searchParams: new URLSearchParams(),
+    })).toThrow(new SessionProxyError("REQUEST_INVALID"));
+  });
+
   it("publishes exactly the generated browser operation surface", () => {
     expect(SESSION_BROWSER_V3_OPERATION_IDS).toEqual([
       "createSession",

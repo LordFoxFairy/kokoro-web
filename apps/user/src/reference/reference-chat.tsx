@@ -205,11 +205,12 @@ export function ReferenceChatView(props: {
 
 export function ReferenceChat(props: {
   readonly brandName: string
+  readonly csrfToken?: string
   readonly initialSessionId?: string
 }) {
   const client = useMemo(() => createSessionClient({
-    transport: createBrowserSessionTransport(),
-  }), [])
+    transport: createBrowserSessionTransport({ csrfToken: props.csrfToken }),
+  }), [props.csrfToken])
   const controller = useMemo(() => createReferenceChatController({
     client,
     trustedLocale: typeof document === "undefined" ? "en-US" : document.documentElement.lang || "en-US",

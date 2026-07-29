@@ -1,6 +1,11 @@
 import { SESSION_HTTP_ENDPOINTS } from "@kokoro/session-client/contracts";
 
-import type { SessionAccessGrant, SessionAccessManager, SessionPurpose } from "./session-access.js";
+import type {
+  SessionAccessGrant,
+  SessionAccessManager,
+  SessionGrantResource,
+  SessionPurpose,
+} from "./session-access.js";
 import {
   validatedSiteBootstrap,
   type RuntimeEnvironment,
@@ -206,6 +211,8 @@ export interface SessionProxyRoute<Input = unknown> {
   readonly success: Readonly<{ readonly status: number; readonly response: SessionResponseContract }>;
   /** Every non-success HTTP response is a bounded generated problem envelope. */
   readonly problem: Extract<SessionResponseContract, { kind: "json" }>;
+  /** Derives the least-privilege grant resource from validated operation input. */
+  readonly resource: (input: Input) => SessionGrantResource;
   /** Generated Session adapters supply validation and operation-bound input construction here. */
   readonly parseInput: (request: {
     readonly pathParameters: unknown;
@@ -234,8 +241,18 @@ export interface SessionUpstreamResponse {
     readonly subjectRef: string;
     readonly subjectGeneration: string;
     readonly identitySessionRef: string;
+    readonly identitySessionEpoch: string;
+    readonly authorizationEpoch: string;
+    readonly credentialEpoch: string;
+    readonly membershipEpoch: string;
     readonly policyEpoch: string;
+    readonly restrictionEpoch: string;
     readonly revocationEpoch: string;
+    readonly siteSecurityEpoch: string;
+    readonly issuer: string;
+    readonly keyRevision: string;
+    readonly notBefore: string;
+    readonly resource: SessionGrantResource;
     readonly issuedAt: string;
     readonly expiresAt: string;
     readonly purpose: string;
@@ -433,8 +450,18 @@ function assertUpstreamBinding(
     actual.subjectRef !== expected.subjectRef ||
     actual.subjectGeneration !== expected.subjectGeneration ||
     actual.identitySessionRef !== expected.identitySessionRef ||
+    actual.identitySessionEpoch !== expected.identitySessionEpoch ||
+    actual.authorizationEpoch !== expected.authorizationEpoch ||
+    actual.credentialEpoch !== expected.credentialEpoch ||
+    actual.membershipEpoch !== expected.membershipEpoch ||
     actual.policyEpoch !== expected.policyEpoch ||
+    actual.restrictionEpoch !== expected.restrictionEpoch ||
     actual.revocationEpoch !== expected.revocationEpoch ||
+    actual.siteSecurityEpoch !== expected.siteSecurityEpoch ||
+    actual.issuer !== expected.issuer ||
+    actual.keyRevision !== expected.keyRevision ||
+    actual.notBefore !== expected.notBefore ||
+    JSON.stringify(actual.resource) !== JSON.stringify(expected.resource) ||
     actual.issuedAt !== expected.issuedAt ||
     actual.expiresAt !== expected.expiresAt ||
     actual.purpose !== grant.authorization.purpose ||
@@ -444,9 +471,9 @@ function assertUpstreamBinding(
   }
 }
 
-function responseContract(
+function responseContract<Input>(
   response: SessionUpstreamResponse,
-  route: SessionProxyRoute,
+  route: SessionProxyRoute<Input>,
 ): SessionResponseContract {
   if (!Number.isInteger(response.status)) throw new SessionProxyError("UPSTREAM_PROTOCOL_ERROR");
   const contract = response.status === route.success.status
@@ -472,7 +499,7 @@ function responseContract(
   return contract;
 }
 
-function assertRouteDefinition(route: SessionProxyRoute): void {
+function assertRouteDefinition<Input>(route: SessionProxyRoute<Input>): void {
   const contracts = [route.success.response, route.problem] as const;
   if (
     route.operationId.trim().length === 0 ||
@@ -484,7 +511,8 @@ function assertRouteDefinition(route: SessionProxyRoute): void {
     route.success.status < 200 ||
     route.success.status > 299 ||
     route.problem.kind !== "json" ||
-    typeof route.parseInput !== "function"
+    typeof route.parseInput !== "function" ||
+    typeof route.resource !== "function"
   ) {
     throw new SessionProxyError("REQUEST_INVALID");
   }
@@ -615,6 +643,7 @@ export function createSessionProxy(input: {
     }> => {
       const grant = await input.access.acquire({
         purpose: request.route.purpose,
+        resource: request.route.resource(routeInput),
         projectRef: request.projectRef,
         forceRefresh,
       });

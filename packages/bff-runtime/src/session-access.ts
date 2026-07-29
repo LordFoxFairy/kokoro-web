@@ -9,15 +9,11 @@ import {
 
 const reference = z.string().trim().min(1).max(256);
 const shortReference = z.string().trim().min(1).max(128);
-const hasCredentialSeparator = (value: string) => Array.from(value).some((character) => {
-  const code = character.codePointAt(0) ?? 0;
-  return code <= 32 || code === 127;
-});
-const credential = z.string().min(32).max(4096).refine(
-  (value) => !hasCredentialSeparator(value),
-  "grant contains whitespace or control characters",
-);
-const generation = z.string().regex(/^(?:0|[1-9][0-9]{0,18})$/u);
+const credential = z.string().min(32).max(4096)
+  .regex(/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/u);
+const positiveUint64 = z.string().min(1).max(20)
+  .regex(/^[1-9][0-9]{0,19}$/u)
+  .refine((value) => value.length < 20 || value <= "18446744073709551615", "must fit a positive uint64");
 const sha256 = z.string().regex(/^[0-9a-f]{64}$/u);
 const instant = z.iso.datetime({ offset: true });
 
@@ -31,18 +27,26 @@ export const SESSION_PURPOSES = Object.freeze({
 export type SessionPurpose = keyof typeof SESSION_PURPOSES;
 export type SessionAudience = (typeof SESSION_PURPOSES)[SessionPurpose];
 
+export type SessionGrantResource =
+  | Readonly<{ readonly kind: "project" }>
+  | Readonly<{ readonly kind: "session"; readonly sessionRef: string }>
+  | Readonly<{ readonly kind: "run"; readonly sessionRef: string; readonly runRef: string }>;
+
 export interface SessionGrantAuthorityPort {
-  /** Adapter for generated issueSessionAccessGrant. Only its three request-body fields are caller-selected. */
+  /** Adapter for generated issueSessionAccessGrant. Only its four request-body fields are caller-selected. */
   issueSessionAccessGrant(input: {
     readonly productContextRef: string;
     readonly projectRef: string;
     readonly purpose: SessionPurpose;
+    readonly resource: SessionGrantResource;
     readonly authSessionRef: string;
     readonly authSessionCredential: string;
   }): Promise<unknown>;
 }
 
 const grantBindingSchema = z.strictObject({
+  authorizationEpoch: positiveUint64,
+  credentialEpoch: positiveUint64,
   productContextRef: reference,
   siteProjectBindingRef: reference,
   deploymentRef: reference,
@@ -54,10 +58,22 @@ const grantBindingSchema = z.strictObject({
   sessionContractRevision: shortReference,
   projectRef: reference,
   subjectRef: reference,
-  subjectGeneration: generation,
+  subjectGeneration: positiveUint64,
   identitySessionRef: reference,
-  policyEpoch: generation,
-  revocationEpoch: generation,
+  identitySessionEpoch: positiveUint64,
+  issuer: z.url().min(1).max(512),
+  keyRevision: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/u),
+  membershipEpoch: positiveUint64,
+  notBefore: instant,
+  policyEpoch: positiveUint64,
+  restrictionEpoch: positiveUint64,
+  revocationEpoch: positiveUint64,
+  siteSecurityEpoch: positiveUint64,
+  resource: z.discriminatedUnion("kind", [
+    z.strictObject({ kind: z.literal("project") }),
+    z.strictObject({ kind: z.literal("session"), sessionRef: reference }),
+    z.strictObject({ kind: z.literal("run"), sessionRef: reference, runRef: reference }),
+  ]),
   issuedAt: instant,
   expiresAt: instant,
 });
@@ -147,7 +163,7 @@ export class SessionAccessManager {
       this.#refreshSkewMs < 0 ||
       this.#refreshSkewMs > 120_000 ||
       this.#maximumGrantLifetimeMs < 1_000 ||
-      this.#maximumGrantLifetimeMs > 900_000
+      this.#maximumGrantLifetimeMs > 300_000
     ) {
       throw new SessionAccessError("GRANT_LIFETIME_INVALID");
     }
@@ -167,6 +183,7 @@ export class SessionAccessManager {
 
   async acquire(input: {
     readonly purpose: SessionPurpose;
+    readonly resource: SessionGrantResource;
     readonly projectRef?: string;
     readonly forceRefresh?: boolean;
   }): Promise<SessionAccessGrant> {
@@ -181,7 +198,10 @@ export class SessionAccessManager {
     if (parseTime(this.#bootstrap.expiresAt) <= now) {
       throw new SessionAccessError("BOOTSTRAP_STALE");
     }
-    const key = `${projectRef}\u0000${input.purpose}`;
+    const resourceResult = grantBindingSchema.shape.resource.safeParse(input.resource);
+    if (!resourceResult.success) throw new SessionAccessError("GRANT_INVALID");
+    const resource = resourceResult.data;
+    const key = `${projectRef}\u0000${input.purpose}\u0000${JSON.stringify(resource)}`;
     const cached = this.#cache.get(key);
     if (
       input.forceRefresh !== true &&
@@ -192,7 +212,7 @@ export class SessionAccessManager {
     }
     const existing = this.#inFlight.get(key);
     if (existing !== undefined) return existing;
-    const pending = this.#issue(input.purpose, projectRef, now).finally(() => {
+    const pending = this.#issue(input.purpose, projectRef, resource, now).finally(() => {
       this.#inFlight.delete(key);
     });
     this.#inFlight.set(key, pending);
@@ -201,11 +221,17 @@ export class SessionAccessManager {
     return grant;
   }
 
-  async #issue(purpose: SessionPurpose, projectRef: string, now: number): Promise<SessionAccessGrant> {
+  async #issue(
+    purpose: SessionPurpose,
+    projectRef: string,
+    resource: SessionGrantResource,
+    now: number,
+  ): Promise<SessionAccessGrant> {
     const raw = await this.#authority.issueSessionAccessGrant({
       productContextRef: this.#bootstrap.productContextRef,
       projectRef,
       purpose,
+      resource,
       authSessionRef: this.#authSession.sessionRef,
       authSessionCredential: this.#authSession.sessionCredential,
     });
@@ -231,14 +257,21 @@ export class SessionAccessManager {
     same(binding.identitySessionRef, this.#authSession.sessionRef);
     same(binding.policyEpoch, this.#bootstrap.policyEpoch);
     same(binding.revocationEpoch, this.#bootstrap.revocationEpoch);
+    if (JSON.stringify(binding.resource) !== JSON.stringify(resource)) {
+      throw new SessionAccessError("GRANT_BINDING_MISMATCH");
+    }
     const issuedAt = parseTime(binding.issuedAt);
+    const notBefore = parseTime(binding.notBefore);
     const expiresAt = parseTime(binding.expiresAt);
     const bootstrapExpiresAt = parseTime(this.#bootstrap.expiresAt);
     const authSessionExpiresAt = parseTime(this.#authSession.expiresAt);
     if (
       issuedAt > now + 30_000 ||
+      notBefore < issuedAt - 30_000 ||
+      notBefore > now + 30_000 ||
       expiresAt <= now + this.#refreshSkewMs ||
       expiresAt <= issuedAt ||
+      expiresAt <= notBefore ||
       expiresAt - issuedAt > this.#maximumGrantLifetimeMs ||
       expiresAt > bootstrapExpiresAt ||
       expiresAt > authSessionExpiresAt

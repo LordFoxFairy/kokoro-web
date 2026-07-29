@@ -8,7 +8,7 @@ import {
   SiteBindingError,
   type AuthSession,
 } from "../src/site-binding.js";
-import { SessionAccessManager } from "../src/session-access.js";
+import { SessionAccessManager, type SessionGrantResource } from "../src/session-access.js";
 
 const DIGEST = "a".repeat(64);
 let now = new Date("2026-07-28T12:00:00.000Z");
@@ -162,12 +162,15 @@ describe("Product and Personal context composition", () => {
       productContextRef: string;
       projectRef: string;
       purpose: "read" | "write" | "control" | "stream";
+      resource: SessionGrantResource;
       authSessionRef: string;
     }) => ({
       grant: {
         grantRef: "grant-12345678",
-        credential: "g".repeat(64),
+        credential: "headerheader.payloadpayload.signaturesignature",
         binding: {
+          authorizationEpoch: "1",
+          credentialEpoch: "1",
           productContextRef: request.productContextRef,
           siteProjectBindingRef: bootstrap.siteProjectBindingRef,
           deploymentRef: bootstrap.deploymentRef,
@@ -181,8 +184,16 @@ describe("Product and Personal context composition", () => {
           subjectRef: authSession.subjectRef,
           subjectGeneration: authSession.subjectGeneration,
           identitySessionRef: request.authSessionRef,
+          identitySessionEpoch: "1",
+          issuer: "https://platform.example.test",
+          keyRevision: "key-1",
+          membershipEpoch: "1",
+          notBefore: now.toISOString(),
           policyEpoch: bootstrap.policyEpoch,
+          restrictionEpoch: "1",
           revocationEpoch: bootstrap.revocationEpoch,
+          siteSecurityEpoch: "1",
+          resource: request.resource,
           issuedAt: now.toISOString(),
           expiresAt: new Date(now.getTime() + 30_000).toISOString(),
         },
@@ -199,11 +210,12 @@ describe("Product and Personal context composition", () => {
       now: () => now,
       refreshSkewMs: 1_000,
     });
-    await access.acquire({ purpose: "write" });
+    await access.acquire({ purpose: "write", resource: { kind: "project" } });
     expect(issueSessionAccessGrant).toHaveBeenCalledWith(expect.objectContaining({
       productContextRef: bootstrap.productContextRef,
       projectRef: bootstrap.defaultProjectRef,
       purpose: "write",
+      resource: { kind: "project" },
     }));
     expect(issueSessionAccessGrant.mock.calls[0]?.[0]).not.toHaveProperty("siteRef");
   });

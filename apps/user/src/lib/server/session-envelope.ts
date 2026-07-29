@@ -18,6 +18,16 @@ export const envelopePayloadSchema = z
     user_id: z.string().min(1),
     namespace: z.string().min(1),
     site_id: z.string().min(1),
+    // Platform Public UserSession is distinct from the legacy GA runtime JWT. Session v3 refuses
+    // to proxy when this authority is absent; it never substitutes runtime_jwt.
+    platform_session: z.object({
+      session_ref: z.string().min(1).max(256),
+      session_credential: z.string().min(32).max(4096),
+      subject_ref: z.string().min(1).max(256),
+      subject_generation: z.string().min(1).max(20).regex(/^[1-9][0-9]{0,19}$/)
+        .refine((value) => value.length < 20 || value <= "18446744073709551615"),
+      expires_at: z.string().datetime({ offset: true }),
+    }).strict().optional(),
     // 信封/cookie 生命周期 = refresh 的 exp（epoch 秒，通常 30 天）：解封强校验，cookie Max-Age 亦据此。
     // 注意语义：这是信封整体寿命（跟随 refresh），不是 access 寿命（access 用 access_exp）。
     exp: z.number().int().positive(),

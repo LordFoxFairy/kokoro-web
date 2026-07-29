@@ -18,7 +18,8 @@ authority material to a browser.
 
 - `site-binding.ts`: explicit build/deployment binding, production unsafe-mode gate, `exchangeProductContext` command/cache,
   `getPersonalContext` subject read, strict local bootstrap composition, and browser-safe projection.
-- `session-access.ts`: short-lived `session.read|write|control|stream` grant acquisition, validation, refresh, and single-flight cache.
+- `session-access.ts`: compact-JWS, five-minute maximum `session.read|write|control|stream` grants; exact frozen binding validation,
+  project/session/run resource scoping, and resource-keyed single-flight cache.
 - `session-proxy.ts`: operation-bound proxy with browser authority rejection, request/response header allowlists, authenticated
   response binding checks, abort propagation, and pull-based SSE backpressure.
 - `session-browser-v3.ts`: exact Root-generated browser operation registry, path/query/body adapters, status-specific JSON/problem
@@ -40,7 +41,8 @@ Root-generated Session browser v3 client by operation id; browser-provided arbit
   watermark; it does not bypass Platform exchange.
 - ProductContext must echo binding, deployment, release, artifact, environment, region, audience and contract revision exactly; it
   contains no user. PersonalContext must echo ProductContext and bind the AuthSession subject/generation before local composition.
-- Session grants are server-only, purpose/audience specific, short lived, and bound to Site/release/artifact/project/subject/epochs.
+- Session grants are server-only, purpose/audience specific, at most five minutes, and bind issuer/key revision/not-before,
+  all eight positive-uint64 epoch axes, Site/release/artifact/project/subject, and the exact project/session/run resource.
 - Routes are server-declared operations with exact methods and status-to-response schemas. Browser Site/namespace/bearer/workload/
   generation authority is rejected recursively before operation parsing; every route passes a mandatory origin/CSRF verifier.
 - The generated Session registry is the only operation/method/path/success-status/schema authority. The local purpose policy is an

@@ -9,8 +9,9 @@ owners:
 
 ## 职责
 
-把 kokoro-user 签发结果密封进 httpOnly cookie，浏览器只见同源路由；session 代理注入 Bearer。
-浏览器 JS 读不到信封、不持 token。**勿从 client 组件 import 本目录**（含 node:crypto 与服务端配置）。
+把身份结果密封进 httpOnly cookie，浏览器只见同源路由。生产 Session Browser v3 只使用
+Platform UserSession → 短期、resource-bound Session grant；旧 `runtime_jwt` 不再是 Session 代理后备。
+浏览器 JS 读不到信封、UserSession、workload 或 grant。**勿从 client 组件 import 本目录**。
 
 ## 公开 API
 
@@ -19,6 +20,8 @@ owners:
   - `openEnvelope(token, secrets, nowSec)`：解封+验 exp；结构错/篡改/过期/全钥失败 → null。依次尝试
     全部 secrets = 双钥轮换（旧信封在窗口内仍可解）。
   - `envelopePayloadSchema` / `EnvelopePayload`：`{runtime_jwt,access_exp,refresh_token,user_id,namespace,site_id,exp}`。
+    可选 `platform_session` 仅为迁移期间的服务端密封载荷；缺失时 v3 返回
+    `SESSION_ACCESS_GRANT_REQUIRED`，绝不回退 runtime JWT。
   - `safeEqual(a,b)`：常量时间比对。
   - `auth.ts`（Next 感知装配）
   - `authConfig(env?)`：四项 env（`KOKORO_WEB_SESSION_SECRET` 逗号分隔 / `KOKORO_USER_BASE_URL` /
@@ -74,6 +77,15 @@ owners:
     所以长流可超过 deadline，但客户端断开仍级联取消上游。
   - Hub upload 使用 deferred deadline：96 MiB ingress 不计入普通 deadline，body EOF 后才限制 Hub
     处理到响应 headers；timeout 仍走 P1 `dispose()` 与 lease `finally`。
+- `session-v3.ts`（当前生产 Session composition）
+  - 只接收 registered Platform/Session transports；没有 raw URL 或浏览器可选 target。
+  - deployment singleton 缓存无用户 ProductContext；有界 256 项 LRU 按 identity session ref/generation
+    缓存 PersonalContext、grant manager 与 proxy，到 AuthSession/bootstrap expiry 自动淘汰。
+  - `instrumentation.ts` 在 Node runtime 初始化静态 composition 边界；独立 provider 尚未安装时稳定
+    fail-closed 为 generated `INTERNAL_UNAVAILABLE`。
+  - 生产品牌来自必填 `KOKORO_SITE_BRAND_NAME` build config，canonical host 来自
+    `KOKORO_SITE_PUBLIC_ORIGIN`；Host 不再用于选择 Site/品牌。
+- `retired-api.ts`：reference Site 的旧 Hub/Team/Billing/Shared API 显式返回 410。
 
 ## 关键协作者
 

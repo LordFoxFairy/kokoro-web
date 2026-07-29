@@ -13,8 +13,10 @@
   "dependencies": {
     "@ant-design/cssinjs": "^2.1.2",
     "@kokoro/chat-surface": "workspace:*",
+    "@kokoro/bff-runtime": "workspace:*",
     "@kokoro/i18n": "workspace:*",
     "@kokoro/session-client": "workspace:*",
+    "@kokoro/site-client": "workspace:*",
     "@ant-design/nextjs-registry": "^1.3.0",
     "antd": "^6.5.0",
     "next": "16.2.12",

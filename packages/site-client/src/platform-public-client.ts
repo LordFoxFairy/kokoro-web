@@ -161,7 +161,10 @@ function validateReceiptRecoveryCapability(
 ): string | undefined {
   if (
     value !== undefined &&
-    (value.length < 43 || value.length > 512 || /[\u0000-\u0020\u007f]/u.test(value))
+    (value.length < 43 || value.length > 512 || Array.from(value).some((character) => {
+      const code = character.codePointAt(0) ?? 0;
+      return code <= 32 || code === 127;
+    }))
   ) {
     throw new PlatformPublicInputError(operationId, "security");
   }
@@ -198,10 +201,13 @@ export function createPlatformPublicClient(options: PlatformPublicClientOptions)
       "Kokoro-Contract-Version": PLATFORM_PUBLIC_CONTRACT_METADATA.contractVersion,
     };
     if (definition.mutation) {
-      if (input.command === undefined) throw new TypeError("mutation requires caller-generated command context");
-      headers["X-Kokoro-Command-Id"] = input.command.commandId;
-      headers["Idempotency-Key"] = input.command.idempotencyKey;
       headers["X-CSRF-Token"] = options.csrfToken();
+      // The generated header schema is authoritative: some effectful endpoints (for example,
+      // short-lived grant issuance) are intentionally non-command mutations.
+      if (input.command !== undefined) {
+        headers["X-Kokoro-Command-Id"] = input.command.commandId;
+        headers["Idempotency-Key"] = input.command.idempotencyKey;
+      }
     }
 
     const commandCapability = input.command !== undefined && "receiptRecoveryCapability" in input.command

@@ -189,6 +189,14 @@ const consumeResponseSchema = z.object({
     refresh_expires_at: z.string().min(1),
     user: z.object({ id: z.string().min(1) }).passthrough(),
     team: z.object({ id: z.string().min(1) }).passthrough(),
+    platform_session: z.object({
+      session_ref: z.string().min(1),
+      session_credential: z.string().min(32),
+      subject_ref: z.string().min(1),
+      subject_generation: z.string().min(1).max(20).regex(/^[1-9][0-9]{0,19}$/)
+        .refine((value) => value.length < 20 || value <= "18446744073709551615"),
+      expires_at: z.string().datetime({ offset: true }),
+    }).strict().optional(),
   }),
 })
 
@@ -202,6 +210,14 @@ const refreshResponseSchema = z.object({
     site_id: z.string().min(1),
     refresh_token: z.string().min(1),
     refresh_expires_at: z.string().min(1),
+    platform_session: z.object({
+      session_ref: z.string().min(1),
+      session_credential: z.string().min(32),
+      subject_ref: z.string().min(1),
+      subject_generation: z.string().min(1).max(20).regex(/^[1-9][0-9]{0,19}$/)
+        .refine((value) => value.length < 20 || value <= "18446744073709551615"),
+      expires_at: z.string().datetime({ offset: true }),
+    }).strict().optional(),
   }),
 })
 
@@ -439,6 +455,9 @@ export async function resolveSessionWithRefresh(
     user_id: envelope.user_id,
     namespace: refreshed.namespace,
     site_id: refreshed.site_id,
+    ...(refreshed.platform_session === undefined
+      ? envelope.platform_session === undefined ? {} : { platform_session: envelope.platform_session }
+      : { platform_session: refreshed.platform_session }),
     exp: newRefreshExp,
   }
   const sealed = sealEnvelope(next, config.sessionSecrets)

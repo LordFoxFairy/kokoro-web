@@ -35,7 +35,7 @@ function assertContractRelativePath(path: string): void {
   }
 }
 
-function browserHeaders(request: SessionRequest): Record<string, string> {
+function browserHeaders(request: SessionRequest, csrfToken?: string): Record<string, string> {
   const headers: Record<string, string> = { accept: "application/json" }
   for (const [name, value] of Object.entries(request.headers ?? {})) {
     const normalized = name.toLowerCase()
@@ -44,6 +44,7 @@ function browserHeaders(request: SessionRequest): Record<string, string> {
     }
     headers[normalized] = value
   }
+  if (request.method !== "GET" && csrfToken !== undefined) headers["x-csrf-token"] = csrfToken
   return headers
 }
 
@@ -66,10 +67,10 @@ async function readBoundedJson(response: Response): Promise<unknown> {
   }
 }
 
-function requestInit(request: SessionRequest): RequestInit {
+function requestInit(request: SessionRequest, csrfToken?: string): RequestInit {
   return {
     method: request.method,
-    headers: browserHeaders(request),
+    headers: browserHeaders(request, csrfToken),
     ...(request.body === undefined ? {} : { body: JSON.stringify(request.body) }),
     ...(request.signal === undefined ? {} : { signal: request.signal }),
     credentials: "same-origin",
@@ -81,6 +82,7 @@ function requestInit(request: SessionRequest): RequestInit {
 export function createBrowserSessionTransport(options: {
   readonly fetcher?: BrowserFetch
   readonly bffPrefix?: string
+  readonly csrfToken?: string
 } = {}): SessionTransport {
   const fetcher = options.fetcher ?? globalThis.fetch.bind(globalThis)
   const bffPrefix = options.bffPrefix ?? "/api/session"
@@ -90,7 +92,7 @@ export function createBrowserSessionTransport(options: {
 
   const execute = async (request: SessionRequest): Promise<Response> => {
     assertContractRelativePath(request.path)
-    return fetcher(`${bffPrefix}${request.path}`, requestInit(request))
+    return fetcher(`${bffPrefix}${request.path}`, requestInit(request, options.csrfToken))
   }
 
   return Object.freeze({

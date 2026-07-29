@@ -6,7 +6,12 @@ import {
 } from "@kokoro/session-client/contracts";
 import { z, type ZodType } from "zod";
 
-import type { SessionAccessGrant, SessionAccessManager, SessionPurpose } from "./session-access.js";
+import type {
+  SessionAccessGrant,
+  SessionAccessManager,
+  SessionGrantResource,
+  SessionPurpose,
+} from "./session-access.js";
 import {
   createSessionProxy,
   SessionProxyError,
@@ -74,6 +79,12 @@ export interface SessionBrowserV3OperationInput {
   readonly bodyJson: string | null;
 }
 
+export interface MatchedSessionBrowserV3Request {
+  readonly operationId: SessionBrowserV3OperationId;
+  readonly pathParameters: Readonly<Record<string, string>>;
+  readonly query: Readonly<Record<string, string>>;
+}
+
 export interface SessionBrowserV3HttpRequest {
   readonly operationId: SessionBrowserV3OperationId;
   readonly method: SessionProxyMethod;
@@ -109,6 +120,71 @@ function endpointFor(operationId: string): GeneratedEndpoint {
     throw new SessionProxyError("REQUEST_INVALID");
   }
   return SESSION_HTTP_ENDPOINTS[operationId as SessionBrowserV3OperationId];
+}
+
+type CompiledBrowserRoute = Readonly<{
+  operationId: SessionBrowserV3OperationId;
+  method: SessionProxyMethod;
+  parameterNames: readonly string[];
+  pathname: RegExp;
+}>;
+
+function compileBrowserRoute(operationId: SessionBrowserV3OperationId): CompiledBrowserRoute {
+  const endpoint = SESSION_HTTP_ENDPOINTS[operationId];
+  const parameterNames: string[] = [];
+  const pattern = endpoint.path.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")
+    .replace(/\\\{([A-Za-z0-9_]+)\\\}/gu, (_marker, name: string) => {
+      parameterNames.push(name);
+      return "([^/]+)";
+    });
+  return Object.freeze({
+    operationId,
+    method: endpoint.method,
+    parameterNames: Object.freeze(parameterNames),
+    pathname: new RegExp(`^${pattern}$`, "u"),
+  });
+}
+
+const COMPILED_BROWSER_ROUTES = Object.freeze(
+  SESSION_BROWSER_V3_OPERATION_IDS.map(compileBrowserRoute),
+);
+
+/** Exact generated-registry matcher for same-origin framework adapters. */
+export function matchSessionBrowserV3Request(input: Readonly<{
+  method: string;
+  pathname: string;
+  searchParams: URLSearchParams;
+}>): MatchedSessionBrowserV3Request {
+  const method = input.method.toUpperCase();
+  const matches = COMPILED_BROWSER_ROUTES.flatMap((route) => {
+    if (route.method !== method) return [];
+    const match = route.pathname.exec(input.pathname);
+    return match === null ? [] : [{ route, captures: match.slice(1) }];
+  });
+  if (matches.length !== 1) throw new SessionProxyError("REQUEST_INVALID");
+  const matched = matches[0];
+  if (matched === undefined) throw new SessionProxyError("REQUEST_INVALID");
+  const pathParameters: Record<string, string> = {};
+  try {
+    matched.route.parameterNames.forEach((name, index) => {
+      const value = matched.captures[index];
+      if (value === undefined) throw new SessionProxyError("REQUEST_INVALID");
+      pathParameters[name] = decodeURIComponent(value);
+    });
+  } catch (error) {
+    if (error instanceof SessionProxyError) throw error;
+    throw new SessionProxyError("REQUEST_INVALID");
+  }
+  const query: Record<string, string> = {};
+  for (const [name, value] of input.searchParams.entries()) {
+    if (Object.hasOwn(query, name)) throw new SessionProxyError("REQUEST_INVALID");
+    query[name] = value;
+  }
+  return Object.freeze({
+    operationId: matched.route.operationId,
+    pathParameters: Object.freeze(pathParameters),
+    query: Object.freeze(query),
+  });
 }
 
 function parseNoValue(value: unknown): void {
@@ -265,6 +341,16 @@ function createRoute(operationId: SessionBrowserV3OperationId): SessionProxyRout
     replaySafety: "idempotent",
     success: routeSuccess(operationId, endpoint),
     problem: jsonContract(errorEnvelopeSchema, PROBLEM_LIMIT_BYTES, "application/problem+json"),
+    resource: (input: SessionBrowserV3OperationInput): SessionGrantResource => {
+      const sessionRef = input.pathParameters.session_id;
+      const runRef = input.pathParameters.run_id;
+      if (runRef !== undefined) {
+        if (sessionRef === undefined) throw new SessionProxyError("REQUEST_INVALID");
+        return Object.freeze({ kind: "run", sessionRef, runRef });
+      }
+      if (sessionRef !== undefined) return Object.freeze({ kind: "session", sessionRef });
+      return Object.freeze({ kind: "project" });
+    },
     parseInput: (request: {
       readonly pathParameters: unknown;
       readonly query: unknown;
@@ -323,7 +409,9 @@ function sameBinding(
 ): boolean {
   const expectedEntries = Object.entries(expected);
   return expectedEntries.length === Object.keys(actual).length &&
-    expectedEntries.every(([key, value]) => actual[key as keyof typeof actual] === value);
+    expectedEntries.every(([key, value]) => key === "resource"
+      ? JSON.stringify(actual.resource) === JSON.stringify(value)
+      : actual[key as keyof typeof actual] === value);
 }
 
 function cancelRejectedBody(body: ReadableStream<Uint8Array> | null): void {

@@ -1,120 +1,117 @@
-// session 同源代理（BFF）：读信封 → 注入 Authorization: Bearer <runtime_jwt> → 透传到
-// kokoro-session。HTTP/SSE/二进制一律流式转发（files/deliveries 大流不缓冲）。浏览器只见同源
-// `/api/session/*`，runtime_jwt 全程留在服务端。变更类请求校验同源 Origin。
+import {
+  matchSessionBrowserV3Request,
+  SessionProxyError,
+} from "@kokoro/bff-runtime"
+import { errorEnvelopeSchema, type ErrorDetail } from "@kokoro/session-client/contracts"
+import { randomUUID } from "node:crypto"
 
-import { NextResponse } from "next/server"
-
-import { authConfig, preflightSession, resolveSessionWithRefresh, sameOriginOk } from "@/lib/server/auth"
-import { readBoundedRequestBody, SESSION_REQUEST_BODY_MAX_BYTES } from "@/lib/server/http-boundary"
-import { resolveSiteId } from "@/lib/server/site"
-import { isUpstreamTimeoutError, withUpstreamDeadline } from "@/lib/server/upstream"
+import { readBoundedRequestJson, SESSION_REQUEST_BODY_MAX_BYTES } from "@/lib/server/http-boundary"
+import {
+  assembleSessionBrowserV3,
+  platformAuthSessionFromRequest,
+  sessionV3PublicOrigin,
+  SessionV3AssemblyError,
+} from "@/lib/server/session-v3"
 
 export const runtime = "nodejs"
-// 每请求实时求值：绝不静态化/缓存代理响应（SSE、鉴权头随信封变）。
 export const dynamic = "force-dynamic"
 
-const MUTATION_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"])
+const MUTATIONS = new Set(["POST", "PUT", "PATCH", "DELETE"])
 
-// 仅转发 session 实际需要的入站头，绝不转发 cookie（信封 cookie 不得外泄到 session）。
-const FORWARD_HEADERS = ["accept", "content-type", "last-event-id"] as const
+function problem(
+  status: number,
+  code: ErrorDetail["code"],
+  message: string,
+  retryClass: ErrorDetail["retry_class"],
+  action: ErrorDetail["action"],
+): Response {
+  const requestId = randomUUID()
+  const envelope = errorEnvelopeSchema.parse({
+    error: { code, message, retry_class: retryClass, action },
+    request_id: requestId,
+    correlation_id: requestId,
+  })
+  return new Response(JSON.stringify(envelope), {
+    status,
+    headers: { "cache-control": "no-store", "content-type": "application/problem+json" },
+  })
+}
+
+function verifiedBrowserHeaders(request: Request, configuredOrigin: string): Headers {
+  const headers = new Headers()
+  const fetchSite = request.headers.get("sec-fetch-site")
+  const browserOrigin = request.headers.get("origin")
+  if (
+    fetchSite !== "same-origin" ||
+    (browserOrigin !== null && browserOrigin !== configuredOrigin) ||
+    (MUTATIONS.has(request.method) && browserOrigin !== configuredOrigin)
+  ) throw new SessionProxyError("BROWSER_REQUEST_UNVERIFIED")
+  // The adapter supplies the registered origin for GET because browsers commonly omit Origin there.
+  headers.set("origin", configuredOrigin)
+  headers.set("sec-fetch-site", fetchSite)
+  for (const name of ["accept", "content-type", "last-event-id", "x-csrf-token"] as const) {
+    const value = request.headers.get(name)
+    if (value !== null) headers.set(name, value)
+  }
+  return headers
+}
 
 async function proxy(request: Request, context: { params: Promise<{ path: string[] }> }): Promise<Response> {
-  const config = authConfig()
-  if (config === null) {
-    return NextResponse.json({ error: "auth_not_configured" }, { status: 503 })
-  }
-  if (MUTATION_METHODS.has(request.method) && !sameOriginOk(request)) {
-    return NextResponse.json({ error: "forbidden_origin" }, { status: 403 })
-  }
-  let siteId: string | null
   try {
-    siteId = await resolveSiteId(request.headers.get("host"), config.siteId, request.signal)
-  } catch (error) {
-    if (isUpstreamTimeoutError(error)) {
-      return NextResponse.json({ error: "upstream_timeout" }, { status: 504 })
+    const { path } = await context.params
+    const url = new URL(request.url)
+    const matched = matchSessionBrowserV3Request({
+      method: request.method,
+      pathname: `/${(path ?? []).join("/")}`,
+      searchParams: url.searchParams,
+    })
+    const authSession = platformAuthSessionFromRequest(request)
+    if (authSession === null) {
+      return problem(
+        401,
+        "SESSION_ACCESS_GRANT_REQUIRED",
+        "Sign in again to establish a Platform session",
+        "after_user_action",
+        "reauthenticate",
+      )
     }
-    throw error
-  }
-  if (siteId === null) {
-    return NextResponse.json({ error: "site_unresolved" }, { status: 404 })
-  }
-  const preflight = preflightSession(request, config, siteId)
-  if (preflight === null) {
-    return NextResponse.json({ error: "unauthenticated" }, { status: 401 })
-  }
-
-  const boundedBody = await readBoundedRequestBody(request, SESSION_REQUEST_BODY_MAX_BYTES)
-  if (!boundedBody.ok) {
-    return NextResponse.json(
-      { error: boundedBody.reason === "too_large" ? "request_body_too_large" : "invalid_request_body" },
-      { status: boundedBody.reason === "too_large" ? 413 : 400 },
-    )
-  }
-  // GET/HEAD/DELETE 不向上游带 body；若客户端违规携带，仍已在上面读取并受硬顶约束。
-  const body =
-    request.method === "GET" || request.method === "HEAD" || request.method === "DELETE"
-      ? undefined
-      : boundedBody.body
-
-  let resolved: Awaited<ReturnType<typeof resolveSessionWithRefresh>>
-  try {
-    resolved = await resolveSessionWithRefresh(request, config, siteId, preflight)
-  } catch (error) {
-    if (isUpstreamTimeoutError(error)) {
-      return NextResponse.json({ error: "upstream_timeout" }, { status: 504 })
+    const configuredOrigin = sessionV3PublicOrigin()
+    const browserHeaders = verifiedBrowserHeaders(request, configuredOrigin)
+    let body: unknown
+    if (request.method === "GET") {
+      body = undefined
+    } else {
+      const parsed = await readBoundedRequestJson(request, SESSION_REQUEST_BODY_MAX_BYTES)
+      if (!parsed.ok) {
+        return parsed.reason === "too_large"
+          ? problem(413, "PAYLOAD_TOO_LARGE", "Session request body is too large", "never", "stop")
+          : problem(400, "REQUEST_INVALID", "Invalid Session request body", "never", "developer_error")
+      }
+      body = parsed.value
     }
-    throw error
-  }
-  if (resolved === null) {
-    return NextResponse.json({ error: "unauthenticated" }, { status: 401 })
-  }
-  const { envelope, setCookie } = resolved
-
-  const { path } = await context.params
-  const search = new URL(request.url).search
-  const target = `${config.sessionBaseUrl.replace(/\/+$/, "")}/${(path ?? []).join("/")}${search}`
-
-  const headers = new Headers()
-  headers.set("authorization", `Bearer ${envelope.runtime_jwt}`)
-  for (const name of FORWARD_HEADERS) {
-    const value = request.headers.get(name)
-    if (value !== null) {
-      headers.set(name, value)
-    }
-  }
-
-  let upstream: Response
-  try {
-    upstream = await withUpstreamDeadline(request.signal, config.upstreamTimeoutMs, (signal) =>
-      fetch(target, {
+    const runtime = await assembleSessionBrowserV3({ authSession })
+    return await runtime.proxy.execute({
+      operationId: matched.operationId,
+      projectRef: runtime.bootstrap.defaultProjectRef,
+      browser: {
         method: request.method,
-        headers,
-        ...(body !== undefined ? { body } : {}),
-        cache: "no-store",
-        // deadline 只包到响应 headers；返回后 timer 已清，signal 仍保留 request abort 绑定长流。
-        signal,
-      }),
-    )
+        headers: browserHeaders,
+        pathParameters: matched.pathParameters,
+        query: matched.query,
+        body,
+        signal: request.signal,
+      },
+    })
   } catch (error) {
-    if (isUpstreamTimeoutError(error)) {
-      return NextResponse.json({ error: "upstream_timeout" }, { status: 504 })
+    if (error instanceof SessionV3AssemblyError) {
+      return problem(503, "INTERNAL_UNAVAILABLE", "Session browser v3 is temporarily unavailable", "after_delay", "stop")
     }
-    return NextResponse.json({ error: "session_unreachable" }, { status: 502 })
-  }
-
-  // 原样回传状态与内容类型，body 直接流式（SSE/二进制不缓冲）。
-  const responseHeaders = new Headers()
-  for (const name of ["content-type", "cache-control", "content-disposition", "content-length"]) {
-    const value = upstream.headers.get(name)
-    if (value !== null) {
-      responseHeaders.set(name, value)
+    if (error instanceof SessionProxyError) {
+      const forbidden = error.code.startsWith("BROWSER_")
+      return problem(forbidden ? 403 : 400, "REQUEST_INVALID", "Session request was rejected", "never", "developer_error")
     }
+    return problem(503, "INTERNAL_UNAVAILABLE", "Session browser v3 is temporarily unavailable", "after_delay", "stop")
   }
-  // 静默续期发生了 → 把重新密封的信封 cookie 写回浏览器（下次请求带新 access/refresh）。
-  if (setCookie !== null) {
-    responseHeaders.append("set-cookie", setCookie)
-  }
-  return new Response(upstream.body, { status: upstream.status, headers: responseHeaders })
 }
 
 export const GET = proxy
@@ -122,4 +119,3 @@ export const POST = proxy
 export const PUT = proxy
 export const PATCH = proxy
 export const DELETE = proxy
-export const HEAD = proxy

@@ -53,8 +53,10 @@ const bootstrap: SiteBootstrap = {
 
 const grant: SessionAccessGrant = {
   grantRef: "grant-12345678",
-  credential: "g".repeat(64),
+  credential: "headerheader.payloadpayload.signaturesignature",
   binding: {
+    authorizationEpoch: "1",
+    credentialEpoch: "1",
     productContextRef: bootstrap.productContextRef,
     siteProjectBindingRef: bootstrap.siteProjectBindingRef,
     deploymentRef: bootstrap.deploymentRef,
@@ -68,8 +70,16 @@ const grant: SessionAccessGrant = {
     subjectRef: bootstrap.actor.subjectRef,
     subjectGeneration: bootstrap.actor.subjectGeneration,
     identitySessionRef: "auth-session-12345678",
+    identitySessionEpoch: "1",
+    issuer: "https://platform.example.test",
+    keyRevision: "key-1",
+    membershipEpoch: "1",
+    notBefore: "2026-07-28T12:00:00.000Z",
     policyEpoch: bootstrap.policyEpoch,
+    restrictionEpoch: "1",
     revocationEpoch: bootstrap.revocationEpoch,
+    siteSecurityEpoch: "1",
+    resource: { kind: "session", sessionRef: "session-12345678" },
     issuedAt: "2026-07-28T12:00:00.000Z",
     expiresAt: "2026-07-28T12:01:00.000Z",
   },
@@ -110,6 +120,7 @@ const route: SessionProxyRoute<{ sessionRef: string }> = {
     maximumBytes: 64 * 1024,
     parse: (value) => value,
   },
+  resource: ({ sessionRef }) => ({ kind: "session", sessionRef }),
   parseInput: ({ pathParameters }) => pathParameters as { sessionRef: string },
 };
 

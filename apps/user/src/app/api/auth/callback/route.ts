@@ -95,6 +95,7 @@ export async function GET(request: Request): Promise<NextResponse> {
       user_id: consumed.user.id,
       namespace: consumed.namespace,
       site_id: siteId,
+      ...(consumed.platform_session === undefined ? {} : { platform_session: consumed.platform_session }),
       exp: refreshExp,
     },
     config.sessionSecrets,
