@@ -5,9 +5,9 @@ import type { SessionEvent, SessionSnapshot } from "@kokoro/session-client/contr
 import type { SurfaceModelOptionCatalog } from "@kokoro/site-client"
 
 import {
-  createReferenceChatController,
+  createChatController,
   describeSessionFailure,
-} from "@/reference/reference-chat-controller"
+} from "@kokoro/chat-app"
 
 const NOW = "2026-07-29T12:00:00.000Z"
 const CHAT_CATALOG: SurfaceModelOptionCatalog = {
@@ -135,7 +135,7 @@ function fakeClient(input: {
         operation: "create_session" as const,
         command_id: "command-create",
         idempotency_key: "idempotency-create",
-        digest_algorithm: "SHA256_CANONICAL_JSON_V1" as const,
+        digest_algorithm: "SHA256_CANONICAL_JSON_V2" as const,
         request_digest: "c".repeat(64),
         updated_at: NOW,
         status: "accepted" as const,
@@ -150,7 +150,7 @@ function fakeClient(input: {
         operation: "submit_message" as const,
         command_id: "command-submit",
         idempotency_key: "idempotency-submit",
-        digest_algorithm: "SHA256_CANONICAL_JSON_V1" as const,
+        digest_algorithm: "SHA256_CANONICAL_JSON_V2" as const,
         request_digest: "a".repeat(64),
         updated_at: NOW,
         status: "accepted" as const,
@@ -178,7 +178,7 @@ function fakeClient(input: {
         operation: "cancel_run" as const,
         command_id: "command-cancel",
         idempotency_key: "idempotency-cancel",
-        digest_algorithm: "SHA256_CANONICAL_JSON_V1" as const,
+        digest_algorithm: "SHA256_CANONICAL_JSON_V2" as const,
         request_digest: "b".repeat(64),
         updated_at: NOW,
         status: "accepted" as const,
@@ -212,10 +212,10 @@ function fakeClient(input: {
   }
 }
 
-describe("reference Browser v3 controller", () => {
+describe("Chat controller", () => {
   it("creates a chat in the bootstrap default project and opens its accepted Session receipt", async () => {
     const client = fakeClient()
-    const controller = createReferenceChatController({ client, trustedLocale: "en-US", chatCatalog: CHAT_CATALOG, defaultProjectRef: "project-1" })
+    const controller = createChatController({ client, trustedLocale: "en-US", chatCatalog: CHAT_CATALOG, defaultProjectRef: "project-1" })
 
     await expect(controller.create()).resolves.toBe("session-1")
 
@@ -226,7 +226,7 @@ describe("reference Browser v3 controller", () => {
 
   it("hydrates the complete typed snapshot before opening SSE at its watermark", async () => {
     const client = fakeClient()
-    const controller = createReferenceChatController({ client, trustedLocale: "en-US", chatCatalog: CHAT_CATALOG, defaultProjectRef: "project-1" })
+    const controller = createChatController({ client, trustedLocale: "en-US", chatCatalog: CHAT_CATALOG, defaultProjectRef: "project-1" })
 
     await controller.open("session-1")
 
@@ -243,7 +243,7 @@ describe("reference Browser v3 controller", () => {
 
   it("submits with the persisted model revision and cancels using the current run projection version", async () => {
     const client = fakeClient()
-    const controller = createReferenceChatController({ client, trustedLocale: "en-US", chatCatalog: CHAT_CATALOG, defaultProjectRef: "project-1" })
+    const controller = createChatController({ client, trustedLocale: "en-US", chatCatalog: CHAT_CATALOG, defaultProjectRef: "project-1" })
     await controller.open("session-1")
 
     await controller.submit("continue")
@@ -267,21 +267,21 @@ describe("reference Browser v3 controller", () => {
     vi.mocked(client.submitMessage).mockResolvedValueOnce({
       command_receipt: {
         operation: "submit_message", command_id: "command-pending", idempotency_key: "idempotency-pending",
-        digest_algorithm: "SHA256_CANONICAL_JSON_V1", request_digest: "d".repeat(64), updated_at: NOW,
+        digest_algorithm: "SHA256_CANONICAL_JSON_V2", request_digest: "d".repeat(64), updated_at: NOW,
         status: "pending", payload: { retry_class: "reconcile_receipt", action: "reconcile_receipt" },
       },
     })
     vi.mocked(client.getCommandReceipt).mockResolvedValueOnce({
       command_receipt: {
         operation: "submit_message", command_id: "command-pending", idempotency_key: "idempotency-pending",
-        digest_algorithm: "SHA256_CANONICAL_JSON_V1", request_digest: "d".repeat(64), updated_at: NOW,
+        digest_algorithm: "SHA256_CANONICAL_JSON_V2", request_digest: "d".repeat(64), updated_at: NOW,
         status: "accepted", payload: {
           kind: "run-launch-created",
           payload: { session_id: "session-1", branch_id: "branch-1", trigger_message_id: "message-2", assistant_message_id: "message-3", launch_id: "launch-2", proposed_run_id: "run-2", session_version: 8, branch_version: 4 },
         },
       },
     })
-    const controller = createReferenceChatController({ client, trustedLocale: "en-US", chatCatalog: CHAT_CATALOG, defaultProjectRef: "project-1" })
+    const controller = createChatController({ client, trustedLocale: "en-US", chatCatalog: CHAT_CATALOG, defaultProjectRef: "project-1" })
     await controller.open("session-1")
 
     await controller.submit("continue")
@@ -290,10 +290,65 @@ describe("reference Browser v3 controller", () => {
     expect(controller.getSnapshot().projection.command.state).toBe("idle")
   })
 
+  it("does not resend after an ambiguous submit transport failure and looks up the exact identity", async () => {
+    const client = fakeClient()
+    vi.mocked(client.submitMessage).mockImplementationOnce(async () => {
+      throw new TypeError("connection reset after dispatch")
+    })
+    vi.mocked(client.getCommandReceipt).mockImplementationOnce(async (commandId, query) => ({
+      command_receipt: {
+        operation: "submit_message",
+        command_id: commandId,
+        idempotency_key: query.idempotency_key,
+        digest_algorithm: query.digest_algorithm,
+        request_digest: query.request_digest,
+        updated_at: NOW,
+        status: "accepted",
+        payload: {
+          kind: "run-launch-created",
+          payload: {
+            session_id: "session-1", branch_id: "branch-1", trigger_message_id: "message-user-2",
+            assistant_message_id: "message-assistant-2", launch_id: "launch-2", proposed_run_id: "run-2",
+            session_version: 8, branch_version: 4,
+          },
+        },
+      },
+    }))
+    const controller = createChatController({ client, trustedLocale: "en-US", chatCatalog: CHAT_CATALOG, defaultProjectRef: "project-1" })
+    await controller.open("session-1")
+
+    await expect(controller.submit("continue")).resolves.toBe(true)
+
+    expect(client.submitMessage).toHaveBeenCalledOnce()
+    const sent = vi.mocked(client.submitMessage).mock.calls[0]?.[1].command
+    expect(client.getCommandReceipt).toHaveBeenCalledWith(sent?.command_id, {
+      operation: "submit_message",
+      idempotency_key: sent?.idempotency_key,
+      digest_algorithm: sent?.digest_algorithm,
+      request_digest: sent?.request_digest,
+    })
+  })
+
+  it("does not report a mutation as idle until a fresh authoritative snapshot is observed", async () => {
+    const client = fakeClient()
+    vi.mocked(client.fetchSnapshot).mockResolvedValueOnce(null)
+    const controller = createChatController({ client, trustedLocale: "en-US", chatCatalog: CHAT_CATALOG, defaultProjectRef: "project-1" })
+    await controller.open("session-1")
+
+    await expect(controller.submit("continue")).resolves.toBe(false)
+
+    expect(controller.getSnapshot().failure).toMatchObject({
+      code: "SNAPSHOT_REQUIRED",
+      action: "refetch_snapshot",
+      retryClass: "immediate",
+    })
+    expect(controller.getSnapshot().projection.command.state).toBe("failed")
+  })
+
   it("keeps approval state typed and read-only while the owner command is absent", async () => {
     let openHandlers: Parameters<SessionClient["openEvents"]>[0] | undefined
     const client = fakeClient({ onOpen: (handlers) => { openHandlers = handlers } })
-    const controller = createReferenceChatController({ client, trustedLocale: "en-US", chatCatalog: CHAT_CATALOG, defaultProjectRef: "project-1" })
+    const controller = createChatController({ client, trustedLocale: "en-US", chatCatalog: CHAT_CATALOG, defaultProjectRef: "project-1" })
     await controller.open("session-1")
 
     const accepted = createCursorPolicy().accept("signed.cursor.5")
@@ -316,7 +371,7 @@ describe("reference Browser v3 controller", () => {
   it("fails closed when a session has no published model option revision", async () => {
     const noModel = { ...snapshot(), model_history: [] }
     const client = fakeClient({ value: noModel })
-    const controller = createReferenceChatController({ client, trustedLocale: "en-US", chatCatalog: null, defaultProjectRef: "project-1" })
+    const controller = createChatController({ client, trustedLocale: "en-US", chatCatalog: null, defaultProjectRef: "project-1" })
     await controller.open("session-1")
 
     await controller.submit("cannot be routed")

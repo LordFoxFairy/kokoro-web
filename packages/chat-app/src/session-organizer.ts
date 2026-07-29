@@ -1,40 +1,45 @@
 import type { SessionClient } from "@kokoro/session-client"
 import type {
+  BrowserCommandOperation,
   FolderView,
   SessionCommandResponse,
   SessionListItem,
 } from "@kokoro/session-client/contracts"
 
 import {
-  createReferenceCommandIdentity,
-  reconcileReferenceCommandReceipt,
+  createCommandIdentity,
+  reconcileCommandReceipt,
 } from "./command"
 
-export type ReferenceSessionEntry = Readonly<{
+export type SessionEntry = Readonly<{
   sessionId: string
   title: string
+  lifecycle: "active" | "archived" | "trashed"
+  version: number
   updatedAt: string
   pinned: boolean
   folderId: string | null
   preferenceVersion: number
 }>
 
-export type ReferenceSessionFolder = Readonly<{
+export type SessionFolder = Readonly<{
   folderId: string
   name: string
   version: number
 }>
 
-export type ReferenceSessionFilter =
+export type SessionFilter =
   | Readonly<{ kind: "all" }>
   | Readonly<{ kind: "pinned" }>
   | Readonly<{ kind: "folder"; folderId: string }>
+  | Readonly<{ kind: "archived" }>
+  | Readonly<{ kind: "trashed" }>
 
-export type ReferenceSessionOrganizerState = Readonly<{
+export type SessionOrganizerState = Readonly<{
   phase: "idle" | "loading" | "ready"
-  sessions: readonly ReferenceSessionEntry[]
-  folders: readonly ReferenceSessionFolder[]
-  filter: ReferenceSessionFilter
+  sessions: readonly SessionEntry[]
+  folders: readonly SessionFolder[]
+  filter: SessionFilter
   query: string
   nextCursor: string | null
   loadingMore: boolean
@@ -46,6 +51,10 @@ type OrganizerClient = Pick<
   SessionClient,
   | "listSessions"
   | "getCommandReceipt"
+  | "updateSession"
+  | "archiveSession"
+  | "restoreSession"
+  | "trashSession"
   | "putPreference"
   | "listFolders"
   | "createFolder"
@@ -53,23 +62,27 @@ type OrganizerClient = Pick<
   | "deleteFolder"
 >
 
-export type ReferenceSessionOrganizer = Readonly<{
-  getSnapshot(): ReferenceSessionOrganizerState
+export type SessionOrganizer = Readonly<{
+  getSnapshot(): SessionOrganizerState
   subscribe(listener: () => void): () => void
   load(): Promise<void>
   refresh(): Promise<void>
   loadMore(): Promise<void>
   setQuery(query: string): Promise<void>
-  setFilter(filter: ReferenceSessionFilter): Promise<void>
+  setFilter(filter: SessionFilter): Promise<void>
   togglePinned(sessionId: string): Promise<void>
   moveToFolder(sessionId: string, folderId: string | null): Promise<void>
+  renameSession(sessionId: string, title: string): Promise<void>
+  archiveSession(sessionId: string): Promise<void>
+  restoreSession(sessionId: string): Promise<void>
+  trashSession(sessionId: string): Promise<void>
   createFolder(name: string): Promise<void>
   renameFolder(folderId: string, name: string): Promise<void>
   deleteFolder(folderId: string): Promise<void>
   close(): void
 }>
 
-const INITIAL: ReferenceSessionOrganizerState = Object.freeze({
+const INITIAL: SessionOrganizerState = Object.freeze({
   phase: "idle",
   sessions: Object.freeze([]),
   folders: Object.freeze([]),
@@ -81,10 +94,12 @@ const INITIAL: ReferenceSessionOrganizerState = Object.freeze({
   failure: null,
 })
 
-function sessionEntry(item: SessionListItem): ReferenceSessionEntry {
+function sessionEntry(item: SessionListItem): SessionEntry {
   return Object.freeze({
     sessionId: item.session.session_id,
     title: item.session.title,
+    lifecycle: item.session.lifecycle,
+    version: item.session.version,
     updatedAt: item.session.updated_at,
     pinned: item.pinned,
     folderId: item.folder_id ?? null,
@@ -92,7 +107,7 @@ function sessionEntry(item: SessionListItem): ReferenceSessionEntry {
   })
 }
 
-function folderEntry(folder: FolderView): ReferenceSessionFolder {
+function folderEntry(folder: FolderView): SessionFolder {
   return Object.freeze({
     folderId: folder.folder_id,
     name: folder.name,
@@ -106,7 +121,15 @@ function normalizedName(value: string): string | null {
 }
 
 function mutationFailure(
-  operation: "put_preference" | "create_folder" | "update_folder" | "delete_folder",
+  operation: Extract<BrowserCommandOperation,
+    | "update_session"
+    | "archive_session"
+    | "restore_session"
+    | "trash_session"
+    | "put_preference"
+    | "create_folder"
+    | "update_folder"
+    | "delete_folder">,
   response: SessionCommandResponse,
 ): string | null {
   const receipt = response.command_receipt
@@ -123,25 +146,25 @@ function mutationFailure(
   return receipt.payload.message
 }
 
-export function createReferenceSessionOrganizer(options: {
+export function createSessionOrganizer(options: {
   readonly client: OrganizerClient
   readonly projectRef: string | null
-}): ReferenceSessionOrganizer {
+}): SessionOrganizer {
   let state = INITIAL
   let closed = false
   let requestGeneration = 0
   const listeners = new Set<() => void>()
 
-  const publish = (next: ReferenceSessionOrganizerState): void => {
+  const publish = (next: SessionOrganizerState): void => {
     if (closed) return
     state = Object.freeze(next)
     for (const listener of listeners) listener()
   }
 
-  const listFolders = async (): Promise<readonly ReferenceSessionFolder[]> => {
+  const listFolders = async (): Promise<readonly SessionFolder[]> => {
     const projectRef = options.projectRef
     if (projectRef === null) return Object.freeze([])
-    const folders: ReferenceSessionFolder[] = []
+    const folders: SessionFolder[] = []
     const seenCursors = new Set<string>()
     let cursor: string | undefined
     for (let pageCount = 0; pageCount < 100; pageCount += 1) {
@@ -157,10 +180,10 @@ export function createReferenceSessionOrganizer(options: {
 
   const listSessions = async (
     cursor?: string,
-    filterOverride?: ReferenceSessionFilter,
+    filterOverride?: SessionFilter,
   ) => {
     const projectRef = options.projectRef
-    if (projectRef === null) return { sessions: Object.freeze([]) as readonly ReferenceSessionEntry[], nextCursor: null }
+    if (projectRef === null) return { sessions: Object.freeze([]) as readonly SessionEntry[], nextCursor: null }
     const query = state.query.trim()
     const filter = filterOverride ?? state.filter
     const page = await options.client.listSessions({
@@ -168,6 +191,7 @@ export function createReferenceSessionOrganizer(options: {
       limit: 50,
       sort: "updated_desc",
       ...(query ? { q: query } : {}),
+      lifecycle: filter.kind === "archived" ? "archived" : filter.kind === "trashed" ? "trashed" : "active",
       ...(filter.kind === "pinned" ? { pinned: true } : {}),
       ...(filter.kind === "folder" ? { folder_id: filter.folderId } : {}),
       ...(cursor ? { cursor } : {}),
@@ -221,18 +245,38 @@ export function createReferenceSessionOrganizer(options: {
 
   const runMutation = async (
     pendingAction: string,
-    operation: "put_preference" | "create_folder" | "update_folder" | "delete_folder",
+    operation: Extract<BrowserCommandOperation,
+      | "update_session"
+      | "archive_session"
+      | "restore_session"
+      | "trash_session"
+      | "put_preference"
+      | "create_folder"
+      | "update_folder"
+      | "delete_folder">,
+    targets: Readonly<Record<string, string>>,
     effect: Readonly<Record<string, unknown>>,
-    send: (command: Awaited<ReturnType<typeof createReferenceCommandIdentity>>) => Promise<SessionCommandResponse>,
+    send: (command: Awaited<ReturnType<typeof createCommandIdentity>>) => Promise<SessionCommandResponse>,
   ): Promise<void> => {
     if (state.pendingAction !== null || options.projectRef === null) return
     publish({ ...state, pendingAction, failure: null })
     let failure: string | null = null
     try {
-      const command = await createReferenceCommandIdentity(effect)
-      const response = await reconcileReferenceCommandReceipt(
+      const command = await createCommandIdentity({ operation, targets, effect })
+      let initialResponse: SessionCommandResponse
+      try {
+        initialResponse = await send(command)
+      } catch {
+        initialResponse = await options.client.getCommandReceipt(command.command_id, {
+          operation,
+          idempotency_key: command.idempotency_key,
+          digest_algorithm: command.digest_algorithm,
+          request_digest: command.request_digest,
+        })
+      }
+      const response = await reconcileCommandReceipt(
         options.client,
-        await send(command),
+        initialResponse,
         command,
         operation,
       )
@@ -245,13 +289,13 @@ export function createReferenceSessionOrganizer(options: {
     if (!closed) publish({ ...state, pendingAction: null })
   }
 
-  const findSession = (sessionId: string): ReferenceSessionEntry | null =>
+  const findSession = (sessionId: string): SessionEntry | null =>
     state.sessions.find((entry) => entry.sessionId === sessionId) ?? null
-  const findFolder = (folderId: string): ReferenceSessionFolder | null =>
+  const findFolder = (folderId: string): SessionFolder | null =>
     state.folders.find((entry) => entry.folderId === folderId) ?? null
 
   const setPreference = async (
-    session: ReferenceSessionEntry,
+    session: SessionEntry,
     next: Readonly<{ pinned: boolean; folderId: string | null }>,
   ): Promise<void> => {
     if (next.folderId !== null && findFolder(next.folderId) === null) return
@@ -260,7 +304,7 @@ export function createReferenceSessionOrganizer(options: {
       pinned: next.pinned,
       folder_id: next.folderId,
     }
-    await runMutation(`preference:${session.sessionId}`, "put_preference", effect, (command) =>
+    await runMutation(`preference:${session.sessionId}`, "put_preference", { session_id: session.sessionId }, effect, (command) =>
       options.client.putPreference(session.sessionId, {
         command,
         expected_version: session.preferenceVersion,
@@ -325,12 +369,41 @@ export function createReferenceSessionOrganizer(options: {
         await setPreference(session, { pinned: session.pinned, folderId })
       }
     },
+    async renameSession(sessionId, title) {
+      const session = findSession(sessionId)
+      const normalized = title.trim()
+      if (session === null || session.lifecycle !== "active" || normalized.length < 1 || normalized.length > 256 || normalized === session.title) return
+      const effect = { expected_version: session.version, title: normalized }
+      await runMutation(`session:${sessionId}`, "update_session", { session_id: sessionId }, effect, (command) =>
+        options.client.updateSession(sessionId, { command, ...effect }))
+    },
+    async archiveSession(sessionId) {
+      const session = findSession(sessionId)
+      if (session === null || session.lifecycle !== "active") return
+      const effect = { expected_session_version: session.version }
+      await runMutation(`session:${sessionId}`, "archive_session", { session_id: sessionId }, effect, (command) =>
+        options.client.archiveSession(sessionId, { command, ...effect }))
+    },
+    async restoreSession(sessionId) {
+      const session = findSession(sessionId)
+      if (session === null || session.lifecycle === "active") return
+      const effect = { expected_session_version: session.version }
+      await runMutation(`session:${sessionId}`, "restore_session", { session_id: sessionId }, effect, (command) =>
+        options.client.restoreSession(sessionId, { command, ...effect }))
+    },
+    async trashSession(sessionId) {
+      const session = findSession(sessionId)
+      if (session === null || session.lifecycle !== "active") return
+      const effect = { expected_session_version: session.version }
+      await runMutation(`session:${sessionId}`, "trash_session", { session_id: sessionId }, effect, (command) =>
+        options.client.trashSession(sessionId, { command, ...effect }))
+    },
     async createFolder(name) {
       const projectRef = options.projectRef
       const normalized = normalizedName(name)
       if (projectRef === null || normalized === null) return
       const effect = { project_ref: projectRef, name: normalized }
-      await runMutation("folder:create", "create_folder", effect, (command) =>
+      await runMutation("folder:create", "create_folder", {}, effect, (command) =>
         options.client.createFolder({ command, project_ref: projectRef, name: normalized }))
     },
     async renameFolder(folderId, name) {
@@ -338,14 +411,14 @@ export function createReferenceSessionOrganizer(options: {
       const normalized = normalizedName(name)
       if (folder === null || normalized === null || normalized === folder.name) return
       const effect = { expected_version: folder.version, name: normalized }
-      await runMutation(`folder:${folderId}`, "update_folder", effect, (command) =>
+      await runMutation(`folder:${folderId}`, "update_folder", { folder_id: folderId }, effect, (command) =>
         options.client.updateFolder(folderId, { command, expected_version: folder.version, name: normalized }))
     },
     async deleteFolder(folderId) {
       const folder = findFolder(folderId)
       if (folder === null) return
       const effect = { expected_version: folder.version }
-      await runMutation(`folder:${folderId}`, "delete_folder", effect, (command) =>
+      await runMutation(`folder:${folderId}`, "delete_folder", { folder_id: folderId }, effect, (command) =>
         options.client.deleteFolder(folderId, { command, expected_version: folder.version }))
     },
     close() {

@@ -52,7 +52,7 @@ function commandResponse(operation = "submit_message") {
       operation,
       command_id: "command-12345678",
       idempotency_key: "idempotency-12345678",
-      digest_algorithm: "SHA256_CANONICAL_JSON_V1",
+      digest_algorithm: "SHA256_CANONICAL_JSON_V2",
       request_digest: DIGEST,
       updated_at: "2026-07-28T00:00:00.000Z",
       status: "pending",
@@ -301,7 +301,7 @@ describe("contract-bound Session v3 client", () => {
     const command = {
       command_id: "command-12345678",
       idempotency_key: "idempotency-12345678",
-      digest_algorithm: "SHA256_CANONICAL_JSON_V1" as const,
+      digest_algorithm: "SHA256_CANONICAL_JSON_V2" as const,
       request_digest: DIGEST,
     };
 

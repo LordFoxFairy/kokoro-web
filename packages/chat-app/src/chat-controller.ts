@@ -5,6 +5,7 @@ import {
 } from "@kokoro/session-client"
 import type {
   ActionDecision,
+  BrowserCommandOperation,
   CommandIdentity,
   ErrorDetail,
   MessageInputPart,
@@ -21,11 +22,11 @@ import {
 } from "@kokoro/chat-surface"
 
 import {
-  createReferenceCommandIdentity,
-  reconcileReferenceCommandReceipt,
+  createCommandIdentity,
+  reconcileCommandReceipt,
 } from "./command"
 
-const commandIdentity = createReferenceCommandIdentity
+const commandIdentity = createCommandIdentity
 
 export type ModelOption = Readonly<{
   modelOptionRevisionRef: string
@@ -69,12 +70,6 @@ export type ChatState = Readonly<{
   selectedEffort: string | null
   hitlDecisionSupported: true
 }>
-
-/** Compatibility aliases for Site projects published before the product naming cut. */
-export type ReferenceModelOption = ModelOption
-export type ReferenceModelOptionCatalog = ModelOptionCatalog
-export type ReferenceChatFailure = ChatFailure
-export type ReferenceChatState = ChatState
 
 type FailureLike = Readonly<{
   stableCode?: string
@@ -196,8 +191,6 @@ export type ChatController = Readonly<{
   }>): Promise<void>
   close(): void
 }>
-
-export type ReferenceChatController = ChatController
 
 export function createChatController(options: {
   readonly client: SessionClient
@@ -349,18 +342,20 @@ export function createChatController(options: {
     }
   }
 
-  const refresh = async (): Promise<void> => {
+  const refresh = async (): Promise<boolean> => {
     const sessionId = state.sessionId
-    if (sessionId === null) return
+    if (sessionId === null) return false
     const snapshot = await options.client.fetchSnapshot(sessionId)
-    if (snapshot !== null) attach(sessionId, snapshot, generation)
+    if (snapshot === null) return false
+    attach(sessionId, snapshot, generation)
+    return true
   }
 
   const reconcileReceipt = (
     response: SessionCommandResponse,
     command: CommandIdentity,
     operation: Parameters<SessionClient["getCommandReceipt"]>[1]["operation"],
-  ): Promise<SessionCommandResponse> => reconcileReferenceCommandReceipt(
+  ): Promise<SessionCommandResponse> => reconcileCommandReceipt(
     options.client,
     response,
     command,
@@ -382,15 +377,16 @@ export function createChatController(options: {
     return deniedFailure(response)
   }
 
-  type ReceiptOperation = Parameters<SessionClient["getCommandReceipt"]>[1]["operation"]
+  type ReceiptOperation = BrowserCommandOperation
 
   const sendCommand = async (
-    effect: Readonly<Record<string, unknown>>,
     operation: ReceiptOperation,
+    targets: Readonly<Record<string, string>>,
+    effect: Readonly<Record<string, unknown>>,
     pendingCode: StableCode,
     sender: (command: CommandIdentity) => Promise<SessionCommandResponse>,
   ): Promise<SessionCommandResponse | null> => {
-    const command = await commandIdentity(effect)
+    const command = await commandIdentity({ operation, targets, effect })
     let response: SessionCommandResponse
     try {
       response = await sender(command)
@@ -413,7 +409,17 @@ export function createChatController(options: {
         return null
       }
     }
-    const reconciled = await reconcileReceipt(response, command, operation)
+    let reconciled: SessionCommandResponse
+    try {
+      reconciled = await reconcileReceipt(response, command, operation)
+    } catch {
+      fail(describeSessionFailure({
+        stableCode: pendingCode,
+        action: "reconcile_receipt",
+        retryClass: "reconcile_receipt",
+      }))
+      return null
+    }
     const failure = pendingFailure(reconciled, pendingCode)
     if (failure !== null) {
       fail(failure)
@@ -460,9 +466,21 @@ export function createChatController(options: {
   }
 
   const finishMutation = async (): Promise<boolean> => {
-    project({ type: "command", state: "idle" })
-    await refresh()
-    return true
+    try {
+      if (await refresh()) {
+        project({ type: "command", state: "idle" })
+        return true
+      }
+    } catch {
+      // The effect is terminal in its owner, but the browser has not observed the fresh
+      // authority snapshot. Keep the command non-idle so the UI cannot imply convergence.
+    }
+    fail(describeSessionFailure({
+      stableCode: "SNAPSHOT_REQUIRED",
+      action: "refetch_snapshot",
+      retryClass: "immediate",
+    }))
+    return false
   }
 
   const create = async (): Promise<string | null> => {
@@ -474,17 +492,9 @@ export function createChatController(options: {
     const effect = { project_ref: projectRef }
     project({ type: "command", state: "pending" })
     try {
-      const command = await commandIdentity(effect)
-      const response = await reconcileReceipt(
-        await options.client.createSession({ command, ...effect }),
-        command,
-        "create_session",
-      )
-      const failure = pendingFailure(response, "INTERNAL_UNAVAILABLE")
-      if (failure !== null) {
-        fail(failure)
-        return null
-      }
+      const response = await sendCommand("create_session", {}, effect, "INTERNAL_UNAVAILABLE", (command) =>
+        options.client.createSession({ command, ...effect }))
+      if (response === null) return null
       const receipt = response.command_receipt
       if (
         (receipt.status !== "accepted" && receipt.status !== "applied") ||
@@ -493,10 +503,9 @@ export function createChatController(options: {
         fail(describeSessionFailure({ stableCode: "INTERNAL_UNAVAILABLE", action: "reconcile_receipt", retryClass: "reconcile_receipt" }))
         return null
       }
-      project({ type: "command", state: "idle" })
       const sessionId = receipt.payload.payload.session_id
       await open(sessionId)
-      return sessionId
+      return state.phase === "ready" && state.sessionId === sessionId ? sessionId : null
     } catch (error) {
       fail(failureFromError(error))
       return null
@@ -522,9 +531,9 @@ export function createChatController(options: {
     }
     project({ type: "command", state: "pending" })
     try {
-      const response = await sendCommand(effect, "submit_message", "LAUNCH_OUTCOME_UNKNOWN", (command) =>
+      const response = await sendCommand("submit_message", { session_id: sessionId }, effect, "LAUNCH_OUTCOME_UNKNOWN", (command) =>
         options.client.submitMessage(sessionId, { command, ...effect }))
-      return response === null ? false : finishMutation()
+      return response === null ? false : await finishMutation()
     } catch (error) {
       fail(failureFromError(error))
       return false
@@ -556,9 +565,9 @@ export function createChatController(options: {
     }
     project({ type: "command", state: "pending" })
     try {
-      const response = await sendCommand(effect, "edit_message", "LAUNCH_OUTCOME_UNKNOWN", (command) =>
+      const response = await sendCommand("edit_message", { session_id: sessionId, message_id: source.message_id }, effect, "LAUNCH_OUTCOME_UNKNOWN", (command) =>
         options.client.editMessage(sessionId, source.message_id, { command, ...effect }))
-      return response === null ? false : finishMutation()
+      return response === null ? false : await finishMutation()
     } catch (error) {
       fail(failureFromError(error))
       return false
@@ -592,9 +601,9 @@ export function createChatController(options: {
     }
     project({ type: "command", state: "pending" })
     try {
-      const response = await sendCommand(effect, "regenerate_message", "LAUNCH_OUTCOME_UNKNOWN", (command) =>
+      const response = await sendCommand("regenerate_message", { session_id: sessionId, message_id: source.message_id }, effect, "LAUNCH_OUTCOME_UNKNOWN", (command) =>
         options.client.regenerateMessage(sessionId, source.message_id, { command, ...effect }))
-      return response === null ? false : finishMutation()
+      return response === null ? false : await finishMutation()
     } catch (error) {
       fail(failureFromError(error))
       return false
@@ -615,11 +624,11 @@ export function createChatController(options: {
     }
     project({ type: "command", state: "pending" })
     try {
-      const response = await sendCommand(effect, operation, "INTERNAL_UNAVAILABLE", (command) =>
+      const response = await sendCommand(operation, { session_id: sessionId, branch_id: branchId }, effect, "INTERNAL_UNAVAILABLE", (command) =>
         operation === "fork_branch"
           ? options.client.forkBranch(sessionId, branchId, { command, ...effect })
           : options.client.activateBranch(sessionId, branchId, { command, ...effect }))
-      return response === null ? false : finishMutation()
+      return response === null ? false : await finishMutation()
     } catch (error) {
       fail(failureFromError(error))
       return false
@@ -642,24 +651,15 @@ export function createChatController(options: {
     const effect = { expected_run_projection_version: version, reason_code: "user_requested" }
     project({ type: "command", state: "pending" })
     try {
-      const command = await commandIdentity(effect)
-      const response = await reconcileReceipt(await options.client.cancelRun(sessionId, runId, {
-        command,
-        ...effect,
-      }), command, "cancel_run")
-      const failure = pendingFailure(response, "RUN_CANCELLATION_PENDING")
-      if (failure !== null) {
-        fail(failure)
-        return
-      }
-      project({ type: "command", state: "idle" })
-      await refresh()
+      const response = await sendCommand("cancel_run", { session_id: sessionId, run_id: runId }, effect, "RUN_CANCELLATION_PENDING", (command) =>
+        options.client.cancelRun(sessionId, runId, { command, ...effect }))
+      if (response !== null) await finishMutation()
     } catch (error) {
       fail(failureFromError(error))
     }
   }
 
-  const decideAction: ReferenceChatController["decideAction"] = async ({ runId, part, decision }) => {
+  const decideAction: ChatController["decideAction"] = async ({ runId, part, decision }) => {
     const snapshot = state.snapshot
     const sessionId = state.sessionId
     const runVersion = runProjectionVersions.get(runId)
@@ -682,21 +682,15 @@ export function createChatController(options: {
     }
     project({ type: "command", state: "pending" })
     try {
-      const command = await commandIdentity(effect)
-      const response = await reconcileReceipt(await options.client.decideAction(sessionId, runId, {
-        command,
-        ...effect,
-      }), command, "decide_action")
-      const failure = pendingFailure(response, "ACTION_DECISION_PENDING")
-      if (failure !== null) return fail(failure)
-      project({ type: "command", state: "idle" })
-      await refresh()
+      const response = await sendCommand("decide_action", { session_id: sessionId, run_id: runId }, effect, "ACTION_DECISION_PENDING", (command) =>
+        options.client.decideAction(sessionId, runId, { command, ...effect }))
+      if (response !== null) await finishMutation()
     } catch (error) {
       fail(failureFromError(error))
     }
   }
 
-  const decidePlan: ReferenceChatController["decidePlan"] = async ({ runId, part, decision }) => {
+  const decidePlan: ChatController["decidePlan"] = async ({ runId, part, decision }) => {
     const snapshot = state.snapshot
     const sessionId = state.sessionId
     const runVersion = runProjectionVersions.get(runId)
@@ -717,15 +711,9 @@ export function createChatController(options: {
     }
     project({ type: "command", state: "pending" })
     try {
-      const command = await commandIdentity(effect)
-      const response = await reconcileReceipt(await options.client.decidePlan(sessionId, runId, {
-        command,
-        ...effect,
-      }), command, "decide_plan")
-      const failure = pendingFailure(response, "PLAN_DECISION_PENDING")
-      if (failure !== null) return fail(failure)
-      project({ type: "command", state: "idle" })
-      await refresh()
+      const response = await sendCommand("decide_plan", { session_id: sessionId, run_id: runId }, effect, "PLAN_DECISION_PENDING", (command) =>
+        options.client.decidePlan(sessionId, runId, { command, ...effect }))
+      if (response !== null) await finishMutation()
     } catch (error) {
       fail(failureFromError(error))
     }
@@ -785,6 +773,3 @@ export function createChatController(options: {
     },
   })
 }
-
-/** Compatibility constructor for previously generated Site projects. */
-export const createReferenceChatController = createChatController

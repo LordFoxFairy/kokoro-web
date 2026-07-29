@@ -194,11 +194,15 @@ export async function prepareAuthDelivery(input: AuthDeliveryPreparation, advanc
   const store = await cookies();
   const existing = await decodeDelivery(store.get(SITE_AUTH_DELIVERY_COOKIE)?.value);
   if (existing?.flow === input.flow && existing.inputDigest === digest && !advance) return;
-  const command = siteBff().createOneTimeCommand();
+  const fresh = siteBff().createOneTimeCommand();
+  const superseding = advance && existing?.flow === input.flow && existing.inputDigest === digest;
+  const command = superseding
+    ? { ...fresh, receiptRecoveryCapability: existing.receiptRecoveryCapability }
+    : fresh;
   await writeDelivery({
     flow: input.flow,
     inputDigest: digest,
-    ...(advance && existing?.flow === input.flow && existing.inputDigest === digest
+    ...(superseding
       ? { priorCommandId: existing.commandId }
       : {}),
     ...command,
@@ -305,8 +309,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         return replaceCredentials(token, await siteBff().refresh(pair.refreshCredential, delivery));
       } catch (error) {
         if (!(error instanceof SiteBffError) || error.code !== "AUTH_DELIVERY_UNAVAILABLE") return token;
+        const fresh = siteBff().createOneTimeCommand();
         delivery = {
-          command: siteBff().createOneTimeCommand(),
+          command: { ...fresh, receiptRecoveryCapability: delivery.command.receiptRecoveryCapability },
           priorCommandId: delivery.command.commandId,
         };
         setRefreshRecovery(token, delivery);

@@ -34,7 +34,7 @@ describe("Site launch HTTP boundary", () => {
       runtime: runtime as never,
       stateSecret: "k".repeat(64),
       readAuthSession: async () => auth,
-      registrationLegalAcceptanceRefs: ["terms-2026"],
+      legalDocuments: [{ termRef: "terms-2026", label: "Terms", href: "https://site.example/terms" }],
       now: () => 1_000,
       nonce: () => Buffer.alloc(12, 7),
     })
@@ -50,6 +50,8 @@ describe("Site launch HTTP boundary", () => {
     expect(calls).toEqual(["RAW-CODE-123456789"])
     const body = await executed.text()
     expect(body).toContain("Starter credits")
+    expect(body).toContain("https://site.example/terms")
+    expect(body).not.toContain("terms-2026")
     expect(body).not.toContain("RAW-CODE")
     expect(body).not.toContain("opaque-preview")
     expect(body).not.toContain("11111111")
@@ -83,7 +85,14 @@ describe("Site launch HTTP boundary", () => {
       previewRedemption: async () => ({ receipt: {}, preview: { previewCredential: "opaque-preview-credential-1234567890", legalTermRefs: ["terms-authoritative-2026"], safeProductLabel: "Starter credits", safePlanLabel: null, productKind: "credit_pack", expiresAt: "2026-07-29T01:00:00.000Z", term: { action: "none", automaticRenewal: false, startsAt: null, endsAt: null }, entitlements: [], credits: [] } }),
       confirmRedemption: async (_auth: OpaqueAuthSession, input: unknown) => { confirmations.push(input); return { kind: "succeeded", redemption: { state: "fulfilled", redeemedAt: "2026-07-29T00:30:00.000Z" } } },
     }
-    const api = createSiteLaunchApi({ runtime: runtime as never, stateSecret: "k".repeat(64), readAuthSession: () => auth, now: () => 1_000, nonce: () => Buffer.alloc(12, 8) })
+    const api = createSiteLaunchApi({
+      runtime: runtime as never,
+      stateSecret: "k".repeat(64),
+      readAuthSession: () => auth,
+      legalDocuments: [{ termRef: "terms-authoritative-2026", label: "Terms", href: "https://site.example/terms" }],
+      now: () => 1_000,
+      nonce: () => Buffer.alloc(12, 8),
+    })
     const headers = { origin: "https://site.example", "sec-fetch-site": "same-origin", "x-kokoro-browser-csrf": "csrf-ok", "content-type": "application/json" }
     const call = (action: "prepare" | "execute", body: unknown, cookieValue = "") => api.handle(new Request(`https://site.example/api/account/${action}`, { method: "POST", headers: { ...headers, cookie: cookieValue }, body: JSON.stringify(body) }), action)
 

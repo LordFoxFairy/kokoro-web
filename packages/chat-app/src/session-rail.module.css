@@ -45,7 +45,9 @@
 .addFolder button,
 .loadMore,
 .renameFolder button,
-.confirmDelete button {
+.confirmDelete button,
+.renameSession button,
+.confirmTrash button {
   border: 0;
   border-radius: 0.6rem;
   padding: 0.55rem 0.7rem;
@@ -57,7 +59,9 @@
 .search,
 .addFolder,
 .renameFolder,
-.confirmDelete {
+.confirmDelete,
+.renameSession,
+.confirmTrash {
   display: flex;
   gap: 0.4rem;
 }
@@ -72,6 +76,48 @@
   padding: 0.5rem 0.6rem;
   color: var(--k-text);
   background: var(--k-bg-base);
+}
+
+.renameSession,
+.confirmTrash {
+  grid-column: 1 / -1;
+  align-items: center;
+}
+
+.renameSession input {
+  min-width: 0;
+  flex: 1;
+  border: 1px solid var(--k-border);
+  border-radius: 0.55rem;
+  padding: 0.5rem 0.6rem;
+  color: var(--k-text);
+  background: var(--k-bg-base);
+}
+
+.confirmTrash span {
+  margin-right: auto;
+  color: var(--k-text-secondary);
+  font-size: 0.78rem;
+}
+
+.chatActions {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 0.25rem;
+}
+
+.chatActions button {
+  border: 0;
+  border-radius: 0.45rem;
+  padding: 0.3rem 0.45rem;
+  color: var(--k-text-secondary);
+  background: transparent;
+  cursor: pointer;
+}
+
+.chatActions button:hover {
+  color: var(--k-brand);
+  background: var(--k-brand-soft);
 }
 
 .search input,

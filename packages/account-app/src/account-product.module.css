@@ -10,3 +10,8 @@
 .list { display: grid; gap: 10px; padding: 0; list-style: none; }
 .row { border-top: 1px solid #eee; padding-top: 10px; }
 .status { min-height: 24px; color: #555; }
+.legalAcceptance { display: flex; align-items: flex-start; gap: 8px; }
+.legalAcceptance input { width: auto; margin-top: 3px; }
+.legalAcceptance a, .authNav a { text-decoration: underline; text-underline-offset: 2px; }
+.unavailable { color: #b42318; }
+.authNav { margin-top: 16px; color: #555; }

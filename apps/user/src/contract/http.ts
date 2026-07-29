@@ -6,14 +6,14 @@ import { z } from "zod"
 export const sessionHttpContractMetadata = Object.freeze({
   schemaId: "kokoro.session.browser.v3",
   schemaVersion: 3,
-  sourceDigestSha256: "758e2b2f8fe7718139dd617a46d9f77c86e186289f559f60ed3d271758c49926",
+  sourceDigestSha256: "2f78defe467b9861f9c94b7e0b35d5db1167b3cabbc07d33327aecbf4aeb5e4d",
 })
 
 export const commandIdentitySchema = z
   .object({
     command_id: z.string().min(1).max(128),
     idempotency_key: z.string().min(1).max(191),
-    digest_algorithm: z.literal("SHA256_CANONICAL_JSON_V1"),
+    digest_algorithm: z.literal("SHA256_CANONICAL_JSON_V2"),
     request_digest: z.string().regex(/^[0-9a-f]{64}$/u),
   })
   .strict()
@@ -242,7 +242,7 @@ const commandReceiptViewPendingSchema = z
     operation: z.enum(["create_session", "submit_message", "edit_message", "regenerate_message", "fork_branch", "activate_branch", "cancel_run", "decide_action", "decide_plan", "update_session", "archive_session", "restore_session", "trash_session", "put_preference", "create_folder", "update_folder", "delete_folder"]),
     command_id: z.string().min(1).max(128),
     idempotency_key: z.string().min(1).max(191),
-    digest_algorithm: z.literal("SHA256_CANONICAL_JSON_V1"),
+    digest_algorithm: z.literal("SHA256_CANONICAL_JSON_V2"),
     request_digest: z.string().regex(/^[0-9a-f]{64}$/u),
     updated_at: z.string().datetime({ offset: true }),
     status: z.literal("pending"),
@@ -255,7 +255,7 @@ const commandReceiptViewOutcomeUnknownSchema = z
     operation: z.enum(["create_session", "submit_message", "edit_message", "regenerate_message", "fork_branch", "activate_branch", "cancel_run", "decide_action", "decide_plan", "update_session", "archive_session", "restore_session", "trash_session", "put_preference", "create_folder", "update_folder", "delete_folder"]),
     command_id: z.string().min(1).max(128),
     idempotency_key: z.string().min(1).max(191),
-    digest_algorithm: z.literal("SHA256_CANONICAL_JSON_V1"),
+    digest_algorithm: z.literal("SHA256_CANONICAL_JSON_V2"),
     request_digest: z.string().regex(/^[0-9a-f]{64}$/u),
     updated_at: z.string().datetime({ offset: true }),
     status: z.literal("outcome_unknown"),
@@ -268,7 +268,7 @@ const commandReceiptViewAcceptedSchema = z
     operation: z.enum(["create_session", "submit_message", "edit_message", "regenerate_message", "fork_branch", "activate_branch", "cancel_run", "decide_action", "decide_plan", "update_session", "archive_session", "restore_session", "trash_session", "put_preference", "create_folder", "update_folder", "delete_folder"]),
     command_id: z.string().min(1).max(128),
     idempotency_key: z.string().min(1).max(191),
-    digest_algorithm: z.literal("SHA256_CANONICAL_JSON_V1"),
+    digest_algorithm: z.literal("SHA256_CANONICAL_JSON_V2"),
     request_digest: z.string().regex(/^[0-9a-f]{64}$/u),
     updated_at: z.string().datetime({ offset: true }),
     status: z.literal("accepted"),
@@ -281,7 +281,7 @@ const commandReceiptViewAppliedSchema = z
     operation: z.enum(["create_session", "submit_message", "edit_message", "regenerate_message", "fork_branch", "activate_branch", "cancel_run", "decide_action", "decide_plan", "update_session", "archive_session", "restore_session", "trash_session", "put_preference", "create_folder", "update_folder", "delete_folder"]),
     command_id: z.string().min(1).max(128),
     idempotency_key: z.string().min(1).max(191),
-    digest_algorithm: z.literal("SHA256_CANONICAL_JSON_V1"),
+    digest_algorithm: z.literal("SHA256_CANONICAL_JSON_V2"),
     request_digest: z.string().regex(/^[0-9a-f]{64}$/u),
     updated_at: z.string().datetime({ offset: true }),
     status: z.literal("applied"),
@@ -294,7 +294,7 @@ const commandReceiptViewDeniedSchema = z
     operation: z.enum(["create_session", "submit_message", "edit_message", "regenerate_message", "fork_branch", "activate_branch", "cancel_run", "decide_action", "decide_plan", "update_session", "archive_session", "restore_session", "trash_session", "put_preference", "create_folder", "update_folder", "delete_folder"]),
     command_id: z.string().min(1).max(128),
     idempotency_key: z.string().min(1).max(191),
-    digest_algorithm: z.literal("SHA256_CANONICAL_JSON_V1"),
+    digest_algorithm: z.literal("SHA256_CANONICAL_JSON_V2"),
     request_digest: z.string().regex(/^[0-9a-f]{64}$/u),
     updated_at: z.string().datetime({ offset: true }),
     status: z.literal("denied"),
@@ -320,7 +320,7 @@ export const commandReceiptLookupQuerySchema = z
   .object({
     operation: z.enum(["create_session", "submit_message", "edit_message", "regenerate_message", "fork_branch", "activate_branch", "cancel_run", "decide_action", "decide_plan", "update_session", "archive_session", "restore_session", "trash_session", "put_preference", "create_folder", "update_folder", "delete_folder"]),
     idempotency_key: z.string().min(1).max(191),
-    digest_algorithm: z.literal("SHA256_CANONICAL_JSON_V1"),
+    digest_algorithm: z.literal("SHA256_CANONICAL_JSON_V2"),
     request_digest: z.string().regex(/^[0-9a-f]{64}$/u),
   })
   .strict()
@@ -1215,6 +1215,88 @@ export const folderListSchema = z
   })
   .strict()
 export type FolderList = z.infer<typeof folderListSchema>
+
+export const BROWSER_COMMAND_DIGEST_ALGORITHM = "SHA256_CANONICAL_JSON_V2" as const
+
+export const BROWSER_COMMAND_TARGET_KEYS = Object.freeze({
+  "create_session": Object.freeze([]),
+  "submit_message": Object.freeze(["session_id"]),
+  "edit_message": Object.freeze(["session_id", "message_id"]),
+  "regenerate_message": Object.freeze(["session_id", "message_id"]),
+  "fork_branch": Object.freeze(["session_id", "branch_id"]),
+  "activate_branch": Object.freeze(["session_id", "branch_id"]),
+  "cancel_run": Object.freeze(["session_id", "run_id"]),
+  "decide_action": Object.freeze(["session_id", "run_id"]),
+  "decide_plan": Object.freeze(["session_id", "run_id"]),
+  "update_session": Object.freeze(["session_id"]),
+  "archive_session": Object.freeze(["session_id"]),
+  "restore_session": Object.freeze(["session_id"]),
+  "trash_session": Object.freeze(["session_id"]),
+  "put_preference": Object.freeze(["session_id"]),
+  "create_folder": Object.freeze([]),
+  "update_folder": Object.freeze(["folder_id"]),
+  "delete_folder": Object.freeze(["folder_id"]),
+} as const)
+
+export type BrowserCommandOperation = keyof typeof BROWSER_COMMAND_TARGET_KEYS
+
+export type BrowserCommandDigestInput = Readonly<{
+  operation: BrowserCommandOperation
+  targets: Readonly<Record<string, string>>
+  effect: Readonly<Record<string, unknown>>
+}>
+
+/** Exact v2 preimage shared by browser and Session before SHA-256. */
+export function canonicalBrowserCommandDigestPreimage(input: BrowserCommandDigestInput): string {
+  const expectedKeys = BROWSER_COMMAND_TARGET_KEYS[input.operation] as readonly string[] | undefined
+  if (expectedKeys === undefined) throw new Error("BROWSER_COMMAND_OPERATION_INVALID")
+  if (!plainBrowserCommandRecord(input.targets)) {
+    throw new Error("BROWSER_COMMAND_TARGETS_INVALID")
+  }
+  const actualKeys = Object.keys(input.targets).sort()
+  const canonicalExpectedKeys = [...expectedKeys].sort()
+  if (
+    actualKeys.length !== canonicalExpectedKeys.length ||
+    actualKeys.some((key, index) => key !== canonicalExpectedKeys[index])
+  ) throw new Error("BROWSER_COMMAND_TARGETS_INVALID")
+  const targets: Record<string, string> = {}
+  for (const key of expectedKeys) {
+    const value = input.targets[key]
+    if (typeof value !== "string" || value.length < 1 || value.length > 128) {
+      throw new Error("BROWSER_COMMAND_TARGETS_INVALID")
+    }
+    targets[key] = value
+  }
+  if (!plainBrowserCommandRecord(input.effect) || Object.hasOwn(input.effect, "command")) {
+    throw new Error("BROWSER_COMMAND_EFFECT_INVALID")
+  }
+  return canonicalBrowserCommandJson({ operation: input.operation, targets, effect: input.effect })
+}
+
+function canonicalBrowserCommandJson(value: unknown): string {
+  if (value === null || typeof value === "boolean" || typeof value === "string") {
+    return JSON.stringify(value)
+  }
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) throw new Error("BROWSER_COMMAND_EFFECT_INVALID")
+    return JSON.stringify(value)
+  }
+  if (Array.isArray(value)) return `[${value.map(canonicalBrowserCommandJson).join(",")}]`
+  if (plainBrowserCommandRecord(value)) {
+    const entries = Object.entries(value)
+      .filter(([, child]) => child !== undefined)
+      .sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)
+    return `{${entries.map(([key, child]) =>
+      `${JSON.stringify(key)}:${canonicalBrowserCommandJson(child)}`).join(",")}}`
+  }
+  throw new Error("BROWSER_COMMAND_EFFECT_INVALID")
+}
+
+function plainBrowserCommandRecord(value: unknown): value is Record<string, unknown> {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return false
+  const prototype = Object.getPrototypeOf(value)
+  return prototype === Object.prototype || prototype === null
+}
 
 export function parseSessionSnapshot(input: unknown): SessionSnapshot {
   return sessionSnapshotSchema.parse(input)

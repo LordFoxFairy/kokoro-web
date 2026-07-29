@@ -16,7 +16,8 @@ authority. The BFF resolves Platform PersonalContext before issuing exact-purpos
 registry. The shared brand-neutral Chat app is rendered only when Platform publishes both the Chat surface and its model catalog.
 The shared Account app renders registration, email verification, security sessions, Code redemption, entitlements and credits
 only for Platform-enabled Site surfaces. Registration additionally requires server-owned
-`KOKORO_SITE_REGISTRATION_LEGAL_REFS`; browser input cannot choose the legal authority.
+`KOKORO_SITE_REGISTRATION_LEGAL_DOCUMENTS`; one strict typed SiteRelease projection derives server-only term refs and
+browser-safe labels/HTTPS or same-origin links. Browser input can accept the published set but cannot choose authority refs.
 
 One-time login, MFA and refresh delivery is fail-safe: a generic upstream timeout retains the exact secret command identity for the
 next retry. Only Platform's typed `delivery_unavailable` result permits a new secret command bound to the prior command through the

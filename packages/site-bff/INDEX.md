@@ -20,3 +20,7 @@ Every Site launch mutation requires fixed-origin/Sec-Fetch proof plus the indepe
 Anonymous ordinary commands have no receipt authority: uncertain registration, resend and preview responses
 repeat the exact sealed command and payload. Secret one-time commands use capability recovery; authenticated
 effects use authenticated receipts, with redemption confirmation using its dedicated idempotency recovery route.
+
+`site-legal-documents` parses the deployment's single typed legal-document registry. Registration derives
+authoritative term references from that registry, while browser props and redemption previews receive only
+the exact matched `{ label, href }` projection. Missing, duplicate, or unsafe entries fail closed.

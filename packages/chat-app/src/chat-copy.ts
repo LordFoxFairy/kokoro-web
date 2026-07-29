@@ -53,12 +53,19 @@ export type ChatProductCopy = Readonly<{
   search: string
   allChats: string
   pinned: string
+  archived: string
+  trash: string
   folders: string
   chats: string
   noChats: string
   newFolder: string
   add: string
   loadMore: string
+  renameChat: string
+  archiveChat: string
+  trashChat: string
+  restoreChat: string
+  confirmTrash: string
   connectionIdle: string
   connectionConnecting: string
   connectionLive: string
@@ -131,12 +138,19 @@ export const DEFAULT_CHAT_COPY: ChatProductCopy = Object.freeze({
   search: "Search",
   allChats: "All chats",
   pinned: "Pinned",
+  archived: "Archived",
+  trash: "Trash",
   folders: "Folders",
   chats: "Chats",
   noChats: "No chats in this view.",
   newFolder: "New folder",
   add: "Add",
   loadMore: "Load more",
+  renameChat: "Rename",
+  archiveChat: "Archive",
+  trashChat: "Move to trash",
+  restoreChat: "Restore",
+  confirmTrash: "Move this chat to trash?",
   connectionIdle: "Ready",
   connectionConnecting: "Connecting",
   connectionLive: "Live",

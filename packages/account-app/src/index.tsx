@@ -3,6 +3,7 @@
 import { type FormEvent, useCallback, useEffect, useRef, useState } from "react"
 
 import styles from "./account-product.module.css"
+export type LegalDocument = Readonly<{ label: string; href: string }>
 
 type Features = Readonly<{ security: boolean; redemption: boolean; products: boolean; credits: boolean }>
 type Dashboard = Readonly<{
@@ -23,6 +24,7 @@ type RedemptionPreview = Readonly<{
   entitlements: readonly Readonly<{ safeLabel: string; expiresAt: string | null }>[]
   credits: readonly Readonly<{ amount: string; unit: string; bucketClass: string; expiresAt: string | null }>[]
   legalAcceptanceRequired: boolean
+  legalDocuments: readonly LegalDocument[]
 }>
 
 function flowRef(): string {
@@ -66,6 +68,7 @@ export function IdentityLaunch(props: Readonly<{
   mode: "register" | "verify"
   apiPrefix?: string
   transactionRef?: string
+  legalDocuments?: readonly LegalDocument[]
 }>) {
   const prefix = props.apiPrefix ?? "/api/account"
   const [status, setStatus] = useState("")
@@ -111,10 +114,16 @@ export function IdentityLaunch(props: Readonly<{
     }
     const operation = "identity.register"
     const flow = flowRef()
+    const password = String(data.get("password") ?? "")
+    if (password !== String(data.get("passwordConfirmation") ?? "")) {
+      setStatus("Passwords do not match.")
+      setPending(false)
+      return
+    }
     try {
       await prepare(prefix, props.csrfToken, operation, flow)
       const result = await execute(prefix, props.csrfToken, operation, flow, {
-        email: String(data.get("email") ?? ""), password: String(data.get("password") ?? ""),
+        email: String(data.get("email") ?? ""), password,
         legalAccepted: data.get("legalAccepted") === "yes",
       })
       setStatus(result.state === "verification_pending" ? "Check your email to continue." : "Registration is still being reconciled. You can safely retry.")
@@ -139,15 +148,18 @@ export function IdentityLaunch(props: Readonly<{
     <section className={styles.card}><form className={styles.form} onSubmit={submit}>
       {props.mode === "register" ? <>
         <label>Email<input autoComplete="email" name="email" required type="email" /></label>
-        <label>Password<input autoComplete="new-password" minLength={12} name="password" required type="password" /></label>
-        <label><input name="legalAccepted" required type="checkbox" value="yes" /> I accept this Site&apos;s published terms.</label>
+        <label>Password<input autoComplete="new-password" minLength={15} name="password" required type="password" /></label>
+        <p className={styles.quiet}>Use at least 15 characters.</p>
+        <label>Confirm password<input autoComplete="new-password" minLength={15} name="passwordConfirmation" required type="password" /></label>
+        {props.legalDocuments && props.legalDocuments.length > 0 ? <label className={styles.legalAcceptance}><input name="legalAccepted" required type="checkbox" value="yes" /><span>I agree to {props.legalDocuments.map((document, index) => <span key={document.href}>{index > 0 ? index === (props.legalDocuments?.length ?? 0) - 1 ? " and " : ", " : ""}<a href={document.href} rel="noreferrer noopener" target="_blank">{document.label}</a></span>)}.</span></label> : <p className={styles.unavailable} role="alert">Registration is unavailable until this Site publishes its legal documents.</p>}
       </> : <>
         {props.transactionRef === undefined ? <label>Verification reference<input name="transactionRef" required /></label> : null}
         <label>Verification secret<input autoComplete="one-time-code" minLength={32} name="transactionSecret" required /></label>
       </>}
-      <button disabled={pending} type="submit">{pending ? "Continuing…" : "Continue"}</button>
+      <button disabled={pending || props.mode === "register" && (!props.legalDocuments || props.legalDocuments.length === 0)} type="submit">{pending ? "Continuing…" : "Continue"}</button>
       <p className={styles.status} role="status">{status}</p>
     </form>
+    <p className={styles.authNav}>{props.mode === "register" ? <>Already have an account? <a href="/login">Sign in</a></> : <>Ready to continue? <a href="/login">Sign in</a></>}</p>
     <hr />
     <form className={styles.form} onSubmit={resend}>
       <h2>Need a new verification email?</h2>
@@ -200,7 +212,7 @@ export function AccountProduct(props: Readonly<{ brandName: string; csrfToken: s
             {preview.term.startsAt ? <p>Starts {preview.term.startsAt}</p> : null}{preview.term.endsAt ? <p>Ends {preview.term.endsAt}</p> : null}
             {preview.entitlements.length > 0 ? <><h4>Entitlements</h4><ul>{preview.entitlements.map((item, index) => <li key={`${item.safeLabel}-${index}`}>{item.safeLabel}{item.expiresAt ? ` · expires ${item.expiresAt}` : ""}</li>)}</ul></> : null}
             {preview.credits.length > 0 ? <><h4>Credits</h4><ul>{preview.credits.map((item, index) => <li key={`${item.unit}-${item.bucketClass}-${index}`}>{item.amount} {item.unit} · {item.bucketClass}{item.expiresAt ? ` · expires ${item.expiresAt}` : ""}</li>)}</ul></> : null}
-            {preview.legalAcceptanceRequired ? <label><input checked={redemptionAccepted} onChange={(event) => setRedemptionAccepted(event.currentTarget.checked)} type="checkbox" /> I accept the published terms for this redemption.</label> : null}
+            {preview.legalAcceptanceRequired ? <label className={styles.legalAcceptance}><input checked={redemptionAccepted} onChange={(event) => setRedemptionAccepted(event.currentTarget.checked)} type="checkbox" /><span>I agree to {preview.legalDocuments.map((document, index) => <span key={document.href}>{index > 0 ? index === preview.legalDocuments.length - 1 ? " and " : ", " : ""}<a href={document.href} rel="noreferrer noopener" target="_blank">{document.label}</a></span>)} for this redemption.</span></label> : null}
             <button className={styles.button} disabled={preview.legalAcceptanceRequired && !redemptionAccepted} onClick={() => { if (previewFlow) void effect("redemption.confirm", { previewFlowRef: previewFlow, legalAccepted: !preview.legalAcceptanceRequired || redemptionAccepted }) }} type="button">Confirm redemption</button>
           </div>}
       </section> : null}

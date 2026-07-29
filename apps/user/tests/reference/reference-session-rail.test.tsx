@@ -1,19 +1,21 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
-import { ReferenceSessionRail } from "@/reference/reference-session-rail"
+import { DEFAULT_CHAT_COPY, SessionRail } from "@kokoro/chat-app"
 import type {
-  ReferenceSessionOrganizer,
-  ReferenceSessionOrganizerState,
-} from "@/reference/reference-session-organizer"
+  SessionOrganizer,
+  SessionOrganizerState,
+} from "@kokoro/chat-app"
 
 afterEach(cleanup)
 
-const state: ReferenceSessionOrganizerState = {
+const state: SessionOrganizerState = {
   phase: "ready",
   sessions: [{
     sessionId: "session-1",
     title: "Launch plan",
+    lifecycle: "active",
+    version: 2,
     updatedAt: "2026-07-29T12:00:00.000Z",
     pinned: false,
     folderId: null,
@@ -28,7 +30,7 @@ const state: ReferenceSessionOrganizerState = {
   failure: null,
 }
 
-function controller(): ReferenceSessionOrganizer {
+function controller(): SessionOrganizer {
   return {
     getSnapshot: () => state,
     subscribe: () => () => undefined,
@@ -39,6 +41,10 @@ function controller(): ReferenceSessionOrganizer {
     setFilter: vi.fn(),
     togglePinned: vi.fn(),
     moveToFolder: vi.fn(),
+    renameSession: vi.fn(),
+    archiveSession: vi.fn(),
+    restoreSession: vi.fn(),
+    trashSession: vi.fn(),
     createFolder: vi.fn(),
     renameFolder: vi.fn(),
     deleteFolder: vi.fn(),
@@ -46,14 +52,15 @@ function controller(): ReferenceSessionOrganizer {
   }
 }
 
-describe("reference session rail", () => {
+describe("session rail", () => {
   it("exposes pin, folder move, create, rename, and confirmed delete interactions", () => {
     const value = controller()
-    render(<ReferenceSessionRail
+    render(<SessionRail
       activeSessionId="session-1"
       available
       brandName="Kokoro"
       controller={value}
+      copy={DEFAULT_CHAT_COPY}
       onNew={() => undefined}
       onOpen={() => undefined}
       state={state}
@@ -79,5 +86,43 @@ describe("reference session rail", () => {
     expect(screen.getByRole("group", { name: "Confirm delete folder Work" })).toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: "Confirm" }))
     expect(value.deleteFolder).toHaveBeenCalledWith("folder-1")
+
+    fireEvent.click(screen.getByRole("button", { name: "Rename" }))
+    fireEvent.change(screen.getByRole("textbox", { name: "Rename Launch plan" }), { target: { value: "Launch review" } })
+    fireEvent.click(screen.getByRole("button", { name: "Save" }))
+    expect(value.renameSession).toHaveBeenCalledWith("session-1", "Launch review")
+
+    fireEvent.click(screen.getByRole("button", { name: "Archive" }))
+    expect(value.archiveSession).toHaveBeenCalledWith("session-1")
+
+    fireEvent.click(screen.getByRole("button", { name: "Move to trash" }))
+    expect(screen.getByRole("group", { name: "Move this chat to trash? Launch plan" })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Confirm" }))
+    expect(value.trashSession).toHaveBeenCalledWith("session-1")
+  })
+
+  it("lists archived and trashed lifecycle views and restores without exposing permanent deletion", () => {
+    const value = controller()
+    const archived: SessionOrganizerState = {
+      ...state,
+      filter: { kind: "archived" },
+      sessions: [{ ...state.sessions[0]!, lifecycle: "archived" }],
+    }
+    render(<SessionRail
+      activeSessionId={null}
+      available
+      brandName="Kokoro"
+      controller={value}
+      copy={DEFAULT_CHAT_COPY}
+      onNew={() => undefined}
+      onOpen={() => undefined}
+      state={archived}
+    />)
+
+    fireEvent.click(screen.getByRole("button", { name: "Trash" }))
+    expect(value.setFilter).toHaveBeenCalledWith({ kind: "trashed" })
+    fireEvent.click(screen.getByRole("button", { name: "Restore" }))
+    expect(value.restoreSession).toHaveBeenCalledWith("session-1")
+    expect(screen.queryByRole("button", { name: /delete permanently/i })).not.toBeInTheDocument()
   })
 })

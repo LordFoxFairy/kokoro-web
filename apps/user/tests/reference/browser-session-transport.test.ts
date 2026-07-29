@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest"
 
-import { createBrowserSessionTransport } from "@/reference/browser-session-transport"
+import { createBrowserSessionTransport } from "@kokoro/chat-app"
 
 describe("same-origin Browser v3 transport", () => {
   it("keeps the Session path relative and never accepts authority material", async () => {

@@ -21,8 +21,8 @@ import {
   type ModelOptionCatalog,
 } from "./chat-controller"
 import { resolveChatCopy, type ChatProductCopy } from "./chat-copy"
-import { createReferenceSessionOrganizer } from "./session-organizer"
-import { ReferenceSessionRail } from "./session-rail"
+import { createSessionOrganizer } from "./session-organizer"
+import { SessionRail } from "./session-rail"
 import styles from "./chat-product.module.css"
 
 function neverPart(part: never): never {
@@ -408,7 +408,7 @@ export function ChatProduct(props: ChatProductProps) {
   const client = useMemo(() => createSessionClient({ transport: createBrowserSessionTransport({ csrfToken: props.csrfToken }) }), [props.csrfToken])
   const controller = useMemo(() => createChatController({ client, trustedLocale: typeof document === "undefined" ? "en-US" : document.documentElement.lang || "en-US", chatCatalog, defaultProjectRef: props.bootstrap?.defaultProjectRef ?? null }), [chatCatalog, client, props.bootstrap?.defaultProjectRef])
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot)
-  const organizer = useMemo(() => createReferenceSessionOrganizer({ client, projectRef: props.bootstrap?.defaultProjectRef ?? null }), [client, props.bootstrap?.defaultProjectRef])
+  const organizer = useMemo(() => createSessionOrganizer({ client, projectRef: props.bootstrap?.defaultProjectRef ?? null }), [client, props.bootstrap?.defaultProjectRef])
   const organizerState = useSyncExternalStore(organizer.subscribe, organizer.getSnapshot, organizer.getSnapshot)
 
   useEffect(() => {
@@ -432,15 +432,11 @@ export function ChatProduct(props: ChatProductProps) {
     })
   }
   const productAvailable = props.bootstrap !== null && chatCatalog !== null
-  const rail = <ReferenceSessionRail activeSessionId={state.sessionId} available={productAvailable && state.projection.command.state !== "pending"} brandName={props.brandName} controller={organizer} copy={copy} onNew={createSession} onOpen={openSession} state={organizerState} />
+  const rail = <SessionRail activeSessionId={state.sessionId} available={productAvailable && state.projection.command.state !== "pending"} brandName={props.brandName} controller={organizer} copy={copy} onNew={createSession} onOpen={openSession} state={organizerState} />
 
   if (state.phase === "idle") return <div className={styles.appShell}>{rail}<main className={styles.startShell}><span className={styles.startMark} aria-hidden>✦</span><span className={styles.eyebrow}>{props.brandName}</span><h1>{copy.startTitle}</h1><p>{copy.startDescription}</p><button type="button" disabled={!productAvailable || state.projection.command.state === "pending"} onClick={createSession}>{state.projection.command.state === "pending" ? copy.creatingChat : copy.newChat}</button>{!productAvailable ? <p className={styles.failure} role="status">{copy.unavailable}</p> : null}{state.failure ? <p className={styles.failure} role="alert">{state.failure.message}</p> : null}</main></div>
   return <div className={styles.appShell}>{rail}<ChatView brandName={props.brandName} controller={controller} copy={copy} state={state} /></div>
 }
-
-/** Compatibility aliases for Site projects generated before the product naming cut. */
-export const ReferenceChat = ChatProduct
-export const ReferenceChatView = ChatView
 
 function ModelOptionSelector(props: {
   readonly catalog: ModelOptionCatalog

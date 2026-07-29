@@ -3,27 +3,30 @@
 import { type FormEvent, useState } from "react"
 
 import type {
-  ReferenceSessionOrganizer,
-  ReferenceSessionOrganizerState,
+  SessionOrganizer,
+  SessionOrganizerState,
 } from "./session-organizer"
 import type { ChatProductCopy } from "./chat-copy"
 import styles from "./session-rail.module.css"
 
-export function ReferenceSessionRail(props: {
+export function SessionRail(props: {
   readonly activeSessionId: string | null
   readonly available: boolean
   readonly brandName: string
-  readonly controller: ReferenceSessionOrganizer
+  readonly controller: SessionOrganizer
   readonly copy: ChatProductCopy
   readonly onNew: () => void
   readonly onOpen: (sessionId: string) => void
-  readonly state: ReferenceSessionOrganizerState
+  readonly state: SessionOrganizerState
 }) {
   const [search, setSearch] = useState("")
   const [newFolderName, setNewFolderName] = useState("")
   const [renamingFolderId, setRenamingFolderId] = useState<string | null>(null)
   const [folderName, setFolderName] = useState("")
   const [confirmDeleteFolderId, setConfirmDeleteFolderId] = useState<string | null>(null)
+  const [renamingSessionId, setRenamingSessionId] = useState<string | null>(null)
+  const [sessionTitle, setSessionTitle] = useState("")
+  const [confirmTrashSessionId, setConfirmTrashSessionId] = useState<string | null>(null)
   const disabled = !props.available || props.state.pendingAction !== null
 
   const submitSearch = (event: FormEvent<HTMLFormElement>): void => {
@@ -46,6 +49,16 @@ export function ReferenceSessionRail(props: {
     setFolderName("")
     void props.controller.renameFolder(id, name)
   }
+  const submitSessionRename = (event: FormEvent<HTMLFormElement>): void => {
+    event.preventDefault()
+    const id = renamingSessionId
+    const title = sessionTitle.trim()
+    if (id === null || !title) return
+    setRenamingSessionId(null)
+    setSessionTitle("")
+    void props.controller.renameSession(id, title)
+  }
+  const activeView = props.state.filter.kind !== "archived" && props.state.filter.kind !== "trashed"
 
   return (
     <aside className={styles.rail} aria-label="Chats and folders">
@@ -83,6 +96,16 @@ export function ReferenceSessionRail(props: {
           type="button"
           onClick={() => void props.controller.setFilter({ kind: "pinned" })}
         >{props.copy.pinned}</button>
+        <button
+          aria-current={props.state.filter.kind === "archived" ? "page" : undefined}
+          type="button"
+          onClick={() => void props.controller.setFilter({ kind: "archived" })}
+        >{props.copy.archived}</button>
+        <button
+          aria-current={props.state.filter.kind === "trashed" ? "page" : undefined}
+          type="button"
+          onClick={() => void props.controller.setFilter({ kind: "trashed" })}
+        >{props.copy.trash}</button>
       </nav>
 
       <section className={styles.folderSection} aria-labelledby="folder-heading">
@@ -176,34 +199,81 @@ export function ReferenceSessionRail(props: {
               data-active={session.sessionId === props.activeSessionId ? "true" : undefined}
               key={session.sessionId}
             >
-              <button
-                className={styles.chatSelect}
-                type="button"
-                aria-current={session.sessionId === props.activeSessionId ? "page" : undefined}
-                onClick={() => props.onOpen(session.sessionId)}
-              >
-                <strong>{session.title}</strong>
-                <span>{new Date(session.updatedAt).toLocaleString()}</span>
-              </button>
-              <button
-                className={styles.pin}
-                type="button"
-                aria-label={`${session.pinned ? "Unpin" : "Pin"} ${session.title}`}
-                aria-pressed={session.pinned}
-                disabled={disabled}
-                onClick={() => void props.controller.togglePinned(session.sessionId)}
-              >{session.pinned ? "★" : "☆"}</button>
-              <select
-                aria-label={`Move ${session.title} to folder`}
-                disabled={disabled}
-                onChange={(event) => void props.controller.moveToFolder(session.sessionId, event.target.value || null)}
-                value={session.folderId ?? ""}
-              >
-                <option value="">No folder</option>
-                {props.state.folders.map((folder) => (
-                  <option key={folder.folderId} value={folder.folderId}>{folder.name}</option>
-                ))}
-              </select>
+              {renamingSessionId === session.sessionId ? (
+                <form className={styles.renameSession} onSubmit={submitSessionRename}>
+                  <input
+                    autoFocus
+                    aria-label={`${props.copy.renameChat} ${session.title}`}
+                    maxLength={256}
+                    onChange={(event) => setSessionTitle(event.target.value)}
+                    value={sessionTitle}
+                  />
+                  <button type="submit" disabled={disabled || sessionTitle.trim().length === 0}>Save</button>
+                  <button type="button" onClick={() => setRenamingSessionId(null)}>Cancel</button>
+                </form>
+              ) : confirmTrashSessionId === session.sessionId ? (
+                <div className={styles.confirmTrash} role="group" aria-label={`${props.copy.confirmTrash} ${session.title}`}>
+                  <span>{props.copy.confirmTrash}</span>
+                  <button
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => {
+                      setConfirmTrashSessionId(null)
+                      void props.controller.trashSession(session.sessionId)
+                    }}
+                  >Confirm</button>
+                  <button type="button" onClick={() => setConfirmTrashSessionId(null)}>Cancel</button>
+                </div>
+              ) : (
+                <>
+                  <button
+                    className={styles.chatSelect}
+                    type="button"
+                    aria-current={session.sessionId === props.activeSessionId ? "page" : undefined}
+                    onClick={() => props.onOpen(session.sessionId)}
+                  >
+                    <strong>{session.title}</strong>
+                    <span>{new Date(session.updatedAt).toLocaleString()}</span>
+                  </button>
+                  {activeView ? (
+                    <button
+                      className={styles.pin}
+                      type="button"
+                      aria-label={`${session.pinned ? "Unpin" : "Pin"} ${session.title}`}
+                      aria-pressed={session.pinned}
+                      disabled={disabled}
+                      onClick={() => void props.controller.togglePinned(session.sessionId)}
+                    >{session.pinned ? "★" : "☆"}</button>
+                  ) : null}
+                  <div className={styles.chatActions}>
+                    {activeView ? (
+                      <>
+                        <button type="button" disabled={disabled} onClick={() => {
+                          setRenamingSessionId(session.sessionId)
+                          setSessionTitle(session.title)
+                        }}>{props.copy.renameChat}</button>
+                        <button type="button" disabled={disabled} onClick={() => void props.controller.archiveSession(session.sessionId)}>{props.copy.archiveChat}</button>
+                        <button type="button" disabled={disabled} onClick={() => setConfirmTrashSessionId(session.sessionId)}>{props.copy.trashChat}</button>
+                      </>
+                    ) : (
+                      <button type="button" disabled={disabled} onClick={() => void props.controller.restoreSession(session.sessionId)}>{props.copy.restoreChat}</button>
+                    )}
+                  </div>
+                  {activeView ? (
+                    <select
+                      aria-label={`Move ${session.title} to folder`}
+                      disabled={disabled}
+                      onChange={(event) => void props.controller.moveToFolder(session.sessionId, event.target.value || null)}
+                      value={session.folderId ?? ""}
+                    >
+                      <option value="">No folder</option>
+                      {props.state.folders.map((folder) => (
+                        <option key={folder.folderId} value={folder.folderId}>{folder.name}</option>
+                      ))}
+                    </select>
+                  ) : null}
+                </>
+              )}
             </article>
           ))}
         </div>

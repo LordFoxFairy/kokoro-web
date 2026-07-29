@@ -1,4 +1,5 @@
 import { IdentityLaunch } from "@kokoro/account-app"
+import { parseSiteLegalDocuments, publicLegalDocuments } from "@kokoro/site-bff/site-legal-documents"
 import { notFound } from "next/navigation"
 
 import { issueSessionV3BrowserCsrf } from "@/lib/server/session-v3"
@@ -12,5 +13,6 @@ export default async function RegisterPage() {
   if (!csrf || !brandName) notFound()
   const capabilities = await userSiteBff().publicCapabilities()
   if (!capabilities.enabledSurfaceIds.some((surface) => surface === "account" || surface === "identity")) notFound()
-  return <IdentityLaunch brandName={brandName} csrfToken={csrf} mode="register" />
+  const legalDocuments = parseSiteLegalDocuments(process.env.KOKORO_SITE_REGISTRATION_LEGAL_DOCUMENTS)
+  return <IdentityLaunch brandName={brandName} csrfToken={csrf} legalDocuments={publicLegalDocuments(legalDocuments)} mode="register" />
 }

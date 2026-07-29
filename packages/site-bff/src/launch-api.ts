@@ -4,6 +4,7 @@ import type { OpaqueAuthSession } from "@kokoro/bff-runtime"
 
 import type { SiteBffRuntime } from "./index.js"
 import { createLaunchStateVault, type LaunchCommandState, type LaunchOperation } from "./launch-state.js"
+import type { SiteLegalDocument } from "./site-legal-documents.js"
 
 export const SITE_LAUNCH_STATE_COOKIE = "__Host-kokoro.launch-state"
 const STATE_TTL_MS = 15 * 60 * 1_000
@@ -86,7 +87,16 @@ function authRequired(value: LaunchOperation): boolean {
   return value.startsWith("redemption.") || value === "identity.revoke-sessions"
 }
 
-function publicPreview(response: Awaited<ReturnType<SiteBffRuntime["previewRedemption"]>>) {
+function publicPreview(
+  response: Awaited<ReturnType<SiteBffRuntime["previewRedemption"]>>,
+  legalDocuments: readonly SiteLegalDocument[],
+) {
+  const byRef = new Map(legalDocuments.map((document) => [document.termRef, document]))
+  const previewDocuments = response.preview.legalTermRefs.map((termRef) => {
+    const document = byRef.get(termRef)
+    if (document === undefined) throw new Error("Redemption references an unpublished Site legal document")
+    return { label: document.label, href: document.href }
+  })
   return Object.freeze({
     state: "ready" as const,
     product: response.preview.safeProductLabel,
@@ -97,6 +107,7 @@ function publicPreview(response: Awaited<ReturnType<SiteBffRuntime["previewRedem
     entitlements: response.preview.entitlements.map(({ safeLabel, expiresAt }) => ({ safeLabel, expiresAt })),
     credits: response.preview.credits.map(({ amount, unit, bucketClass, expiresAt }) => ({ amount, unit, bucketClass, expiresAt })),
     legalAcceptanceRequired: response.preview.legalTermRefs.length > 0,
+    legalDocuments: previewDocuments,
   })
 }
 
@@ -132,7 +143,7 @@ export function createSiteLaunchApi(input: Readonly<{
   runtime: SiteBffRuntime
   stateSecret: string
   readAuthSession(request: Request): Promise<OpaqueAuthSession | null> | OpaqueAuthSession | null
-  registrationLegalAcceptanceRefs?: readonly string[]
+  legalDocuments?: readonly SiteLegalDocument[]
   now?: () => number
   nonce?: () => Buffer
 }>) {
@@ -257,8 +268,8 @@ export function createSiteLaunchApi(input: Readonly<{
       switch (requestedOperation) {
         case "identity.register": {
           const email = text(body.email, 3, 320)
-          const password = text(body.password, 12, 1024)
-          const legal = input.registrationLegalAcceptanceRefs ?? []
+          const password = text(body.password, 15, 1024)
+          const legal = input.legalDocuments?.map(({ termRef }) => termRef) ?? []
           if (email === null || password === null || body.legalAccepted !== true || legal.length === 0) return unavailable(400)
           const response = await input.runtime.register({ email, password, legalAcceptanceRefs: legal }, state.command)
           return json({ state: "verification_pending", deliveryState: response.transaction.deliveryState, expiresAt: response.transaction.expiresAt })
@@ -273,8 +284,8 @@ export function createSiteLaunchApi(input: Readonly<{
           const transactionRef = text(body.transactionRef, 1, 256)
           const transactionSecret = text(body.transactionSecret, 32, 2048)
           if (transactionRef === null || transactionSecret === null || !("receiptRecoveryCapability" in state.command)) return unavailable(400)
-          const response = await input.runtime.completeEmailVerification({ transactionRef, transactionSecret }, { command: state.command })
-          return json({ state: "verified", personalContextPending: response.personalContextPending })
+          await input.runtime.completeEmailVerification({ transactionRef, transactionSecret }, { command: state.command })
+          return json({ state: "verified" })
         }
         case "identity.revoke-sessions": {
           const target = body.target
@@ -294,7 +305,7 @@ export function createSiteLaunchApi(input: Readonly<{
               legalAcceptanceRefs: response.preview.legalTermRefs,
             },
           }
-          return setState(json(publicPreview(response)), vault.seal(vault.put(entries, updated)))
+          return setState(json(publicPreview(response, input.legalDocuments ?? [])), vault.seal(vault.put(entries, updated)))
         }
         case "redemption.confirm": {
           const previewFlowRef = flow(body.previewFlowRef)

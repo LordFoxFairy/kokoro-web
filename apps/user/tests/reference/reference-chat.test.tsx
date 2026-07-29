@@ -1,33 +1,39 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
-import type { ReferenceChatController, ReferenceChatState } from "@/reference/reference-chat-controller"
-import { ReferenceChatView } from "@/reference/reference-chat"
+import { ChatView, type ChatController, type ChatState } from "@kokoro/chat-app"
+import { DEFAULT_CHAT_COPY } from "@kokoro/chat-app"
 
 afterEach(cleanup)
 
-function controller(state: ReferenceChatState): ReferenceChatController {
+function controller(state: ChatState): ChatController {
   return {
     getSnapshot: () => state,
     subscribe: () => () => undefined,
     create: vi.fn(),
     open: vi.fn(),
     submit: vi.fn(),
+    editMessage: vi.fn(),
+    regenerateMessage: vi.fn(),
+    forkBranch: vi.fn(),
+    activateBranch: vi.fn(),
     cancel: vi.fn(),
     selectModelOption: vi.fn(),
+    selectEffort: vi.fn(),
     decideAction: vi.fn(),
     decidePlan: vi.fn(),
     close: vi.fn(),
   }
 }
 
-const state: ReferenceChatState = {
+const state: ChatState = {
   phase: "ready",
   sessionId: "session-1",
   snapshot: null,
   hitlDecisionSupported: true,
   chatCatalog: null,
   selectedModelOptionRevisionRef: null,
+  selectedEffort: null,
   failure: null,
   projection: {
     activeBranchId: "branch-1",
@@ -61,14 +67,14 @@ const state: ReferenceChatState = {
   },
 }
 
-describe("reference typed Chat surface", () => {
+describe("Chat surface", () => {
   it("requires explicit risk acknowledgement before submitting an approval", () => {
     const value = controller(state)
-    render(<ReferenceChatView brandName="Kokoro" controller={value} state={state} />)
+    render(<ChatView brandName="Kokoro" copy={DEFAULT_CHAT_COPY} controller={value} state={state} />)
 
     expect(screen.getByText("Approval required")).toBeInTheDocument()
-    expect(screen.getByText(/approval-owner-1/)).toBeInTheDocument()
-    expect(screen.getByText(/Version 3/)).toBeInTheDocument()
+    expect(screen.queryByText(/approval-owner-1/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Version 3/)).not.toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Approve" })).toBeDisabled()
     fireEvent.click(screen.getByRole("checkbox"))
     expect(screen.getByRole("button", { name: "Approve" })).toBeEnabled()
@@ -79,7 +85,7 @@ describe("reference typed Chat surface", () => {
   })
 
   it("renders a safe selection interaction and submits only published option ids", () => {
-    const interaction: ReferenceChatState = {
+    const interaction: ChatState = {
       ...state,
       projection: {
         ...state.projection,
@@ -96,7 +102,7 @@ describe("reference typed Chat surface", () => {
       },
     }
     const value = controller(interaction)
-    render(<ReferenceChatView brandName="Kokoro" controller={value} state={interaction} />)
+    render(<ChatView brandName="Kokoro" copy={DEFAULT_CHAT_COPY} controller={value} state={interaction} />)
 
     fireEvent.click(screen.getByRole("radio", { name: "Short" }))
     fireEvent.click(screen.getByRole("button", { name: "Respond" }))
@@ -109,7 +115,7 @@ describe("reference typed Chat surface", () => {
   it("rejects non-object JSON edits in the safe editor", () => {
     const approval = state.projection.messages[0]?.parts[0]
     if (approval?.kind !== "approval") throw new Error("Expected approval fixture")
-    const editable: ReferenceChatState = {
+    const editable: ChatState = {
       ...state,
       projection: {
         ...state.projection,
@@ -120,17 +126,17 @@ describe("reference typed Chat surface", () => {
       },
     }
     const value = controller(editable)
-    render(<ReferenceChatView brandName="Kokoro" controller={value} state={editable} />)
+    render(<ChatView brandName="Kokoro" copy={DEFAULT_CHAT_COPY} controller={value} state={editable} />)
 
-    fireEvent.change(screen.getByRole("textbox", { name: "Edited input for Approval required" }), { target: { value: "[]" } })
+    fireEvent.change(screen.getByRole("textbox", { name: "Edited action input" }), { target: { value: "[]" } })
     fireEvent.click(screen.getByRole("button", { name: "Submit edit" }))
 
-    expect(screen.getByRole("alert")).toHaveTextContent("JSON object")
+    expect(screen.getByRole("alert")).toHaveTextContent("Edited input must be an object.")
     expect(value.decideAction).not.toHaveBeenCalled()
   })
 
   it("requires an explicit boolean choice and a finite number for safe form responses", () => {
-    const interaction: ReferenceChatState = {
+    const interaction: ChatState = {
       ...state,
       projection: {
         ...state.projection,
@@ -151,13 +157,13 @@ describe("reference typed Chat surface", () => {
       },
     }
     const value = controller(interaction)
-    render(<ReferenceChatView brandName="Kokoro" controller={value} state={interaction} />)
+    render(<ChatView brandName="Kokoro" copy={DEFAULT_CHAT_COPY} controller={value} state={interaction} />)
     const respond = screen.getByRole("button", { name: "Respond" })
 
     fireEvent.change(screen.getByRole("combobox", { name: /Confirm/ }), { target: { value: "false" } })
     fireEvent.change(screen.getByRole("textbox", { name: /Amount/ }), { target: { value: "not-a-number" } })
     expect(respond).toBeDisabled()
-    expect(screen.getByRole("alert")).toHaveTextContent("finite number")
+    expect(screen.getByRole("alert")).toHaveTextContent("Enter a valid number before responding.")
     fireEvent.change(screen.getByRole("textbox", { name: /Amount/ }), { target: { value: "2.5" } })
     fireEvent.click(respond)
 
@@ -168,15 +174,15 @@ describe("reference typed Chat surface", () => {
 
   it("offers a real cancellation command for an active run", () => {
     const value = controller(state)
-    render(<ReferenceChatView brandName="Kokoro" controller={value} state={state} />)
+    render(<ChatView brandName="Kokoro" copy={DEFAULT_CHAT_COPY} controller={value} state={state} />)
 
-    fireEvent.click(screen.getByRole("button", { name: "Stop run" }))
+    fireEvent.click(screen.getByRole("button", { name: "Stop" }))
 
     expect(value.cancel).toHaveBeenCalledOnce()
   })
 
-  it("shows stable failure code/action and disables submit without a published model revision", () => {
-    const unavailable: ReferenceChatState = {
+  it("shows actionable failure copy without internal codes and disables submit without a published model revision", () => {
+    const unavailable: ChatState = {
       ...state,
       projection: { ...state.projection, activeRunId: null, activeRunState: null },
       failure: {
@@ -186,9 +192,10 @@ describe("reference typed Chat surface", () => {
         message: "No published model option is available for this session.",
       },
     }
-    render(<ReferenceChatView brandName="Kokoro" controller={controller(unavailable)} state={unavailable} />)
+    render(<ChatView brandName="Kokoro" copy={DEFAULT_CHAT_COPY} controller={controller(unavailable)} state={unavailable} />)
 
-    expect(screen.getByText("MODEL_OPTION_UNAVAILABLE")).toBeInTheDocument()
+    expect(screen.getByText("No published model option is available for this session.")).toBeInTheDocument()
+    expect(screen.queryByText("MODEL_OPTION_UNAVAILABLE")).not.toBeInTheDocument()
     expect(screen.getByText(/choose_model/)).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Send" })).toBeDisabled()
   })
