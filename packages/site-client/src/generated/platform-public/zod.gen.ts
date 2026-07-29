@@ -10,6 +10,25 @@ export const zAcceptedPublicCommandReceipt = z.strictObject({
     state: z.literal('accepted')
 });
 
+export const zAccountEntitlementSummary = z.strictObject({
+    capabilityKey: z.string().regex(/^[a-z0-9][a-z0-9._:-]{0,127}$/),
+    entitlementGrantRef: z.string().min(1).max(256),
+    expiresAt: z.iso.datetime().nullable(),
+    safeLabel: z.string().min(1).max(160),
+    state: z.enum([
+        'active',
+        'expired',
+        'revoked'
+    ])
+});
+
+export const zAccountPlanSummary = z.strictObject({
+    automaticRenewal: z.literal(false),
+    planRef: z.string().min(1).max(256),
+    planVersionRef: z.string().min(1).max(256),
+    safeLabel: z.string().min(1).max(160)
+});
+
 export const zAccountRecoveryTransaction = z.strictObject({
     expiresAt: z.iso.datetime(),
     recoveryState: z.enum([
@@ -18,6 +37,39 @@ export const zAccountRecoveryTransaction = z.strictObject({
         'ready'
     ]),
     transactionRef: z.string().min(1).max(128)
+});
+
+export const zAcquisitionSourceSummary = z.strictObject({
+    acquiredAt: z.iso.datetime(),
+    kind: z.enum([
+        'redemption',
+        'admin_grant',
+        'program_window'
+    ]),
+    sourceRef: z.string().min(1).max(256)
+});
+
+export const zAccountProduct = z.strictObject({
+    creditGrantRefs: z.array(z.string().min(1).max(256)).max(256),
+    effectiveAt: z.iso.datetime(),
+    entitlements: z.array(zAccountEntitlementSummary).max(256),
+    expiresAt: z.iso.datetime().nullable(),
+    kind: z.enum([
+        'free',
+        'credit_pack',
+        'subscription',
+        'bundle'
+    ]),
+    plan: zAccountPlanSummary.nullable(),
+    productRef: z.string().min(1).max(256),
+    productVersionRef: z.string().min(1).max(256),
+    safeLabel: z.string().min(1).max(160),
+    source: zAcquisitionSourceSummary,
+    state: z.enum([
+        'active',
+        'expired',
+        'revoked'
+    ])
 });
 
 export const zAuthPending = z.strictObject({
@@ -119,6 +171,54 @@ export const zConfirmTotpRecoveryReplacementInput = z.strictObject({
     replacementFactor: z.literal('totp')
 });
 
+/**
+ * Exact non-negative integer amount; encoded as a decimal string to avoid JS precision loss.
+ */
+export const zCreditAmount = z.string().regex(/^(?:0|[1-9][0-9]{0,37})$/);
+
+export const zCreditBucketSummary = z.strictObject({
+    available: zCreditAmount,
+    bucketClass: z.enum([
+        'daily',
+        'period',
+        'permanent'
+    ]),
+    consumed: zCreditAmount,
+    expiredOrReversed: zCreditAmount,
+    grantCount: z.int().gte(0),
+    held: zCreditAmount,
+    issued: zCreditAmount
+});
+
+export const zCreditGrantDetail = z.strictObject({
+    available: zCreditAmount,
+    bucketClass: z.enum([
+        'daily',
+        'period',
+        'permanent'
+    ]),
+    consumed: zCreditAmount,
+    creditProgramRevisionRef: z.string().min(1).max(256),
+    effectiveAt: z.iso.datetime(),
+    expiresAt: z.iso.datetime().nullable(),
+    grantId: z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/),
+    held: zCreditAmount,
+    issued: zCreditAmount,
+    source: zAcquisitionSourceSummary,
+    state: z.enum([
+        'active',
+        'exhausted',
+        'expired',
+        'reversed'
+    ]),
+    unit: z.string().min(1).max(64)
+});
+
+export const zCreditUnitSummary = z.strictObject({
+    buckets: z.array(zCreditBucketSummary).max(3),
+    unit: z.string().min(1).max(64)
+});
+
 export const zEmailChangeCompletionInput = z.strictObject({
     currentAddressChallenge: zChannelChallengeProofInput,
     reauthenticationProof: z.string().min(32).max(2048),
@@ -174,7 +274,11 @@ export const zErrorCode = z.enum([
     'RISK_UNAVAILABLE',
     'SITE_UNAVAILABLE',
     'OUTCOME_UNKNOWN',
-    'INTERNAL_UNAVAILABLE'
+    'INTERNAL_UNAVAILABLE',
+    'REDEEM_NOT_ACCEPTED',
+    'REDEEM_TEMPORARILY_UNAVAILABLE',
+    'IDEMPOTENCY_CONFLICT',
+    'ACQUISITION_CHANNEL_DISABLED'
 ]);
 
 export const zErrorResponse = z.strictObject({
@@ -185,6 +289,7 @@ export const zErrorResponse = z.strictObject({
     retryClass: z.enum([
         'never',
         'after_delay',
+        'after_user_action',
         'same_identity',
         'reconcile_receipt'
     ]),
@@ -212,6 +317,11 @@ export const zIdentitySession = z.strictObject({
 export const zIdentitySessionList = z.strictObject({
     revision: z.string().min(1).max(128),
     sessions: z.array(zIdentitySession).max(200)
+});
+
+export const zLocalePolicy = z.strictObject({
+    allowedLocales: z.array(z.string().min(2).max(35)).min(1).max(64),
+    defaultLocale: z.string().min(2).max(35)
 });
 
 export const zMfaReauthenticationInput = z.strictObject({
@@ -306,24 +416,103 @@ export const zOutcomeUnknownPublicCommandReceiptResponse = z.strictObject({
     reconciliation: zPendingCommandReconciliation
 });
 
-export const zPersonalContext = z.strictObject({
-    contextRevision: z.string().min(1).max(128),
-    executionSpaceRef: z.string().min(1).max(128),
-    projectRef: z.string().min(1).max(128),
-    workspaceRef: z.string().min(1).max(128)
+export const zPersonalContextActor = z.strictObject({
+    avatarUrl: z.url().max(2048).nullable(),
+    displayName: z.string().min(1).max(160),
+    state: z.literal('active'),
+    subjectGeneration: z.string().regex(/^(?:0|[1-9][0-9]{0,18})$/),
+    subjectRef: z.string().min(1).max(256)
 });
 
-export const zProductContext = z.strictObject({
-    audience: z.string().min(1).max(256),
+export const zPersonalProjectSummary = z.strictObject({
+    displayName: z.string().min(1).max(160),
+    executionSpaceRef: z.string().min(1).max(256),
+    membershipRevision: z.string().min(1).max(128),
+    projectRef: z.string().min(1).max(256),
+    workspaceRef: z.string().min(1).max(256)
+});
+
+/**
+ * Authenticated subject state for the workload-derived Site; never cache across users.
+ */
+export const zPersonalContext = z.strictObject({
+    actor: zPersonalContextActor,
+    contextRevision: z.string().min(1).max(128),
+    defaultProjectRef: z.string().min(1).max(256),
     expiresAt: z.iso.datetime(),
+    issuedAt: z.iso.datetime(),
+    personalContextRef: z.string().min(1).max(256),
     productContextRef: z.string().min(1).max(256),
+    projects: z.array(zPersonalProjectSummary).min(1).max(256)
+});
+
+/**
+ * A canonical positive unsigned 64-bit integer encoded as a decimal string.
+ */
+export const zPositiveUint64String = (z.string().min(1).max(20).regex(/^[1-9][0-9]{0,19}$/)).refine((value) => value.length < 20 || value <= "18446744073709551615", "must fit a positive uint64");
+
+/**
+ * Deployment-level Site authority. It is resolved exclusively from the authenticated ProductWorkload and registered deployment; it never contains user-specific state.
+ */
+export const zProductContext = z.strictObject({
+    agentCatalogRef: z.string().min(1).max(256),
+    audience: z.string().min(1).max(256),
+    cacheMaxAgeSeconds: z.int().gte(0).lte(300),
+    deploymentRef: z.string().min(1).max(256),
+    enabledSurfaceIds: z.array(z.string().min(1).max(128)).max(256),
+    expiresAt: z.iso.datetime(),
+    featurePolicyRevision: z.string().min(1).max(128),
+    issuedAt: z.iso.datetime(),
+    localePolicy: zLocalePolicy,
+    modelOptionCatalogRef: z.string().min(1).max(256),
+    policyEpoch: zPositiveUint64String,
+    productContextRef: z.string().min(1).max(256),
+    region: z.string().min(1).max(128),
+    revocationEpoch: zPositiveUint64String,
+    runtimeEnvironment: z.enum([
+        'development',
+        'preview',
+        'production'
+    ]),
+    sessionContractRevision: z.string().min(1).max(128),
+    siteProjectBindingRef: z.string().min(1).max(256),
     siteRef: z.string().min(1).max(128),
-    siteReleaseRef: z.string().min(1).max(128)
+    siteReleaseRef: z.string().min(1).max(128),
+    webArtifactDigest: z.string().regex(/^[0-9a-f]{64}$/)
 });
 
 export const zProductContextExchangeResponse = z.strictObject({
     context: zProductContext,
     receipt: zCommandReceipt
+});
+
+export const zProjectionRevision = z.string().regex(/^(?:0|[1-9][0-9]{0,18})$/);
+
+export const zProjectionFreshness = z.strictObject({
+    asOf: z.iso.datetime(),
+    lagSeconds: z.int().gte(0).lte(86400),
+    revision: zProjectionRevision,
+    state: z.enum([
+        'current',
+        'stale',
+        'rebuilding'
+    ])
+});
+
+export const zAccountProductsResponse = z.strictObject({
+    freshness: zProjectionFreshness,
+    products: z.array(zAccountProduct).max(512)
+});
+
+export const zCreditGrantResponse = z.strictObject({
+    freshness: zProjectionFreshness,
+    grant: zCreditGrantDetail
+});
+
+export const zCreditSummaryResponse = z.strictObject({
+    activeHoldCount: z.int().gte(0),
+    freshness: zProjectionFreshness,
+    units: z.array(zCreditUnitSummary).max(16)
 });
 
 export const zReauthenticationPending = z.strictObject({
@@ -366,6 +555,168 @@ export const zRecoveryCodeSetResponse = z.union([
     zOneTimeRecoveryCodeSetDelivery,
     zOneTimeDeliveryUnavailable
 ]);
+
+export const zRedemptionCommandCursor = z.strictObject({
+    commandId: z.string().regex(/^(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/),
+    receiptRef: z.string().min(1).max(256),
+    receivedAt: z.iso.datetime(),
+    requestDigest: z.string().regex(/^[0-9a-f]{64}$/),
+    updatedAt: z.iso.datetime()
+});
+
+export const zRedemptionCommandPendingResponse = z.strictObject({
+    command: zRedemptionCommandCursor,
+    kind: z.enum([
+        'accepted',
+        'executing',
+        'outcome_unknown'
+    ]),
+    retryAfter: z.iso.datetime()
+});
+
+export const zRedemptionCommandReviewResponse = z.strictObject({
+    attemptRef: z.string().min(1).max(256),
+    caseRef: z.string().min(1).max(256),
+    command: zRedemptionCommandCursor,
+    kind: z.literal('review_required'),
+    reviewExpiresAt: z.iso.datetime()
+});
+
+export const zRedemptionConfirmInput = z.strictObject({
+    legalAcceptanceRefs: z.array(z.string().min(1).max(128)).max(16),
+    previewCredential: z.string().min(32).max(4096).regex(/^\\S+$/)
+});
+
+export const zRedemptionCreditPreview = z.strictObject({
+    amount: zCreditAmount,
+    bucketClass: z.enum([
+        'daily',
+        'period',
+        'permanent'
+    ]),
+    creditProgramRevisionRef: z.string().min(1).max(256),
+    expiresAt: z.iso.datetime().nullable(),
+    unit: z.string().min(1).max(64)
+});
+
+export const zRedemptionEntitlementPreview = z.strictObject({
+    capabilityKey: z.string().regex(/^[a-z0-9][a-z0-9._:-]{0,127}$/),
+    entitlementTemplateRevisionRef: z.string().min(1).max(256),
+    expiresAt: z.iso.datetime().nullable(),
+    safeLabel: z.string().min(1).max(160)
+});
+
+export const zRedemptionOutputRef = z.strictObject({
+    kind: z.enum([
+        'subscription_term',
+        'entitlement_grant',
+        'credit_grant'
+    ]),
+    outputLineId: z.string().min(1).max(128),
+    resourceRef: z.string().min(1).max(256),
+    templateRevisionRef: z.string().min(1).max(256)
+});
+
+/**
+ * The only public request that carries a raw redeem Code. BFF and Platform must redact the field from logs, traces, metrics, analytics, errors, durable requests, and receipts.
+ */
+export const zRedemptionPreviewInput = z.strictObject({
+    code: z.string().min(16).max(256).regex(/^[A-Za-z0-9-]+$/)
+});
+
+export const zRedemptionReceipt = z.strictObject({
+    commandId: z.string().regex(/^(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/),
+    fulfillmentRef: z.string().min(1).max(256),
+    outputSetDigest: z.string().regex(/^[0-9a-f]{64}$/),
+    outputs: z.array(zRedemptionOutputRef).max(256),
+    planRef: z.string().max(256).nullable(),
+    planVersionRef: z.string().max(256).nullable(),
+    productRef: z.string().min(1).max(256),
+    productVersionRef: z.string().min(1).max(256),
+    redeemedAt: z.iso.datetime(),
+    redemptionId: z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/),
+    reversalRefs: z.array(z.string().min(1).max(256)).max(64),
+    safeCodeFingerprint: z.string().regex(/^[A-Z0-9-]{4,32}$/),
+    state: z.enum([
+        'fulfilled',
+        'reversed',
+        'reconciliation_required'
+    ]),
+    stateObservedAt: z.iso.datetime()
+});
+
+export const zRedemptionCommandSucceededResponse = z.strictObject({
+    command: zRedemptionCommandCursor,
+    kind: z.literal('succeeded'),
+    redemption: zRedemptionReceipt
+});
+
+export const zRedemptionReceiptResponse = z.strictObject({
+    redemption: zRedemptionReceipt
+});
+
+export const zRedemptionRejection = z.strictObject({
+    code: z.enum(['REDEEM_NOT_ACCEPTED', 'REDEEM_TEMPORARILY_UNAVAILABLE']),
+    retryAfter: z.iso.datetime().nullable(),
+    retryClass: z.enum([
+        'never',
+        'after_delay',
+        'after_user_action'
+    ])
+});
+
+export const zRedemptionCommandRejectedResponse = z.strictObject({
+    command: zRedemptionCommandCursor,
+    kind: z.literal('rejected'),
+    rejection: zRedemptionRejection
+});
+
+export const zRedemptionCommandResponse = z.union([
+    zRedemptionCommandPendingResponse,
+    zRedemptionCommandReviewResponse,
+    zRedemptionCommandSucceededResponse,
+    zRedemptionCommandRejectedResponse
+]);
+
+export const zRedemptionTermPreview = z.strictObject({
+    action: z.enum([
+        'none',
+        'new_subscription',
+        'extend_from_max',
+        'reject_if_active'
+    ]),
+    automaticRenewal: z.literal(false),
+    endsAt: z.iso.datetime().nullable(),
+    startsAt: z.iso.datetime().nullable()
+});
+
+export const zRedemptionPreview = z.strictObject({
+    credits: z.array(zRedemptionCreditPreview).max(64),
+    entitlements: z.array(zRedemptionEntitlementPreview).max(128),
+    expiresAt: z.iso.datetime(),
+    legalTermRefs: z.array(z.string().min(1).max(128)).max(16),
+    planRef: z.string().max(256).nullable(),
+    planVersionRef: z.string().max(256).nullable(),
+    previewCredential: z.string().min(32).max(4096).regex(/^\\S+$/),
+    previewDigest: z.string().regex(/^[0-9a-f]{64}$/),
+    previewRef: z.string().min(1).max(256),
+    productKind: z.enum([
+        'free',
+        'credit_pack',
+        'subscription',
+        'bundle'
+    ]),
+    productRef: z.string().min(1).max(256),
+    productVersionRef: z.string().min(1).max(256),
+    safePlanLabel: z.string().max(160).nullable(),
+    safeProductLabel: z.string().min(1).max(160),
+    term: zRedemptionTermPreview
+});
+
+export const zRedemptionPreviewResponse = z.strictObject({
+    preview: zRedemptionPreview,
+    receipt: zCommandReceipt
+});
 
 export const zRefreshCredentialInput = z.strictObject({
     opaqueCredential: z.string().min(32).max(2048)
@@ -436,6 +787,111 @@ export const zSessionCredentialPairResponse = z.union([
     zOneTimeSessionCredentialDelivery,
     zOneTimeDeliveryUnavailable
 ]);
+
+export const zSessionGrantControlAuthorization = z.strictObject({
+    audience: z.literal('session.control'),
+    purpose: z.literal('control')
+});
+
+export const zSessionGrantProjectResource = z.strictObject({
+    kind: z.literal('project')
+});
+
+export const zSessionGrantReadAuthorization = z.strictObject({
+    audience: z.literal('session.read'),
+    purpose: z.literal('read')
+});
+
+export const zSessionGrantRunResource = z.strictObject({
+    kind: z.literal('run'),
+    runRef: z.string().min(1).max(256),
+    sessionRef: z.string().min(1).max(256)
+});
+
+export const zSessionGrantSessionResource = z.strictObject({
+    kind: z.literal('session'),
+    sessionRef: z.string().min(1).max(256)
+});
+
+export const zSessionGrantResource = z.union([
+    zSessionGrantProjectResource,
+    zSessionGrantSessionResource,
+    zSessionGrantRunResource
+]);
+
+export const zSessionAccessGrantBinding = z.strictObject({
+    authorizationEpoch: zPositiveUint64String,
+    credentialEpoch: zPositiveUint64String,
+    deploymentRef: z.string().min(1).max(256),
+    expiresAt: z.iso.datetime(),
+    identitySessionEpoch: zPositiveUint64String,
+    identitySessionRef: z.string().min(1).max(256),
+    issuedAt: z.iso.datetime(),
+    issuer: z.url().min(1).max(512),
+    keyRevision: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/),
+    membershipEpoch: zPositiveUint64String,
+    notBefore: z.iso.datetime(),
+    policyEpoch: zPositiveUint64String,
+    productContextRef: z.string().min(1).max(256),
+    projectRef: z.string().min(1).max(256),
+    region: z.string().min(1).max(128),
+    resource: zSessionGrantResource,
+    restrictionEpoch: zPositiveUint64String,
+    revocationEpoch: zPositiveUint64String,
+    runtimeEnvironment: z.enum([
+        'development',
+        'preview',
+        'production'
+    ]),
+    sessionContractRevision: z.string().min(1).max(128),
+    siteProjectBindingRef: z.string().min(1).max(256),
+    siteRef: z.string().min(1).max(128),
+    siteReleaseRef: z.string().min(1).max(128),
+    siteSecurityEpoch: zPositiveUint64String,
+    subjectGeneration: zPositiveUint64String,
+    subjectRef: z.string().min(1).max(256),
+    webArtifactDigest: z.string().regex(/^[0-9a-f]{64}$/)
+});
+
+export const zSessionAccessGrantInput = z.strictObject({
+    productContextRef: z.string().min(1).max(256),
+    projectRef: z.string().min(1).max(256),
+    purpose: z.enum([
+        'read',
+        'write',
+        'control',
+        'stream'
+    ]),
+    resource: zSessionGrantResource
+});
+
+export const zSessionGrantStreamAuthorization = z.strictObject({
+    audience: z.literal('session.stream'),
+    purpose: z.literal('stream')
+});
+
+export const zSessionGrantWriteAuthorization = z.strictObject({
+    audience: z.literal('session.write'),
+    purpose: z.literal('write')
+});
+
+export const zSessionGrantAuthorization = z.union([
+    zSessionGrantReadAuthorization,
+    zSessionGrantWriteAuthorization,
+    zSessionGrantControlAuthorization,
+    zSessionGrantStreamAuthorization
+]);
+
+export const zSessionAccessGrant = z.strictObject({
+    authorization: zSessionGrantAuthorization,
+    binding: zSessionAccessGrantBinding,
+    credential: z.string().min(32).max(4096).regex(/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/),
+    grantRef: z.string().min(1).max(256)
+});
+
+export const zSessionAccessGrantResponse = z.strictObject({
+    grant: zSessionAccessGrant
+});
 
 export const zSupersedeReauthenticationProofInput = z.strictObject({
     priorCommandId: z.string().regex(/^(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/),
@@ -592,6 +1048,36 @@ export const zTransactionSecretInput = z.strictObject({
     transactionSecret: z.string().min(32).max(2048)
 });
 
+export const zUsageCreditAllocation = z.strictObject({
+    amount: zCreditAmount,
+    creditGrantId: z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/),
+    journalReceiptRef: z.string().min(1).max(256)
+});
+
+export const zUsageDetail = z.strictObject({
+    allocations: z.array(zUsageCreditAllocation).max(256),
+    estimatedAmount: zCreditAmount,
+    executionBudgetRootRef: z.string().min(1).max(256),
+    occurredAt: z.iso.datetime(),
+    ratedAmount: zCreditAmount.nullable(),
+    runRef: z.string().min(1).max(256),
+    settledAt: z.iso.datetime().nullable(),
+    state: z.enum([
+        'reserved',
+        'rated',
+        'settled',
+        'reversed',
+        'reconciliation_required'
+    ]),
+    unit: z.string().min(1).max(64),
+    usageId: z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
+});
+
+export const zUsageDetailResponse = z.strictObject({
+    freshness: zProjectionFreshness,
+    usage: zUsageDetail
+});
+
 export const zVerificationActivationResponse = z.strictObject({
     accountRef: z.string().min(1).max(128),
     personalContextPending: z.boolean(),
@@ -607,11 +1093,17 @@ export const zCommandIdentity = z.string().regex(/^(?:[0-9a-f]{32}|[0-9a-f]{8}-[
 
 export const zContractVersion = z.literal('1');
 
+export const zCreditGrantId = z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+
 export const zCsrfToken = z.string().min(32).max(512);
 
 export const zIdempotencyKey = z.string().min(16).max(191);
 
+export const zRedemptionId = z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+
 export const zTransactionRef = z.string().min(1).max(128);
+
+export const zUsageId = z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
 
 export const zCommandRequest = zCommandInput;
 
@@ -635,11 +1127,17 @@ export const zRecoveryCodeRegenerationRequest = zRecoveryCodeRegenerationInput;
 
 export const zRecoveryRequest = zRecoveryInput;
 
+export const zRedemptionConfirmRequest = zRedemptionConfirmInput;
+
+export const zRedemptionPreviewRequest = zRedemptionPreviewInput;
+
 export const zRefreshSessionRequest = zRefreshSessionInput;
 
 export const zRegistrationRequest = zRegistrationInput;
 
 export const zRevokeRequest = zRevokeInput;
+
+export const zSessionAccessGrantRequest = zSessionAccessGrantInput;
 
 export const zSessionMfaCompletionRequest = zSessionMfaCompletionInput;
 
@@ -957,6 +1455,28 @@ export const zResendEmailVerificationHeaders = z.strictObject({
  */
 export const zResendEmailVerificationResponse = zEmailVerificationTransactionResponse;
 
+export const zGetCreditGrantHeaders = z.strictObject({
+    'Kokoro-Contract-Version': z.literal('1')
+});
+
+export const zGetCreditGrantPath = z.strictObject({
+    id: z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
+});
+
+/**
+ * Safe source and balance details for one authenticated account CreditGrant.
+ */
+export const zGetCreditGrantResponse = zCreditGrantResponse;
+
+export const zGetCreditSummaryHeaders = z.strictObject({
+    'Kokoro-Contract-Version': z.literal('1')
+});
+
+/**
+ * Rebuildable credit projection over immutable grants, journal entries, and holds.
+ */
+export const zGetCreditSummaryResponse = zCreditSummaryResponse;
+
 export const zGetPersonalContextHeaders = z.strictObject({
     'Kokoro-Contract-Version': z.literal('1')
 });
@@ -965,6 +1485,28 @@ export const zGetPersonalContextHeaders = z.strictObject({
  * The caller's Site-bound personal workspace, project, and execution space.
  */
 export const zGetPersonalContextResponse = zPersonalContext;
+
+export const zListAccountProductsHeaders = z.strictObject({
+    'Kokoro-Contract-Version': z.literal('1')
+});
+
+/**
+ * Effective products, subscriptions, and entitlements for the authenticated account.
+ */
+export const zListAccountProductsResponse = zAccountProductsResponse;
+
+export const zGetUsageDetailHeaders = z.strictObject({
+    'Kokoro-Contract-Version': z.literal('1')
+});
+
+export const zGetUsageDetailPath = z.strictObject({
+    id: z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
+});
+
+/**
+ * Rated usage and allocation lineage without provider credentials or GA internals.
+ */
+export const zGetUsageDetailResponse = zUsageDetailResponse;
 
 export const zExchangeProductContextBody = zCommandRequest;
 
@@ -979,3 +1521,66 @@ export const zExchangeProductContextHeaders = z.strictObject({
  * A Site-release-bound product context.
  */
 export const zExchangeProductContextResponse = zProductContextExchangeResponse;
+
+export const zRecoverRedemptionCommandHeaders = z.strictObject({
+    'Idempotency-Key': z.string().min(16).max(191),
+    'Kokoro-Contract-Version': z.literal('1')
+});
+
+/**
+ * The current durable state of one authenticated redemption command.
+ */
+export const zRecoverRedemptionCommandResponse = zRedemptionCommandResponse;
+
+export const zGetRedemptionReceiptHeaders = z.strictObject({
+    'Kokoro-Contract-Version': z.literal('1')
+});
+
+export const zGetRedemptionReceiptPath = z.strictObject({
+    id: z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
+});
+
+/**
+ * An immutable safe redemption and Fulfillment receipt.
+ */
+export const zGetRedemptionReceiptResponse = zRedemptionReceiptResponse;
+
+export const zConfirmRedemptionBody = zRedemptionConfirmRequest;
+
+export const zConfirmRedemptionHeaders = z.strictObject({
+    'Kokoro-Contract-Version': z.literal('1'),
+    'X-Kokoro-Command-Id': z.string().regex(/^(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/),
+    'Idempotency-Key': z.string().min(16).max(191),
+    'X-CSRF-Token': z.string().min(32).max(512)
+});
+
+/**
+ * The current durable state of one authenticated redemption command.
+ */
+export const zConfirmRedemptionResponse = zRedemptionCommandResponse;
+
+export const zPreviewRedemptionBody = zRedemptionPreviewRequest;
+
+export const zPreviewRedemptionHeaders = z.strictObject({
+    'Kokoro-Contract-Version': z.literal('1'),
+    'X-Kokoro-Command-Id': z.string().regex(/^(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/),
+    'Idempotency-Key': z.string().min(16).max(191),
+    'X-CSRF-Token': z.string().min(32).max(512)
+});
+
+/**
+ * Safe, non-binding redemption terms and a short-lived opaque preview credential.
+ */
+export const zPreviewRedemptionResponse = zRedemptionPreviewResponse;
+
+export const zIssueSessionAccessGrantBody = zSessionAccessGrantRequest;
+
+export const zIssueSessionAccessGrantHeaders = z.strictObject({
+    'Kokoro-Contract-Version': z.literal('1'),
+    'X-CSRF-Token': z.string().min(32).max(512)
+});
+
+/**
+ * A non-cacheable, short-lived Session credential bound to the exact product and subject context.
+ */
+export const zIssueSessionAccessGrantResponse = zSessionAccessGrantResponse;

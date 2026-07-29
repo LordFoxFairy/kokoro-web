@@ -2,7 +2,7 @@
 // Regenerate: python3 contract/generate.py
 
 import { z } from "zod"
-import { sessionMetadataSchema, conversationBranchSchema, messageRecordSchema, messagePartEnvelopeSchema, runLaunchProjectionSchema, runViewSchema, controlProjectionSchema, runCostProjectionSchema, commandReceiptViewSchema } from "./http"
+import { sessionMetadataSchema, conversationBranchSchema, messageRecordSchema, messagePartEnvelopeSchema, runLaunchProjectionSchema, runViewSchema, controlProjectionSchema, runCostProjectionSchema, commandReceiptViewSchema } from "./http.js"
 
 export const sessionEventContractMetadata = Object.freeze({
   schemaId: "kokoro.session.events.v3",
@@ -100,7 +100,7 @@ const envelope = z
     cursor: z.string().min(1),
     session_id: z.string().min(1),
     stream_epoch: z.string().min(1),
-    durable_seq: z.string().regex(/^[1-9][0-9]{0,19}$/u).refine((value) => BigInt(value) <= 18446744073709551615n),
+    durable_seq: z.string().regex(/^[1-9][0-9]{0,19}$/u).refine((value) => value.length < 20 || value <= "18446744073709551615"),
     projection_version: z.number().int().positive(),
     schema_revision: z.number().int().positive(),
     recorded_at: z.string().datetime({ offset: true }),

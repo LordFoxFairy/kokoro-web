@@ -6,7 +6,7 @@ import { z } from "zod"
 export const sessionHttpContractMetadata = Object.freeze({
   schemaId: "kokoro.session.browser.v3",
   schemaVersion: 3,
-  sourceDigestSha256: "9b35268f456c890f09513ed1f1f2707ead6d7319f9fa91fc757f5fe80f1f8469",
+  sourceDigestSha256: "d9c26e86424e7d8d9c84a9963bd3a341ad8e93f59af266d4aa05e7b63c494525",
 })
 
 export const commandIdentitySchema = z
@@ -21,7 +21,7 @@ export type CommandIdentity = z.infer<typeof commandIdentitySchema>
 
 export const errorDetailSchema = z
   .object({
-    code: z.enum(["SESSION_ACCESS_GRANT_REQUIRED", "SESSION_ACCESS_GRANT_EXPIRED", "SESSION_ACCESS_GRANT_REVOKED", "SESSION_SCOPE_MISMATCH", "SESSION_NOT_FOUND", "SESSION_VERSION_CONFLICT", "IDEMPOTENCY_CONFLICT", "ACTIVE_RUN_EXISTS", "CAPABILITY_SNAPSHOT_LOCKED", "MODEL_OPTION_UNAVAILABLE", "ATTACHMENT_NOT_READY", "ATTACHMENT_REVOKED", "ADMISSION_DENIED", "ADMISSION_OUTCOME_UNKNOWN", "LAUNCH_OUTCOME_UNKNOWN", "RUN_CANCELLATION_PENDING", "RUN_OUTCOME_UNKNOWN", "CURSOR_INVALID", "CURSOR_CONFLICT", "CURSOR_AHEAD", "SNAPSHOT_REQUIRED", "CURSOR_SCOPE_MISMATCH", "STREAM_EPOCH_MISMATCH", "CLIENT_CONTRACT_UPGRADE_REQUIRED", "PART_SCHEMA_UNSUPPORTED", "INTERNAL_UNAVAILABLE"]),
+    code: z.enum(["REQUEST_INVALID", "PAYLOAD_TOO_LARGE", "METHOD_NOT_ALLOWED", "UNSUPPORTED_MEDIA_TYPE", "BFF_WORKLOAD_REQUIRED", "BFF_WORKLOAD_REVOKED", "SESSION_ACCESS_GRANT_REQUIRED", "SESSION_ACCESS_GRANT_EXPIRED", "SESSION_ACCESS_GRANT_REVOKED", "SESSION_SCOPE_MISMATCH", "SESSION_NOT_FOUND", "SESSION_VERSION_CONFLICT", "IDEMPOTENCY_CONFLICT", "ACTIVE_RUN_EXISTS", "CAPABILITY_SNAPSHOT_LOCKED", "MODEL_OPTION_UNAVAILABLE", "ATTACHMENT_NOT_READY", "ATTACHMENT_REVOKED", "ADMISSION_DENIED", "ADMISSION_OUTCOME_UNKNOWN", "LAUNCH_OUTCOME_UNKNOWN", "RUN_CANCELLATION_PENDING", "RUN_OUTCOME_UNKNOWN", "CURSOR_INVALID", "CURSOR_CONFLICT", "CURSOR_AHEAD", "SNAPSHOT_REQUIRED", "CURSOR_SCOPE_MISMATCH", "STREAM_EPOCH_MISMATCH", "CLIENT_CONTRACT_UPGRADE_REQUIRED", "PART_SCHEMA_UNSUPPORTED", "INTERNAL_UNAVAILABLE"]),
     message: z.string().min(1),
     retry_class: z.enum(["never", "immediate", "after_delay", "after_user_action", "reconcile_receipt"]),
     action: z.enum(["retry_same_cursor", "refresh_grant", "reauthenticate", "refetch_snapshot", "upgrade_client", "stop", "developer_error", "wait_or_cancel", "fork_new_session", "choose_model", "wait_prerequisite", "remove_attachment", "show_reason", "reconcile_receipt", "poll_or_stream", "render_unsupported"]),
@@ -708,10 +708,10 @@ export type RunCostProjection = z.infer<typeof runCostProjectionSchema>
 export const capabilityDisplaySnapshotSchema = z
   .object({
     capability_snapshot_ref: z.string().min(1),
-    agent_label: z.string().min(1),
+    agent_label: z.string().min(1).optional(),
     skill_labels: z.array(z.string().min(1)),
     mcp_labels: z.array(z.string().min(1)),
-    availability: z.string().min(1),
+    source: z.literal("admission_snapshot"),
   })
   .strict()
 export type CapabilityDisplaySnapshot = z.infer<typeof capabilityDisplaySnapshotSchema>
@@ -729,7 +729,7 @@ export const snapshotWatermarkSchema = z
   .object({
     cursor: z.string().min(1),
     stream_epoch: z.string().min(1),
-    durable_seq: z.string().regex(/^(0|[1-9][0-9]{0,19})$/u).refine((value) => BigInt(value) <= 18446744073709551615n),
+    durable_seq: z.string().regex(/^(0|[1-9][0-9]{0,19})$/u).refine((value) => value.length < 20 || value <= "18446744073709551615"),
     projection_version: z.number().int().positive(),
   })
   .strict()
@@ -784,6 +784,14 @@ export const listSessionsQuerySchema = z
   })
   .strict()
 export type ListSessionsQuery = z.infer<typeof listSessionsQuerySchema>
+
+export const snapshotQuerySchema = z
+  .object({
+    cursor: z.string().min(1).max(8192).optional(),
+    limit: z.number().int().min(1).max(100).optional(),
+  })
+  .strict()
+export type SnapshotQuery = z.infer<typeof snapshotQuerySchema>
 
 export const streamQuerySchema = z
   .object({
@@ -1091,7 +1099,7 @@ export const deleteFolderPathParamsSchema = z
 export const SESSION_HTTP_ENDPOINTS = Object.freeze({
   createSession: Object.freeze({ method: "POST", path: "/v1/sessions", status: 201, pathSchema: null, requestSchema: createSessionRequestSchema, querySchema: null, responseSchema: sessionCommandResponseSchema, query: Object.freeze([]), authorization: null }),
   listSessions: Object.freeze({ method: "GET", path: "/v1/sessions", status: 200, pathSchema: null, requestSchema: null, querySchema: listSessionsQuerySchema, responseSchema: sessionListSchema, query: Object.freeze([]), authorization: null }),
-  snapshot: Object.freeze({ method: "GET", path: "/v1/sessions/{session_id}/snapshot", status: 200, pathSchema: snapshotPathParamsSchema, requestSchema: null, querySchema: null, responseSchema: sessionSnapshotSchema, query: Object.freeze([]), authorization: null }),
+  snapshot: Object.freeze({ method: "GET", path: "/v1/sessions/{session_id}/snapshot", status: 200, pathSchema: snapshotPathParamsSchema, requestSchema: null, querySchema: snapshotQuerySchema, responseSchema: sessionSnapshotSchema, query: Object.freeze([]), authorization: null }),
   stream: Object.freeze({ method: "GET", path: "/v1/sessions/{session_id}/events", status: 200, pathSchema: streamPathParamsSchema, requestSchema: null, querySchema: streamQuerySchema, responseSchema: null, query: Object.freeze([]), authorization: null }),
   submitMessage: Object.freeze({ method: "POST", path: "/v1/sessions/{session_id}/messages", status: 202, pathSchema: submitMessagePathParamsSchema, requestSchema: submitMessageRequestSchema, querySchema: null, responseSchema: sessionCommandResponseSchema, query: Object.freeze([]), authorization: null }),
   editMessage: Object.freeze({ method: "POST", path: "/v1/sessions/{session_id}/messages/{message_id}:edit", status: 202, pathSchema: editMessagePathParamsSchema, requestSchema: editMessageRequestSchema, querySchema: null, responseSchema: sessionCommandResponseSchema, query: Object.freeze([]), authorization: null }),

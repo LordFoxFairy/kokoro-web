@@ -16,6 +16,40 @@ export type AcceptedPublicCommandReceiptResponse = {
     reconciliation: PendingCommandReconciliation;
 };
 
+export type AccountEntitlementSummary = {
+    capabilityKey: string;
+    entitlementGrantRef: string;
+    expiresAt: string | null;
+    safeLabel: string;
+    state: 'active' | 'expired' | 'revoked';
+};
+
+export type AccountPlanSummary = {
+    automaticRenewal: false;
+    planRef: string;
+    planVersionRef: string;
+    safeLabel: string;
+};
+
+export type AccountProduct = {
+    creditGrantRefs: Array<string>;
+    effectiveAt: string;
+    entitlements: Array<AccountEntitlementSummary>;
+    expiresAt: string | null;
+    kind: 'free' | 'credit_pack' | 'subscription' | 'bundle';
+    plan: AccountPlanSummary | null;
+    productRef: string;
+    productVersionRef: string;
+    safeLabel: string;
+    source: AcquisitionSourceSummary;
+    state: 'active' | 'expired' | 'revoked';
+};
+
+export type AccountProductsResponse = {
+    freshness: ProjectionFreshness;
+    products: Array<AccountProduct>;
+};
+
 export type AccountRecoveryCompletionResponse = CommandReceiptResponse | OneTimeTotpRecoveryEnrollmentDelivery | OneTimeDeliveryUnavailable;
 
 export type AccountRecoveryTransaction = {
@@ -27,6 +61,12 @@ export type AccountRecoveryTransaction = {
 export type AccountRecoveryTransactionResponse = {
     receipt: CommandReceipt;
     transaction: AccountRecoveryTransaction;
+};
+
+export type AcquisitionSourceSummary = {
+    acquiredAt: string;
+    kind: 'redemption' | 'admin_grant' | 'program_window';
+    sourceRef: string;
 };
 
 export type AuthPending = {
@@ -141,6 +181,52 @@ export type CreateSessionInput = PasswordLoginInput | SupersedeSessionCredential
 
 export type CreateSessionResponse = AuthPendingResponse | OneTimeSessionCredentialDelivery | OneTimeDeliveryUnavailable;
 
+/**
+ * Exact non-negative integer amount; encoded as a decimal string to avoid JS precision loss.
+ */
+export type CreditAmount = string;
+
+export type CreditBucketSummary = {
+    available: CreditAmount;
+    bucketClass: 'daily' | 'period' | 'permanent';
+    consumed: CreditAmount;
+    expiredOrReversed: CreditAmount;
+    grantCount: number;
+    held: CreditAmount;
+    issued: CreditAmount;
+};
+
+export type CreditGrantDetail = {
+    available: CreditAmount;
+    bucketClass: 'daily' | 'period' | 'permanent';
+    consumed: CreditAmount;
+    creditProgramRevisionRef: string;
+    effectiveAt: string;
+    expiresAt: string | null;
+    grantId: string;
+    held: CreditAmount;
+    issued: CreditAmount;
+    source: AcquisitionSourceSummary;
+    state: 'active' | 'exhausted' | 'expired' | 'reversed';
+    unit: string;
+};
+
+export type CreditGrantResponse = {
+    freshness: ProjectionFreshness;
+    grant: CreditGrantDetail;
+};
+
+export type CreditSummaryResponse = {
+    activeHoldCount: number;
+    freshness: ProjectionFreshness;
+    units: Array<CreditUnitSummary>;
+};
+
+export type CreditUnitSummary = {
+    buckets: Array<CreditBucketSummary>;
+    unit: string;
+};
+
 export type EmailChangeCompletionInput = {
     currentAddressChallenge: ChannelChallengeProofInput;
     reauthenticationProof: string;
@@ -178,14 +264,14 @@ export type EmailVerificationTransactionResponse = {
     transaction: EmailVerificationTransaction;
 };
 
-export type ErrorCode = 'INVALID_REQUEST' | 'CONTRACT_VERSION_UNSUPPORTED' | 'AUTHENTICATION_REQUIRED' | 'AUTHENTICATION_FAILED' | 'AUTH_TRANSACTION_EXPIRED' | 'MFA_REQUIRED' | 'FORBIDDEN' | 'NOT_FOUND' | 'CONFLICT' | 'RATE_LIMITED' | 'RISK_UNAVAILABLE' | 'SITE_UNAVAILABLE' | 'OUTCOME_UNKNOWN' | 'INTERNAL_UNAVAILABLE';
+export type ErrorCode = 'INVALID_REQUEST' | 'CONTRACT_VERSION_UNSUPPORTED' | 'AUTHENTICATION_REQUIRED' | 'AUTHENTICATION_FAILED' | 'AUTH_TRANSACTION_EXPIRED' | 'MFA_REQUIRED' | 'FORBIDDEN' | 'NOT_FOUND' | 'CONFLICT' | 'RATE_LIMITED' | 'RISK_UNAVAILABLE' | 'SITE_UNAVAILABLE' | 'OUTCOME_UNKNOWN' | 'INTERNAL_UNAVAILABLE' | 'REDEEM_NOT_ACCEPTED' | 'REDEEM_TEMPORARILY_UNAVAILABLE' | 'IDEMPOTENCY_CONFLICT' | 'ACQUISITION_CHANNEL_DISABLED';
 
 export type ErrorResponse = {
     code: ErrorCode;
     correlationId: string;
     receiptRef?: string;
     requestId: string;
-    retryClass: 'never' | 'after_delay' | 'same_identity' | 'reconcile_receipt';
+    retryClass: 'never' | 'after_delay' | 'after_user_action' | 'same_identity' | 'reconcile_receipt';
     safeMessage: string;
 };
 
@@ -206,6 +292,11 @@ export type IdentitySession = {
 export type IdentitySessionList = {
     revision: string;
     sessions: Array<IdentitySession>;
+};
+
+export type LocalePolicy = {
+    allowedLocales: Array<string>;
+    defaultLocale: string;
 };
 
 export type MfaReauthenticationInput = {
@@ -338,25 +429,80 @@ export type PendingCommandReconciliation = {
     retryAfterSeconds: number;
 };
 
+/**
+ * Authenticated subject state for the workload-derived Site; never cache across users.
+ */
 export type PersonalContext = {
+    actor: PersonalContextActor;
     contextRevision: string;
+    defaultProjectRef: string;
+    expiresAt: string;
+    issuedAt: string;
+    personalContextRef: string;
+    productContextRef: string;
+    projects: Array<PersonalProjectSummary>;
+};
+
+export type PersonalContextActor = {
+    avatarUrl: string | null;
+    displayName: string;
+    state: 'active';
+    subjectGeneration: string;
+    subjectRef: string;
+};
+
+export type PersonalProjectSummary = {
+    displayName: string;
     executionSpaceRef: string;
+    membershipRevision: string;
     projectRef: string;
     workspaceRef: string;
 };
 
+/**
+ * A canonical positive unsigned 64-bit integer encoded as a decimal string.
+ */
+export type PositiveUint64String = string;
+
+/**
+ * Deployment-level Site authority. It is resolved exclusively from the authenticated ProductWorkload and registered deployment; it never contains user-specific state.
+ */
 export type ProductContext = {
+    agentCatalogRef: string;
     audience: string;
+    cacheMaxAgeSeconds: number;
+    deploymentRef: string;
+    enabledSurfaceIds: Array<string>;
     expiresAt: string;
+    featurePolicyRevision: string;
+    issuedAt: string;
+    localePolicy: LocalePolicy;
+    modelOptionCatalogRef: string;
+    policyEpoch: PositiveUint64String;
     productContextRef: string;
+    region: string;
+    revocationEpoch: PositiveUint64String;
+    runtimeEnvironment: 'development' | 'preview' | 'production';
+    sessionContractRevision: string;
+    siteProjectBindingRef: string;
     siteRef: string;
     siteReleaseRef: string;
+    webArtifactDigest: string;
 };
 
 export type ProductContextExchangeResponse = {
     context: ProductContext;
     receipt: CommandReceipt;
 };
+
+export type ProjectionFreshness = {
+    asOf: string;
+    lagSeconds: number;
+    revision: ProjectionRevision;
+    state: 'current' | 'stale' | 'rebuilding';
+};
+
+export type ProjectionRevision = string;
 
 export type PublicCommandReceiptResponse = AcceptedPublicCommandReceiptResponse | OutcomeUnknownPublicCommandReceiptResponse | CommittedTerminalPublicCommandReceiptResponse | RejectedTerminalPublicCommandReceiptResponse | CommittedSupersedingPublicCommandReceiptResponse | CommittedSupersededPublicCommandReceiptResponse;
 
@@ -390,6 +536,133 @@ export type RecoveryCodeRegenerationInput = RegenerateRecoveryCodesInput | Super
 export type RecoveryCodeSetResponse = OneTimeRecoveryCodeSetDelivery | OneTimeDeliveryUnavailable;
 
 export type RecoveryInput = PasswordRecoveryCompletionInput | BeginTotpRecoveryReplacementInput | ConfirmTotpRecoveryReplacementInput | SupersedeTotpRecoveryReplacementInput;
+
+export type RedemptionCommandCursor = {
+    commandId: string;
+    receiptRef: string;
+    receivedAt: string;
+    requestDigest: string;
+    updatedAt: string;
+};
+
+export type RedemptionCommandPendingResponse = {
+    command: RedemptionCommandCursor;
+    kind: 'accepted' | 'executing' | 'outcome_unknown';
+    retryAfter: string;
+};
+
+export type RedemptionCommandRejectedResponse = {
+    command: RedemptionCommandCursor;
+    kind: 'rejected';
+    rejection: RedemptionRejection;
+};
+
+export type RedemptionCommandResponse = RedemptionCommandPendingResponse | RedemptionCommandReviewResponse | RedemptionCommandSucceededResponse | RedemptionCommandRejectedResponse;
+
+export type RedemptionCommandReviewResponse = {
+    attemptRef: string;
+    caseRef: string;
+    command: RedemptionCommandCursor;
+    kind: 'review_required';
+    reviewExpiresAt: string;
+};
+
+export type RedemptionCommandSucceededResponse = {
+    command: RedemptionCommandCursor;
+    kind: 'succeeded';
+    redemption: RedemptionReceipt;
+};
+
+export type RedemptionConfirmInput = {
+    legalAcceptanceRefs: Array<string>;
+    previewCredential: string;
+};
+
+export type RedemptionCreditPreview = {
+    amount: CreditAmount;
+    bucketClass: 'daily' | 'period' | 'permanent';
+    creditProgramRevisionRef: string;
+    expiresAt: string | null;
+    unit: string;
+};
+
+export type RedemptionEntitlementPreview = {
+    capabilityKey: string;
+    entitlementTemplateRevisionRef: string;
+    expiresAt: string | null;
+    safeLabel: string;
+};
+
+export type RedemptionOutputRef = {
+    kind: 'subscription_term' | 'entitlement_grant' | 'credit_grant';
+    outputLineId: string;
+    resourceRef: string;
+    templateRevisionRef: string;
+};
+
+export type RedemptionPreview = {
+    credits: Array<RedemptionCreditPreview>;
+    entitlements: Array<RedemptionEntitlementPreview>;
+    expiresAt: string;
+    legalTermRefs: Array<string>;
+    planRef: string | null;
+    planVersionRef: string | null;
+    previewCredential: string;
+    previewDigest: string;
+    previewRef: string;
+    productKind: 'free' | 'credit_pack' | 'subscription' | 'bundle';
+    productRef: string;
+    productVersionRef: string;
+    safePlanLabel: string | null;
+    safeProductLabel: string;
+    term: RedemptionTermPreview;
+};
+
+/**
+ * The only public request that carries a raw redeem Code. BFF and Platform must redact the field from logs, traces, metrics, analytics, errors, durable requests, and receipts.
+ */
+export type RedemptionPreviewInput = {
+    code: string;
+};
+
+export type RedemptionPreviewResponse = {
+    preview: RedemptionPreview;
+    receipt: CommandReceipt;
+};
+
+export type RedemptionReceipt = {
+    commandId: string;
+    fulfillmentRef: string;
+    outputSetDigest: string;
+    outputs: Array<RedemptionOutputRef>;
+    planRef: string | null;
+    planVersionRef: string | null;
+    productRef: string;
+    productVersionRef: string;
+    redeemedAt: string;
+    redemptionId: string;
+    reversalRefs: Array<string>;
+    safeCodeFingerprint: string;
+    state: 'fulfilled' | 'reversed' | 'reconciliation_required';
+    stateObservedAt: string;
+};
+
+export type RedemptionReceiptResponse = {
+    redemption: RedemptionReceipt;
+};
+
+export type RedemptionRejection = {
+    code: 'REDEEM_NOT_ACCEPTED' | 'REDEEM_TEMPORARILY_UNAVAILABLE';
+    retryAfter: string | null;
+    retryClass: 'never' | 'after_delay' | 'after_user_action';
+};
+
+export type RedemptionTermPreview = {
+    action: 'none' | 'new_subscription' | 'extend_from_max' | 'reject_if_active';
+    automaticRenewal: false;
+    endsAt: string | null;
+    startsAt: string | null;
+};
 
 export type RefreshCredentialInput = {
     opaqueCredential: string;
@@ -433,6 +706,54 @@ export type RevokeInput = {
     target: 'current' | 'single' | 'others' | 'all';
 };
 
+export type SessionAccessGrant = {
+    authorization: SessionGrantAuthorization;
+    binding: SessionAccessGrantBinding;
+    credential: string;
+    grantRef: string;
+};
+
+export type SessionAccessGrantBinding = {
+    authorizationEpoch: PositiveUint64String;
+    credentialEpoch: PositiveUint64String;
+    deploymentRef: string;
+    expiresAt: string;
+    identitySessionEpoch: PositiveUint64String;
+    identitySessionRef: string;
+    issuedAt: string;
+    issuer: string;
+    keyRevision: string;
+    membershipEpoch: PositiveUint64String;
+    notBefore: string;
+    policyEpoch: PositiveUint64String;
+    productContextRef: string;
+    projectRef: string;
+    region: string;
+    resource: SessionGrantResource;
+    restrictionEpoch: PositiveUint64String;
+    revocationEpoch: PositiveUint64String;
+    runtimeEnvironment: 'development' | 'preview' | 'production';
+    sessionContractRevision: string;
+    siteProjectBindingRef: string;
+    siteRef: string;
+    siteReleaseRef: string;
+    siteSecurityEpoch: PositiveUint64String;
+    subjectGeneration: PositiveUint64String;
+    subjectRef: string;
+    webArtifactDigest: string;
+};
+
+export type SessionAccessGrantInput = {
+    productContextRef: string;
+    projectRef: string;
+    purpose: 'read' | 'write' | 'control' | 'stream';
+    resource: SessionGrantResource;
+};
+
+export type SessionAccessGrantResponse = {
+    grant: SessionAccessGrant;
+};
+
 export type SessionCredentialPair = {
     refreshCredential: string;
     refreshCredentialExpiresAt: string;
@@ -442,6 +763,45 @@ export type SessionCredentialPair = {
 };
 
 export type SessionCredentialPairResponse = OneTimeSessionCredentialDelivery | OneTimeDeliveryUnavailable;
+
+export type SessionGrantAuthorization = SessionGrantReadAuthorization | SessionGrantWriteAuthorization | SessionGrantControlAuthorization | SessionGrantStreamAuthorization;
+
+export type SessionGrantControlAuthorization = {
+    audience: 'session.control';
+    purpose: 'control';
+};
+
+export type SessionGrantProjectResource = {
+    kind: 'project';
+};
+
+export type SessionGrantReadAuthorization = {
+    audience: 'session.read';
+    purpose: 'read';
+};
+
+export type SessionGrantResource = SessionGrantProjectResource | SessionGrantSessionResource | SessionGrantRunResource;
+
+export type SessionGrantRunResource = {
+    kind: 'run';
+    runRef: string;
+    sessionRef: string;
+};
+
+export type SessionGrantSessionResource = {
+    kind: 'session';
+    sessionRef: string;
+};
+
+export type SessionGrantStreamAuthorization = {
+    audience: 'session.stream';
+    purpose: 'stream';
+};
+
+export type SessionGrantWriteAuthorization = {
+    audience: 'session.write';
+    purpose: 'write';
+};
 
 export type SessionMfaCompletionInput = CompleteSessionMfaInput | SupersedeSessionCredentialDeliveryInput;
 
@@ -514,6 +874,30 @@ export type TransactionSecretInput = {
     transactionSecret: string;
 };
 
+export type UsageCreditAllocation = {
+    amount: CreditAmount;
+    creditGrantId: string;
+    journalReceiptRef: string;
+};
+
+export type UsageDetail = {
+    allocations: Array<UsageCreditAllocation>;
+    estimatedAmount: CreditAmount;
+    executionBudgetRootRef: string;
+    occurredAt: string;
+    ratedAmount: CreditAmount | null;
+    runRef: string;
+    settledAt: string | null;
+    state: 'reserved' | 'rated' | 'settled' | 'reversed' | 'reconciliation_required';
+    unit: string;
+    usageId: string;
+};
+
+export type UsageDetailResponse = {
+    freshness: ProjectionFreshness;
+    usage: UsageDetail;
+};
+
 export type VerificationActivationResponse = {
     accountRef: string;
     personalContextPending: boolean;
@@ -529,11 +913,17 @@ export type CommandIdentity = string;
 
 export type ContractVersion = '1';
 
+export type CreditGrantId = string;
+
 export type CsrfToken = string;
 
 export type IdempotencyKey = string;
 
+export type RedemptionId = string;
+
 export type TransactionRef = string;
+
+export type UsageId = string;
 
 export type CommandRequest = CommandInput;
 
@@ -557,11 +947,17 @@ export type RecoveryCodeRegenerationRequest = RecoveryCodeRegenerationInput;
 
 export type RecoveryRequest = RecoveryInput;
 
+export type RedemptionConfirmRequest = RedemptionConfirmInput;
+
+export type RedemptionPreviewRequest = RedemptionPreviewInput;
+
 export type RefreshSessionRequest = RefreshSessionInput;
 
 export type RegistrationRequest = RegistrationInput;
 
 export type RevokeRequest = RevokeInput;
+
+export type SessionAccessGrantRequest = SessionAccessGrantInput;
 
 export type SessionMfaCompletionRequest = SessionMfaCompletionInput;
 
@@ -1285,6 +1681,64 @@ export type ResendEmailVerificationResponses = {
 
 export type ResendEmailVerificationResponse = ResendEmailVerificationResponses[keyof ResendEmailVerificationResponses];
 
+export type GetCreditGrantData = {
+    body?: never;
+    headers: {
+        'Kokoro-Contract-Version': '1';
+    };
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/v1/me/credit-grants/{id}';
+};
+
+export type GetCreditGrantErrors = {
+    /**
+     * Stable, non-disclosing Platform error.
+     */
+    default: ErrorResponse;
+};
+
+export type GetCreditGrantError = GetCreditGrantErrors[keyof GetCreditGrantErrors];
+
+export type GetCreditGrantResponses = {
+    /**
+     * Safe source and balance details for one authenticated account CreditGrant.
+     */
+    200: CreditGrantResponse;
+};
+
+export type GetCreditGrantResponse = GetCreditGrantResponses[keyof GetCreditGrantResponses];
+
+export type GetCreditSummaryData = {
+    body?: never;
+    headers: {
+        'Kokoro-Contract-Version': '1';
+    };
+    path?: never;
+    query?: never;
+    url: '/v1/me/credits';
+};
+
+export type GetCreditSummaryErrors = {
+    /**
+     * Stable, non-disclosing Platform error.
+     */
+    default: ErrorResponse;
+};
+
+export type GetCreditSummaryError = GetCreditSummaryErrors[keyof GetCreditSummaryErrors];
+
+export type GetCreditSummaryResponses = {
+    /**
+     * Rebuildable credit projection over immutable grants, journal entries, and holds.
+     */
+    200: CreditSummaryResponse;
+};
+
+export type GetCreditSummaryResponse = GetCreditSummaryResponses[keyof GetCreditSummaryResponses];
+
 export type GetPersonalContextData = {
     body?: never;
     headers: {
@@ -1312,6 +1766,64 @@ export type GetPersonalContextResponses = {
 };
 
 export type GetPersonalContextResponse = GetPersonalContextResponses[keyof GetPersonalContextResponses];
+
+export type ListAccountProductsData = {
+    body?: never;
+    headers: {
+        'Kokoro-Contract-Version': '1';
+    };
+    path?: never;
+    query?: never;
+    url: '/v1/me/products';
+};
+
+export type ListAccountProductsErrors = {
+    /**
+     * Stable, non-disclosing Platform error.
+     */
+    default: ErrorResponse;
+};
+
+export type ListAccountProductsError = ListAccountProductsErrors[keyof ListAccountProductsErrors];
+
+export type ListAccountProductsResponses = {
+    /**
+     * Effective products, subscriptions, and entitlements for the authenticated account.
+     */
+    200: AccountProductsResponse;
+};
+
+export type ListAccountProductsResponse = ListAccountProductsResponses[keyof ListAccountProductsResponses];
+
+export type GetUsageDetailData = {
+    body?: never;
+    headers: {
+        'Kokoro-Contract-Version': '1';
+    };
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/v1/me/usage/{id}';
+};
+
+export type GetUsageDetailErrors = {
+    /**
+     * Stable, non-disclosing Platform error.
+     */
+    default: ErrorResponse;
+};
+
+export type GetUsageDetailError = GetUsageDetailErrors[keyof GetUsageDetailErrors];
+
+export type GetUsageDetailResponses = {
+    /**
+     * Rated usage and allocation lineage without provider credentials or GA internals.
+     */
+    200: UsageDetailResponse;
+};
+
+export type GetUsageDetailResponse = GetUsageDetailResponses[keyof GetUsageDetailResponses];
 
 export type ExchangeProductContextData = {
     body: CommandRequest;
@@ -1346,3 +1858,163 @@ export type ExchangeProductContextResponses = {
 };
 
 export type ExchangeProductContextResponse = ExchangeProductContextResponses[keyof ExchangeProductContextResponses];
+
+export type RecoverRedemptionCommandData = {
+    body?: never;
+    headers: {
+        'Idempotency-Key': string;
+        'Kokoro-Contract-Version': '1';
+    };
+    path?: never;
+    query?: never;
+    url: '/v1/redemption-commands:recover';
+};
+
+export type RecoverRedemptionCommandErrors = {
+    /**
+     * Stable, non-disclosing Platform error.
+     */
+    default: ErrorResponse;
+};
+
+export type RecoverRedemptionCommandError = RecoverRedemptionCommandErrors[keyof RecoverRedemptionCommandErrors];
+
+export type RecoverRedemptionCommandResponses = {
+    /**
+     * The current durable state of one authenticated redemption command.
+     */
+    200: RedemptionCommandResponse;
+};
+
+export type RecoverRedemptionCommandResponse = RecoverRedemptionCommandResponses[keyof RecoverRedemptionCommandResponses];
+
+export type GetRedemptionReceiptData = {
+    body?: never;
+    headers: {
+        'Kokoro-Contract-Version': '1';
+    };
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/v1/redemptions/{id}';
+};
+
+export type GetRedemptionReceiptErrors = {
+    /**
+     * Stable, non-disclosing Platform error.
+     */
+    default: ErrorResponse;
+};
+
+export type GetRedemptionReceiptError = GetRedemptionReceiptErrors[keyof GetRedemptionReceiptErrors];
+
+export type GetRedemptionReceiptResponses = {
+    /**
+     * An immutable safe redemption and Fulfillment receipt.
+     */
+    200: RedemptionReceiptResponse;
+};
+
+export type GetRedemptionReceiptResponse = GetRedemptionReceiptResponses[keyof GetRedemptionReceiptResponses];
+
+export type ConfirmRedemptionData = {
+    body: RedemptionConfirmRequest;
+    headers: {
+        'Kokoro-Contract-Version': '1';
+        /**
+         * Stable caller-generated 128-bit command identity, encoded as lowercase 32-hex or UUIDv7. It must not be derived from Idempotency-Key, password, OTP, or request content. Platform owns a unique workload/Site/caller/command row and rejects the same command id with a different payload using an internal keyed digest; all responses and receipts echo this exact id.
+         */
+        'X-Kokoro-Command-Id': string;
+        'Idempotency-Key': string;
+        'X-CSRF-Token': string;
+    };
+    path?: never;
+    query?: never;
+    url: '/v1/redemptions:confirm';
+};
+
+export type ConfirmRedemptionErrors = {
+    /**
+     * Stable, non-disclosing Platform error.
+     */
+    default: ErrorResponse;
+};
+
+export type ConfirmRedemptionError = ConfirmRedemptionErrors[keyof ConfirmRedemptionErrors];
+
+export type ConfirmRedemptionResponses = {
+    /**
+     * The current durable state of one authenticated redemption command.
+     */
+    200: RedemptionCommandResponse;
+    /**
+     * The current durable state of one authenticated redemption command.
+     */
+    202: RedemptionCommandResponse;
+};
+
+export type ConfirmRedemptionResponse = ConfirmRedemptionResponses[keyof ConfirmRedemptionResponses];
+
+export type PreviewRedemptionData = {
+    body: RedemptionPreviewRequest;
+    headers: {
+        'Kokoro-Contract-Version': '1';
+        /**
+         * Stable caller-generated 128-bit command identity, encoded as lowercase 32-hex or UUIDv7. It must not be derived from Idempotency-Key, password, OTP, or request content. Platform owns a unique workload/Site/caller/command row and rejects the same command id with a different payload using an internal keyed digest; all responses and receipts echo this exact id.
+         */
+        'X-Kokoro-Command-Id': string;
+        'Idempotency-Key': string;
+        'X-CSRF-Token': string;
+    };
+    path?: never;
+    query?: never;
+    url: '/v1/redemptions:preview';
+};
+
+export type PreviewRedemptionErrors = {
+    /**
+     * Stable, non-disclosing Platform error.
+     */
+    default: ErrorResponse;
+};
+
+export type PreviewRedemptionError = PreviewRedemptionErrors[keyof PreviewRedemptionErrors];
+
+export type PreviewRedemptionResponses = {
+    /**
+     * Safe, non-binding redemption terms and a short-lived opaque preview credential.
+     */
+    200: RedemptionPreviewResponse;
+};
+
+export type PreviewRedemptionResponse = PreviewRedemptionResponses[keyof PreviewRedemptionResponses];
+
+export type IssueSessionAccessGrantData = {
+    body: SessionAccessGrantRequest;
+    headers: {
+        'Kokoro-Contract-Version': '1';
+        'X-CSRF-Token': string;
+    };
+    path?: never;
+    query?: never;
+    url: '/v1/session-access-grants';
+};
+
+export type IssueSessionAccessGrantErrors = {
+    /**
+     * Stable, non-disclosing Platform error.
+     */
+    default: ErrorResponse;
+};
+
+export type IssueSessionAccessGrantError = IssueSessionAccessGrantErrors[keyof IssueSessionAccessGrantErrors];
+
+export type IssueSessionAccessGrantResponses = {
+    /**
+     * A non-cacheable, short-lived Session credential bound to the exact product and subject context.
+     */
+    201: SessionAccessGrantResponse;
+};
+
+export type IssueSessionAccessGrantResponse = IssueSessionAccessGrantResponses[keyof IssueSessionAccessGrantResponses];

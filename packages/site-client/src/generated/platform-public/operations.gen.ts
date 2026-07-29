@@ -33,6 +33,9 @@ import type {
   CompleteSessionMfaData,
   CompleteSessionMfaError,
   CompleteSessionMfaResponse,
+  ConfirmRedemptionData,
+  ConfirmRedemptionError,
+  ConfirmRedemptionResponse,
   ConfirmTotpEnrollmentData,
   ConfirmTotpEnrollmentError,
   ConfirmTotpEnrollmentResponse,
@@ -45,18 +48,42 @@ import type {
   ExchangeProductContextData,
   ExchangeProductContextError,
   ExchangeProductContextResponse,
+  GetCreditGrantData,
+  GetCreditGrantError,
+  GetCreditGrantResponse,
+  GetCreditSummaryData,
+  GetCreditSummaryError,
+  GetCreditSummaryResponse,
   GetPersonalContextData,
   GetPersonalContextError,
   GetPersonalContextResponse,
   GetPublicCommandReceiptData,
   GetPublicCommandReceiptError,
   GetPublicCommandReceiptResponse,
+  GetRedemptionReceiptData,
+  GetRedemptionReceiptError,
+  GetRedemptionReceiptResponse,
+  GetUsageDetailData,
+  GetUsageDetailError,
+  GetUsageDetailResponse,
+  IssueSessionAccessGrantData,
+  IssueSessionAccessGrantError,
+  IssueSessionAccessGrantResponse,
+  ListAccountProductsData,
+  ListAccountProductsError,
+  ListAccountProductsResponse,
   ListIdentitySessionsData,
   ListIdentitySessionsError,
   ListIdentitySessionsResponse,
+  PreviewRedemptionData,
+  PreviewRedemptionError,
+  PreviewRedemptionResponse,
   ReauthenticateIdentitySessionData,
   ReauthenticateIdentitySessionError,
   ReauthenticateIdentitySessionResponse,
+  RecoverRedemptionCommandData,
+  RecoverRedemptionCommandError,
+  RecoverRedemptionCommandResponse,
   RefreshIdentitySessionData,
   RefreshIdentitySessionError,
   RefreshIdentitySessionResponse,
@@ -110,6 +137,9 @@ import {
   zCompleteSessionMfaHeaders,
   zCompleteSessionMfaPath,
   zCompleteSessionMfaResponse,
+  zConfirmRedemptionBody,
+  zConfirmRedemptionHeaders,
+  zConfirmRedemptionResponse,
   zConfirmTotpEnrollmentBody,
   zConfirmTotpEnrollmentHeaders,
   zConfirmTotpEnrollmentResponse,
@@ -122,16 +152,37 @@ import {
   zExchangeProductContextBody,
   zExchangeProductContextHeaders,
   zExchangeProductContextResponse,
+  zGetCreditGrantHeaders,
+  zGetCreditGrantPath,
+  zGetCreditGrantResponse,
+  zGetCreditSummaryHeaders,
+  zGetCreditSummaryResponse,
   zGetPersonalContextHeaders,
   zGetPersonalContextResponse,
   zGetPublicCommandReceiptHeaders,
   zGetPublicCommandReceiptPath,
   zGetPublicCommandReceiptResponse,
+  zGetRedemptionReceiptHeaders,
+  zGetRedemptionReceiptPath,
+  zGetRedemptionReceiptResponse,
+  zGetUsageDetailHeaders,
+  zGetUsageDetailPath,
+  zGetUsageDetailResponse,
+  zIssueSessionAccessGrantBody,
+  zIssueSessionAccessGrantHeaders,
+  zIssueSessionAccessGrantResponse,
+  zListAccountProductsHeaders,
+  zListAccountProductsResponse,
   zListIdentitySessionsHeaders,
   zListIdentitySessionsResponse,
+  zPreviewRedemptionBody,
+  zPreviewRedemptionHeaders,
+  zPreviewRedemptionResponse,
   zReauthenticateIdentitySessionBody,
   zReauthenticateIdentitySessionHeaders,
   zReauthenticateIdentitySessionResponse,
+  zRecoverRedemptionCommandHeaders,
+  zRecoverRedemptionCommandResponse,
   zRefreshIdentitySessionBody,
   zRefreshIdentitySessionHeaders,
   zRefreshIdentitySessionResponse,
@@ -158,14 +209,23 @@ export interface PlatformPublicOperationDataMap {
   readonly "completeEmailVerification": CompleteEmailVerificationData;
   readonly "completePasswordReset": CompletePasswordResetData;
   readonly "completeSessionMfa": CompleteSessionMfaData;
+  readonly "confirmRedemption": ConfirmRedemptionData;
   readonly "confirmTotpEnrollment": ConfirmTotpEnrollmentData;
   readonly "createIdentitySession": CreateIdentitySessionData;
   readonly "disableTotp": DisableTotpData;
   readonly "exchangeProductContext": ExchangeProductContextData;
+  readonly "getCreditGrant": GetCreditGrantData;
+  readonly "getCreditSummary": GetCreditSummaryData;
   readonly "getPersonalContext": GetPersonalContextData;
   readonly "getPublicCommandReceipt": GetPublicCommandReceiptData;
+  readonly "getRedemptionReceipt": GetRedemptionReceiptData;
+  readonly "getUsageDetail": GetUsageDetailData;
+  readonly "issueSessionAccessGrant": IssueSessionAccessGrantData;
+  readonly "listAccountProducts": ListAccountProductsData;
   readonly "listIdentitySessions": ListIdentitySessionsData;
+  readonly "previewRedemption": PreviewRedemptionData;
   readonly "reauthenticateIdentitySession": ReauthenticateIdentitySessionData;
+  readonly "recoverRedemptionCommand": RecoverRedemptionCommandData;
   readonly "refreshIdentitySession": RefreshIdentitySessionData;
   readonly "regenerateRecoveryCodes": RegenerateRecoveryCodesData;
   readonly "resendEmailVerification": ResendEmailVerificationData;
@@ -184,14 +244,23 @@ export interface PlatformPublicOperationResponseMap {
   readonly "completeEmailVerification": CompleteEmailVerificationResponse;
   readonly "completePasswordReset": CompletePasswordResetResponse;
   readonly "completeSessionMfa": CompleteSessionMfaResponse;
+  readonly "confirmRedemption": ConfirmRedemptionResponse;
   readonly "confirmTotpEnrollment": ConfirmTotpEnrollmentResponse;
   readonly "createIdentitySession": CreateIdentitySessionResponse;
   readonly "disableTotp": DisableTotpResponse;
   readonly "exchangeProductContext": ExchangeProductContextResponse;
+  readonly "getCreditGrant": GetCreditGrantResponse;
+  readonly "getCreditSummary": GetCreditSummaryResponse;
   readonly "getPersonalContext": GetPersonalContextResponse;
   readonly "getPublicCommandReceipt": GetPublicCommandReceiptResponse;
+  readonly "getRedemptionReceipt": GetRedemptionReceiptResponse;
+  readonly "getUsageDetail": GetUsageDetailResponse;
+  readonly "issueSessionAccessGrant": IssueSessionAccessGrantResponse;
+  readonly "listAccountProducts": ListAccountProductsResponse;
   readonly "listIdentitySessions": ListIdentitySessionsResponse;
+  readonly "previewRedemption": PreviewRedemptionResponse;
   readonly "reauthenticateIdentitySession": ReauthenticateIdentitySessionResponse;
+  readonly "recoverRedemptionCommand": RecoverRedemptionCommandResponse;
   readonly "refreshIdentitySession": RefreshIdentitySessionResponse;
   readonly "regenerateRecoveryCodes": RegenerateRecoveryCodesResponse;
   readonly "resendEmailVerification": ResendEmailVerificationResponse;
@@ -210,14 +279,23 @@ export interface PlatformPublicOperationErrorMap {
   readonly "completeEmailVerification": CompleteEmailVerificationError;
   readonly "completePasswordReset": CompletePasswordResetError;
   readonly "completeSessionMfa": CompleteSessionMfaError;
+  readonly "confirmRedemption": ConfirmRedemptionError;
   readonly "confirmTotpEnrollment": ConfirmTotpEnrollmentError;
   readonly "createIdentitySession": CreateIdentitySessionError;
   readonly "disableTotp": DisableTotpError;
   readonly "exchangeProductContext": ExchangeProductContextError;
+  readonly "getCreditGrant": GetCreditGrantError;
+  readonly "getCreditSummary": GetCreditSummaryError;
   readonly "getPersonalContext": GetPersonalContextError;
   readonly "getPublicCommandReceipt": GetPublicCommandReceiptError;
+  readonly "getRedemptionReceipt": GetRedemptionReceiptError;
+  readonly "getUsageDetail": GetUsageDetailError;
+  readonly "issueSessionAccessGrant": IssueSessionAccessGrantError;
+  readonly "listAccountProducts": ListAccountProductsError;
   readonly "listIdentitySessions": ListIdentitySessionsError;
+  readonly "previewRedemption": PreviewRedemptionError;
   readonly "reauthenticateIdentitySession": ReauthenticateIdentitySessionError;
+  readonly "recoverRedemptionCommand": RecoverRedemptionCommandError;
   readonly "refreshIdentitySession": RefreshIdentitySessionError;
   readonly "regenerateRecoveryCodes": RegenerateRecoveryCodesError;
   readonly "resendEmailVerification": ResendEmailVerificationError;
@@ -390,6 +468,21 @@ export const PLATFORM_PUBLIC_OPERATIONS = Object.freeze({
     }),
     responseSchema: zCompleteSessionMfaResponse,
   }),
+  "confirmRedemption": Object.freeze({
+    method: "POST",
+    path: "/v1/redemptions:confirm",
+    mutation: true,
+    receiptRecovery: "none",
+    securityAlternatives: Object.freeze([["ProductWorkload","UserSession"]]),
+    successStatuses: Object.freeze([200,202]),
+    requestSchemas: Object.freeze({
+      body: zConfirmRedemptionBody,
+      headers: zConfirmRedemptionHeaders,
+      path: null,
+      query: null,
+    }),
+    responseSchema: zConfirmRedemptionResponse,
+  }),
   "confirmTotpEnrollment": Object.freeze({
     method: "POST",
     path: "/v1/identity/totp/confirm",
@@ -450,6 +543,36 @@ export const PLATFORM_PUBLIC_OPERATIONS = Object.freeze({
     }),
     responseSchema: zExchangeProductContextResponse,
   }),
+  "getCreditGrant": Object.freeze({
+    method: "GET",
+    path: "/v1/me/credit-grants/{id}",
+    mutation: false,
+    receiptRecovery: "none",
+    securityAlternatives: Object.freeze([["ProductWorkload","UserSession"]]),
+    successStatuses: Object.freeze([200]),
+    requestSchemas: Object.freeze({
+      body: null,
+      headers: zGetCreditGrantHeaders,
+      path: zGetCreditGrantPath,
+      query: null,
+    }),
+    responseSchema: zGetCreditGrantResponse,
+  }),
+  "getCreditSummary": Object.freeze({
+    method: "GET",
+    path: "/v1/me/credits",
+    mutation: false,
+    receiptRecovery: "none",
+    securityAlternatives: Object.freeze([["ProductWorkload","UserSession"]]),
+    successStatuses: Object.freeze([200]),
+    requestSchemas: Object.freeze({
+      body: null,
+      headers: zGetCreditSummaryHeaders,
+      path: null,
+      query: null,
+    }),
+    responseSchema: zGetCreditSummaryResponse,
+  }),
   "getPersonalContext": Object.freeze({
     method: "GET",
     path: "/v1/me/personal-context",
@@ -480,6 +603,66 @@ export const PLATFORM_PUBLIC_OPERATIONS = Object.freeze({
     }),
     responseSchema: zGetPublicCommandReceiptResponse,
   }),
+  "getRedemptionReceipt": Object.freeze({
+    method: "GET",
+    path: "/v1/redemptions/{id}",
+    mutation: false,
+    receiptRecovery: "none",
+    securityAlternatives: Object.freeze([["ProductWorkload","UserSession"]]),
+    successStatuses: Object.freeze([200]),
+    requestSchemas: Object.freeze({
+      body: null,
+      headers: zGetRedemptionReceiptHeaders,
+      path: zGetRedemptionReceiptPath,
+      query: null,
+    }),
+    responseSchema: zGetRedemptionReceiptResponse,
+  }),
+  "getUsageDetail": Object.freeze({
+    method: "GET",
+    path: "/v1/me/usage/{id}",
+    mutation: false,
+    receiptRecovery: "none",
+    securityAlternatives: Object.freeze([["ProductWorkload","UserSession"]]),
+    successStatuses: Object.freeze([200]),
+    requestSchemas: Object.freeze({
+      body: null,
+      headers: zGetUsageDetailHeaders,
+      path: zGetUsageDetailPath,
+      query: null,
+    }),
+    responseSchema: zGetUsageDetailResponse,
+  }),
+  "issueSessionAccessGrant": Object.freeze({
+    method: "POST",
+    path: "/v1/session-access-grants",
+    mutation: true,
+    receiptRecovery: "none",
+    securityAlternatives: Object.freeze([["ProductWorkload","UserSession"]]),
+    successStatuses: Object.freeze([201]),
+    requestSchemas: Object.freeze({
+      body: zIssueSessionAccessGrantBody,
+      headers: zIssueSessionAccessGrantHeaders,
+      path: null,
+      query: null,
+    }),
+    responseSchema: zIssueSessionAccessGrantResponse,
+  }),
+  "listAccountProducts": Object.freeze({
+    method: "GET",
+    path: "/v1/me/products",
+    mutation: false,
+    receiptRecovery: "none",
+    securityAlternatives: Object.freeze([["ProductWorkload","UserSession"]]),
+    successStatuses: Object.freeze([200]),
+    requestSchemas: Object.freeze({
+      body: null,
+      headers: zListAccountProductsHeaders,
+      path: null,
+      query: null,
+    }),
+    responseSchema: zListAccountProductsResponse,
+  }),
   "listIdentitySessions": Object.freeze({
     method: "GET",
     path: "/v1/identity/sessions",
@@ -495,6 +678,21 @@ export const PLATFORM_PUBLIC_OPERATIONS = Object.freeze({
     }),
     responseSchema: zListIdentitySessionsResponse,
   }),
+  "previewRedemption": Object.freeze({
+    method: "POST",
+    path: "/v1/redemptions:preview",
+    mutation: true,
+    receiptRecovery: "none",
+    securityAlternatives: Object.freeze([["ProductWorkload","UserSession"]]),
+    successStatuses: Object.freeze([200]),
+    requestSchemas: Object.freeze({
+      body: zPreviewRedemptionBody,
+      headers: zPreviewRedemptionHeaders,
+      path: null,
+      query: null,
+    }),
+    responseSchema: zPreviewRedemptionResponse,
+  }),
   "reauthenticateIdentitySession": Object.freeze({
     method: "POST",
     path: "/v1/identity/sessions:reauthenticate",
@@ -509,6 +707,21 @@ export const PLATFORM_PUBLIC_OPERATIONS = Object.freeze({
       query: null,
     }),
     responseSchema: zReauthenticateIdentitySessionResponse,
+  }),
+  "recoverRedemptionCommand": Object.freeze({
+    method: "GET",
+    path: "/v1/redemption-commands:recover",
+    mutation: false,
+    receiptRecovery: "none",
+    securityAlternatives: Object.freeze([["ProductWorkload","UserSession"]]),
+    successStatuses: Object.freeze([200]),
+    requestSchemas: Object.freeze({
+      body: null,
+      headers: zRecoverRedemptionCommandHeaders,
+      path: null,
+      query: null,
+    }),
+    responseSchema: zRecoverRedemptionCommandResponse,
   }),
   "refreshIdentitySession": Object.freeze({
     method: "POST",
