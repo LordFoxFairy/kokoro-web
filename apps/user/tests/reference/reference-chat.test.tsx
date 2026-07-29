@@ -129,6 +129,43 @@ describe("reference typed Chat surface", () => {
     expect(value.decideAction).not.toHaveBeenCalled()
   })
 
+  it("requires an explicit boolean choice and a finite number for safe form responses", () => {
+    const interaction: ReferenceChatState = {
+      ...state,
+      projection: {
+        ...state.projection,
+        messages: [{
+          ...state.projection.messages[0]!,
+          parts: [{
+            id: "interaction-form", ordinal: 1, version: 1, lifecycle: "streaming", kind: "interaction",
+            ownerRef: "interaction-owner-2", expectedVersion: 1, decisionGroupRef: "decision-group-3",
+            requiredOwnerRefs: ["interaction-owner-2"], title: "Confirm values", description: "Complete the form",
+            inputSchemaRef: "schema-form", safeInputSchema: {
+              kind: "form", type: "object", required: ["confirm", "amount"], properties: {
+                confirm: { type: "boolean", title: "Confirm" }, amount: { type: "number", title: "Amount" },
+              },
+            },
+            allowedActions: ["respond"], status: "pending",
+          }],
+        }],
+      },
+    }
+    const value = controller(interaction)
+    render(<ReferenceChatView brandName="Kokoro" controller={value} state={interaction} />)
+    const respond = screen.getByRole("button", { name: "Respond" })
+
+    fireEvent.change(screen.getByRole("combobox", { name: /Confirm/ }), { target: { value: "false" } })
+    fireEvent.change(screen.getByRole("textbox", { name: /Amount/ }), { target: { value: "not-a-number" } })
+    expect(respond).toBeDisabled()
+    expect(screen.getByRole("alert")).toHaveTextContent("finite number")
+    fireEvent.change(screen.getByRole("textbox", { name: /Amount/ }), { target: { value: "2.5" } })
+    fireEvent.click(respond)
+
+    expect(value.decideAction).toHaveBeenCalledWith(expect.objectContaining({
+      decision: { kind: "respond", payload: { input_schema_ref: "schema-form", response: { kind: "form", payload: { fields: { confirm: false, amount: 2.5 } } } } },
+    }))
+  })
+
   it("offers a real cancellation command for an active run", () => {
     const value = controller(state)
     render(<ReferenceChatView brandName="Kokoro" controller={value} state={state} />)

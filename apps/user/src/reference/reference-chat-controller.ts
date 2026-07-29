@@ -443,11 +443,12 @@ export function createReferenceChatController(options: {
     }
     project({ type: "command", state: "pending" })
     try {
-      const response = await options.client.submitMessage(sessionId, {
-        command: await commandIdentity(effect),
+      const command = await commandIdentity(effect)
+      const response = await reconcileReceipt(await options.client.submitMessage(sessionId, {
+        command,
         ...effect,
-      })
-      const failure = deniedFailure(response)
+      }), command, "submit_message")
+      const failure = pendingFailure(response, "LAUNCH_OUTCOME_UNKNOWN")
       if (failure !== null) {
         fail(failure)
         return
@@ -475,11 +476,12 @@ export function createReferenceChatController(options: {
     const effect = { expected_run_projection_version: version, reason_code: "user_requested" }
     project({ type: "command", state: "pending" })
     try {
-      const response = await options.client.cancelRun(sessionId, runId, {
-        command: await commandIdentity(effect),
+      const command = await commandIdentity(effect)
+      const response = await reconcileReceipt(await options.client.cancelRun(sessionId, runId, {
+        command,
         ...effect,
-      })
-      const failure = deniedFailure(response)
+      }), command, "cancel_run")
+      const failure = pendingFailure(response, "RUN_CANCELLATION_PENDING")
       if (failure !== null) {
         fail(failure)
         return

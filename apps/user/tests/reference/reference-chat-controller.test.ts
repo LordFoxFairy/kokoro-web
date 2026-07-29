@@ -262,6 +262,34 @@ describe("reference Browser v3 controller", () => {
     }))
   })
 
+  it("reconciles a pending submit receipt before returning the command UI to idle", async () => {
+    const client = fakeClient()
+    vi.mocked(client.submitMessage).mockResolvedValueOnce({
+      command_receipt: {
+        operation: "submit_message", command_id: "command-pending", idempotency_key: "idempotency-pending",
+        digest_algorithm: "SHA256_CANONICAL_JSON_V1", request_digest: "d".repeat(64), updated_at: NOW,
+        status: "pending", payload: { retry_class: "reconcile_receipt", action: "reconcile_receipt" },
+      },
+    })
+    vi.mocked(client.getCommandReceipt).mockResolvedValueOnce({
+      command_receipt: {
+        operation: "submit_message", command_id: "command-pending", idempotency_key: "idempotency-pending",
+        digest_algorithm: "SHA256_CANONICAL_JSON_V1", request_digest: "d".repeat(64), updated_at: NOW,
+        status: "accepted", payload: {
+          kind: "run-launch-created",
+          payload: { session_id: "session-1", branch_id: "branch-1", trigger_message_id: "message-2", assistant_message_id: "message-3", launch_id: "launch-2", proposed_run_id: "run-2", session_version: 8, branch_version: 4 },
+        },
+      },
+    })
+    const controller = createReferenceChatController({ client, trustedLocale: "en-US", chatCatalog: CHAT_CATALOG, defaultProjectRef: "project-1" })
+    await controller.open("session-1")
+
+    await controller.submit("continue")
+
+    expect(client.getCommandReceipt).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ operation: "submit_message" }))
+    expect(controller.getSnapshot().projection.command.state).toBe("idle")
+  })
+
   it("keeps approval state typed and read-only while the owner command is absent", async () => {
     let openHandlers: Parameters<SessionClient["openEvents"]>[0] | undefined
     const client = fakeClient({ onOpen: (handlers) => { openHandlers = handlers } })

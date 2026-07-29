@@ -53,9 +53,9 @@ function safeOptions(value: unknown): readonly Readonly<{ id: string; label: str
       ? { id, label }
       : null
   })
-  return options.every((option) => option !== null)
-    ? options as readonly Readonly<{ id: string; label: string }>[]
-    : null
+  if (!options.every((option) => option !== null)) return null
+  const safe = options as readonly Readonly<{ id: string; label: string }>[]
+  return new Set(safe.map(({ id }) => id)).size === safe.length ? safe : null
 }
 
 function safeInteractionSchema(value: Readonly<Record<string, unknown>> | undefined): SafeInteractionSchema | null {
@@ -119,8 +119,16 @@ function ActionPartCard(props: {
     : schema?.kind === "selection"
       ? selectedOptionIds.length > 0
       : schema?.kind === "form"
-        ? schema.fields.every((field) => !field.required || formValues[field.name] !== undefined && formValues[field.name] !== "")
+        ? schema.fields.every((field) => {
+            const value = formValues[field.name]
+            if (field.required && (value === undefined || value === "")) return false
+            return field.type !== "number" || value === undefined || value === "" || Number.isFinite(Number(value))
+          })
         : false
+  const invalidNumber = schema?.kind === "form" && schema.fields.some((field) => {
+    const value = formValues[field.name]
+    return field.type === "number" && value !== undefined && value !== "" && !Number.isFinite(Number(value))
+  })
   const respond = (): void => {
     if (props.runId === null || props.part.inputSchemaRef === undefined || schema === null) return
     const formFields: Record<string, unknown> = {}
@@ -193,7 +201,7 @@ function ActionPartCard(props: {
       {props.part.kind === "interaction" && props.part.allowedActions.includes("respond") && props.part.inputSchemaRef && schema?.kind === "text" ? (
         <textarea
           aria-label={`Response for ${props.part.title}`}
-          maxLength={1_048_576}
+          maxLength={schema.maxLength}
           onChange={(event) => setResponse(event.target.value)}
           rows={3}
           value={response}
@@ -220,18 +228,28 @@ function ActionPartCard(props: {
           {schema.fields.map((field) => <label key={field.name}>
             <span>{field.label}{field.required ? " (required)" : ""}</span>
             {field.type === "boolean" ? (
-              <input checked={formValues[field.name] === true} onChange={(event) => setFormValues({ ...formValues, [field.name]: event.target.checked })} type="checkbox" />
+              <select onChange={(event) => setFormValues({ ...formValues, [field.name]: event.target.value === "true" })} value={formValues[field.name] === undefined ? "" : String(formValues[field.name])}>
+                <option disabled value="">Select…</option>
+                <option value="true">Yes</option>
+                <option value="false">No</option>
+              </select>
             ) : field.type === "selection" ? (
               <select onChange={(event) => setFormValues({ ...formValues, [field.name]: event.target.value })} value={String(formValues[field.name] ?? "")}>
                 <option disabled value="">Select…</option>
                 {field.options.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
               </select>
             ) : (
-              <input onChange={(event) => setFormValues({ ...formValues, [field.name]: event.target.value })} type={field.type} value={String(formValues[field.name] ?? "")} />
+              <input
+                inputMode={field.type === "number" ? "decimal" : undefined}
+                onChange={(event) => setFormValues({ ...formValues, [field.name]: event.target.value })}
+                type="text"
+                value={String(formValues[field.name] ?? "")}
+              />
             )}
           </label>)}
         </fieldset>
       ) : null}
+      {invalidNumber ? <p role="alert">Enter a valid finite number before responding.</p> : null}
       {props.part.kind === "interaction" && props.part.allowedActions.includes("respond") && (props.part.inputSchemaRef === undefined || schema === null) ? (
         <p className={styles.quiet} role="status">This interaction schema is unsupported by this client. Refresh or upgrade the client to respond safely.</p>
       ) : null}
