@@ -17,6 +17,8 @@ import {
   type ReferenceChatController,
   type ReferenceChatState,
 } from "./reference-chat-controller"
+import { createReferenceSessionOrganizer } from "./reference-session-organizer"
+import { ReferenceSessionRail } from "./reference-session-rail"
 import styles from "./reference-chat.module.css"
 
 function neverPart(part: never): never {
@@ -520,6 +522,11 @@ export function ReferenceChat(props: {
     defaultProjectRef: props.bootstrap?.defaultProjectRef ?? null,
   }), [chatCatalog, client, props.bootstrap?.defaultProjectRef])
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot)
+  const organizer = useMemo(() => createReferenceSessionOrganizer({
+    client,
+    projectRef: props.bootstrap?.defaultProjectRef ?? null,
+  }), [client, props.bootstrap?.defaultProjectRef])
+  const organizerState = useSyncExternalStore(organizer.subscribe, organizer.getSnapshot, organizer.getSnapshot)
   const [sessionInput, setSessionInput] = useState(props.initialSessionId ?? "")
 
   useEffect(() => {
@@ -527,38 +534,70 @@ export function ReferenceChat(props: {
     return () => controller.close()
   }, [controller, props.initialSessionId])
 
+  useEffect(() => {
+    void organizer.load()
+    return () => organizer.close()
+  }, [organizer])
+
+  const openSession = (sessionId: string): void => {
+    window.history.replaceState(window.history.state, "", `/?session=${encodeURIComponent(sessionId)}`)
+    void controller.open(sessionId)
+  }
+  const createSession = (): void => {
+    void controller.create().then((sessionId) => {
+      if (sessionId === null) return
+      window.history.replaceState(window.history.state, "", `/?session=${encodeURIComponent(sessionId)}`)
+      void organizer.refresh()
+    })
+  }
+
+  const rail = <ReferenceSessionRail
+    activeSessionId={state.sessionId}
+    available={props.bootstrap !== null && chatCatalog !== null && state.projection.command.state !== "pending"}
+    brandName={props.brandName}
+    controller={organizer}
+    onNew={createSession}
+    onOpen={openSession}
+    state={organizerState}
+  />
+
   if (state.phase === "idle") {
     const productAvailable = props.bootstrap !== null && chatCatalog !== null
     const commandPending = state.projection.command.state === "pending"
     return (
-      <main className={styles.connectShell}>
+      <div className={styles.appShell}>
+        {rail}
+        <main className={styles.connectShell}>
         <span className={styles.eyebrow}>Session Browser v3 reference</span>
         <h1>{props.brandName}</h1>
         <p>Start a new chat with this product&apos;s published default, or open an existing Session.</p>
         <button
           type="button"
           disabled={!productAvailable || commandPending}
-          onClick={() => void controller.create().then((sessionId) => {
-            if (sessionId !== null) window.history.replaceState(window.history.state, "", `/?session=${encodeURIComponent(sessionId)}`)
-          })}
+          onClick={createSession}
         >{commandPending ? "Creating…" : "New chat"}</button>
         <form onSubmit={(event) => {
           event.preventDefault()
           const sessionId = sessionInput.trim()
           if (!sessionId) return
-          window.history.replaceState(window.history.state, "", `/?session=${encodeURIComponent(sessionId)}`)
-          void controller.open(sessionId)
+          openSession(sessionId)
         }}>
           <input aria-label="Session ID" value={sessionInput} onChange={(event) => setSessionInput(event.target.value)} />
           <button type="submit" disabled={!productAvailable || commandPending || sessionInput.trim().length === 0}>Open session</button>
         </form>
         {!productAvailable ? <p className={styles.quiet} role="status">Product context or its published chat catalog is unavailable. Chat is closed safely.</p> : null}
         {state.failure ? <p className={styles.failure} role="alert">{state.failure.code}: {state.failure.message}</p> : null}
-      </main>
+        </main>
+      </div>
     )
   }
 
-  return <ReferenceChatView brandName={props.brandName} controller={controller} state={state} />
+  return (
+    <div className={styles.appShell}>
+      {rail}
+      <ReferenceChatView brandName={props.brandName} controller={controller} state={state} />
+    </div>
+  )
 }
 
 function ModelOptionSelector(props: {

@@ -19,6 +19,13 @@ import {
   type ChatProjection,
 } from "@kokoro/chat-surface"
 
+import {
+  createReferenceCommandIdentity,
+  reconcileReferenceCommandReceipt,
+} from "./reference-command"
+
+const commandIdentity = createReferenceCommandIdentity
+
 export type ReferenceModelOption = Readonly<{
   modelOptionRevisionRef: string
   optionKey: string
@@ -135,37 +142,6 @@ function failureFromError(error: unknown): ReferenceChatFailure {
   return error instanceof SessionClientError
     ? describeSessionFailure(error)
     : describeSessionFailure({})
-}
-
-function canonicalJson(value: unknown): string {
-  if (value === null || typeof value === "boolean" || typeof value === "string") return JSON.stringify(value)
-  if (typeof value === "number") {
-    if (!Number.isFinite(value)) throw new Error("Command payload contains a non-finite number")
-    return JSON.stringify(value)
-  }
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`
-  if (typeof value === "object") {
-    const entries = Object.entries(value as Readonly<Record<string, unknown>>)
-      .filter(([, child]) => child !== undefined)
-      .sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)
-    return `{${entries.map(([key, child]) => `${JSON.stringify(key)}:${canonicalJson(child)}`).join(",")}}`
-  }
-  throw new Error("Command payload cannot be canonically serialized")
-}
-
-async function sha256(value: string): Promise<string> {
-  const digest = await globalThis.crypto.subtle.digest("SHA-256", new TextEncoder().encode(value))
-  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("")
-}
-
-async function commandIdentity(effect: unknown): Promise<CommandIdentity> {
-  const commandId = globalThis.crypto.randomUUID()
-  return {
-    command_id: commandId,
-    idempotency_key: `web:${commandId}`,
-    digest_algorithm: "SHA256_CANONICAL_JSON_V1",
-    request_digest: await sha256(canonicalJson(effect)),
-  }
 }
 
 function deniedFailure(response: SessionCommandResponse): ReferenceChatFailure | null {
@@ -350,20 +326,16 @@ export function createReferenceChatController(options: {
     if (snapshot !== null) attach(sessionId, snapshot, generation)
   }
 
-  const reconcileReceipt = async (
+  const reconcileReceipt = (
     response: SessionCommandResponse,
     command: CommandIdentity,
     operation: Parameters<SessionClient["getCommandReceipt"]>[1]["operation"],
-  ): Promise<SessionCommandResponse> => {
-    const receipt = response.command_receipt
-    if (receipt.status !== "pending" && receipt.status !== "outcome_unknown") return response
-    return options.client.getCommandReceipt(command.command_id, {
-      operation,
-      idempotency_key: command.idempotency_key,
-      digest_algorithm: command.digest_algorithm,
-      request_digest: command.request_digest,
-    })
-  }
+  ): Promise<SessionCommandResponse> => reconcileReferenceCommandReceipt(
+    options.client,
+    response,
+    command,
+    operation,
+  )
 
   const pendingFailure = (
     response: SessionCommandResponse,

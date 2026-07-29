@@ -7,7 +7,14 @@ import { useCallback, useEffect, useState } from "react"
 import type { SessionListItem } from "@/contract/http"
 import type { SessionClient } from "@/engine/client"
 
-export type SessionListEntry = { id: string; title: string; updatedAt: string }
+export type SessionListEntry = {
+  id: string
+  title: string
+  updatedAt: string
+  pinned: boolean
+  folderId: string | null
+  preferenceVersion: number
+}
 
 export type SessionListView = {
   entries: SessionListEntry[]
@@ -18,7 +25,14 @@ export type SessionListView = {
 }
 
 function toEntry(item: SessionListItem): SessionListEntry {
-  return { id: item.session_id, title: item.title, updatedAt: item.updated_at }
+  return {
+    id: item.session.session_id,
+    title: item.session.title,
+    updatedAt: item.session.updated_at,
+    pinned: item.pinned,
+    folderId: item.folder_id ?? null,
+    preferenceVersion: item.preference_version,
+  }
 }
 
 type Lister = Pick<SessionClient, "listSessions">

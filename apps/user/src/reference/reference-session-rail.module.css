@@ -1,0 +1,240 @@
+.rail {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto auto auto auto minmax(0, 1fr);
+  gap: 0.85rem;
+  padding: 1rem;
+  overflow: hidden;
+  border-right: 1px solid var(--k-border);
+  background: var(--k-bg-container);
+  color: var(--k-text);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.header div:last-child {
+  display: grid;
+}
+
+.header span,
+.sectionHeading span,
+.chatSelect span,
+.empty {
+  color: var(--k-text-tertiary);
+  font-size: 0.75rem;
+}
+
+.brandMark {
+  display: grid;
+  width: 2rem;
+  height: 2rem;
+  place-items: center;
+  border-radius: 0.65rem;
+  color: var(--k-brand-on);
+  background: var(--k-brand);
+}
+
+.newChat,
+.search button,
+.addFolder button,
+.loadMore,
+.renameFolder button,
+.confirmDelete button {
+  border: 0;
+  border-radius: 0.6rem;
+  padding: 0.55rem 0.7rem;
+  color: var(--k-brand-on);
+  background: var(--k-brand);
+  cursor: pointer;
+}
+
+.search,
+.addFolder,
+.renameFolder,
+.confirmDelete {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.search input,
+.addFolder input,
+.renameFolder input,
+.chatRow select {
+  min-width: 0;
+  border: 1px solid var(--k-border);
+  border-radius: 0.55rem;
+  padding: 0.5rem 0.6rem;
+  color: var(--k-text);
+  background: var(--k-bg-base);
+}
+
+.search input,
+.addFolder input,
+.renameFolder input {
+  flex: 1;
+}
+
+.filters {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.35rem;
+}
+
+.filters button,
+.folderSelect,
+.iconAction,
+.chatSelect,
+.pin {
+  border: 0;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+
+.filters button,
+.folderSelect {
+  border-radius: 0.5rem;
+  padding: 0.45rem 0.55rem;
+  text-align: left;
+}
+
+.filters button[aria-current="page"],
+.folderSelect[aria-current="page"] {
+  color: var(--k-brand);
+  background: var(--k-brand-soft);
+}
+
+.folderSection {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.sectionHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.sectionHeading h2 {
+  margin: 0;
+  color: var(--k-text-secondary);
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.folderList {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.folderRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 0.15rem;
+}
+
+.renameFolder,
+.confirmDelete {
+  grid-column: 1 / -1;
+}
+
+.confirmDelete {
+  align-items: center;
+  font-size: 0.8rem;
+}
+
+.confirmDelete span {
+  margin-right: auto;
+}
+
+.iconAction,
+.pin {
+  padding: 0.4rem;
+  color: var(--k-text-secondary);
+}
+
+.chatSection {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  overflow: hidden;
+}
+
+.chatList {
+  min-height: 0;
+  display: grid;
+  align-content: start;
+  gap: 0.35rem;
+  overflow-y: auto;
+}
+
+.chatRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.25rem;
+  padding: 0.45rem;
+  border: 1px solid transparent;
+  border-radius: 0.7rem;
+}
+
+.chatRow[data-active="true"] {
+  border-color: var(--k-border);
+  background: var(--k-brand-soft);
+}
+
+.chatSelect {
+  min-width: 0;
+  display: grid;
+  gap: 0.15rem;
+  text-align: left;
+}
+
+.chatSelect strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chatRow select {
+  grid-column: 1 / -1;
+  width: 100%;
+  padding-block: 0.35rem;
+  font-size: 0.75rem;
+}
+
+.failure {
+  margin: 0;
+  padding: 0.55rem;
+  border: 1px solid var(--k-error-border);
+  border-radius: 0.55rem;
+  color: var(--k-error);
+  background: var(--k-error-bg);
+  font-size: 0.78rem;
+}
+
+.empty {
+  margin: 0.75rem 0;
+}
+
+.rail button:disabled,
+.rail select:disabled,
+.rail input:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+@media (max-width: 760px) {
+  .rail {
+    max-height: 45vh;
+    border-right: 0;
+    border-bottom: 1px solid var(--k-border);
+  }
+}

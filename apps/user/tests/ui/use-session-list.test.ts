@@ -6,7 +6,21 @@ import type { SessionClient } from "@/engine/client"
 import { useSessionList } from "@/ui/rail/use-session-list"
 
 function item(id: string, updatedAt: string) {
-  return { session_id: id, title: `chat ${id}`, updated_at: updatedAt }
+  return {
+    session: {
+      session_id: id,
+      project_ref: "project-1",
+      title: `chat ${id}`,
+      lifecycle: "active" as const,
+      active_branch_id: `branch-${id}`,
+      version: 1,
+      created_at: "2026-07-13T00:00:00Z",
+      updated_at: updatedAt,
+    },
+    pinned: id === "a",
+    folder_id: id === "a" ? "folder-1" : undefined,
+    preference_version: id === "a" ? 3 : 1,
+  }
 }
 
 afterEach(() => {
@@ -22,7 +36,14 @@ describe("useSessionList", () => {
     const { result } = renderHook(() => useSessionList(client, 0))
     await waitFor(() => expect(result.current.loading).toBe(false))
     expect(result.current.entries).toHaveLength(1)
-    expect(result.current.entries[0]).toEqual({ id: "a", title: "chat a", updatedAt: "2026-07-13T00:00:00Z" })
+    expect(result.current.entries[0]).toEqual({
+      id: "a",
+      title: "chat a",
+      updatedAt: "2026-07-13T00:00:00Z",
+      pinned: true,
+      folderId: "folder-1",
+      preferenceVersion: 3,
+    })
     expect(result.current.hasMore).toBe(true)
   })
 

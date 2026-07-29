@@ -7,7 +7,7 @@ import { sessionMetadataSchema, conversationBranchSchema, messageRecordSchema, m
 export const sessionEventContractMetadata = Object.freeze({
   schemaId: "kokoro.session.events.v3",
   schemaVersion: 3,
-  sourceDigestSha256: "1d570e839677c52d7b769dd321170edc84aa79eaded03ecfecbfe9fd41293cb2",
+  sourceDigestSha256: "63260ffad6ca1429034098a93992cb8a713963342f44efae6dce969bfb5ff8b8",
 })
 
 const todoSchema = z
@@ -29,6 +29,22 @@ const riskSchema = z
     level: z.string().min(1),
     source: z.string().min(1),
     reason: z.string().min(1),
+  })
+  .strict()
+
+const planStepSchema = z
+  .object({
+    step_ref: z.string().min(1),
+    label: z.string().min(1),
+    status: z.enum(["pending", "in_progress", "completed"]),
+  })
+  .strict()
+
+const planProposalSchema = z
+  .object({
+    summary: z.string().min(1),
+    steps: z.array(planStepSchema).min(1).max(256),
+    allowed_actions: z.array(z.enum(["accept", "reject"])).min(2).max(2),
   })
   .strict()
 
