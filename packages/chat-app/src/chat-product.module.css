@@ -246,6 +246,16 @@
   background: var(--k-error-bg);
 }
 
+.failure button {
+  flex: none;
+  border: 1px solid currentColor;
+  border-radius: 0.55rem;
+  padding: 0.35rem 0.65rem;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+
 .repair {
   border: 1px solid var(--k-warning-border);
   color: var(--k-warning);

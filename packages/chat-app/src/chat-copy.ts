@@ -49,6 +49,7 @@ export type ChatProductCopy = Readonly<{
   lastUpdated: string
   unsupportedPart: string
   repairRequired: string
+  refreshConversation: string
   searchChats: string
   search: string
   allChats: string
@@ -134,6 +135,7 @@ export const DEFAULT_CHAT_COPY: ChatProductCopy = Object.freeze({
   lastUpdated: "Updated",
   unsupportedPart: "This content needs a newer client.",
   repairRequired: "Refreshing the durable conversation state…",
+  refreshConversation: "Refresh conversation",
   searchChats: "Search chats",
   search: "Search",
   allChats: "All chats",

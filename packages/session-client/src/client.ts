@@ -659,10 +659,12 @@ export function createSessionClient(options: {
             headers: { accept: "text/event-stream", [LAST_EVENT_ID_HEADER]: cursor },
             signal: controller.signal,
           });
-        } catch (error) {
+        } catch {
           if (closed) return;
-          if (firstConnection) fail(new SessionClientError("network", `GET ${path} failed`, { cause: error }));
-          else scheduleReconnect();
+          // Attaching an SSE GET is effect-free. A transient network failure before the
+          // first response is therefore as safe to resume as a later disconnect and must
+          // not strand a freshly hydrated conversation in an offline terminal state.
+          scheduleReconnect();
           return;
         }
         const contentType = response.headers.get("content-type")?.split(";", 1)[0]?.trim();
@@ -682,8 +684,8 @@ export function createSessionClient(options: {
             body: problem,
           });
           if (
-            !firstConnection &&
-            (problem.error.action === "retry_same_cursor" || ["immediate", "after_delay"].includes(problem.error.retry_class))
+            problem.error.action === "retry_same_cursor" ||
+            ["immediate", "after_delay"].includes(problem.error.retry_class)
           ) {
             scheduleReconnect(response.headers);
           } else {

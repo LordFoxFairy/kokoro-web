@@ -13,5 +13,10 @@ message edit/regenerate, and explicit branch fork/activation. Every mutation use
 command-digest preimage, a stable command identity, exact receipt reconciliation after an ambiguous
 transport outcome, and a fresh authoritative snapshot before the UI returns to idle.
 
+Transport reconnect is effect-free and resumes the opaque Session cursor with bounded jitter. Any cursor,
+branch, part-version, or authorization projection repair closes the stale stream and single-flights a fresh
+complete snapshot before attaching again. A failed repair remains an explicit user-retryable state; the UI
+never displays internal recovery action tokens or treats a browser reconnect as a new Run.
+
 Product wording is supplied through a typed copy dictionary. Asset attachment controls remain absent
 until the Asset owner exposes its grant-backed intake contract; Chat never invents upload authority.

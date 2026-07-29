@@ -450,4 +450,41 @@ describe("contract-bound Session v3 client", () => {
       vi.useRealTimers();
     }
   });
+
+  it("keeps the initial stream attach alive across a transient network failure", async () => {
+    vi.useFakeTimers();
+    try {
+      const stream = vi.fn()
+        .mockRejectedValueOnce(new TypeError("network unavailable"))
+        .mockResolvedValue({
+          status: 200,
+          headers: new Headers({ "content-type": "text/event-stream" }),
+          body: new Response("").body,
+        });
+      const onConnection = vi.fn();
+      const client = createSessionClient({
+        transport: { request: async () => jsonResponse(500, {}), stream },
+        reconnectDelayMs: 1,
+        reconnectMaxDelayMs: 10,
+        random: () => 0,
+      });
+      const handle = client.openEvents({
+        sessionId: "session-12345678",
+        watermark: snapshot().snapshot_watermark,
+        onEvent: vi.fn(),
+        onConnection,
+      });
+      const readyOutcome = handle.ready.then(() => "ready", () => "rejected");
+
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(stream).toHaveBeenCalledTimes(2);
+      await expect(readyOutcome).resolves.toBe("ready");
+      expect(onConnection).toHaveBeenCalledWith({ kind: "reconnecting" });
+      expect(onConnection).toHaveBeenCalledWith({ kind: "live" });
+      handle.close();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

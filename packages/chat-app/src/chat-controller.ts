@@ -142,9 +142,40 @@ export function describeSessionFailure(input: FailureLike): ChatFailure {
 }
 
 function failureFromError(error: unknown): ChatFailure {
-  return error instanceof SessionClientError
-    ? describeSessionFailure(error)
-    : describeSessionFailure({})
+  if (!(error instanceof SessionClientError)) return describeSessionFailure({})
+  if (error.stableCode !== undefined || error.action !== undefined || error.retryClass !== undefined) {
+    return describeSessionFailure(error)
+  }
+  switch (error.kind) {
+    case "network":
+    case "repair_required":
+      return describeSessionFailure({
+        stableCode: "INTERNAL_UNAVAILABLE",
+        action: "refetch_snapshot",
+        retryClass: "immediate",
+      })
+    case "auth_required":
+      return describeSessionFailure({
+        stableCode: "SESSION_ACCESS_GRANT_REQUIRED",
+        action: "refresh_grant",
+        retryClass: "after_user_action",
+      })
+    case "contract_incompatible":
+      return describeSessionFailure({
+        stableCode: "CLIENT_CONTRACT_UPGRADE_REQUIRED",
+        action: "upgrade_client",
+        retryClass: "after_user_action",
+      })
+    case "command_conflict":
+      return describeSessionFailure({
+        stableCode: "IDEMPOTENCY_CONFLICT",
+        action: "reconcile_receipt",
+        retryClass: "reconcile_receipt",
+      })
+    case "http":
+    case "protocol":
+      return describeSessionFailure({})
+  }
 }
 
 function deniedFailure(response: SessionCommandResponse): ChatFailure | null {
@@ -177,6 +208,7 @@ export type ChatController = Readonly<{
   forkBranch(branchId: string): Promise<boolean>
   activateBranch(branchId: string): Promise<boolean>
   cancel(): Promise<void>
+  recover(): Promise<boolean>
   selectModelOption(modelOptionRevisionRef: string): void
   selectEffort(effort: string | null): void
   decideAction(input: Readonly<{
@@ -210,6 +242,7 @@ export function createChatController(options: {
     hitlDecisionSupported: true,
   }
   let stream: EventStreamHandle | null = null
+  let repairTask: Promise<boolean> | null = null
   let generation = 0
   const runProjectionVersions = new Map<string, number>()
   const listeners = new Set<() => void>()
@@ -228,6 +261,38 @@ export function createChatController(options: {
       state: failure.action === "reconcile_receipt" ? "conflict" : "failed",
       detail: failure.code,
     })
+  }
+
+  const repairFromSnapshot = (expectedGeneration: number): Promise<boolean> => {
+    if (repairTask !== null) return repairTask
+    const sessionId = state.sessionId
+    if (sessionId === null) return Promise.resolve(false)
+
+    const task = (async (): Promise<boolean> => {
+      const activeStream = stream
+      stream = null
+      activeStream?.close()
+      publish({ ...state, failure: null })
+      project({ type: "connection", connection: { kind: "reconnecting" } })
+      try {
+        const snapshot = await options.client.fetchSnapshot(sessionId)
+        if (expectedGeneration !== generation) return false
+        if (snapshot === null) {
+          publish({ ...state, phase: "not_found", snapshot: null, failure: null })
+          return false
+        }
+        attach(sessionId, snapshot, expectedGeneration)
+        return true
+      } catch (error) {
+        if (expectedGeneration === generation) fail(failureFromError(error))
+        return false
+      }
+    })()
+    repairTask = task
+    void task.finally(() => {
+      if (repairTask === task) repairTask = null
+    })
+    return task
   }
 
   const attach = (sessionId: string, snapshot: SessionSnapshot, currentGeneration: number): void => {
@@ -280,11 +345,14 @@ export function createChatController(options: {
           runProjectionVersions.set(event.payload.run.run_id, event.payload.run.projection_version)
         }
         project({ type: "event", event })
+        if (state.projection.repair.required) void repairFromSnapshot(currentGeneration)
       },
       onConnection(connection) {
         if (currentGeneration !== generation) return
         project({ type: "connection", connection })
-        if (connection.kind === "contract_incompatible") {
+        if (connection.kind === "repair_required" || connection.kind === "auth_required") {
+          void repairFromSnapshot(currentGeneration)
+        } else if (connection.kind === "contract_incompatible") {
           fail(describeSessionFailure({
             stableCode: "CLIENT_CONTRACT_UPGRADE_REQUIRED",
             action: "upgrade_client",
@@ -733,6 +801,13 @@ export function createChatController(options: {
     forkBranch: (branchId) => branchMutation(branchId, "fork_branch"),
     activateBranch: (branchId) => branchMutation(branchId, "activate_branch"),
     cancel,
+    recover() {
+      if (
+        state.failure === null ||
+        !["refetch_snapshot", "refresh_grant", "retry_same_cursor", "poll_or_stream"].includes(state.failure.action)
+      ) return Promise.resolve(false)
+      return repairFromSnapshot(generation)
+    },
     selectModelOption(modelOptionRevisionRef) {
       const selectable = options.chatCatalog?.options.some(
         (option) => option.modelOptionRevisionRef === modelOptionRevisionRef && option.availability === "available",
@@ -767,6 +842,7 @@ export function createChatController(options: {
     decidePlan,
     close() {
       generation += 1
+      repairTask = null
       stream?.close()
       stream = null
       project({ type: "connection", connection: { kind: "closed" } })
