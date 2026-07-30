@@ -33,6 +33,16 @@ describe("typed Site control routes", () => {
     expect(calls.listSites).toHaveBeenCalledWith("next");
   });
 
+  it.each([
+    "https://admin.example/api/control/sites?unknown=value",
+    "https://admin.example/api/control/sites?pageToken=one&pageToken=two",
+  ])("rejects non-canonical Site list queries: %s", async (url) => {
+    const route = await import("../app/api/control/sites/route");
+    const response = await route.GET(new Request(url));
+    expect(response.status).toBe(400);
+    expect(calls.listSites).not.toHaveBeenCalled();
+  });
+
   it("gets one request-selected Site through AdminQuery", async () => {
     const route = await import("../app/api/control/sites/[siteId]/route").catch(() => null);
     expect(route).not.toBeNull();
@@ -41,6 +51,14 @@ describe("typed Site control routes", () => {
       { params: Promise.resolve({ siteId: "site-one" }) });
     expect(response.status).toBe(200);
     expect(calls.getSite).toHaveBeenCalledWith("site-one");
+  });
+
+  it("rejects query parameters on the Site detail route", async () => {
+    const route = await import("../app/api/control/sites/[siteId]/route");
+    const response = await route.GET(new Request("https://admin.example/api/control/sites/site-one?unexpected=1"),
+      { params: Promise.resolve({ siteId: "site-one" }) });
+    expect(response.status).toBe(400);
+    expect(calls.getSite).not.toHaveBeenCalled();
   });
 
   it("registers the first Site from a complete strict request", async () => {
@@ -87,5 +105,16 @@ describe("typed Audit control route", () => {
     const response = await route.GET(new Request("https://admin.example/api/control/audit?siteId=site-one&pageToken=next"));
     expect(response.status).toBe(200);
     expect(calls.getAuditWithinScope).toHaveBeenCalledWith("site-one", "next");
+  });
+
+  it.each([
+    "https://admin.example/api/control/audit?unexpected=1",
+    "https://admin.example/api/control/audit?siteId=one&siteId=two",
+    "https://admin.example/api/control/audit?pageToken=one&pageToken=two",
+  ])("rejects non-canonical Audit queries: %s", async (url) => {
+    const route = await import("../app/api/control/audit/route");
+    const response = await route.GET(new Request(url));
+    expect(response.status).toBe(400);
+    expect(calls.getAuditWithinScope).not.toHaveBeenCalled();
   });
 });

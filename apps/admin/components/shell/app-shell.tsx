@@ -22,6 +22,7 @@ import {
   KeyOutlined,
 } from "@ant-design/icons";
 import { apiGet } from "@/lib/api";
+import { collectCursorPages } from "@/lib/cursor-pagination";
 import {
   permits,
   type Me,
@@ -97,6 +98,7 @@ function AppShellInner({ children }: { children: React.ReactNode }): React.React
   const [me, setMe] = useState<Me | null>(null);
   const [sites, setSites] = useState<Site[]>([]);
   const [siteId, setSiteId] = useState("");
+  const [siteCatalogError, setSiteCatalogError] = useState<string | null>(null);
   const [manifests] = useState<ModuleManifest[]>([]);
   const pathname = usePathname();
 
@@ -107,13 +109,23 @@ function AppShellInner({ children }: { children: React.ReactNode }): React.React
           scopeSites: loaded.effectiveSiteScopes.map((site) => site.siteId) });
       })
       .catch(() => {});
-    apiGet("/api/control/sites", siteListSchema)
+    collectCursorPages(
+      (pageToken, signal) => apiGet(
+        `/api/control/sites${pageToken ? `?pageToken=${encodeURIComponent(pageToken)}` : ""}`,
+        siteListSchema,
+        { signal },
+      ),
+      { identity: (site) => site.siteRef, maxItems: 1000, maxPages: 20, timeoutMs: 5_000 },
+    )
       .then((loaded) => {
-        const available = loaded.items.map((site) => ({ id: site.siteRef, name: site.siteRef, key: site.siteRef }));
+        const available = loaded.map((site) => ({ id: site.siteRef, name: site.siteRef, key: site.siteRef }));
+        setSiteCatalogError(null);
         setSites(available);
         setSiteId((previous) => available.some((site) => site.id === previous) ? previous : available[0]?.id ?? "");
       })
-      .catch(() => { setSites([]); setSiteId(""); });
+      .catch((error: unknown) => {
+        setSiteCatalogError(error instanceof Error ? error.message : "admin_site_catalog_incomplete");
+      });
   }, []);
 
   useEffect(() => {
@@ -193,9 +205,13 @@ function AppShellInner({ children }: { children: React.ReactNode }): React.React
                 placeholder={t("ui.selectSite")}
                 style={{ width: 200 }}
                 variant="filled"
+                status={siteCatalogError ? "error" : undefined}
                 options={sites.map((s) => ({ value: s.id, label: s.name ?? s.key ?? s.id }))}
-                notFoundContent={t("ui.noSite")}
+                notFoundContent={siteCatalogError ?? t("ui.noSite")}
               />,
+              ...(siteCatalogError ? [<span key="site-error" role="alert" style={{ color: "#ff4d4f" }}>
+                站点目录未完整加载
+              </span>] : []),
               <Select
                 key="locale"
                 aria-label={t("ui.language")}
@@ -224,7 +240,7 @@ const currentOperatorSchema = z.object({
 });
 const siteListSchema = z.object({
   items: z.array(z.object({ siteRef: z.string(), status: z.string(), securityEpoch: z.string() })),
-  nextPageToken: z.string().nullable(),
+  nextPageToken: z.string().min(1).max(256).nullable(),
 });
 
 export function AppShell({ children }: { children: React.ReactNode }): React.ReactElement {

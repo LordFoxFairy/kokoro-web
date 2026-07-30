@@ -67,4 +67,31 @@ describe("Admin typed control-plane boundary", () => {
     expect(client).toContain("canonicalSignature(input.certification.signatureBase64)");
     expect(client).toContain('Buffer.from(value, "base64")');
   });
+
+  it("keeps existing Commerce scope semantics outside the Site provisioning contract", () => {
+    const client = source("lib/control-plane/client.ts");
+    const issue = client.slice(client.indexOf("export async function issueCodeBatch"),
+      client.indexOf("export async function listCodeBatches"));
+    const commerceMutation = client.slice(client.indexOf("async function mutation<"),
+      client.indexOf("async function committedMutation"));
+    expect(issue).toContain("const context = commandContext(session);");
+    expect(issue).not.toContain('kind: "site"');
+    expect(commerceMutation).toContain("const context = commandContext(session);");
+    expect(commerceMutation).not.toContain('kind: "site"');
+  });
+
+  it("loads every bounded Site selector page and preserves cursor-paginated tables", () => {
+    const shell = source("components/shell/app-shell.tsx");
+    const sites = source("app/sites/page.tsx");
+    const audit = source("app/audit/page.tsx");
+    expect(shell).toContain("collectCursorPages");
+    expect(shell).toContain("maxItems: 1000");
+    expect(shell).toContain("timeoutMs: 5_000");
+    for (const page of [sites, audit]) {
+      expect(page).toContain("nextPageToken");
+      expect(page).toContain("加载更多");
+      expect(page).toContain("pageToken");
+      expect(page).toContain("setRows((previous)");
+    }
+  });
 });

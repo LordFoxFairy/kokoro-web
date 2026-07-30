@@ -1,9 +1,9 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { App, Button, Descriptions, Modal, Space, Tag } from "antd";
 import { ModalForm, PageContainer, ProFormText, ProFormTextArea, ProTable,
-  type ActionType, type ProColumns } from "@ant-design/pro-components";
+  type ProColumns } from "@ant-design/pro-components";
 import { z } from "zod";
 
 import { useAdmin } from "@/components/shell/app-shell";
@@ -11,7 +11,7 @@ import { apiGet, apiPost } from "@/lib/api";
 
 const site = z.object({ siteRef: z.string(), status: z.string(), securityEpoch: z.string() });
 type Site = z.infer<typeof site>;
-const siteList = z.object({ items: z.array(site), nextPageToken: z.string().nullable() });
+const siteList = z.object({ items: z.array(site), nextPageToken: z.string().min(1).max(256).nullable() });
 const receipt = z.object({ commandId: z.string(), state: z.string() });
 const registered = z.object({ siteId: z.string(), state: z.string(), replayed: z.boolean(), receipt });
 const published = z.object({ siteId: z.string(), releaseRef: z.string(), state: z.string(),
@@ -23,8 +23,39 @@ const splitValues = (value: unknown): string[] => String(value ?? "").split(/[\n
 export default function SitesPage(): React.ReactElement {
   const { message } = App.useApp();
   const { siteId, reloadSites } = useAdmin();
-  const actionRef = useRef<ActionType>(undefined);
+  const [rows, setRows] = useState<Site[]>([]);
+  const [nextPageToken, setNextPageToken] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
   const [detail, setDetail] = useState<Site | null>(null);
+  const requestGeneration = useRef(0);
+  const loadPage = useCallback((pageToken: string | null, replace: boolean) => {
+    const generation = ++requestGeneration.current;
+    const path = pageToken ? `/api/control/sites?pageToken=${encodeURIComponent(pageToken)}` : "/api/control/sites";
+    return apiGet(path, siteList)
+      .then((result) => {
+        if (generation !== requestGeneration.current) return;
+        setRows((previous) => replace ? result.items : [...previous, ...result.items]);
+        setNextPageToken(result.nextPageToken);
+      })
+      .catch((error: unknown) => {
+        if (generation === requestGeneration.current) {
+          message.error(error instanceof Error ? error.message : "加载失败");
+        }
+      })
+      .finally(() => {
+        if (generation === requestGeneration.current) setLoading(false);
+      });
+  }, [message]);
+  const startLoad = useCallback((pageToken: string | null, replace: boolean) => {
+    setLoading(true);
+    void loadPage(pageToken, replace);
+  }, [loadPage]);
+
+  useEffect(() => {
+    void loadPage(null, true);
+    return () => { requestGeneration.current += 1; };
+  }, [loadPage]);
+
   const columns: ProColumns<Site>[] = [
     { title: "Site", dataIndex: "siteRef", copyable: true, ellipsis: true },
     { title: "状态", dataIndex: "status", render: (_, row) => <Tag color="blue">{row.status}</Tag> },
@@ -39,19 +70,17 @@ export default function SitesPage(): React.ReactElement {
     content="中央 Admin 通过 Platform typed control plane 管理独立 Site。站点注册使用全局授权；发布只使用当前选中的 Site 授权。"
     extra={<Space wrap>
       <Button href="/api/control/auth/step-up?operation=site.register&resource=platform-sites&return=/sites">提升注册认证</Button>
-      <RegisterSite actionRef={actionRef} reloadSites={reloadSites} />
+      <RegisterSite onRegistered={() => { reloadSites(); startLoad(null, true); }} />
       <Button disabled={!siteId}
         href={siteId ? `/api/control/auth/step-up?operation=site.release.publish&resource=${encodeURIComponent(siteId)}&return=/sites` : undefined}>
         提升发布认证
       </Button>
-      <PublishRelease siteId={siteId} actionRef={actionRef} />
+      <PublishRelease siteId={siteId} onPublished={() => { startLoad(null, true); }} />
     </Space>}>
-    <ProTable<Site> actionRef={actionRef} rowKey="siteRef" columns={columns} search={false} pagination={false}
-      options={{ reload: true, density: true }} request={async () => { try {
-        const result = await apiGet("/api/control/sites", siteList);
-        return { data: result.items, success: true, total: result.items.length };
-      } catch (error) { message.error(error instanceof Error ? error.message : "加载失败");
-        return { data: [], success: false, total: 0 }; } }} />
+    <ProTable<Site> rowKey="siteRef" columns={columns} search={false} pagination={false}
+      dataSource={rows} loading={loading} options={{ reload: () => { startLoad(null, true); }, density: true }}
+      toolBarRender={() => nextPageToken ? [<Button key="load-more" loading={loading}
+        onClick={() => { startLoad(nextPageToken, false); }}>加载更多</Button>] : []} />
     <Modal title="站点详情" open={detail !== null} footer={null} onCancel={() => setDetail(null)} destroyOnHidden>
       {detail && <Descriptions column={1} items={[
         { key: "site", label: "Site", children: detail.siteRef },
@@ -62,9 +91,7 @@ export default function SitesPage(): React.ReactElement {
   </PageContainer>;
 }
 
-function RegisterSite({ actionRef, reloadSites }: Readonly<{
-  actionRef: React.RefObject<ActionType | undefined>; reloadSites: () => void;
-}>): React.ReactElement {
+function RegisterSite({ onRegistered }: Readonly<{ onRegistered: () => void }>): React.ReactElement {
   const { message } = App.useApp();
   return <ModalForm title="注册站点" trigger={<Button type="primary">注册站点</Button>} width={680}
     modalProps={{ destroyOnHidden: true }} onFinish={async (values) => { try {
@@ -74,7 +101,7 @@ function RegisterSite({ actionRef, reloadSites }: Readonly<{
         providerNamespace: String(values.providerNamespace), providerProjectRef: String(values.providerProjectRef),
         workloadIdentityRef: String(values.workloadIdentityRef),
       }, registered);
-      message.success("站点已进入 preview_ready"); reloadSites(); actionRef.current?.reload(); return true;
+      message.success("站点已进入 preview_ready"); onRegistered(); return true;
     } catch (error) { message.error(error instanceof Error ? error.message : "注册失败"); return false; } }}>
     <ProFormText name="siteId" label="Site ID" rules={[{ required: true }]} />
     <ProFormText name="siteKey" label="Site key" rules={[{ required: true }]} />
@@ -87,8 +114,8 @@ function RegisterSite({ actionRef, reloadSites }: Readonly<{
   </ModalForm>;
 }
 
-function PublishRelease({ siteId, actionRef }: Readonly<{
-  siteId: string; actionRef: React.RefObject<ActionType | undefined>;
+function PublishRelease({ siteId, onPublished }: Readonly<{
+  siteId: string; onPublished: () => void;
 }>): React.ReactElement {
   const { message } = App.useApp();
   return <ModalForm title="发布已认证 SiteRelease" trigger={<Button type="primary" disabled={!siteId}>发布 release</Button>}
@@ -106,7 +133,7 @@ function PublishRelease({ siteId, actionRef }: Readonly<{
         certification: { signingKeyRef: String(values.signingKeyRef), issuedAt: String(values.issuedAt),
           expiresAt: String(values.expiresAt), signatureBase64: String(values.signatureBase64) },
       }, published);
-      message.success("SiteRelease 已发布"); actionRef.current?.reload(); return true;
+      message.success("SiteRelease 已发布"); onPublished(); return true;
     } catch (error) { message.error(error instanceof Error ? error.message : "发布失败"); return false; } }}>
     <ProFormText name="releaseRef" label="Release ref" rules={[{ required: true }]} />
     <ProFormText name="webArtifactDigest" label="Web artifact SHA-256" rules={[{ required: true }]} />
