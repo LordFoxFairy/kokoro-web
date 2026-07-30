@@ -23,7 +23,7 @@ Operators use the app; server code calls Platform Admin Connect and consumes `@k
 The app owns only short-lived encrypted Web session state and UI caches. Platform owns identity, authority, offers, card inventory and receipts.
 
 ## Runtime and security
-Workload credentials are lazy bounded private files, never browser/build-time data. The BFF uses HTTP/2 mTLS plus the opaque Platform session credential. Platform deliveries require exact RSA-OAEP-256/A256GCM and ES256 profiles, complete session epochs and signed scope-selection grants. The deployment site is injected server-side and every Platform request re-authorizes current authority.
+Workload credentials are lazy bounded private files, never browser/build-time data. The BFF uses HTTP/2 mTLS plus the opaque Platform session credential. Platform deliveries require exact RSA-OAEP-256/A256GCM and ES256 profiles, complete session epochs and signed scope-selection grants. The session retains bounded Site scopes and an independently granted global scope; every effect selects its required scope and Platform re-authorizes it. No deployment-fixed Site is trusted.
 
 ## Idempotency, failure, and recovery
 Admin effects use stable command IDs and generated canonical protobuf digests. Non-secret mutations replay the exact command once after an ambiguous transport failure. Card issuance never auto-replays an unknown delivery outcome.
@@ -32,7 +32,7 @@ Admin effects use stable command IDs and generated canonical protobuf digests. N
 Add control-plane UI here and Platform behavior behind generated service methods. Never restore Prisma or `DATABASE_URL_ADMIN`.
 
 ## Current gotchas
-The typed P0 surface covers current operator, operator listing, pending approvals, offer publication and code-batch issuance/lifecycle. Older generic resource screens remain outside this surface and must not be used to add Commerce operations.
+The typed P0 surface covers current operator, operator listing, pending approvals, Site registration/publication/query, scoped audit, offer publication and code-batch issuance/lifecycle. SiteRelease certification signatures come from external CI/release authority; Admin accepts proof bytes and key references, never signing private keys. Older generic resource screens remain outside this surface and must not be used to add Site or Commerce operations.
 
 ## Verification
 Run Admin tests, lint, typecheck, build, and the Root-owned live compatibility scenario.

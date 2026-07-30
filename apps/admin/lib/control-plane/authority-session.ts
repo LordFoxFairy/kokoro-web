@@ -50,6 +50,9 @@ const selectedScope = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("site"), siteIds: z.array(z.string()).min(1), environment: z.string(), region: z.string() }).strict(),
   z.object({ kind: z.literal("global"), grantId: z.string(), environment: z.string(), region: z.string() }).strict(),
 ]);
+const retainedGlobalScope = z.object({
+  grantId: z.string().min(1).max(128), environment: z.string().min(1), region: z.string().min(1),
+}).strict();
 const authoritySessionSchema = z.object({
   operatorRef: z.string(), operatorGeneration: positive, operatorSessionRef: z.string(), credential: z.string().min(32),
   workloadIdentityRef: z.string().startsWith("spiffe://"), audience: z.string().min(1),
@@ -58,7 +61,7 @@ const authoritySessionSchema = z.object({
   assuranceLevel: z.enum(["password", "mfa", "phishing_resistant"]), factorClasses: z.array(z.string()).min(1),
   authenticatedAt: instant, stepUpAt: instant.nullable(), operatorAttestationRef: z.string(),
   operatorAttestationDigest: z.string().regex(/^[0-9a-f]{64}$/u), expiresAt: instant,
-  permissions: z.array(z.string()), scope: selectedScope,
+  permissions: z.array(z.string()), scope: selectedScope, globalScope: retainedGlobalScope.nullable(),
 }).strict();
 
 export type AdminAuthoritySession = z.infer<typeof authoritySessionSchema>;
@@ -86,7 +89,7 @@ export async function openPlatformDelivery(input: Readonly<{
   const verified = await compactVerify(compactJws, await importSPKI(signingPem, "ES256"), { algorithms: ["ES256"] });
   const claims = deliveryClaims.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(verified.payload)));
   validateDeliveryClaims(claims, config, input);
-  const scope = selectScope(claims.authority, config);
+  const { scope, globalScope } = selectScopes(claims.authority, config);
   return authoritySessionSchema.parse({
     operatorRef: claims.operator_ref, operatorGeneration: claims.operator_generation,
     operatorSessionRef: claims.operator_session_ref, credential: claims.opaque_session_credential,
@@ -98,7 +101,7 @@ export async function openPlatformDelivery(input: Readonly<{
     authenticatedAt: claims.authenticated_at, stepUpAt: claims.step_up_at,
     operatorAttestationRef: claims.operator_attestation_ref,
     operatorAttestationDigest: claims.operator_attestation_digest,
-    expiresAt: claims.session_expires_at, permissions: claims.authority.permissions, scope,
+    expiresAt: claims.session_expires_at, permissions: claims.authority.permissions, scope, globalScope,
   });
 }
 
@@ -192,17 +195,23 @@ function validateDeliveryClaims(claims: z.infer<typeof deliveryClaims>, config: 
   }
 }
 
-function selectScope(value: z.infer<typeof authority>, config: AdminWorkloadConfig): z.infer<typeof selectedScope> {
+function selectScopes(value: z.infer<typeof authority>, config: AdminWorkloadConfig): Readonly<{
+  scope: z.infer<typeof selectedScope>; globalScope: z.infer<typeof retainedGlobalScope> | null;
+}> {
   const active = (expiresAt: string) => Date.parse(expiresAt) > Date.now();
   const matchingSites = [...new Set(value.site_scopes
     .filter((scope) => scope.environment === config.axes.environment && scope.region === config.axes.region &&
       active(scope.expires_at))
     .map((scope) => scope.site_id))].sort();
-  if (matchingSites.length > 0) return { kind: "site", siteIds: matchingSites,
-    environment: config.axes.environment, region: config.axes.region };
-  const global = value.global_scopes.find((scope) => scope.environment === config.axes.environment &&
-    scope.region === config.axes.region && active(scope.expires_at));
-  if (global !== undefined) return { kind: "global", grantId: global.grant_id, environment: global.environment, region: global.region };
+  const global = value.global_scopes.filter((scope) => scope.environment === config.axes.environment &&
+    scope.region === config.axes.region && active(scope.expires_at)).sort((left, right) =>
+      left.grant_id.localeCompare(right.grant_id))[0];
+  const retained = global === undefined ? null : { grantId: global.grant_id,
+    environment: global.environment, region: global.region };
+  if (matchingSites.length > 0) return { scope: { kind: "site", siteIds: matchingSites,
+    environment: config.axes.environment, region: config.axes.region }, globalScope: retained };
+  if (global !== undefined) return { scope: { kind: "global", grantId: global.grant_id,
+    environment: global.environment, region: global.region }, globalScope: retained };
   throw new Error("admin_authority_scope_unavailable");
 }
 

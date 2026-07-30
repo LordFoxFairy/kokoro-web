@@ -103,13 +103,17 @@ function AppShellInner({ children }: { children: React.ReactNode }): React.React
   const reloadSites = useCallback(() => {
     apiGet("/api/control/operator", currentOperatorSchema)
       .then((loaded) => {
-        const scoped = loaded.effectiveSiteScopes.map((site) => ({ id: site.siteId, name: site.siteId, key: site.siteId }));
         setMe({ email: loaded.operatorRef, roleKey: loaded.state, permissions: loaded.effectivePermissions,
-          scopeSites: scoped.map((site) => site.id) });
-        setSites(scoped);
-        setSiteId((prev) => prev || scoped[0]?.id || "");
+          scopeSites: loaded.effectiveSiteScopes.map((site) => site.siteId) });
       })
       .catch(() => {});
+    apiGet("/api/control/sites", siteListSchema)
+      .then((loaded) => {
+        const available = loaded.items.map((site) => ({ id: site.siteRef, name: site.siteRef, key: site.siteRef }));
+        setSites(available);
+        setSiteId((previous) => available.some((site) => site.id === previous) ? previous : available[0]?.id ?? "");
+      })
+      .catch(() => { setSites([]); setSiteId(""); });
   }, []);
 
   useEffect(() => {
@@ -217,6 +221,10 @@ function AppShellInner({ children }: { children: React.ReactNode }): React.React
 const currentOperatorSchema = z.object({
   operatorRef: z.string(), state: z.string(), effectivePermissions: z.array(z.string()),
   effectiveSiteScopes: z.array(z.object({ siteId: z.string() })),
+});
+const siteListSchema = z.object({
+  items: z.array(z.object({ siteRef: z.string(), status: z.string(), securityEpoch: z.string() })),
+  nextPageToken: z.string().nullable(),
 });
 
 export function AppShell({ children }: { children: React.ReactNode }): React.ReactElement {

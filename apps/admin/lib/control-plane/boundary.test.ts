@@ -36,4 +36,35 @@ describe("Admin typed control-plane boundary", () => {
     expect(identity).toContain("operatorAttestationDigest");
     expect(session).toContain("sessionEpoch: input.sessionEpoch");
   });
+
+  it("uses typed Site and Audit control planes without a generic gateway fallback", () => {
+    const client = source("lib/control-plane/client.ts");
+    const sites = source("app/sites/page.tsx");
+    const audit = source("app/audit/page.tsx");
+    const shell = source("components/shell/app-shell.tsx");
+    expect(client).toContain("listSites");
+    expect(client).toContain("getSite");
+    expect(client).toContain("registerSiteRequestDigest");
+    expect(client).toContain("publishSiteReleaseRequestDigest");
+    expect(client).toContain("getAuditWithinScope");
+    expect(sites).toContain("/api/control/sites");
+    expect(sites).toContain("/api/control/sites/releases");
+    expect(sites).not.toContain("ResourceTable");
+    expect(sites).not.toContain("/api/resource");
+    expect(audit).toContain("/api/control/audit");
+    expect(audit).not.toContain("EndpointTable");
+    expect(audit).not.toContain("/api/audit");
+    expect(shell).toContain("/api/control/sites");
+  });
+
+  it("retains global authority for Site registration and narrows Site release authority", () => {
+    const client = source("lib/control-plane/client.ts");
+    const session = source("lib/control-plane/authority-session.ts");
+    expect(session).toContain("globalScope");
+    expect(client).toContain('commandContext(session, { kind: "global" })');
+    expect(client).toContain('commandContext(session, { kind: "site", siteId: input.siteId })');
+    expect(client).toContain("certification.signatureBase64");
+    expect(client).toContain("canonicalSignature(input.certification.signatureBase64)");
+    expect(client).toContain('Buffer.from(value, "base64")');
+  });
 });
