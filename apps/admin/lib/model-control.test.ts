@@ -186,7 +186,8 @@ describe("typed Model control route", () => {
 
   it.each([
     [Code.InvalidArgument, 400], [Code.Unauthenticated, 401], [Code.PermissionDenied, 403], [Code.NotFound, 404],
-    [Code.FailedPrecondition, 409], [Code.ResourceExhausted, 429], [Code.Unavailable, 503],
+    [Code.AlreadyExists, 409], [Code.FailedPrecondition, 409], [Code.ResourceExhausted, 429],
+    [Code.Unavailable, 503],
   ])("maps typed Model read code %s to HTTP %s", async (connectCode, status) => {
     const { AdminControlPlaneError } = await import("@/lib/control-plane/client");
     calls.getModelInventoryRevision.mockRejectedValueOnce(new AdminControlPlaneError(
