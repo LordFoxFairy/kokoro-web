@@ -3,20 +3,23 @@
 import { useEffect, useMemo, useState } from "react";
 import { ApiOutlined, BranchesOutlined, CloudServerOutlined, DeploymentUnitOutlined,
   RocketOutlined } from "@ant-design/icons";
-import { Alert, App, Button, Card, Col, Empty, Row, Select, Space, Statistic, Tabs, Tag, Typography } from "antd";
-import { ModalForm, PageContainer, ProFormSelect, ProFormSwitch, ProFormText,
-  ProFormTextArea, ProTable, type ProColumns } from "@ant-design/pro-components";
+import { Alert, App, Button, Card, Col, Descriptions, Empty, Row, Select, Space, Statistic, Tabs, Tag,
+  Typography } from "antd";
+import { PageContainer, ProTable, type ProColumns } from "@ant-design/pro-components";
 import { z } from "zod";
 import { apiGet, apiPost } from "@/lib/api";
 import { collectCursorPages } from "@/lib/cursor-pagination";
 import { useAdmin } from "@/components/shell/app-shell";
+import { ActivateInventoryAction, ChangeSitePolicyAction, ImportInventoryAction, MaterializeOptionsAction,
+  PublishSiteCatalogAction } from "./model-control-forms";
 
 const digest = z.string().regex(/^[a-f0-9]{64}$/u);
 const page = <Row extends z.ZodTypeAny>(row: Row) => z.object({ items: z.array(row),
   nextPageToken: z.string().nullable(), asOf: z.string().datetime() });
 const inventory = z.object({ inventoryDigest: digest, sourceReference: z.string(), counts: z.object({
-  providers: z.number(), models: z.number(), bindings: z.number(), productRoutes: z.number() }).nullable(),
+  providers: z.number(), models: z.number(), bindings: z.number(), productRoutes: z.number() }),
 importedAt: z.string().datetime(), active: z.boolean(), activePointerRevision: z.string().nullable() });
+const inventoryDetail = inventory.extend({ asOf: z.string().datetime() });
 const provider = z.object({ providerKey: z.string(), provider: z.string(), accountKey: z.string(),
   adapterKind: z.string(), priority: z.number(), secretReferencePresent: z.boolean(), status: z.string(),
   health: z.string(), availabilityEpoch: z.string(), observedAt: z.string().datetime().nullable() });
@@ -47,11 +50,12 @@ type Option = z.infer<typeof option>;
 type Policy = z.infer<typeof policy>;
 type Catalog = z.infer<typeof catalog>;
 
-const productOptions = ["chat", "music", "image", "video"].map((value) => ({ value, label: value.toUpperCase() }));
-
 export function ModelsConsole(): React.ReactElement {
   const { message } = App.useApp(); const { siteId } = useAdmin();
   const [inventories, setInventories] = useState<Inventory[]>([]);
+  const [detail, setDetail] = useState<z.infer<typeof inventoryDetail> | null>(null);
+  const [models, setModels] = useState<Definition[]>([]); const [options, setOptions] = useState<Option[]>([]);
+  const [policies, setPolicies] = useState<Policy[]>([]); const [policySiteId, setPolicySiteId] = useState("");
   const [selectedDigest, setSelectedDigest] = useState(""); const [generation, setGeneration] = useState(0);
   useEffect(() => { let active = true; collectCursorPages<Inventory>((token, signal) => apiGet(
     `/api/control/models?view=inventories${token ? `&pageToken=${encodeURIComponent(token)}` : ""}`,
@@ -62,22 +66,49 @@ export function ModelsConsole(): React.ReactElement {
         || items[0]?.inventoryDigest || "");
     }).catch((error: unknown) => { if (active) message.error(errorMessage(error, "目录加载失败")); });
   return () => { active = false; }; }, [generation, message]);
+  useEffect(() => { let current = true; if (!selectedDigest) return () => { current = false; };
+  Promise.all([
+    apiGet(`/api/control/models?view=inventory&inventoryDigest=${encodeURIComponent(selectedDigest)}`,
+      inventoryDetail),
+    collectCursorPages<Definition>((token, signal) => apiGet(`/api/control/models?view=definitions&inventoryDigest=${selectedDigest}`
+      + (token ? `&pageToken=${encodeURIComponent(token)}` : ""), page(definition), { signal }),
+    { identity: (item) => item.modelKey, maxItems: 2_048, maxPages: 24, timeoutMs: 8_000 }),
+    collectCursorPages<Option>((token, signal) => apiGet(`/api/control/models?view=options&inventoryDigest=${selectedDigest}`
+      + (token ? `&pageToken=${encodeURIComponent(token)}` : ""), page(option), { signal }),
+    { identity: (item) => item.revisionRef, maxItems: 5_000, maxPages: 50, timeoutMs: 8_000 }),
+  ]).then(([nextDetail, nextModels, nextOptions]) => { if (current) {
+    setDetail(nextDetail); setModels(nextModels); setOptions(nextOptions);
+  } }).catch((error: unknown) => { if (current) message.error(errorMessage(error, "版本上下文加载失败")); });
+  return () => { current = false; }; }, [selectedDigest, generation, message]);
+  useEffect(() => { let current = true; if (!siteId) return () => { current = false; };
+  collectCursorPages<Policy>((token, signal) => apiGet(`/api/control/models?view=policies&siteId=${encodeURIComponent(siteId)}`
+    + (token ? `&pageToken=${encodeURIComponent(token)}` : ""), page(policy), { signal }),
+  { identity: (item) => `${item.product}:${item.revision}`, maxItems: 1_000, maxPages: 20, timeoutMs: 8_000 })
+    .then((items) => { if (current) { setPolicies(items); setPolicySiteId(siteId); } })
+    .catch((error: unknown) => { if (current) message.error(errorMessage(error, "站点策略上下文加载失败")); });
+  return () => { current = false; }; }, [siteId, generation, message]);
   const active = inventories.find((item) => item.active) ?? null;
   const selected = inventories.find((item) => item.inventoryDigest === selectedDigest) ?? null;
+  const currentDetail = detail?.inventoryDigest === selectedDigest ? detail : null;
+  const currentModels = detail?.inventoryDigest === selectedDigest ? models : [];
+  const currentOptions = detail?.inventoryDigest === selectedDigest ? options : [];
+  const currentPolicies = policySiteId === siteId ? policies : [];
   const reload = () => setGeneration((value) => value + 1);
+  const submit = async (body: unknown, success: string) => { try {
+    await apiPost("/api/control/models", body, mutation); message.success(success); reload(); return true;
+  } catch (error) { message.error(errorMessage(error, "操作失败")); return false; } };
 
   return <PageContainer header={{ title: "模型控制台", subTitle: "一个全局目录，按产品组合，并按站点发布" }}
     content="从目录版本到站点发布的完整控制链路。提供方密钥只显示配置状态，永不返回引用或明文。"
-    extra={<ModelActions siteId={siteId} inventories={inventories} selectedDigest={selectedDigest}
-      onComplete={reload} />}>
+    extra={<ImportInventoryAction submit={submit} />}>
     <Alert type="info" showIcon style={{ marginBottom: 16 }} message="控制面与运行面分离"
       description="这里管理不可变目录、产品选项与站点发布；实际模型执行仍由 Model Gateway 承担。所有写操作要求对应的提升认证与预期修订。" />
     <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
       <Col xs={24} md={12} xl={6}><Card><Statistic title="当前目录修订" prefix={<DeploymentUnitOutlined />}
         value={active?.activePointerRevision ?? "未激活"} /></Card></Col>
-      <Col xs={12} md={6} xl={4}><Card><Statistic title="模型" value={active?.counts?.models ?? 0} /></Card></Col>
-      <Col xs={12} md={6} xl={4}><Card><Statistic title="提供方" value={active?.counts?.providers ?? 0} /></Card></Col>
-      <Col xs={12} md={6} xl={4}><Card><Statistic title="绑定" value={active?.counts?.bindings ?? 0} /></Card></Col>
+      <Col xs={12} md={6} xl={4}><Card><Statistic title="模型" value={active?.counts.models ?? 0} /></Card></Col>
+      <Col xs={12} md={6} xl={4}><Card><Statistic title="提供方" value={active?.counts.providers ?? 0} /></Card></Col>
+      <Col xs={12} md={6} xl={4}><Card><Statistic title="绑定" value={active?.counts.bindings ?? 0} /></Card></Col>
       <Col xs={12} md={6} xl={6}><Card><Typography.Text type="secondary">Active digest</Typography.Text><br />
         <Typography.Text code copyable ellipsis style={{ maxWidth: "100%" }}>{active?.inventoryDigest ?? "—"}</Typography.Text></Card></Col>
     </Row>
@@ -90,8 +121,13 @@ export function ModelsConsole(): React.ReactElement {
     </Card>
     <Tabs size="large" items={[
       { key: "inventory", label: iconLabel(<DeploymentUnitOutlined />, "版本"), children:
-        <CursorTable schema={inventory} view="inventories" rowKey="inventoryDigest" generation={generation}
-          columns={inventoryColumns} /> },
+        <Space direction="vertical" size="middle" style={{ width: "100%" }}>
+          <InventoryDetailCard detail={currentDetail} />
+          <Card size="small"><ActivateInventoryAction submit={submit} inventories={inventories}
+            selectedDigest={selectedDigest} /></Card>
+          <CursorTable schema={inventory} view="inventories" rowKey="inventoryDigest" generation={generation}
+            columns={inventoryColumns(setSelectedDigest)} />
+        </Space> },
       { key: "providers", label: iconLabel(<CloudServerOutlined />, "提供方"), children: selectedDigest
         ? <CursorTable schema={provider} view="providers" inventoryDigest={selectedDigest} rowKey="providerKey"
           generation={generation} columns={providerColumns} /> : <Empty /> },
@@ -105,10 +141,20 @@ export function ModelsConsole(): React.ReactElement {
             rowKey={(row) => `${row.product}:${row.role}:${row.position}:${row.modelKey}`} generation={generation}
             columns={routeColumns} /></Section></Space> : <Empty /> },
       { key: "options", label: iconLabel(<BranchesOutlined />, "产品选项"), children:
-        <CursorTable schema={option} view="options" inventoryDigest={selectedDigest || undefined}
-          rowKey="revisionRef" generation={generation} columns={optionColumns} /> },
+        <Space direction="vertical" size="middle" style={{ width: "100%" }}>
+          <Card size="small"><MaterializeOptionsAction submit={submit} inventories={inventories}
+            selectedDigest={selectedDigest} models={currentModels} /></Card>
+          <CursorTable schema={option} view="options" inventoryDigest={selectedDigest || undefined}
+            rowKey="revisionRef" generation={generation} columns={optionColumns} />
+        </Space> },
       { key: "site", label: iconLabel(<RocketOutlined />, "站点发布"), children: siteId
         ? <Space direction="vertical" size="large" style={{ width: "100%" }}>
+          <Card size="small"><Space wrap>
+            <ChangeSitePolicyAction submit={submit} siteId={siteId} inventories={inventories}
+              models={currentModels} policies={currentPolicies} />
+            <PublishSiteCatalogAction submit={submit} siteId={siteId} inventories={inventories}
+              selectedDigest={selectedDigest} options={currentOptions} />
+          </Space></Card>
           <Section title={`策略修订 · ${siteId}`}><CursorTable schema={policy} view="policies" siteId={siteId}
             rowKey={(row) => `${row.product}:${row.revision}`} generation={generation} columns={policyColumns} /></Section>
           <Section title="发布目录"><CursorTable schema={catalog} view="catalogs" siteId={siteId}
@@ -118,81 +164,21 @@ export function ModelsConsole(): React.ReactElement {
   </PageContainer>;
 }
 
-function ModelActions(props: Readonly<{ siteId: string; inventories: readonly Inventory[];
-  selectedDigest: string; onComplete: () => void }>): React.ReactElement {
-  const { message } = App.useApp(); const active = props.inventories.find((item) => item.active);
-  const submit = async (body: unknown, success: string) => { try { await apiPost("/api/control/models", body, mutation);
-    message.success(success); props.onComplete(); return true; } catch (error) { message.error(errorMessage(error, "操作失败")); return false; } };
-  return <Space wrap>
-    <Button href={stepUp("model.inventory.import", "model-inventory", "/models")}>提升目录导入认证</Button>
-    <ModalForm title="导入不可变模型目录" width={820} trigger={<Button type="primary">导入目录</Button>}
-      modalProps={{ destroyOnHidden: true }} onFinish={(values) => submit({ action: "import_inventory",
-        sourceReference: String(values.sourceReference), providers: json(values.providers), models: json(values.models),
-        bindings: json(values.bindings), productRoutes: json(values.productRoutes),
-        providerAvailability: json(values.providerAvailability || "[]") }, "目录已导入") }>
-      <ProFormText name="sourceReference" label="来源引用" rules={[{ required: true }]} />
-      <ProFormTextArea name="providers" label="提供方（JSON 数组）" fieldProps={{ rows: 5 }} rules={[{ required: true }]} />
-      <ProFormTextArea name="models" label="逻辑模型（JSON 数组）" fieldProps={{ rows: 5 }} rules={[{ required: true }]} />
-      <ProFormTextArea name="bindings" label="提供方绑定（JSON 数组）" fieldProps={{ rows: 5 }} rules={[{ required: true }]} />
-      <ProFormTextArea name="productRoutes" label="产品路由（JSON 数组）" fieldProps={{ rows: 4 }} rules={[{ required: true }]} />
-      <ProFormTextArea name="providerAvailability" label="可用性快照（JSON 数组）" initialValue="[]" fieldProps={{ rows: 3 }} />
-    </ModalForm>
-    <ModalForm title="激活目录版本" width={520} trigger={<Button>激活版本</Button>}
-      onFinish={(values) => submit({ action: "activate_inventory", targetDigest: values.targetDigest,
-        expectedPointerRevision: String(values.expectedPointerRevision) }, "目录已激活") }>
-      <ProFormSelect name="targetDigest" label="目标版本" initialValue={props.selectedDigest || undefined}
-        options={props.inventories.map((item) => ({ value: item.inventoryDigest, label: `${item.sourceReference} · ${short(item.inventoryDigest)}` }))}
-        rules={[{ required: true }]} />
-      <ProFormText name="expectedPointerRevision" label="当前指针修订" initialValue={active?.activePointerRevision ?? "0"}
-        tooltip="Compare-and-swap 防止覆盖其他管理员的新激活" rules={[{ required: true }]} />
-    </ModalForm>
-    <Button href={stepUp("model.inventory.activate", props.selectedDigest || "model-inventory", "/models")}>提升激活认证</Button>
-    <ModalForm title="物化产品模型选项" width={760} trigger={<Button>物化选项</Button>}
-      onFinish={(values) => submit({ action: "materialize_options", inventoryDigest: values.inventoryDigest,
-        options: json(values.options) }, "产品选项已物化") }>
-      <ProFormSelect name="inventoryDigest" label="目录版本" initialValue={props.selectedDigest || undefined}
-        options={props.inventories.map((item) => ({ value: item.inventoryDigest, label: item.sourceReference }))}
-        rules={[{ required: true }]} />
-      <ProFormTextArea name="options" label="选项定义（JSON 数组）" fieldProps={{ rows: 10 }} rules={[{ required: true }]} />
-    </ModalForm>
-    <Button href={stepUp("model.option.materialize", props.selectedDigest || "model-inventory", "/models")}>提升选项认证</Button>
-    <SiteActions siteId={props.siteId} inventories={props.inventories} selectedDigest={props.selectedDigest}
-      submit={submit} />
-  </Space>;
-}
-
-function SiteActions(props: Readonly<{ siteId: string; inventories: readonly Inventory[]; selectedDigest: string;
-  submit: (body: unknown, success: string) => Promise<boolean> }>): React.ReactElement {
-  return <>
-    <Button href={stepUp("model.site-policy.change", props.siteId || "site-required", "/models")}>提升站点策略认证</Button>
-    <ModalForm title="修订站点模型策略" width={700} trigger={<Button disabled={!props.siteId}>站点策略</Button>}
-      onFinish={(values) => props.submit({ action: "change_site_policy", siteId: props.siteId,
-        product: values.product, enabled: Boolean(values.enabled), catalogMode: values.catalogMode,
-        ...(values.catalogDigest ? { catalogDigest: values.catalogDigest } : {}), assignmentMode: values.assignmentMode,
-        expectedRevision: String(values.expectedRevision), assignments: json(values.assignments || "[]") }, "站点策略已修订") }>
-      <ProFormSelect name="product" label="产品" options={productOptions} rules={[{ required: true }]} />
-      <ProFormSwitch name="enabled" label="启用" initialValue />
-      <ProFormSelect name="catalogMode" label="目录模式" initialValue="follow_active" options={[
-        { value: "follow_active", label: "跟随全局 Active" }, { value: "pinned", label: "固定目录版本" }]} />
-      <ProFormText name="catalogDigest" label="固定 digest（Pinned 时必填）" />
-      <ProFormSelect name="assignmentMode" label="分配模式" initialValue="inherit" options={[
-        { value: "inherit", label: "继承目录路由" }, { value: "replace", label: "替换路由" }]} />
-      <ProFormText name="expectedRevision" label="预期当前修订" initialValue="0" rules={[{ required: true }]} />
-      <ProFormTextArea name="assignments" label="替换分配（JSON 数组）" initialValue="[]" fieldProps={{ rows: 6 }} />
-    </ModalForm>
-    <Button href={stepUp("model.site-release-catalog.publish", props.siteId || "site-required", "/models")}>提升发布认证</Button>
-    <ModalForm title="发布站点模型目录" width={700} trigger={<Button disabled={!props.siteId}>发布目录</Button>}
-      onFinish={(values) => props.submit({ action: "publish_site_release_catalog", siteId: props.siteId,
-        siteReleaseRef: values.siteReleaseRef, inventoryDigest: values.inventoryDigest,
-        surfaces: json(values.surfaces) }, "站点模型目录已发布") }>
-      <ProFormText name="siteReleaseRef" label="Site release ref" rules={[{ required: true }]} />
-      <ProFormSelect name="inventoryDigest" label="目录版本" initialValue={props.selectedDigest || undefined}
-        options={props.inventories.map((item) => ({ value: item.inventoryDigest, label: item.sourceReference }))}
-        rules={[{ required: true }]} />
-      <ProFormTextArea name="surfaces" label="Surface 发布清单（JSON 数组）" fieldProps={{ rows: 8 }}
-        rules={[{ required: true }]} />
-    </ModalForm>
-  </>;
+function InventoryDetailCard(props: Readonly<{ detail: z.infer<typeof inventoryDetail> | null }>) {
+  if (props.detail === null) return <Card><Empty description="选择一个目录版本查看权威详情" /></Card>;
+  const value = props.detail;
+  return <Card title={<Space><Typography.Text strong>{value.sourceReference}</Typography.Text>
+    {value.active ? <Tag color="success">Active</Tag> : <Tag>历史版本</Tag>}</Space>}>
+    <Descriptions column={{ xs: 1, sm: 2, lg: 3 }} items={[
+      { key: "digest", label: "Inventory digest", children: <Typography.Text code copyable>{value.inventoryDigest}</Typography.Text> },
+      { key: "revision", label: "Active 指针修订", children: value.activePointerRevision ?? "—" },
+      { key: "imported", label: "导入时间", children: new Date(value.importedAt).toLocaleString() },
+      { key: "providers", label: "提供方", children: value.counts.providers },
+      { key: "models", label: "逻辑模型", children: value.counts.models },
+      { key: "bindings", label: "绑定 / 路由", children: `${value.counts.bindings} / ${value.counts.productRoutes}` },
+      { key: "asOf", label: "一致性水位", children: new Date(value.asOf).toLocaleString() },
+    ]} />
+  </Card>;
 }
 
 function CursorTable<Row extends Record<string, unknown>>(props: Readonly<{ schema: z.ZodType<Row>;
@@ -220,18 +206,16 @@ function chips(values: unknown) { return Array.isArray(values) ? <Space wrap>{va
   <Tag key={String(value)}>{String(value)}</Tag>)}</Space> : "—"; }
 function stateTag(value: unknown) { const active = value === true || value === "active" || value === "healthy";
   return <Tag color={active ? "success" : value === "degraded" ? "warning" : "default"}>{String(value)}</Tag>; }
-function json(value: unknown): unknown { if (typeof value !== "string") return value;
-  try { return JSON.parse(value) as unknown; } catch { throw new Error("JSON 格式无效"); } }
 function errorMessage(error: unknown, fallback: string) { return error instanceof Error ? error.message : fallback; }
-function stepUp(operation: string, resource: string, back: string) { return `/api/control/auth/step-up?operation=${encodeURIComponent(operation)}`
-  + `&resource=${encodeURIComponent(resource)}&return=${encodeURIComponent(back)}`; }
 
-const inventoryColumns: ProColumns<Inventory>[] = [
+const inventoryColumns = (select: (digest: string) => void): ProColumns<Inventory>[] => [
   { title: "状态", render: (_, row) => row.active ? <Tag color="success">Active</Tag> : <Tag>历史</Tag>, width: 90 },
   { title: "来源", dataIndex: "sourceReference" }, { title: "Digest", dataIndex: "inventoryDigest", copyable: true, ellipsis: true },
-  { title: "模型 / 提供方 / 绑定 / 路由", render: (_, row) => row.counts ? `${row.counts.models} / ${row.counts.providers} / ${row.counts.bindings} / ${row.counts.productRoutes}` : "—" },
+  { title: "模型 / 提供方 / 绑定 / 路由", render: (_, row) => `${row.counts.models} / ${row.counts.providers} / ${row.counts.bindings} / ${row.counts.productRoutes}` },
   { title: "指针修订", dataIndex: "activePointerRevision", width: 100 },
   { title: "导入时间", dataIndex: "importedAt", valueType: "dateTime", width: 180 },
+  { title: "操作", valueType: "option", width: 80, render: (_, row) => <Button type="link"
+    onClick={() => select(row.inventoryDigest)}>查看详情</Button> },
 ];
 const providerColumns: ProColumns<Provider>[] = [
   { title: "Provider key", dataIndex: "providerKey", copyable: true }, { title: "实现", dataIndex: "provider" },
