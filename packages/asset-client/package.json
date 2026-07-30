@@ -1,0 +1,35 @@
+{
+  "name": "@kokoro/asset-client",
+  "version": "0.1.0",
+  "description": "Browser-safe, capability-scoped resumable Asset upload orchestration.",
+  "type": "module",
+  "sideEffects": false,
+  "engines": { "node": ">=24.0.0" },
+  "files": ["src"],
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "development": "./src/index.ts",
+      "import": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc --noEmit",
+    "prepack": "pnpm run build",
+    "lint": "eslint src",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "publishConfig": { "access": "public", "provenance": true },
+  "dependencies": {
+    "@kokoro/site-client": "workspace:*"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.39.5",
+    "@types/node": "24.13.3",
+    "eslint": "9.39.5",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.65.0",
+    "vitest": "4.1.10"
+  }
+}
