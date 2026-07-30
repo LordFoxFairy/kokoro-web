@@ -502,8 +502,8 @@ importers:
         specifier: workspace:*
         version: link:../site-app-kit
       tar:
-        specifier: 7.5.19
-        version: 7.5.19
+        specifier: 7.5.21
+        version: 7.5.21
     devDependencies:
       '@eslint/js':
         specifier: 9.39.5
@@ -4785,8 +4785,8 @@ packages:
     resolution: {integrity: sha512-uxc/zpqFg6x7C8vOE7lh6Lbda8eEL9zmVm/PLeTPBRhh1xCgdWaQ+J1CUieGpIfm2HdtsUpRv+HshiasBMcc6A==}
     engines: {node: '>=6'}
 
-  tar@7.5.19:
-    resolution: {integrity: sha512-4LeEWl96twnS2Q7Bz4MGqgazLqO+hJN63GZxXoIqh1T3VweYD997gbU1ItNsQafqqXTXd5WFyFdReLtwvRBNiw==}
+  tar@7.5.21:
+    resolution: {integrity: sha512-XdhtCvlMywwxpCW8YEq3lOXBJpUPTR2OHHcwLPO3HwsJqOHa2Ok/oJ7ruGzp+JrKoRPVCzJwAdEjqLW/vNRPHA==}
     engines: {node: '>=18'}
 
   throttle-debounce@5.0.2:
@@ -10190,7 +10190,7 @@ snapshots:
 
   tapable@2.3.3: {}
 
-  tar@7.5.19:
+  tar@7.5.21:
     dependencies:
       '@isaacs/fs-minipass': 4.0.1
       chownr: 3.0.0

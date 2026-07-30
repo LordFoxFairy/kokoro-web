@@ -95,7 +95,7 @@ test("new Site packages use one Node 24 toolchain and the generated client owns 
   }
   assert.equal(siteClientPackage.dependencies.zod, "4.4.3");
   assert.equal(siteClientPackage.dependencies["server-only"], "0.0.1");
-  assert.equal(siteScaffoldPackage.dependencies.tar, "7.5.19");
+  assert.equal(siteScaffoldPackage.dependencies.tar, "7.5.21");
   assert.equal(siteBffPackage.dependencies["server-only"], "0.0.1");
   assert.equal(chatAppPackage.dependencies["@kokoro/chat-surface"], "workspace:*");
   assert.equal(chatAppPackage.dependencies["@kokoro/asset-client"], "workspace:*");
