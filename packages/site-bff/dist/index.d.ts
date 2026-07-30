@@ -1,12 +1,14 @@
 import "server-only";
 import { createSessionBrowserV3Proxy, type OpaqueAuthSession, type PublicSiteBootstrap, type SiteBootstrap, type SiteDeploymentBinding } from "@kokoro/bff-runtime";
 import { type PublicCommandContext, type SecretPublicCommandContext, type PlatformPublicTransport } from "@kokoro/site-client/server";
-import type { AccountProductsResponse, CommandReceiptResponse, CreditSummaryResponse, EmailVerificationTransactionResponse, IdentitySessionList, PublicCommandReceiptResponse, RedemptionCommandResponse, RedemptionPreviewResponse, VerificationActivationResponse } from "@kokoro/site-client";
+import type { AccountProductsResponse, AssetUploadCommandResponse, AssetUploadIntentInput, AssetUploadIntentResponse, AssetUploadStatusResponse, CommandReceiptResponse, CreditSummaryResponse, EmailVerificationTransactionResponse, IdentitySessionList, PublicCommandReceiptResponse, ReauthenticationResponse, RecoveryCodeSetResponse, RedemptionCommandResponse, RedemptionPreviewResponse, TotpEnrollmentTransactionResponse, VerificationActivationResponse } from "@kokoro/site-client";
 import type { NodeSiteRuntimeProvider } from "@kokoro/site-runtime-node";
 export { createLaunchStateVault } from "./launch-state.js";
-export type { LaunchCommandState, LaunchOperation, LaunchStateBinding, LaunchStateVault } from "./launch-state.js";
+export type { LaunchCommandState, LaunchOperation, LaunchStateBinding, LaunchStateVault, SecurityLaunchState } from "./launch-state.js";
 export { createSiteLaunchApi, SITE_LAUNCH_STATE_COOKIE } from "./launch-api.js";
 export type { SiteLaunchApi } from "./launch-api.js";
+export { createSiteAssetApi } from "./asset-api.js";
+export type { BrowserAssetUpload, BrowserAttachmentRef, SiteAssetApi } from "./asset-api.js";
 export declare class SiteBffError extends Error {
     readonly code: "CONFIG_INVALID" | "AUTH_REJECTED" | "AUTH_MFA_REQUIRED" | "AUTH_DELIVERY_UNAVAILABLE";
     constructor(code: "CONFIG_INVALID" | "AUTH_REJECTED" | "AUTH_MFA_REQUIRED" | "AUTH_DELIVERY_UNAVAILABLE");
@@ -31,6 +33,24 @@ export type SiteOneTimeCommand = Readonly<SecretPublicCommandContext>;
 export type SiteDeliveryAttempt = Readonly<{
     command: SiteOneTimeCommand;
     priorCommandId?: string;
+}>;
+export type SiteReauthenticationTarget = Readonly<{
+    audience: "platform-public";
+    operationId: "beginTotpEnrollment" | "disableTotp" | "regenerateRecoveryCodes";
+    resource: Readonly<{
+        kind: "identity_account";
+    }>;
+}>;
+export type SiteReauthenticationInput = Readonly<{
+    stage: "password";
+    password: string;
+    target: SiteReauthenticationTarget;
+}> | Readonly<{
+    stage: "mfa";
+    challengeKind: "totp" | "recovery";
+    proofCode: string;
+    transactionRef: string;
+    target: SiteReauthenticationTarget;
 }>;
 /** A superseding delivery consumes the prior command and its recovery capability atomically. */
 export declare function supersedeSiteDelivery(prior: SiteDeliveryAttempt, fresh: SiteOneTimeCommand): SiteDeliveryAttempt;
@@ -73,6 +93,22 @@ export interface SiteBffRuntime {
         transactionSecret: string;
     }>, delivery: SiteDeliveryAttempt): Promise<VerificationActivationResponse>;
     listSecuritySessions(auth: OpaqueAuthSession): Promise<IdentitySessionList>;
+    reauthenticate(auth: OpaqueAuthSession, input: SiteReauthenticationInput, delivery: SiteDeliveryAttempt): Promise<ReauthenticationResponse>;
+    beginTotpEnrollment(auth: OpaqueAuthSession, input: Readonly<{
+        reauthenticationProof: string;
+        priorTransactionRef?: string;
+    }>, delivery: SiteDeliveryAttempt): Promise<TotpEnrollmentTransactionResponse>;
+    confirmTotpEnrollment(auth: OpaqueAuthSession, input: Readonly<{
+        transactionRef: string;
+        code: string;
+    }>, delivery: SiteDeliveryAttempt): Promise<RecoveryCodeSetResponse>;
+    disableTotp(auth: OpaqueAuthSession, input: Readonly<{
+        reauthenticationProof: string;
+        code: string;
+    }>, command: PublicCommandContext): Promise<CommandReceiptResponse>;
+    regenerateRecoveryCodes(auth: OpaqueAuthSession, input: Readonly<{
+        reauthenticationProof: string;
+    }>, delivery: SiteDeliveryAttempt): Promise<RecoveryCodeSetResponse>;
     revokeSessions(auth: OpaqueAuthSession, input: Readonly<{
         target: "current" | "others" | "all";
     }>, command: PublicCommandContext): Promise<CommandReceiptResponse>;
@@ -82,6 +118,13 @@ export interface SiteBffRuntime {
         legalAcceptanceRefs: readonly string[];
     }>, command: PublicCommandContext): Promise<RedemptionCommandResponse>;
     recoverRedemption(auth: OpaqueAuthSession, idempotencyKey: string): Promise<RedemptionCommandResponse>;
+    createAssetUploadIntent(auth: OpaqueAuthSession, input: AssetUploadIntentInput, command: PublicCommandContext): Promise<AssetUploadIntentResponse>;
+    completeAssetUpload(auth: OpaqueAuthSession, intentRef: string, input: Readonly<{
+        expectedVersion: string;
+        sessionRef: string;
+    }>, command: PublicCommandContext): Promise<AssetUploadCommandResponse>;
+    getAssetUploadStatus(auth: OpaqueAuthSession, intentRef: string): Promise<AssetUploadStatusResponse>;
+    recoverAssetUploadCommand(auth: OpaqueAuthSession, commandId: string): Promise<AssetUploadCommandResponse>;
     accountProducts(auth: OpaqueAuthSession): Promise<AccountProductsResponse>;
     creditSummary(auth: OpaqueAuthSession): Promise<CreditSummaryResponse>;
     commandReceipt(auth: OpaqueAuthSession | null, commandId: string, receiptRecoveryCapability?: string): Promise<PublicCommandReceiptResponse>;

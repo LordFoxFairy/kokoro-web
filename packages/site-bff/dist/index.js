@@ -4,6 +4,7 @@ import { bootstrapSiteRuntimeFromOpaqueSession, createOriginCsrfBrowserRequestVe
 import { createPlatformPublicClient, } from "@kokoro/site-client/server";
 export { createLaunchStateVault } from "./launch-state.js";
 export { createSiteLaunchApi, SITE_LAUNCH_STATE_COOKIE } from "./launch-api.js";
+export { createSiteAssetApi } from "./asset-api.js";
 export class SiteBffError extends Error {
     code;
     constructor(code) {
@@ -114,6 +115,47 @@ export function createSiteBffRuntime(input) {
         transport: input.provider.platformTransport({ binding: input.binding, authSession }),
         csrfToken: () => input.provider.platformCsrfToken(),
     });
+    const assemble = async (authSession) => {
+        const platform = authenticatedClient(authSession);
+        const resolved = await bootstrapSiteRuntimeFromOpaqueSession({
+            productContexts,
+            authSession,
+            personalAuthority: {
+                getPersonalContext: () => platform.execute({ operationId: "getPersonalContext", data: {} }),
+            },
+        });
+        const access = new SessionAccessManager({
+            bootstrap: resolved.bootstrap,
+            authSession: resolved.authSession,
+            authority: {
+                issueSessionAccessGrant: ({ productContextRef, projectRef, purpose, resource }) => platform.execute({
+                    operationId: "issueSessionAccessGrant",
+                    data: { body: { productContextRef, projectRef, purpose, resource } },
+                }),
+            },
+        });
+        return Object.freeze({
+            ...resolved,
+            publicBootstrap: publicSiteBootstrap(resolved.bootstrap),
+            proxy: createSessionBrowserV3Proxy({
+                bootstrap: resolved.bootstrap,
+                access,
+                transport: createSessionBrowserV3Transport(input.provider.sessionHttp({ binding: input.binding })),
+                browserRequestVerifier: createOriginCsrfBrowserRequestVerifier({
+                    runtimeEnvironment: input.binding.runtimeEnvironment,
+                    allowedOrigins: [publicOrigin],
+                    csrf: { verify: (request) => input.provider.verifyBrowserCsrf(request) },
+                }),
+            }),
+        });
+    };
+    const assetProject = async (authSession) => {
+        const runtime = await assemble(authSession);
+        return Object.freeze({
+            platform: authenticatedClient(authSession),
+            projectRef: runtime.bootstrap.defaultProjectRef,
+        });
+    };
     return Object.freeze({
         publicOrigin,
         deploymentIdentity: Object.freeze({
@@ -164,6 +206,54 @@ export function createSiteBffRuntime(input) {
         listSecuritySessions(authSession) {
             return authenticatedClient(authSession).execute({ operationId: "listIdentitySessions", data: {} });
         },
+        reauthenticate(authSession, reauthentication, delivery) {
+            return authenticatedClient(authSession).execute({
+                operationId: "reauthenticateIdentitySession",
+                data: { body: delivery.priorCommandId === undefined
+                        ? reauthentication
+                        : { stage: "supersede", priorCommandId: delivery.priorCommandId } },
+                command: delivery.command,
+            });
+        },
+        beginTotpEnrollment(authSession, enrollment, delivery) {
+            if (delivery.priorCommandId !== undefined && enrollment.priorTransactionRef === undefined) {
+                throw new TypeError("superseding TOTP enrollment requires the prior transaction");
+            }
+            return authenticatedClient(authSession).execute({
+                operationId: "beginTotpEnrollment",
+                data: { body: delivery.priorCommandId === undefined
+                        ? { ceremonyAction: "begin", reauthenticationProof: enrollment.reauthenticationProof }
+                        : { ceremonyAction: "supersede", priorCommandId: delivery.priorCommandId,
+                            priorTransactionRef: enrollment.priorTransactionRef } },
+                command: delivery.command,
+            });
+        },
+        confirmTotpEnrollment(authSession, confirmation, delivery) {
+            if (delivery.priorCommandId !== undefined) {
+                throw new TypeError("TOTP confirmation has no secret-delivery supersede operation");
+            }
+            return authenticatedClient(authSession).execute({
+                operationId: "confirmTotpEnrollment",
+                data: { body: confirmation },
+                command: delivery.command,
+            });
+        },
+        disableTotp(authSession, disable, commandIdentity) {
+            return authenticatedClient(authSession).execute({
+                operationId: "disableTotp",
+                data: { body: disable },
+                command: commandIdentity,
+            });
+        },
+        regenerateRecoveryCodes(authSession, regeneration, delivery) {
+            return authenticatedClient(authSession).execute({
+                operationId: "regenerateRecoveryCodes",
+                data: { body: delivery.priorCommandId === undefined
+                        ? { recoveryAction: "regenerate", reauthenticationProof: regeneration.reauthenticationProof }
+                        : { recoveryAction: "supersede", priorCommandId: delivery.priorCommandId } },
+                command: delivery.command,
+            });
+        },
         revokeSessions(authSession, revoke, commandIdentity) {
             return authenticatedClient(authSession).execute({
                 operationId: "revokeIdentitySessions",
@@ -193,6 +283,36 @@ export function createSiteBffRuntime(input) {
                 operationId: "recoverRedemptionCommand",
                 data: {},
                 idempotencyKey,
+            });
+        },
+        async createAssetUploadIntent(authSession, uploadInput, commandIdentity) {
+            const { platform, projectRef } = await assetProject(authSession);
+            return platform.execute({
+                operationId: "createAssetUploadIntent",
+                data: { path: { projectRef }, body: uploadInput },
+                command: commandIdentity,
+            });
+        },
+        async completeAssetUpload(authSession, intentRef, completion, commandIdentity) {
+            const { platform, projectRef } = await assetProject(authSession);
+            return platform.execute({
+                operationId: "completeAssetUpload",
+                data: { path: { projectRef, intentRef }, body: completion },
+                command: commandIdentity,
+            });
+        },
+        async getAssetUploadStatus(authSession, intentRef) {
+            const { platform, projectRef } = await assetProject(authSession);
+            return platform.execute({
+                operationId: "getAssetUploadStatus",
+                data: { path: { projectRef, intentRef } },
+            });
+        },
+        async recoverAssetUploadCommand(authSession, commandId) {
+            const { platform, projectRef } = await assetProject(authSession);
+            return platform.execute({
+                operationId: "recoverAssetUploadCommand",
+                data: { path: { projectRef, commandId } },
             });
         },
         accountProducts(authSession) {
@@ -253,40 +373,7 @@ export function createSiteBffRuntime(input) {
                 command: command(platform),
             });
         },
-        async assemble(authSession) {
-            const platform = authenticatedClient(authSession);
-            const resolved = await bootstrapSiteRuntimeFromOpaqueSession({
-                productContexts,
-                authSession,
-                personalAuthority: {
-                    getPersonalContext: () => platform.execute({ operationId: "getPersonalContext", data: {} }),
-                },
-            });
-            const access = new SessionAccessManager({
-                bootstrap: resolved.bootstrap,
-                authSession: resolved.authSession,
-                authority: {
-                    issueSessionAccessGrant: ({ productContextRef, projectRef, purpose, resource }) => platform.execute({
-                        operationId: "issueSessionAccessGrant",
-                        data: { body: { productContextRef, projectRef, purpose, resource } },
-                    }),
-                },
-            });
-            return Object.freeze({
-                ...resolved,
-                publicBootstrap: publicSiteBootstrap(resolved.bootstrap),
-                proxy: createSessionBrowserV3Proxy({
-                    bootstrap: resolved.bootstrap,
-                    access,
-                    transport: createSessionBrowserV3Transport(input.provider.sessionHttp({ binding: input.binding })),
-                    browserRequestVerifier: createOriginCsrfBrowserRequestVerifier({
-                        runtimeEnvironment: input.binding.runtimeEnvironment,
-                        allowedOrigins: [publicOrigin],
-                        csrf: { verify: (request) => input.provider.verifyBrowserCsrf(request) },
-                    }),
-                }),
-            });
-        },
+        assemble,
     });
 }
 //# sourceMappingURL=index.js.map

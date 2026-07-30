@@ -11,6 +11,9 @@ const OPERATIONS = new Set([
     "identity.verify-email",
     "identity.resend-verification",
     "identity.revoke-sessions",
+    "identity.enroll-totp",
+    "identity.disable-totp",
+    "identity.regenerate-recovery-codes",
     "redemption.preview",
     "redemption.confirm",
 ]);
@@ -34,6 +37,7 @@ function validEntry(value) {
     const item = value;
     const command = item.command;
     const preview = item.preview;
+    const security = item.security;
     if (typeof item.operation !== "string" || !OPERATIONS.has(item.operation) ||
         typeof item.flowRef !== "string" || !FLOW_REF.test(item.flowRef) ||
         typeof item.createdAt !== "number" || !Number.isSafeInteger(item.createdAt) ||
@@ -56,6 +60,66 @@ function validEntry(value) {
             previewValue.legalAcceptanceRefs.some((value) => typeof value !== "string" || value.length < 1 || value.length > 256))
             return false;
     }
+    const securityOperation = item.operation === "identity.enroll-totp" || item.operation === "identity.disable-totp" ||
+        item.operation === "identity.regenerate-recovery-codes";
+    if (securityOperation !== (security !== undefined))
+        return false;
+    if (securityOperation && preview !== undefined)
+        return false;
+    if (security !== undefined) {
+        if (security === null || typeof security !== "object" || Array.isArray(security))
+            return false;
+        const securityValue = security;
+        if (securityValue.phase === "reauthenticate_password") {
+            if ((securityValue.supersedePriorCommandId !== undefined &&
+                (typeof securityValue.supersedePriorCommandId !== "string" || !COMMAND_ID.test(securityValue.supersedePriorCommandId))) ||
+                Object.keys(securityValue).some((name) => !["phase", "supersedePriorCommandId"].includes(name)))
+                return false;
+        }
+        else if (securityValue.phase === "reauthenticate_mfa") {
+            if ((securityValue.challengeKind !== "totp" && securityValue.challengeKind !== "recovery") ||
+                typeof securityValue.transactionRef !== "string" || securityValue.transactionRef.length < 1 || securityValue.transactionRef.length > 256 ||
+                (securityValue.supersedePriorCommandId !== undefined &&
+                    (typeof securityValue.supersedePriorCommandId !== "string" || !COMMAND_ID.test(securityValue.supersedePriorCommandId))) ||
+                Object.keys(securityValue).some((name) => !["phase", "challengeKind", "transactionRef", "supersedePriorCommandId"].includes(name)))
+                return false;
+        }
+        else if (securityValue.phase === "totp_enrollment_delivery") {
+            if (item.operation !== "identity.enroll-totp" || typeof securityValue.reauthenticationProof !== "string" ||
+                securityValue.reauthenticationProof.length < 32 || securityValue.reauthenticationProof.length > 4096 ||
+                (securityValue.supersedePriorCommandId !== undefined &&
+                    (typeof securityValue.supersedePriorCommandId !== "string" || !COMMAND_ID.test(securityValue.supersedePriorCommandId))) ||
+                (securityValue.priorTransactionRef !== undefined &&
+                    (typeof securityValue.priorTransactionRef !== "string" || securityValue.priorTransactionRef.length < 1 || securityValue.priorTransactionRef.length > 256)) ||
+                ((securityValue.supersedePriorCommandId === undefined) !== (securityValue.priorTransactionRef === undefined)) ||
+                Object.keys(securityValue).some((name) => !["phase", "reauthenticationProof", "supersedePriorCommandId", "priorTransactionRef"].includes(name)))
+                return false;
+        }
+        else if (securityValue.phase === "recovery_code_delivery") {
+            if (item.operation !== "identity.regenerate-recovery-codes" || typeof securityValue.reauthenticationProof !== "string" ||
+                securityValue.reauthenticationProof.length < 32 || securityValue.reauthenticationProof.length > 4096 ||
+                (securityValue.supersedePriorCommandId !== undefined &&
+                    (typeof securityValue.supersedePriorCommandId !== "string" || !COMMAND_ID.test(securityValue.supersedePriorCommandId))) ||
+                Object.keys(securityValue).some((name) => !["phase", "reauthenticationProof", "supersedePriorCommandId"].includes(name)))
+                return false;
+        }
+        else if (securityValue.phase === "totp_confirmation") {
+            if (item.operation !== "identity.enroll-totp" || typeof securityValue.transactionRef !== "string" ||
+                securityValue.transactionRef.length < 1 || securityValue.transactionRef.length > 256 ||
+                Object.keys(securityValue).some((name) => !["phase", "transactionRef"].includes(name)))
+                return false;
+        }
+        else if (securityValue.phase === "disable_confirmation") {
+            if (item.operation !== "identity.disable-totp" || typeof securityValue.reauthenticationProof !== "string" ||
+                securityValue.reauthenticationProof.length < 32 || securityValue.reauthenticationProof.length > 4096 ||
+                Object.keys(securityValue).some((name) => !["phase", "reauthenticationProof"].includes(name)))
+                return false;
+        }
+        else
+            return false;
+        if (securityValue.phase !== "disable_confirmation" && commandValue.receiptRecoveryCapability === undefined)
+            return false;
+    }
     return true;
 }
 export function createLaunchStateVault(input) {
@@ -75,6 +139,7 @@ export function createLaunchStateVault(input) {
                     ...entry.preview,
                     legalAcceptanceRefs: Object.freeze([...entry.preview.legalAcceptanceRefs]),
                 }) }),
+            ...(entry.security === undefined ? {} : { security: Object.freeze({ ...entry.security }) }),
         })));
     }
     function seal(entries) {

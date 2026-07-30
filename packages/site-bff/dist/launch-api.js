@@ -54,12 +54,34 @@ function unavailable(status = 503) {
 }
 async function boundedJson(request) {
     const declared = request.headers.get("content-length");
-    if (declared !== null && (!/^\d+$/u.test(declared) || Number(declared) > MAXIMUM_BODY_BYTES))
+    if (declared !== null && (!/^\d+$/u.test(declared) || Number(declared) > MAXIMUM_BODY_BYTES)) {
+        await request.body?.cancel("request body exceeds the bounded JSON envelope").catch(() => undefined);
         throw new Error("invalid");
-    const bytes = new Uint8Array(await request.arrayBuffer());
-    if (bytes.byteLength < 2 || bytes.byteLength > MAXIMUM_BODY_BYTES)
+    }
+    if (request.body === null)
         throw new Error("invalid");
-    const value = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+    const reader = request.body.getReader();
+    const envelope = new Uint8Array(MAXIMUM_BODY_BYTES);
+    let length = 0;
+    try {
+        while (true) {
+            const next = await reader.read();
+            if (next.done)
+                break;
+            if (length + next.value.byteLength > MAXIMUM_BODY_BYTES) {
+                await reader.cancel("request body exceeds the bounded JSON envelope").catch(() => undefined);
+                throw new Error("invalid");
+            }
+            envelope.set(next.value, length);
+            length += next.value.byteLength;
+        }
+    }
+    finally {
+        reader.releaseLock();
+    }
+    if (length < 2)
+        throw new Error("invalid");
+    const value = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(envelope.subarray(0, length)));
     if (value === null || typeof value !== "object" || Array.isArray(value))
         throw new Error("invalid");
     return value;
@@ -70,14 +92,39 @@ function text(value, minimum, maximum) {
 function operation(value) {
     return typeof value === "string" && [
         "identity.register", "identity.verify-email", "identity.resend-verification",
-        "identity.revoke-sessions", "redemption.preview", "redemption.confirm",
+        "identity.revoke-sessions", "identity.enroll-totp", "identity.disable-totp",
+        "identity.regenerate-recovery-codes", "redemption.preview", "redemption.confirm",
     ].includes(value) ? value : null;
 }
 function flow(value) {
     return typeof value === "string" && FLOW_REF.test(value) ? value : null;
 }
 function authRequired(value) {
-    return value.startsWith("redemption.") || value === "identity.revoke-sessions";
+    return value.startsWith("redemption.") || [
+        "identity.revoke-sessions", "identity.enroll-totp", "identity.disable-totp",
+        "identity.regenerate-recovery-codes",
+    ].includes(value);
+}
+function securityTarget(operationId) {
+    const targetOperation = operationId === "identity.enroll-totp"
+        ? "beginTotpEnrollment"
+        : operationId === "identity.disable-totp"
+            ? "disableTotp"
+            : operationId === "identity.regenerate-recovery-codes"
+                ? "regenerateRecoveryCodes"
+                : null;
+    return targetOperation === null ? null : Object.freeze({
+        audience: "platform-public",
+        operationId: targetOperation,
+        resource: Object.freeze({ kind: "identity_account" }),
+    });
+}
+function secretCommand(command) {
+    return "receiptRecoveryCapability" in command ? command : null;
+}
+function ceremonyExpiresAt(now, upstreamExpiresAt) {
+    const upstream = Date.parse(upstreamExpiresAt);
+    return Number.isFinite(upstream) ? Math.min(now + STATE_TTL_MS, upstream) : now;
 }
 function publicPreview(response, legalDocuments) {
     const byRef = new Map(legalDocuments.map((document) => [document.termRef, document]));
@@ -212,13 +259,14 @@ export function createSiteLaunchApi(input) {
             const enabled = new Set(capabilities.enabledSurfaceIds);
             const operationEnabled = requestedOperation.startsWith("redemption.")
                 ? enabled.has("redeem") || enabled.has("redemption")
-                : requestedOperation === "identity.revoke-sessions"
+                : requestedOperation === "identity.revoke-sessions" || securityTarget(requestedOperation) !== null
                     ? enabled.has("account") || enabled.has("security")
                     : enabled.has("account") || enabled.has("identity");
             if (!operationEnabled)
                 return unavailable(404);
             if (action === "prepare") {
-                const secret = requestedOperation === "identity.verify-email";
+                const target = securityTarget(requestedOperation);
+                const secret = requestedOperation === "identity.verify-email" || target !== null;
                 const command = secret ? input.runtime.createOneTimeCommand() : input.runtime.createCommand();
                 const retained = requestedOperation === "redemption.preview"
                     ? entries.filter((entry) => entry.operation !== "redemption.preview")
@@ -230,6 +278,7 @@ export function createSiteLaunchApi(input) {
                     createdAt: now(),
                     lastUsedAt: now(),
                     expiresAt: now() + STATE_TTL_MS,
+                    ...(target === null ? {} : { security: { phase: "reauthenticate_password" } }),
                 });
                 return setState(new Response(null, { status: 204 }), vault.seal(next));
             }
@@ -280,6 +329,219 @@ export function createSiteLaunchApi(input) {
                         return unavailable(400);
                     await input.runtime.revokeSessions(auth, { target }, state.command);
                     return json({ state: "committed" });
+                }
+                case "identity.enroll-totp":
+                case "identity.disable-totp":
+                case "identity.regenerate-recovery-codes": {
+                    const target = securityTarget(requestedOperation);
+                    const command = secretCommand(state.command);
+                    if (target === null || state.security === undefined)
+                        return unavailable(409);
+                    const finish = (response) => setState(response, vault.seal(entries.filter((entry) => entry.operation !== requestedOperation || entry.flowRef !== flowRef)));
+                    const persist = (updated, response) => setState(response, vault.seal(vault.put(entries, updated)));
+                    const recoveryRecipe = async (expectedOperationId, priorCommand) => {
+                        const receipt = await input.runtime.commandReceipt(auth, priorCommand.commandId, priorCommand.receiptRecoveryCapability);
+                        if (receipt.reconciliation.kind !== "superseding_ceremony_required" ||
+                            receipt.reconciliation.ceremony.operationId !== expectedOperationId)
+                            return { receipt, supersede: null };
+                        const fresh = input.runtime.createOneTimeCommand();
+                        return {
+                            receipt,
+                            supersede: {
+                                command: Object.freeze({
+                                    ...fresh,
+                                    receiptRecoveryCapability: priorCommand.receiptRecoveryCapability,
+                                }),
+                                priorCommandId: priorCommand.commandId,
+                                priorTransactionRef: receipt.reconciliation.ceremony.transactionRef,
+                            },
+                        };
+                    };
+                    const persistOneTimeUnavailable = (updated, stateName) => persist(updated, json({ state: stateName, retry: "same_action" }, 202));
+                    const runEnrollmentDelivery = async (security, deliveryCommand) => {
+                        let enrolled = await input.runtime.beginTotpEnrollment(auth, security.priorTransactionRef === undefined
+                            ? { reauthenticationProof: security.reauthenticationProof }
+                            : { reauthenticationProof: security.reauthenticationProof, priorTransactionRef: security.priorTransactionRef }, security.supersedePriorCommandId === undefined
+                            ? { command: deliveryCommand }
+                            : { command: deliveryCommand, priorCommandId: security.supersedePriorCommandId });
+                        if (!("transaction" in enrolled)) {
+                            const recovered = await recoveryRecipe("beginTotpEnrollment", deliveryCommand);
+                            if (recovered.supersede === null) {
+                                return recovered.receipt.reconciliation.kind === "pending"
+                                    ? persistOneTimeUnavailable({ ...state, command: deliveryCommand, lastUsedAt: now(),
+                                        security: { phase: "totp_enrollment_delivery", ...security } }, "enrollment_recovery_required")
+                                    : finish(json({ state: "enrollment_delivery_unavailable", nextAction: "restart_reauthentication" }, 409));
+                            }
+                            enrolled = await input.runtime.beginTotpEnrollment(auth, { reauthenticationProof: security.reauthenticationProof,
+                                priorTransactionRef: recovered.supersede.priorTransactionRef }, { command: recovered.supersede.command, priorCommandId: recovered.supersede.priorCommandId });
+                            if (!("transaction" in enrolled)) {
+                                return persistOneTimeUnavailable({
+                                    ...state,
+                                    command: recovered.supersede.command,
+                                    lastUsedAt: now(),
+                                    security: {
+                                        phase: "totp_enrollment_delivery",
+                                        reauthenticationProof: security.reauthenticationProof,
+                                        supersedePriorCommandId: recovered.supersede.priorCommandId,
+                                        priorTransactionRef: recovered.supersede.priorTransactionRef,
+                                    },
+                                }, "enrollment_recovery_required");
+                            }
+                        }
+                        const updated = {
+                            ...state,
+                            command: input.runtime.createOneTimeCommand(),
+                            lastUsedAt: now(),
+                            expiresAt: ceremonyExpiresAt(now(), enrolled.transaction.expiresAt),
+                            security: { phase: "totp_confirmation", transactionRef: enrolled.transaction.transactionRef },
+                        };
+                        return persist(updated, json({
+                            state: "totp_confirmation_required",
+                            manualEntrySecret: enrolled.transaction.manualEntrySecret,
+                            otpauthUri: enrolled.transaction.otpauthUri,
+                            expiresAt: enrolled.transaction.expiresAt,
+                        }));
+                    };
+                    const runRecoveryCodeDelivery = async (security, deliveryCommand) => {
+                        let regenerated = await input.runtime.regenerateRecoveryCodes(auth, { reauthenticationProof: security.reauthenticationProof }, security.supersedePriorCommandId === undefined
+                            ? { command: deliveryCommand }
+                            : { command: deliveryCommand, priorCommandId: security.supersedePriorCommandId });
+                        if (!("recoveryCodes" in regenerated)) {
+                            const recovered = await recoveryRecipe("regenerateRecoveryCodes", deliveryCommand);
+                            if (recovered.supersede === null) {
+                                return recovered.receipt.reconciliation.kind === "pending"
+                                    ? persistOneTimeUnavailable({ ...state, command: deliveryCommand, lastUsedAt: now(),
+                                        security: { phase: "recovery_code_delivery", ...security } }, "recovery_code_delivery_recovery_required")
+                                    : finish(json({ state: "recovery_codes_unavailable", nextAction: "restart_reauthentication" }, 409));
+                            }
+                            regenerated = await input.runtime.regenerateRecoveryCodes(auth, { reauthenticationProof: security.reauthenticationProof }, { command: recovered.supersede.command, priorCommandId: recovered.supersede.priorCommandId });
+                            if (!("recoveryCodes" in regenerated)) {
+                                return persistOneTimeUnavailable({
+                                    ...state,
+                                    command: recovered.supersede.command,
+                                    lastUsedAt: now(),
+                                    security: {
+                                        phase: "recovery_code_delivery",
+                                        reauthenticationProof: security.reauthenticationProof,
+                                        supersedePriorCommandId: recovered.supersede.priorCommandId,
+                                    },
+                                }, "recovery_code_delivery_recovery_required");
+                            }
+                        }
+                        return finish(json({ state: "succeeded", generatedAt: regenerated.generatedAt, recoveryCodes: regenerated.recoveryCodes }));
+                    };
+                    if (state.security.phase === "totp_enrollment_delivery") {
+                        if (requestedOperation !== "identity.enroll-totp" || command === null)
+                            return unavailable(409);
+                        return runEnrollmentDelivery(state.security, command);
+                    }
+                    if (state.security.phase === "recovery_code_delivery") {
+                        if (requestedOperation !== "identity.regenerate-recovery-codes" || command === null)
+                            return unavailable(409);
+                        return runRecoveryCodeDelivery(state.security, command);
+                    }
+                    if (state.security.phase === "totp_confirmation") {
+                        if (requestedOperation !== "identity.enroll-totp" || command === null)
+                            return unavailable(409);
+                        const code = text(body.code, 6, 64);
+                        if (code === null)
+                            return unavailable(400);
+                        const response = await input.runtime.confirmTotpEnrollment(auth, { transactionRef: state.security.transactionRef, code }, { command });
+                        if (!("recoveryCodes" in response)) {
+                            return finish(json({
+                                state: "totp_enabled_recovery_codes_unavailable",
+                                nextAction: "reauthenticate_and_regenerate_recovery_codes",
+                            }, 409));
+                        }
+                        return finish(json({ state: "succeeded", generatedAt: response.generatedAt, recoveryCodes: response.recoveryCodes }));
+                    }
+                    if (state.security.phase === "disable_confirmation") {
+                        if (requestedOperation !== "identity.disable-totp")
+                            return unavailable(409);
+                        const code = text(body.code, 6, 64);
+                        if (code === null)
+                            return unavailable(400);
+                        await input.runtime.disableTotp(auth, { reauthenticationProof: state.security.reauthenticationProof, code }, state.command);
+                        return finish(json({ state: "succeeded" }));
+                    }
+                    if (command === null)
+                        return unavailable(409);
+                    const reauthentication = state.security.phase === "reauthenticate_password"
+                        ? (() => {
+                            const password = text(body.password, 1, 1024);
+                            return password === null ? null : { stage: "password", password, target };
+                        })()
+                        : (() => {
+                            const code = text(body.code, 6, 128);
+                            return code === null ? null : {
+                                stage: "mfa",
+                                challengeKind: state.security.challengeKind,
+                                proofCode: code,
+                                transactionRef: state.security.transactionRef,
+                                target,
+                            };
+                        })();
+                    if (reauthentication === null)
+                        return unavailable(400);
+                    let reauthenticationCommand = command;
+                    let reauthenticated = await input.runtime.reauthenticate(auth, reauthentication, state.security.supersedePriorCommandId === undefined
+                        ? { command: reauthenticationCommand }
+                        : { command: reauthenticationCommand, priorCommandId: state.security.supersedePriorCommandId });
+                    if ("kind" in reauthenticated) {
+                        const recovered = await recoveryRecipe("reauthenticateIdentitySession", reauthenticationCommand);
+                        if (recovered.supersede === null) {
+                            return recovered.receipt.reconciliation.kind === "pending"
+                                ? persistOneTimeUnavailable({ ...state, lastUsedAt: now() }, "reauthentication_recovery_required")
+                                : finish(json({ state: "reauthentication_expired", nextAction: "restart" }, 409));
+                        }
+                        reauthenticationCommand = recovered.supersede.command;
+                        reauthenticated = await input.runtime.reauthenticate(auth, reauthentication, { command: reauthenticationCommand, priorCommandId: recovered.supersede.priorCommandId });
+                        if ("kind" in reauthenticated) {
+                            return persistOneTimeUnavailable({
+                                ...state,
+                                command: reauthenticationCommand,
+                                lastUsedAt: now(),
+                                security: { ...state.security, supersedePriorCommandId: recovered.supersede.priorCommandId },
+                            }, "reauthentication_recovery_required");
+                        }
+                    }
+                    if ("pending" in reauthenticated) {
+                        const nextCommand = input.runtime.createOneTimeCommand();
+                        const expiresAt = ceremonyExpiresAt(now(), reauthenticated.pending.expiresAt);
+                        const updated = {
+                            ...state,
+                            command: nextCommand,
+                            lastUsedAt: now(),
+                            expiresAt,
+                            security: {
+                                phase: "reauthenticate_mfa",
+                                challengeKind: reauthenticated.pending.challengeKind,
+                                transactionRef: reauthenticated.pending.transactionRef,
+                            },
+                        };
+                        return persist(updated, json({
+                            state: "mfa_required",
+                            challengeKind: reauthenticated.pending.challengeKind,
+                            expiresAt: reauthenticated.pending.expiresAt,
+                        }));
+                    }
+                    if (!("proof" in reauthenticated) || reauthenticated.proof.operationId !== target.operationId)
+                        return unavailable(409);
+                    const reauthenticationProof = reauthenticated.proof.reauthenticationProof;
+                    if (requestedOperation === "identity.disable-totp") {
+                        const updated = {
+                            ...state,
+                            command: input.runtime.createCommand(),
+                            lastUsedAt: now(),
+                            expiresAt: ceremonyExpiresAt(now(), reauthenticated.proof.expiresAt),
+                            security: { phase: "disable_confirmation", reauthenticationProof },
+                        };
+                        return persist(updated, json({ state: "totp_confirmation_required" }));
+                    }
+                    if (requestedOperation === "identity.regenerate-recovery-codes") {
+                        return runRecoveryCodeDelivery({ reauthenticationProof }, input.runtime.createOneTimeCommand());
+                    }
+                    return runEnrollmentDelivery({ reauthenticationProof }, input.runtime.createOneTimeCommand());
                 }
                 case "redemption.preview": {
                     const code = text(body.code, 16, 256);

@@ -1,6 +1,30 @@
 import "server-only";
 import type { PublicCommandContext, SecretPublicCommandContext } from "@kokoro/site-client/server";
-export type LaunchOperation = "identity.register" | "identity.verify-email" | "identity.resend-verification" | "identity.revoke-sessions" | "redemption.preview" | "redemption.confirm";
+export type LaunchOperation = "identity.register" | "identity.verify-email" | "identity.resend-verification" | "identity.revoke-sessions" | "identity.enroll-totp" | "identity.disable-totp" | "identity.regenerate-recovery-codes" | "redemption.preview" | "redemption.confirm";
+export type SecurityLaunchState = Readonly<{
+    phase: "reauthenticate_password";
+    supersedePriorCommandId?: string;
+}> | Readonly<{
+    phase: "reauthenticate_mfa";
+    challengeKind: "totp" | "recovery";
+    transactionRef: string;
+    supersedePriorCommandId?: string;
+}> | Readonly<{
+    phase: "totp_enrollment_delivery";
+    reauthenticationProof: string;
+    supersedePriorCommandId?: string;
+    priorTransactionRef?: string;
+}> | Readonly<{
+    phase: "recovery_code_delivery";
+    reauthenticationProof: string;
+    supersedePriorCommandId?: string;
+}> | Readonly<{
+    phase: "totp_confirmation";
+    transactionRef: string;
+}> | Readonly<{
+    phase: "disable_confirmation";
+    reauthenticationProof: string;
+}>;
 export interface LaunchCommandState {
     readonly operation: LaunchOperation;
     readonly flowRef: string;
@@ -13,6 +37,8 @@ export interface LaunchCommandState {
         previewCredential: string;
         legalAcceptanceRefs: readonly string[];
     }>;
+    /** Sensitive ceremony state is encrypted into the HttpOnly Site cookie and never exposed to browser code. */
+    readonly security?: SecurityLaunchState;
 }
 export interface LaunchStateBinding {
     readonly siteProjectBindingRef: string;

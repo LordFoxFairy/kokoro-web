@@ -24,6 +24,10 @@ import {
 } from "@kokoro/site-client/server"
 import type {
   AccountProductsResponse,
+  AssetUploadCommandResponse,
+  AssetUploadIntentInput,
+  AssetUploadIntentResponse,
+  AssetUploadStatusResponse,
   CommandReceiptResponse,
   CreditSummaryResponse,
   EmailVerificationTransactionResponse,
@@ -42,6 +46,8 @@ export { createLaunchStateVault } from "./launch-state.js"
 export type { LaunchCommandState, LaunchOperation, LaunchStateBinding, LaunchStateVault, SecurityLaunchState } from "./launch-state.js"
 export { createSiteLaunchApi, SITE_LAUNCH_STATE_COOKIE } from "./launch-api.js"
 export type { SiteLaunchApi } from "./launch-api.js"
+export { createSiteAssetApi } from "./asset-api.js"
+export type { BrowserAssetUpload, BrowserAttachmentRef, SiteAssetApi } from "./asset-api.js"
 
 export class SiteBffError extends Error {
   constructor(readonly code: "CONFIG_INVALID" | "AUTH_REJECTED" | "AUTH_MFA_REQUIRED" | "AUTH_DELIVERY_UNAVAILABLE") {
@@ -127,6 +133,10 @@ export interface SiteBffRuntime {
   previewRedemption(auth: OpaqueAuthSession, code: string, command: PublicCommandContext): Promise<RedemptionPreviewResponse>
   confirmRedemption(auth: OpaqueAuthSession, input: Readonly<{ previewCredential: string; legalAcceptanceRefs: readonly string[] }>, command: PublicCommandContext): Promise<RedemptionCommandResponse>
   recoverRedemption(auth: OpaqueAuthSession, idempotencyKey: string): Promise<RedemptionCommandResponse>
+  createAssetUploadIntent(auth: OpaqueAuthSession, input: AssetUploadIntentInput, command: PublicCommandContext): Promise<AssetUploadIntentResponse>
+  completeAssetUpload(auth: OpaqueAuthSession, intentRef: string, input: Readonly<{ expectedVersion: string; sessionRef: string }>, command: PublicCommandContext): Promise<AssetUploadCommandResponse>
+  getAssetUploadStatus(auth: OpaqueAuthSession, intentRef: string): Promise<AssetUploadStatusResponse>
+  recoverAssetUploadCommand(auth: OpaqueAuthSession, commandId: string): Promise<AssetUploadCommandResponse>
   accountProducts(auth: OpaqueAuthSession): Promise<AccountProductsResponse>
   creditSummary(auth: OpaqueAuthSession): Promise<CreditSummaryResponse>
   commandReceipt(auth: OpaqueAuthSession | null, commandId: string, receiptRecoveryCapability?: string): Promise<PublicCommandReceiptResponse>
@@ -239,6 +249,52 @@ export function createSiteBffRuntime(input: Readonly<{
     transport: input.provider.platformTransport({ binding: input.binding, authSession }),
     csrfToken: () => input.provider.platformCsrfToken(),
   })
+
+  const assemble = async (authSession: OpaqueAuthSession): Promise<SiteSessionRuntime> => {
+    const platform = authenticatedClient(authSession)
+    const resolved = await bootstrapSiteRuntimeFromOpaqueSession({
+      productContexts,
+      authSession,
+      personalAuthority: {
+        getPersonalContext: () => platform.execute({ operationId: "getPersonalContext", data: {} }),
+      },
+    })
+    const access = new SessionAccessManager({
+      bootstrap: resolved.bootstrap,
+      authSession: resolved.authSession,
+      authority: {
+        issueSessionAccessGrant: ({ productContextRef, projectRef, purpose, resource }) => platform.execute({
+          operationId: "issueSessionAccessGrant",
+          data: { body: { productContextRef, projectRef, purpose, resource } },
+        }),
+      },
+    })
+    return Object.freeze({
+      ...resolved,
+      publicBootstrap: publicSiteBootstrap(resolved.bootstrap),
+      proxy: createSessionBrowserV3Proxy({
+        bootstrap: resolved.bootstrap,
+        access,
+        transport: createSessionBrowserV3Transport(input.provider.sessionHttp({ binding: input.binding })),
+        browserRequestVerifier: createOriginCsrfBrowserRequestVerifier({
+          runtimeEnvironment: input.binding.runtimeEnvironment,
+          allowedOrigins: [publicOrigin],
+          csrf: { verify: (request) => input.provider.verifyBrowserCsrf(request) },
+        }),
+      }),
+    })
+  }
+
+  const assetProject = async (authSession: OpaqueAuthSession): Promise<Readonly<{
+    platform: ReturnType<typeof createPlatformPublicClient>
+    projectRef: string
+  }>> => {
+    const runtime = await assemble(authSession)
+    return Object.freeze({
+      platform: authenticatedClient(authSession),
+      projectRef: runtime.bootstrap.defaultProjectRef,
+    })
+  }
 
   return Object.freeze({
     publicOrigin,
@@ -404,6 +460,45 @@ export function createSiteBffRuntime(input: Readonly<{
         idempotencyKey,
       })
     },
+    async createAssetUploadIntent(
+      authSession: OpaqueAuthSession,
+      uploadInput: AssetUploadIntentInput,
+      commandIdentity: PublicCommandContext,
+    ) {
+      const { platform, projectRef } = await assetProject(authSession)
+      return platform.execute({
+        operationId: "createAssetUploadIntent",
+        data: { path: { projectRef }, body: uploadInput },
+        command: commandIdentity,
+      })
+    },
+    async completeAssetUpload(
+      authSession: OpaqueAuthSession,
+      intentRef: string,
+      completion: Readonly<{ expectedVersion: string; sessionRef: string }>,
+      commandIdentity: PublicCommandContext,
+    ) {
+      const { platform, projectRef } = await assetProject(authSession)
+      return platform.execute({
+        operationId: "completeAssetUpload",
+        data: { path: { projectRef, intentRef }, body: completion },
+        command: commandIdentity,
+      })
+    },
+    async getAssetUploadStatus(authSession: OpaqueAuthSession, intentRef: string) {
+      const { platform, projectRef } = await assetProject(authSession)
+      return platform.execute({
+        operationId: "getAssetUploadStatus",
+        data: { path: { projectRef, intentRef } },
+      })
+    },
+    async recoverAssetUploadCommand(authSession: OpaqueAuthSession, commandId: string) {
+      const { platform, projectRef } = await assetProject(authSession)
+      return platform.execute({
+        operationId: "recoverAssetUploadCommand",
+        data: { path: { projectRef, commandId } },
+      })
+    },
     accountProducts(authSession: OpaqueAuthSession) {
       return authenticatedClient(authSession).execute({ operationId: "listAccountProducts", data: {} })
     },
@@ -468,40 +563,7 @@ export function createSiteBffRuntime(input: Readonly<{
         command: command(platform),
       })
     },
-    async assemble(authSession: OpaqueAuthSession): Promise<SiteSessionRuntime> {
-      const platform = authenticatedClient(authSession)
-      const resolved = await bootstrapSiteRuntimeFromOpaqueSession({
-        productContexts,
-        authSession,
-        personalAuthority: {
-          getPersonalContext: () => platform.execute({ operationId: "getPersonalContext", data: {} }),
-        },
-      })
-      const access = new SessionAccessManager({
-        bootstrap: resolved.bootstrap,
-        authSession: resolved.authSession,
-        authority: {
-          issueSessionAccessGrant: ({ productContextRef, projectRef, purpose, resource }) => platform.execute({
-            operationId: "issueSessionAccessGrant",
-            data: { body: { productContextRef, projectRef, purpose, resource } },
-          }),
-        },
-      })
-      return Object.freeze({
-        ...resolved,
-        publicBootstrap: publicSiteBootstrap(resolved.bootstrap),
-        proxy: createSessionBrowserV3Proxy({
-          bootstrap: resolved.bootstrap,
-          access,
-          transport: createSessionBrowserV3Transport(input.provider.sessionHttp({ binding: input.binding })),
-          browserRequestVerifier: createOriginCsrfBrowserRequestVerifier({
-            runtimeEnvironment: input.binding.runtimeEnvironment,
-            allowedOrigins: [publicOrigin],
-            csrf: { verify: (request) => input.provider.verifyBrowserCsrf(request) },
-          }),
-        }),
-      })
-    },
+    assemble,
   })
 }
 
