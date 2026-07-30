@@ -302,6 +302,7 @@ describe("Model control console boundary", () => {
 
   it("uses one typed BFF for the entire Model control lifecycle", () => {
     const consoleSource = `${source("app/models/models-console.tsx")}\n${source("app/models/model-control-forms.tsx")}`;
+    const recoverySource = source("lib/model-recovery-coordinator.ts");
 
     expect(consoleSource).toContain("/api/control/models");
     expect(consoleSource).not.toContain("/api/resource");
@@ -313,18 +314,32 @@ describe("Model control console boundary", () => {
       "model.site-policy.change", "model.site-release-catalog.publish"]) {
       expect(consoleSource).toContain(`operation="${operation}"`);
     }
-    expect(consoleSource).toContain("kokoro.admin.model-recovery.v1");
+    expect(recoverySource).toContain("kokoro.admin.model-recovery.v1");
     expect(consoleSource).toContain("立即对账");
     expect(consoleSource).toContain("pendingRecoveryRef");
     expect(consoleSource).toContain("只有权威 committed 收据可以解除写入锁定");
     expect(consoleSource).not.toContain("丢弃恢复引用");
     expect(consoleSource).not.toContain("线下核对并丢弃");
-    expect(consoleSource.match(/clearRecovery\(\)/gu)).toHaveLength(1);
-    const persisted = consoleSource.indexOf("localStorage.setItem(RECOVERY_STORAGE_KEY, prepared.recoveryRef)");
+    expect(recoverySource).toContain("compareAndRemoveModelRecovery");
+    const persisted = recoverySource.indexOf("storage.setItem(MODEL_RECOVERY_STORAGE_KEY, prepared.recoveryRef)");
     const executed = consoleSource.indexOf("phase: \"execute\"");
     expect(persisted).toBeGreaterThan(-1);
-    expect(executed).toBeGreaterThan(persisted);
+    expect(executed).toBeGreaterThan(-1);
     expect(consoleSource).not.toContain("localStorage.setItem(RECOVERY_STORAGE_KEY, JSON.stringify(body))");
+  });
+
+  it("fails closed until recovery ownership is established across tabs", () => {
+    const consoleSource = source("app/models/models-console.tsx");
+    const recoverySource = source("lib/model-recovery-coordinator.ts");
+
+    expect(consoleSource).toContain("INITIAL_MODEL_RECOVERY_STATE");
+    expect(consoleSource).toContain("navigator.locks");
+    expect(consoleSource).toContain('addEventListener("storage"');
+    expect(consoleSource).toContain("runModelMutationUnderLock");
+    expect(recoverySource).toContain("compareAndRemoveModelRecovery");
+    expect(consoleSource).not.toContain(
+      "else if (stored !== null) window.localStorage.removeItem(RECOVERY_STORAGE_KEY)",
+    );
   });
 
   it("exposes only provider secret presence and keeps the object-first information architecture", () => {

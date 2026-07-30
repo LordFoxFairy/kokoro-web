@@ -7,8 +7,17 @@ import { Alert, App, Button, Card, Col, Descriptions, Empty, Row, Select, Space,
   Typography } from "antd";
 import { PageContainer, ProTable, type ProColumns } from "@ant-design/pro-components";
 import { z } from "zod";
-import { ApiError, apiGet, apiPost } from "@/lib/api";
+import { apiGet, apiPost } from "@/lib/api";
 import { collectCursorPages } from "@/lib/cursor-pagination";
+import {
+  INITIAL_MODEL_RECOVERY_STATE,
+  modelRecoveryStateFromStorageEvent,
+  readAvailableModelRecoveryState,
+  reconcileModelRecoveryUnderLock,
+  runModelMutationUnderLock,
+  type ModelRecoveryLockManager,
+  type ModelRecoveryState,
+} from "@/lib/model-recovery-coordinator";
 import { useAdmin } from "@/components/shell/app-shell";
 import { ActivateInventoryAction, ChangeSitePolicyAction, ImportInventoryAction, MaterializeOptionsAction,
   PublishSiteCatalogAction } from "./model-control-forms";
@@ -46,8 +55,6 @@ const recoveredMutation = z.object({ operation: z.enum(["import_inventory", "act
   "change_site_policy", "materialize_options", "publish_site_release_catalog"]),
 receipt: z.object({ commandId: z.string(), state: z.literal("committed") }),
 result: z.record(z.string(), z.unknown()) });
-const RECOVERY_STORAGE_KEY = "kokoro.admin.model-recovery.v1";
-const RECOVERY_REF = /^[A-Za-z0-9_-]{1,1024}$/u;
 
 type Inventory = z.infer<typeof inventory>;
 type Provider = z.infer<typeof provider>;
@@ -65,18 +72,28 @@ export function ModelsConsole(): React.ReactElement {
   const [models, setModels] = useState<Definition[]>([]); const [options, setOptions] = useState<Option[]>([]);
   const [policies, setPolicies] = useState<Policy[]>([]); const [policySiteId, setPolicySiteId] = useState("");
   const [selectedDigest, setSelectedDigest] = useState(""); const [generation, setGeneration] = useState(0);
-  const [pendingRecoveryRef, setPendingRecoveryRef] = useState<string | null>(null);
+  const [recoveryState, setRecoveryState] = useState<ModelRecoveryState>(INITIAL_MODEL_RECOVERY_STATE);
+  const [mutationBusy, setMutationBusy] = useState(false);
   const [reconciling, setReconciling] = useState(false);
-  const mutationBlocked = useRef(false);
+  const mutationActive = useRef(false);
+  const pendingRecoveryRef = recoveryState.kind === "pending" ? recoveryState.recoveryRef : null;
+  const writesBlocked = recoveryState.kind !== "clear" || mutationBusy;
   useEffect(() => {
-    const stored = window.localStorage.getItem(RECOVERY_STORAGE_KEY);
     let active = true;
-    if (stored !== null && RECOVERY_REF.test(stored)) {
-      mutationBlocked.current = true;
-      queueMicrotask(() => { if (active) setPendingRecoveryRef(stored); });
-    }
-    else if (stored !== null) window.localStorage.removeItem(RECOVERY_STORAGE_KEY);
-    return () => { active = false; };
+    const synchronize = () => {
+      if (active) setRecoveryState(readAvailableModelRecoveryState(
+        window.localStorage, browserModelRecoveryLocks(),
+      ));
+    };
+    const onStorage = (event: StorageEvent) => {
+      const state = modelRecoveryStateFromStorageEvent(
+        event, window.localStorage, browserModelRecoveryLocks(),
+      );
+      if (active && state !== null) setRecoveryState(state);
+    };
+    window.addEventListener("storage", onStorage);
+    queueMicrotask(synchronize);
+    return () => { active = false; window.removeEventListener("storage", onStorage); };
   }, []);
   useEffect(() => { let active = true; collectCursorPages<Inventory>((token, signal) => apiGet(
     `/api/control/models?view=inventories${token ? `&pageToken=${encodeURIComponent(token)}` : ""}`,
@@ -115,52 +132,65 @@ export function ModelsConsole(): React.ReactElement {
   const currentOptions = detail?.inventoryDigest === selectedDigest ? options : [];
   const currentPolicies = policySiteId === siteId ? policies : [];
   const reload = () => setGeneration((value) => value + 1);
-  const clearRecovery = () => {
-    window.localStorage.removeItem(RECOVERY_STORAGE_KEY); setPendingRecoveryRef(null);
-    mutationBlocked.current = false;
-  };
   const reconcile = async () => {
     if (pendingRecoveryRef === null || reconciling) return;
     setReconciling(true);
     try {
-      await apiGet(`/api/control/models?view=receipt&recoveryRef=${encodeURIComponent(pendingRecoveryRef)}`,
-        recoveredMutation);
-      clearRecovery(); message.success("已确认上一条模型命令提交成功"); reload();
+      const result = await reconcileModelRecoveryUnderLock({
+        storage: window.localStorage,
+        locks: browserModelRecoveryLocks(),
+        recoveryRef: pendingRecoveryRef,
+        reconcile: () => apiGet(
+          `/api/control/models?view=receipt&recoveryRef=${encodeURIComponent(pendingRecoveryRef)}`,
+          recoveredMutation,
+        ),
+        onState: setRecoveryState,
+      });
+      if (result.kind === "completed") {
+        message.success("已确认上一条模型命令提交成功"); reload();
+      } else {
+        message.warning("恢复引用已被其他标签页更新，当前页面未执行清理");
+      }
     } catch (error) { message.error(errorMessage(error, "对账尚未完成，请稍后重试")); }
     finally { setReconciling(false); }
   };
   const submit = async (body: unknown, success: string) => {
-    if (pendingRecoveryRef !== null || mutationBlocked.current) {
-      message.warning("请先完成上一条模型命令的对账"); return false;
+    if (writesBlocked || mutationActive.current) {
+      message.warning("模型写入尚未解锁，请先完成恢复状态处理"); return false;
     }
-    mutationBlocked.current = true;
-    let preparedPersisted = false;
+    mutationActive.current = true; setMutationBusy(true);
     try {
-    const prepared = await apiPost("/api/control/models", { phase: "prepare", command: body }, preparedMutation);
-    window.localStorage.setItem(RECOVERY_STORAGE_KEY, prepared.recoveryRef);
-    setPendingRecoveryRef(prepared.recoveryRef);
-    preparedPersisted = true;
-    await apiPost("/api/control/models", { phase: "execute", recoveryRef: prepared.recoveryRef, command: body },
-      mutation);
-    window.localStorage.removeItem(RECOVERY_STORAGE_KEY); setPendingRecoveryRef(null);
-    mutationBlocked.current = false;
-    message.success(success); reload(); return true;
-  } catch (error) {
-    if (error instanceof ApiError && error.recoveryRef !== null && RECOVERY_REF.test(error.recoveryRef)) {
-      window.localStorage.setItem(RECOVERY_STORAGE_KEY, error.recoveryRef);
-      setPendingRecoveryRef(error.recoveryRef);
-      mutationBlocked.current = true;
-      message.warning("写入结果暂不明确，已保存恢复引用；完成对账前不会发起新写入");
-    } else {
-      if (!preparedPersisted) mutationBlocked.current = false;
-      message.error(errorMessage(error, "操作失败"));
+      const result = await runModelMutationUnderLock({
+        storage: window.localStorage,
+        locks: browserModelRecoveryLocks(),
+        prepare: () => apiPost("/api/control/models", { phase: "prepare", command: body }, preparedMutation),
+        execute: (recoveryRef) => apiPost(
+          "/api/control/models", { phase: "execute", recoveryRef, command: body }, mutation,
+        ),
+        onState: setRecoveryState,
+      });
+      if (result.kind !== "completed") {
+        message.warning(result.state.kind === "pending"
+          ? "已有模型命令结果待确认，完成对账前不会发起新写入"
+          : "当前浏览器无法安全取得模型写入锁，写入保持关闭");
+        return false;
+      }
+      message.success(success); reload(); return true;
+    } catch (error) {
+      const current = readAvailableModelRecoveryState(window.localStorage, browserModelRecoveryLocks());
+      setRecoveryState(current);
+      if (current.kind === "pending") {
+        message.warning("写入结果暂不明确，已保存恢复引用；完成对账前不会发起新写入");
+      } else message.error(errorMessage(error, "操作失败"));
+      return false;
+    } finally {
+      mutationActive.current = false; setMutationBusy(false);
     }
-    return false;
-  } };
+  };
 
   return <PageContainer header={{ title: "模型控制台", subTitle: "一个全局目录，按产品组合，并按站点发布" }}
     content="从目录版本到站点发布的完整控制链路。提供方密钥只显示配置状态，永不返回引用或明文。"
-    extra={<ImportInventoryAction submit={submit} disabled={pendingRecoveryRef !== null} />}>
+    extra={<ImportInventoryAction submit={submit} disabled={writesBlocked} />}>
     <Alert type="info" showIcon style={{ marginBottom: 16 }} message="控制面与运行面分离"
       description="这里管理不可变目录、产品选项与站点发布；实际模型执行仍由 Model Gateway 承担。所有写操作要求对应的提升认证与预期修订。" />
     {pendingRecoveryRef === null ? null : <Alert type="warning" showIcon style={{ marginBottom: 16 }}
@@ -174,6 +204,14 @@ export function ModelsConsole(): React.ReactElement {
       </Typography.Text><Button type="primary" loading={reconciling} onClick={() => void reconcile()}>
         立即对账
       </Button></Space>} />}
+    {recoveryState.kind === "initializing" ? <Alert type="info" showIcon style={{ marginBottom: 16 }}
+      message="正在确认本地恢复状态" description="确认完成前，所有模型写入保持关闭。" /> : null}
+    {recoveryState.kind === "corrupt" ? <Alert type="error" showIcon style={{ marginBottom: 16 }}
+      message="本地恢复状态损坏，模型写入已永久关闭"
+      description="原始恢复数据已原样保留且不会显示。必须由系统所有者提供明确处置后，未来版本才能解除；当前页面不会删除、覆盖或绕过该状态。" /> : null}
+    {recoveryState.kind === "unavailable" ? <Alert type="error" showIcon style={{ marginBottom: 16 }}
+      message="无法建立安全的模型写入所有权"
+      description={recoveryUnavailableDescription(recoveryState.reason)} /> : null}
     <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
       <Col xs={24} md={12} xl={6}><Card><Statistic title="当前目录修订" prefix={<DeploymentUnitOutlined />}
         value={active?.activePointerRevision ?? "未激活"} /></Card></Col>
@@ -195,7 +233,7 @@ export function ModelsConsole(): React.ReactElement {
         <Space direction="vertical" size="middle" style={{ width: "100%" }}>
           <InventoryDetailCard detail={currentDetail} />
           <Card size="small"><ActivateInventoryAction submit={submit} inventories={inventories}
-            selectedDigest={selectedDigest} disabled={pendingRecoveryRef !== null} /></Card>
+            selectedDigest={selectedDigest} disabled={writesBlocked} /></Card>
           <CursorTable schema={inventory} view="inventories" rowKey="inventoryDigest" generation={generation}
             columns={inventoryColumns(setSelectedDigest)} />
         </Space> },
@@ -214,7 +252,7 @@ export function ModelsConsole(): React.ReactElement {
       { key: "options", label: iconLabel(<BranchesOutlined />, "产品选项"), children:
         <Space direction="vertical" size="middle" style={{ width: "100%" }}>
           <Card size="small"><MaterializeOptionsAction submit={submit} inventories={inventories}
-            selectedDigest={selectedDigest} models={currentModels} disabled={pendingRecoveryRef !== null} /></Card>
+            selectedDigest={selectedDigest} models={currentModels} disabled={writesBlocked} /></Card>
           <CursorTable schema={option} view="options" inventoryDigest={selectedDigest || undefined}
             rowKey="revisionRef" generation={generation} columns={optionColumns} />
         </Space> },
@@ -222,9 +260,9 @@ export function ModelsConsole(): React.ReactElement {
         ? <Space direction="vertical" size="large" style={{ width: "100%" }}>
           <Card size="small"><Space wrap>
             <ChangeSitePolicyAction submit={submit} siteId={siteId} inventories={inventories}
-              models={currentModels} policies={currentPolicies} disabled={pendingRecoveryRef !== null} />
+              models={currentModels} policies={currentPolicies} disabled={writesBlocked} />
             <PublishSiteCatalogAction submit={submit} siteId={siteId} inventories={inventories}
-              selectedDigest={selectedDigest} options={currentOptions} disabled={pendingRecoveryRef !== null} />
+              selectedDigest={selectedDigest} options={currentOptions} disabled={writesBlocked} />
           </Space></Card>
           <Section title={`策略修订 · ${siteId}`}><CursorTable schema={policy} view="policies" siteId={siteId}
             rowKey={(row) => `${row.product}:${row.revision}`} generation={generation} columns={policyColumns} /></Section>
@@ -270,6 +308,26 @@ function CursorTable<Row extends Record<string, unknown>>(props: Readonly<{ sche
 
 function Section(props: Readonly<{ title: string; children: React.ReactNode }>): React.ReactElement {
   return <Card title={props.title} styles={{ body: { padding: 0 } }}>{props.children}</Card>;
+}
+function browserModelRecoveryLocks(): ModelRecoveryLockManager | null {
+  if (typeof navigator === "undefined" || typeof navigator.locks?.request !== "function") return null;
+  return { request: async <T,>(name: string, options: Readonly<{ mode: "exclusive" }>,
+    callback: () => Promise<T>) => {
+    const holder: { outcome?: Readonly<{ ok: true; value: T }> | Readonly<{ ok: false; error: unknown }> } = {};
+    await navigator.locks.request(name, options, async () => {
+      try { holder.outcome = { ok: true, value: await callback() }; }
+      catch (error) { holder.outcome = { ok: false, error }; }
+    });
+    const outcome = holder.outcome;
+    if (outcome === undefined) throw new Error("model_recovery_lock_callback_not_run");
+    if (!outcome.ok) throw outcome.error;
+    return outcome.value;
+  } };
+}
+function recoveryUnavailableDescription(reason: "locks" | "storage" | "invalid_prepared_ref") {
+  if (reason === "locks") return "当前浏览器不支持 Web Locks，无法保证跨标签页单写者；模型写入保持关闭。";
+  if (reason === "storage") return "本地恢复存储不可用，无法安全记录命令所有权；模型写入保持关闭。";
+  return "服务端返回了无效恢复引用。该异常不会写入或覆盖本地状态，模型写入保持关闭。";
 }
 function iconLabel(icon: React.ReactNode, text: string) { return <Space size={6}>{icon}{text}</Space>; }
 function short(value: string) { return value.length > 14 ? `${value.slice(0, 8)}…${value.slice(-6)}` : value; }
