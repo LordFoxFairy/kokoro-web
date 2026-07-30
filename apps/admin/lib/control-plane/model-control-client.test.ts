@@ -110,6 +110,23 @@ describe("typed Model query client", () => {
     expect(await response.json()).toEqual({ error: { code: contract.domainCode, receiptRef: null } });
   });
 
+  it.each([
+    ["adminSessionUnauthenticated", Code.Unauthenticated],
+    ["adminPermissionDenied", Code.PermissionDenied],
+  ] as const)("preserves the generated provider %s classification through HTTP", async (kind, code) => {
+    const contract = MODEL_CONTROL_ADMIN_ERRORS[kind];
+    calls.model.getInventoryRevision.mockRejectedValue(new ConnectError(contract.safeMessage, code,
+      undefined, [modelControlAdminErrorDetail(kind, `request-${kind}`)]));
+    const { getModelInventoryRevision } = await import("./client");
+    const { controlError } = await import("./http");
+
+    const error = await getModelInventoryRevision(digest).catch((reason: unknown) => reason);
+    expect(error).toMatchObject({ connectCode: code, domainCode: contract.domainCode });
+    const response = controlError(error);
+    expect(response.status).toBe(contract.httpStatus);
+    expect(await response.json()).toEqual({ error: { code: contract.domainCode, receiptRef: null } });
+  });
+
   it.each(["policies", "catalogs"])("rejects a cross-Site row in %s", async (kind) => {
     const page = { nextPageToken: undefined, asOf: instant };
     calls.model.listSiteModelPolicies.mockResolvedValue({ policies: [{ siteId: "site-other", product: 1,
