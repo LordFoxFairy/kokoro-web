@@ -11,7 +11,7 @@ import { apiGet, apiPost } from "@/lib/api";
 import { collectCursorPages } from "@/lib/cursor-pagination";
 import {
   INITIAL_MODEL_RECOVERY_STATE,
-  createModelRecoveryStateAuthority,
+  getBrowserDocumentModelRecoveryStateAuthority,
   modelRecoveryStateFromStorageEvent,
   readAvailableModelRecoveryState,
   reconcileModelRecoveryUnderLock,
@@ -77,7 +77,7 @@ export function ModelsConsole(): React.ReactElement {
   const [mutationBusy, setMutationBusy] = useState(false);
   const [reconciling, setReconciling] = useState(false);
   const mutationActive = useRef(false);
-  const [recoveryAuthority] = useState(createModelRecoveryStateAuthority);
+  const [recoveryAuthority] = useState(getBrowserDocumentModelRecoveryStateAuthority);
   const pendingRecoveryRef = recoveryState.kind === "pending" ? recoveryState.recoveryRef : null;
   const writesBlocked = recoveryState.kind !== "clear" || mutationBusy;
   useEffect(() => {
@@ -215,7 +215,7 @@ export function ModelsConsole(): React.ReactElement {
       message="正在确认本地恢复状态" description="确认完成前，所有模型写入保持关闭。" /> : null}
     {recoveryState.kind === "corrupt" ? <Alert type="error" showIcon style={{ marginBottom: 16 }}
       message="本地恢复状态损坏，当前页面已锁定模型写入"
-      description="原始恢复数据已原样保留且不会显示。本页面生命周期内，任何本地删除、清空或替换都不能解除；跨刷新安全解除需要未来由服务端签发并绑定损坏指纹的所有者处置凭证。" /> : null}
+      description="检测到损坏后，当前页面不会主动删除或覆盖本地恢复键，也不会执行模型命令或解除写入锁定。跨刷新安全解除需要未来由服务端签发并绑定损坏指纹的所有者处置凭证。" /> : null}
     {recoveryState.kind === "unavailable" ? <Alert type="error" showIcon style={{ marginBottom: 16 }}
       message="无法建立安全的模型写入所有权"
       description={recoveryUnavailableDescription(recoveryState.reason)} /> : null}

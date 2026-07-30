@@ -4,6 +4,7 @@ import {
   MODEL_RECOVERY_STORAGE_KEY,
   compareAndRemoveModelRecovery,
   createModelRecoveryStateAuthority,
+  getModelRecoveryStateAuthorityForDocument,
   modelRecoveryStateFromStorageEvent,
   readAvailableModelRecoveryState,
   readModelRecoveryState,
@@ -99,6 +100,35 @@ describe("model recovery coordinator", () => {
     expect(storage.getItem(MODEL_RECOVERY_STORAGE_KEY)).toBe("tab_one");
   });
 
+  it("does not overwrite corruption observed while prepare is in flight", async () => {
+    const storage = new MemoryStorage();
+    const authority = createModelRecoveryStateAuthority();
+    const locks = new SerialLocks();
+    const prepared = deferred<Readonly<{ recoveryRef: string }>>();
+    const prepare = vi.fn(() => prepared.promise);
+    const execute = vi.fn();
+    const mutation = runModelMutationUnderLock({
+      storage,
+      locks,
+      prepare,
+      execute,
+      onState: vi.fn(),
+      authority,
+    });
+    await vi.waitFor(() => expect(prepare).toHaveBeenCalledOnce());
+    const corrupt = "corrupt:" + "x".repeat(2_048);
+    storage.setItem(MODEL_RECOVERY_STORAGE_KEY, corrupt);
+    expect(modelRecoveryStateFromStorageEvent({
+      key: MODEL_RECOVERY_STORAGE_KEY, storageArea: storage,
+    }, storage, locks, authority)).toEqual({ kind: "corrupt" });
+
+    prepared.resolve({ recoveryRef: "must_not_replace_corrupt" });
+
+    await expect(mutation).resolves.toEqual({ kind: "blocked", state: { kind: "corrupt" } });
+    expect(storage.getItem(MODEL_RECOVERY_STORAGE_KEY)).toBe(corrupt);
+    expect(execute).not.toHaveBeenCalled();
+  });
+
   it("compare-and-remove never deletes a recovery ref owned by another tab", () => {
     const storage = new MemoryStorage();
     storage.setItem(MODEL_RECOVERY_STORAGE_KEY, "other_tab");
@@ -159,6 +189,27 @@ describe("model recovery coordinator", () => {
       storage, locks, recoveryRef: "plausible_ref", reconcile, onState: vi.fn(), authority,
     });
     expect(reconcile).not.toHaveBeenCalled();
+  });
+
+  it("reuses sticky authority across component rebuilds in one document and isolates another document", async () => {
+    const documentScope = {};
+    const firstMount = getModelRecoveryStateAuthorityForDocument(documentScope);
+    firstMount.observe({ kind: "corrupt" });
+
+    const rebuiltMount = getModelRecoveryStateAuthorityForDocument(documentScope);
+    expect(rebuiltMount).toBe(firstMount);
+    expect(rebuiltMount.observe({ kind: "clear" })).toEqual({ kind: "corrupt" });
+
+    const storage = new MemoryStorage();
+    const prepare = vi.fn();
+    await runModelMutationUnderLock({
+      storage, locks: new SerialLocks(), prepare, execute: vi.fn(), onState: vi.fn(), authority: rebuiltMount,
+    });
+    expect(prepare).not.toHaveBeenCalled();
+
+    const isolatedDocument = getModelRecoveryStateAuthorityForDocument({});
+    expect(isolatedDocument).not.toBe(firstMount);
+    expect(isolatedDocument.observe({ kind: "clear" })).toEqual({ kind: "clear" });
   });
 
   it("does not clear a replacement ref after a successful effect", async () => {

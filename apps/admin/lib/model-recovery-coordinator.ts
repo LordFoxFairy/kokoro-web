@@ -44,6 +44,21 @@ export function createModelRecoveryStateAuthority(): ModelRecoveryStateAuthority
   };
 }
 
+const documentAuthorities = new WeakMap<object, ModelRecoveryStateAuthority>();
+
+export function getModelRecoveryStateAuthorityForDocument(documentScope: object): ModelRecoveryStateAuthority {
+  const existing = documentAuthorities.get(documentScope);
+  if (existing !== undefined) return existing;
+  const created = createModelRecoveryStateAuthority();
+  documentAuthorities.set(documentScope, created);
+  return created;
+}
+
+export function getBrowserDocumentModelRecoveryStateAuthority(): ModelRecoveryStateAuthority {
+  if (typeof document === "undefined") return createModelRecoveryStateAuthority();
+  return getModelRecoveryStateAuthorityForDocument(document);
+}
+
 export type ModelRecoveryOperationResult<T> =
   | Readonly<{ kind: "completed"; value: T }>
   | Readonly<{ kind: "blocked"; state: ModelRecoveryState }>
@@ -117,6 +132,8 @@ export async function runModelMutationUnderLock<T>(options: Readonly<{
       if (current.kind !== "clear") return { kind: "blocked", state: current };
 
       const prepared = await options.prepare();
+      const beforePersist = publish(readAvailableModelRecoveryState(options.storage, options.locks));
+      if (beforePersist.kind !== "clear") return { kind: "blocked", state: beforePersist };
       if (!MODEL_RECOVERY_REF.test(prepared.recoveryRef)) {
         const state = publish({ kind: "unavailable", reason: "invalid_prepared_ref" });
         return { kind: "blocked", state };

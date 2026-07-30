@@ -336,7 +336,9 @@ describe("Model control console boundary", () => {
     expect(consoleSource).toContain("navigator.locks");
     expect(consoleSource).toContain('addEventListener("storage"');
     expect(consoleSource).toContain("runModelMutationUnderLock");
+    expect(consoleSource).toContain("getBrowserDocumentModelRecoveryStateAuthority");
     expect(recoverySource).toContain("compareAndRemoveModelRecovery");
+    expect(consoleSource).not.toContain("原始恢复数据已原样保留");
     expect(consoleSource).not.toContain(
       "else if (stored !== null) window.localStorage.removeItem(RECOVERY_STORAGE_KEY)",
     );
