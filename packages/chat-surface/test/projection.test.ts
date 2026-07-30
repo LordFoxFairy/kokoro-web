@@ -177,6 +177,30 @@ describe("Chat projection", () => {
 
     expect(store.getSnapshot().messages[1]?.parts[0]).toMatchObject({ text: "hi", version: 1 })
     expect(store.getSnapshot().repair).toEqual({ required: true, reason: "part_version_gap" })
+
+    const unseenPartStore = createChatProjectionStore()
+    unseenPartStore.dispatch({ type: "snapshot", snapshot: snapshot() })
+    unseenPartStore.dispatch({
+      type: "event",
+      event: event({
+        kind: "message.part.updated",
+        payload: {
+          part: {
+            part_id: "part-new-12345678",
+            message_id: "message-assistant-12345678",
+            ordinal: 1,
+            version: 2,
+            schema_version: 1,
+            lifecycle: "streaming",
+            kind: "text",
+            payload: { spans: [{ text: "missing first version" }] },
+          },
+        },
+      }),
+    })
+
+    expect(unseenPartStore.getSnapshot().messages[1]?.parts).toHaveLength(1)
+    expect(unseenPartStore.getSnapshot().repair).toEqual({ required: true, reason: "part_version_gap" })
   })
 
   it("requests snapshot repair without applying part identity drift", () => {

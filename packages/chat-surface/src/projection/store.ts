@@ -301,7 +301,11 @@ function upsertPart(
     | "part_version_gap"
 } {
   const index = message.parts.findIndex((candidate) => candidate.id === part.id)
-  if (index < 0) return { message: { ...message, parts: sortParts([...message.parts, part]) } }
+  if (index < 0) {
+    return part.version === 1
+      ? { message: { ...message, parts: sortParts([...message.parts, part]) } }
+      : { message, conflict: "part_version_gap" }
+  }
   const current = message.parts[index] as ChatPart
   if (part.ordinal !== current.ordinal || part.kind !== current.kind) {
     return { message, conflict: "part_identity_conflict" }

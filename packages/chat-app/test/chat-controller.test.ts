@@ -225,6 +225,96 @@ describe("Chat recovery controller", () => {
     controller.close()
   })
 
+  it("single-flights snapshot repair when a part update skips versions", async () => {
+    const base = snapshot("branch-original-12345678", "signed.cursor.1", "1")
+    const message = {
+      message_id: "message-assistant-12345678",
+      branch_id: "branch-original-12345678",
+      role: "assistant" as const,
+      ordinal: 0,
+      run_id: "run-12345678",
+      lifecycle: "streaming" as const,
+      parts: [{
+        part_id: "part-assistant-12345678",
+        message_id: "message-assistant-12345678",
+        ordinal: 0,
+        version: 1,
+        schema_version: 1 as const,
+        lifecycle: "streaming" as const,
+        kind: "text" as const,
+        payload: { spans: [{ text: "hello" }] },
+      }],
+      attachments: [],
+      created_at: NOW,
+    }
+    const initial: SessionSnapshot = {
+      ...base,
+      session: { ...base.session, active_leaf_message_id: message.message_id },
+      messages: [message],
+    }
+    const repaired: SessionSnapshot = {
+      ...initial,
+      messages: [{
+        ...message,
+        parts: [{ ...message.parts[0]!, version: 3, lifecycle: "completed", payload: { spans: [{ text: "repaired" }] } }],
+      }],
+      snapshot_watermark: {
+        ...initial.snapshot_watermark,
+        cursor: "signed.cursor.3",
+        durable_seq: "3",
+        projection_version: 3,
+      },
+    }
+    let resolveRepair: ((value: SessionSnapshot | null) => void) | undefined
+    const repair = new Promise<SessionSnapshot | null>((resolve) => {
+      resolveRepair = resolve
+    })
+    const fetchSnapshot = vi.fn(() => repair)
+    const { client, streams } = clientFixture({ initial, fetchSnapshot })
+    const controller = createChatController({
+      client,
+      trustedLocale: "en-US",
+      chatCatalog: null,
+      defaultProjectRef: "project-12345678",
+    })
+
+    await controller.open("session-12345678")
+    const gap: SessionEvent = {
+      kind: "message.part.updated",
+      event_id: "event-gap-12345678",
+      cursor: "signed.cursor.2",
+      session_id: "session-12345678",
+      stream_epoch: "epoch-12345678",
+      durable_seq: "2",
+      projection_version: 2,
+      schema_revision: 3,
+      recorded_at: NOW,
+      payload: {
+        part: { ...message.parts[0]!, version: 3, lifecycle: "completed", payload: { spans: [{ text: "skipped" }] } },
+      },
+    }
+    streams[0]?.onEvent(gap, "signed.cursor.2" as SessionCursor)
+    streams[0]?.onEvent(gap, "signed.cursor.2" as SessionCursor)
+
+    await vi.waitFor(() => expect(fetchSnapshot).toHaveBeenCalledOnce())
+    expect(streams).toHaveLength(1)
+    expect(controller.getSnapshot().projection).toMatchObject({
+      messages: [{ parts: [{ version: 1, text: "hello" }] }],
+      repair: { required: true, reason: "part_version_gap" },
+    })
+
+    if (resolveRepair === undefined) throw new Error("repair resolver missing")
+    resolveRepair(repaired)
+    await vi.waitFor(() => expect(controller.getSnapshot().snapshot).toBe(repaired))
+    expect(fetchSnapshot).toHaveBeenCalledOnce()
+    expect(streams).toHaveLength(2)
+    expect(controller.getSnapshot().projection).toMatchObject({
+      messages: [{ parts: [{ version: 3, text: "repaired" }] }],
+      repair: { required: false },
+    })
+    controller.close()
+  })
+
   it("keeps a safe retry action when snapshot repair is temporarily unavailable", async () => {
     const initial = snapshot("branch-original-12345678", "signed.cursor.1", "1")
     const repaired = snapshot("branch-repaired-12345678", "signed.cursor.2", "2")

@@ -12,4 +12,4 @@ Assistant UI is a rendering/runtime adapter only: it never becomes persistence o
 
 The projection consumes Session browser v3 directly: active history is reconstructed from the snapshot leaf/parent lineage, versioned part events replace projections rather than appending transport deltas, run projections own terminal state, and branch activation fails closed until a fresh snapshot arrives. Approval/interaction/plan parts retain their exact owner, version, safe display schema, allowed-action, deadline, and receipt projections so UI commands never reconstruct authority. There is no legacy flat-snapshot or legacy event compatibility path.
 
-An existing part accepts only its exact replay or the immediately consecutive version. Its message, part id, kind, and ordinal are immutable; gaps or identity conflicts preserve the current projection and require snapshot repair.
+A newly observed part starts at version 1; an existing part accepts only its exact replay or the immediately consecutive version. Its message, part id, kind, and ordinal are immutable; gaps or identity conflicts preserve the current projection and require snapshot repair.

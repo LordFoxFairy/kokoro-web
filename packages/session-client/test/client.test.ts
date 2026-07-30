@@ -519,4 +519,64 @@ describe("contract-bound Session v3 client", () => {
       vi.useRealTimers();
     }
   });
+
+  it("deduplicates an exact durable event replay after reconnect and delivers the next event", async () => {
+    const first = {
+      kind: "branch.activated",
+      event_id: "event-12345678",
+      cursor: "signed.cursor.8",
+      session_id: "session-12345678",
+      stream_epoch: "epoch-12345678",
+      durable_seq: "8",
+      projection_version: 2,
+      schema_revision: 3,
+      recorded_at: "2026-07-28T00:00:01.000Z",
+      payload: { branch_id: "branch-12345678", session_version: 2 },
+    };
+    const next = {
+      ...first,
+      event_id: "event-12345679",
+      cursor: "signed.cursor.9",
+      durable_seq: "9",
+      projection_version: 3,
+      payload: { branch_id: "branch-next-12345678", session_version: 3 },
+    };
+    const frame = (value: typeof first): string =>
+      `id: ${value.cursor}\nevent: ${value.kind}\ndata: ${JSON.stringify(value)}\n\n`;
+    const stream = vi.fn()
+      .mockResolvedValueOnce({
+        status: 200,
+        headers: new Headers({ "content-type": "text/event-stream" }),
+        body: new Response(frame(first)).body,
+      })
+      .mockResolvedValueOnce({
+        status: 200,
+        headers: new Headers({ "content-type": "text/event-stream" }),
+        body: new Response(`${frame(first)}${frame(next)}`).body,
+      });
+    const streamControl: { close?: () => void } = {};
+    const onEvent = vi.fn((received: { readonly durable_seq: string }) => {
+      if (received.durable_seq === "9") streamControl.close?.();
+    });
+    const client = createSessionClient({
+      transport: { request: async () => jsonResponse(500, {}), stream },
+      reconnectDelayMs: 1,
+      reconnectMaxDelayMs: 1,
+      random: () => 0,
+    });
+    const handle = client.openEvents({
+      sessionId: "session-12345678",
+      watermark: snapshot().snapshot_watermark,
+      onEvent,
+      onConnection: vi.fn(),
+    });
+    streamControl.close = () => handle.close();
+
+    await handle.ready;
+    await vi.waitFor(() => expect(onEvent).toHaveBeenCalledTimes(2));
+
+    expect(stream).toHaveBeenCalledTimes(2);
+    expect(onEvent.mock.calls.map(([received]) => received.durable_seq)).toEqual(["8", "9"]);
+    handle.close();
+  });
 });
