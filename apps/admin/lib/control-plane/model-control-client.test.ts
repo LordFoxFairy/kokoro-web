@@ -48,6 +48,12 @@ beforeEach(() => {
   calls.requireAuthoritySession.mockResolvedValue(session);
 });
 
+async function executeModelCommand(input: import("./client").ModelControlCommandInput) {
+  const client = await import("./client");
+  const prepared = await client.prepareModelControlCommand(input);
+  return client.executeModelControlCommand(input, prepared.recoveryRef);
+}
+
 describe("typed Model query client", () => {
   it("positively projects the required GetInventoryRevision fields", async () => {
     calls.model.getInventoryRevision.mockResolvedValue({
@@ -171,14 +177,71 @@ describe("typed Model Site mutation client", () => {
       operation, recordedAt: instant };
   };
 
+  it("prepares and returns the durable identity before any effect request is sent", async () => {
+    const client = await import("./client");
+    const input = { action: "activate_inventory" as const, targetDigest: digest,
+      expectedPointerRevision: "0" };
+
+    const prepared = await client.prepareModelControlCommand(input);
+
+    expect(prepared.recoveryRef).toMatch(/^[A-Za-z0-9_-]{1,1024}$/u);
+    expect(calls.model.activateInventory).not.toHaveBeenCalled();
+    const reference = JSON.parse(Buffer.from(prepared.recoveryRef, "base64url").toString("utf8")) as
+      { commandId: string; requestDigest: string };
+    expect(reference.commandId)
+      .toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u);
+    expect(reference.requestDigest).toMatch(/^[a-f0-9]{64}$/u);
+  });
+
+  it("rejects execute when the body no longer matches the prepared command digest", async () => {
+    const client = await import("./client");
+    const prepared = await client.prepareModelControlCommand({ action: "activate_inventory",
+      targetDigest: digest, expectedPointerRevision: "0" });
+
+    await expect(client.executeModelControlCommand({ action: "activate_inventory",
+      targetDigest: "f".repeat(64), expectedPointerRevision: "0" }, prepared.recoveryRef))
+      .rejects.toMatchObject({ connectCode: Code.InvalidArgument,
+        domainCode: "model.command_receipt.recovery_ref_invalid" });
+    expect(calls.model.activateInventory).not.toHaveBeenCalled();
+  });
+
+  it("recovers with the pre-persistable reference after an execute response is lost", async () => {
+    const client = await import("./client");
+    const input = { action: "activate_inventory" as const, targetDigest: digest,
+      expectedPointerRevision: "0" };
+    const prepared = await client.prepareModelControlCommand(input);
+    calls.model.activateInventory.mockImplementationOnce(async (request: unknown) => ({
+      targetDigest: digest, activatedRevision: 1n, replayed: false,
+      receipt: receipt(request, "model.inventory.activate"),
+    }));
+
+    await client.executeModelControlCommand(input, prepared.recoveryRef); // response may be lost after this point
+    const reference = JSON.parse(Buffer.from(prepared.recoveryRef, "base64url").toString("utf8")) as
+      { commandId: string; requestDigest: string };
+    calls.model.getCommandReceipt.mockImplementationOnce(async (request: unknown) => {
+      const query = request as { commandId: string; digestAlgorithm: number; requestDigest: string };
+      return { receipt: { state: CommandReceiptStateV2.COMMITTED,
+        identity: { commandId: query.commandId, digestAlgorithm: query.digestAlgorithm,
+          requestDigest: query.requestDigest }, operation: "model.inventory.activate", recordedAt: instant },
+      result: { case: "activateInventory", value: { targetDigest: digest, activatedRevision: 1n } } };
+    });
+
+    await expect(client.reconcileModelCommandRecovery(prepared.recoveryRef)).resolves.toMatchObject({
+      receipt: { commandId: reference.commandId, state: "committed" },
+    });
+    expect(calls.model.getCommandReceipt.mock.calls[0]?.[0]).toMatchObject({
+      commandId: reference.commandId, requestDigest: reference.requestDigest,
+    });
+  });
+
   it("preserves the generated provider receipt conflict through the client and HTTP boundary", async () => {
     const contract = MODEL_CONTROL_ADMIN_ERRORS.commandReceiptConflict;
     calls.model.activateInventory.mockRejectedValue(new ConnectError(contract.safeMessage, Code.AlreadyExists,
       undefined, [modelControlAdminErrorDetail("commandReceiptConflict", "request-three")]));
-    const { activateModelInventory } = await import("./client");
     const { controlError } = await import("./http");
 
-    const error = await activateModelInventory(digest, "0").catch((reason: unknown) => reason);
+    const error = await executeModelCommand({ action: "activate_inventory", targetDigest: digest,
+      expectedPointerRevision: "0" }).catch((reason: unknown) => reason);
     expect(error).toMatchObject({ connectCode: Code.AlreadyExists, domainCode: contract.domainCode });
     const response = controlError(error);
     expect(response.status).toBe(contract.httpStatus);
@@ -190,9 +253,7 @@ describe("typed Model Site mutation client", () => {
     calls.model.changeSitePolicy.mockImplementation(async (request: unknown) => ({ siteId: "site-other",
       policyDigest: digest, revision: 1n, replayed: false,
       receipt: receipt(request, "model.site-policy.change") }));
-    const { changeModelSitePolicy } = await import("./client");
-
-    await expect(changeModelSitePolicy({ siteId: "site-one", product: "chat", enabled: true,
+    await expect(executeModelCommand({ action: "change_site_policy", siteId: "site-one", product: "chat", enabled: true,
       catalogMode: "follow_active", assignmentMode: "inherit", expectedRevision: "0", assignments: [],
     })).rejects.toMatchObject({ connectCode: Code.Internal, domainCode: "admin_control_plane.invalid_response" });
   });
@@ -202,9 +263,7 @@ describe("typed Model Site mutation client", () => {
       siteReleaseRef: "release:one", modelOptionCatalogRef: "catalog:one", catalogDigest: digest,
       publishedAt: instant, replayed: false,
       receipt: receipt(request, "model.site-release-catalog.publish") }));
-    const { publishModelSiteReleaseCatalog } = await import("./client");
-
-    await expect(publishModelSiteReleaseCatalog({ siteId: "site-one", siteReleaseRef: "release:one",
+    await expect(executeModelCommand({ action: "publish_site_release_catalog", siteId: "site-one", siteReleaseRef: "release:one",
       inventoryDigest: digest, surfaces: [{ surface: "chat", allowedOptionRevisionRefs: ["option:one"],
         defaultModelOptionRevisionRef: "option:one" }],
     })).rejects.toMatchObject({ connectCode: Code.Internal, domainCode: "admin_control_plane.invalid_response" });
@@ -223,9 +282,8 @@ describe("typed Model Site mutation client", () => {
         operation: "model.inventory.activate", recordedAt: instant },
       result: { case: "activateInventory", value: { targetDigest: digest, activatedRevision: 4n } } };
     });
-    const { activateModelInventory } = await import("./client");
-
-    const result = await activateModelInventory(digest, "3");
+    const result = await executeModelCommand({ action: "activate_inventory", targetDigest: digest,
+      expectedPointerRevision: "3" });
 
     const [effectRequest, effectOptions] = calls.model.activateInventory.mock.calls[0] as
       [{ context: { command: { commandId: string } } }, { headers: Headers }];
@@ -242,9 +300,10 @@ describe("typed Model Site mutation client", () => {
     const contract = MODEL_CONTROL_ADMIN_ERRORS.commandReceiptNotFound;
     calls.model.getCommandReceipt.mockRejectedValueOnce(new ConnectError(contract.safeMessage, Code.NotFound,
       undefined, [modelControlAdminErrorDetail("commandReceiptNotFound", "receipt-query")]));
-    const { activateModelInventory, reconcileModelCommandRecovery } = await import("./client");
+    const { reconcileModelCommandRecovery } = await import("./client");
 
-    const error = await activateModelInventory(digest, "3").catch((reason: unknown) => reason);
+    const error = await executeModelCommand({ action: "activate_inventory", targetDigest: digest,
+      expectedPointerRevision: "3" }).catch((reason: unknown) => reason);
 
     expect(error).toMatchObject({ connectCode: Code.DeadlineExceeded,
       receiptRef: expect.stringMatching(/^[0-9a-f-]{36}$/u),
@@ -275,14 +334,14 @@ describe("typed Model Site mutation client", () => {
   });
 
   it.each([0, 99])("rejects Model effect and reconciliation receipts with digest algorithm %s", async (algorithm) => {
+    const client = await import("./client");
     calls.model.activateInventory.mockImplementationOnce(async (request: unknown) => {
       const value = receipt(request, "model.inventory.activate");
       return { targetDigest: digest, activatedRevision: 1n, replayed: false,
         receipt: { ...value, identity: { ...value.identity, digestAlgorithm: algorithm } } };
     });
-    const client = await import("./client");
-
-    await expect(client.activateModelInventory(digest, "0")).rejects.toMatchObject({ connectCode: Code.Internal });
+    await expect(executeModelCommand({ action: "activate_inventory", targetDigest: digest,
+      expectedPointerRevision: "0" })).rejects.toMatchObject({ connectCode: Code.Internal });
 
     const commandId = "018f23d4-52aa-4c36-8b2c-2df90cf76953";
     calls.model.getCommandReceipt.mockResolvedValueOnce({ receipt: { state: CommandReceiptStateV2.COMMITTED,
@@ -306,7 +365,7 @@ describe("typed Model Site mutation client", () => {
       orchestration: { primaryModelKey: "model-one", fallbackModelKeys: [] },
       generation: { primaryModelKey: "model-one", fallbackModelKeys: [] } }] };
 
-    await expect(client.materializeModelOptions(input)).resolves.toMatchObject({ sourceDigest });
+    await expect(executeModelCommand({ action: "materialize_options", ...input })).resolves.toMatchObject({ sourceDigest });
 
     const commandId = "018f23d4-52aa-4c36-8b2c-2df90cf76953";
     calls.model.getCommandReceipt.mockResolvedValueOnce({ receipt: { state: CommandReceiptStateV2.COMMITTED,
@@ -322,7 +381,8 @@ describe("typed Model Site mutation client", () => {
       optionRevisionRefs: ["option:one"], replayed: false,
       receipt: receipt(request, "model.option.materialize"),
     }));
-    await expect(client.materializeModelOptions(input)).rejects.toMatchObject({ connectCode: Code.Internal });
+    await expect(executeModelCommand({ action: "materialize_options", ...input }))
+      .rejects.toMatchObject({ connectCode: Code.Internal });
   });
 
   it.each(["", "not+base64url", "a".repeat(1025), "eyJ2ZXJzaW9uIjoyfQ"])(
@@ -349,15 +409,14 @@ describe("typed Model Site mutation client", () => {
       catalogDigest: digest, publishedAt: instant, replayed: false,
       receipt: receipt(request, "model.site-release-catalog.publish"),
     }));
-    const client = await import("./client");
-
-    await expect(client.activateModelInventory(digest, "0")).rejects.toMatchObject({ connectCode: Code.Internal });
-    await expect(client.materializeModelOptions({ inventoryDigest: digest, options: [{ optionKey: "chat-one",
+    await expect(executeModelCommand({ action: "activate_inventory", targetDigest: digest,
+      expectedPointerRevision: "0" })).rejects.toMatchObject({ connectCode: Code.Internal });
+    await expect(executeModelCommand({ action: "materialize_options", inventoryDigest: digest, options: [{ optionKey: "chat-one",
       surface: "chat", label: "Chat", lifecycle: "active",
       orchestration: { primaryModelKey: "model-one", fallbackModelKeys: [] },
       generation: { primaryModelKey: "model-one", fallbackModelKeys: [] } }] }))
       .rejects.toMatchObject({ connectCode: Code.Internal });
-    await expect(client.publishModelSiteReleaseCatalog({ siteId: "site-one", siteReleaseRef: "release:one",
+    await expect(executeModelCommand({ action: "publish_site_release_catalog", siteId: "site-one", siteReleaseRef: "release:one",
       inventoryDigest: digest, surfaces: [{ surface: "chat", allowedOptionRevisionRefs: ["option:one"],
         defaultModelOptionRevisionRef: "option:one" }] }))
       .rejects.toMatchObject({ connectCode: Code.Internal });

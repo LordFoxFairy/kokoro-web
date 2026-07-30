@@ -2,12 +2,12 @@ import { z } from "zod";
 import { boundedJson, controlError, controlJson } from "@/lib/control-plane/http";
 import { strictQuery } from "@/lib/control-plane/strict-query";
 import {
-  activateModelInventory, changeModelSitePolicy, importModelInventory,
+  executeModelControlCommand,
   getModelInventoryRevision,
   listModelInventoryBindings, listModelInventoryDefinitions, listModelInventoryProviders,
   listModelInventoryRevisions, listModelInventoryRoutes, listModelOptions,
-  listModelSitePolicies, listModelSiteReleaseCatalogs, materializeModelOptions,
-  publishModelSiteReleaseCatalog, reconcileModelCommandRecovery,
+  listModelSitePolicies, listModelSiteReleaseCatalogs, prepareModelControlCommand,
+  reconcileModelCommandRecovery,
 } from "@/lib/control-plane/client";
 
 export const runtime = "nodejs";
@@ -72,6 +72,11 @@ const command = z.discriminatedUnion("action", [
     issue.addIssue({ code: z.ZodIssueCode.custom, message: "catalog digest does not match mode" });
   }
 });
+const commandRequest = z.discriminatedUnion("phase", [
+  z.object({ phase: z.literal("prepare"), command }).strict(),
+  z.object({ phase: z.literal("execute"), recoveryRef: z.string().min(1).max(1024)
+    .regex(/^[A-Za-z0-9_-]+$/u), command }).strict(),
+]);
 
 export async function GET(request: Request) {
   try {
@@ -108,12 +113,8 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const input = command.parse(await boundedJson(request, 16 * 1024 * 1024));
-    if (input.action === "import_inventory") return controlJson(await importModelInventory(input), { status: 201 });
-    if (input.action === "activate_inventory") return controlJson(await activateModelInventory(
-      input.targetDigest, input.expectedPointerRevision), { status: 201 });
-    if (input.action === "change_site_policy") return controlJson(await changeModelSitePolicy(input), { status: 201 });
-    if (input.action === "materialize_options") return controlJson(await materializeModelOptions(input), { status: 201 });
-    return controlJson(await publishModelSiteReleaseCatalog(input), { status: 201 });
+    const input = commandRequest.parse(await boundedJson(request, 16 * 1024 * 1024));
+    if (input.phase === "prepare") return controlJson(await prepareModelControlCommand(input.command));
+    return controlJson(await executeModelControlCommand(input.command, input.recoveryRef), { status: 201 });
   } catch (error) { return controlError(error); }
 }

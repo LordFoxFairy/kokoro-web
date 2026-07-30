@@ -143,6 +143,13 @@ export interface PublishModelSiteReleaseCatalogInput {
     allowedOptionRevisionRefs: readonly string[]; defaultModelOptionRevisionRef: string }>[];
 }
 
+export type ModelControlCommandInput =
+  | Readonly<{ action: "import_inventory" } & ImportModelInventoryInput>
+  | Readonly<{ action: "activate_inventory"; targetDigest: string; expectedPointerRevision: string }>
+  | Readonly<{ action: "change_site_policy" } & ChangeModelSitePolicyInput>
+  | Readonly<{ action: "materialize_options" } & MaterializeModelOptionsInput>
+  | Readonly<{ action: "publish_site_release_catalog" } & PublishModelSiteReleaseCatalogInput>;
+
 export type ModelCommandOperationId = "import_inventory" | "activate_inventory" |
   "change_site_policy" | "materialize_options" | "publish_site_release_catalog";
 
@@ -175,6 +182,30 @@ interface ModelRecoveryReference {
 
 type ModelProductId = "chat" | "music" | "image" | "video";
 type ModelRoleId = "main" | "generation";
+type ModelCommandMode = Readonly<{ kind: "prepare" }> |
+  Readonly<{ kind: "execute"; recoveryRef: string }>;
+
+export async function prepareModelControlCommand(input: ModelControlCommandInput): Promise<Readonly<{
+  recoveryRef: string;
+}>> {
+  const result = await modelControlCommand(input, { kind: "prepare" });
+  if (!("recoveryRef" in result)) throw invalidResponse();
+  return { recoveryRef: result.recoveryRef };
+}
+
+export async function executeModelControlCommand(input: ModelControlCommandInput, recoveryRef: string) {
+  return modelControlCommand(input, { kind: "execute", recoveryRef });
+}
+
+function modelControlCommand(input: ModelControlCommandInput, mode: ModelCommandMode) {
+  if (input.action === "import_inventory") return importModelInventory(input, mode);
+  if (input.action === "activate_inventory") {
+    return activateModelInventory(input.targetDigest, input.expectedPointerRevision, mode);
+  }
+  if (input.action === "change_site_policy") return changeModelSitePolicy(input, mode);
+  if (input.action === "materialize_options") return materializeModelOptions(input, mode);
+  return publishModelSiteReleaseCatalog(input, mode);
+}
 
 export async function getCurrentOperator() {
   const { query, headers, context } = await queryCall();
@@ -463,9 +494,8 @@ export async function listModelSiteReleaseCatalogs(siteId: string, pageToken?: s
   });
 }
 
-export async function importModelInventory(input: ImportModelInventoryInput) {
-  const session = await requireAuthoritySession(); const rpc = createClient(ModelControlService,
-    await adminControlPlaneTransport()); const context = commandContext(session, { kind: "global" });
+async function importModelInventory(input: ImportModelInventoryInput, mode: ModelCommandMode) {
+  const { session, context } = await beginModelCommand("import_inventory", null, mode);
   const effect = create(ImportInventoryEffectSchema, { inventory: { sourceReference: input.sourceReference,
     providers: input.providers.map((item) => ({ ...item, adapterKind: providerAdapter(item.adapterKind) })),
     models: input.models.map((item) => ({ ...item, inputModalities: [...item.inputModalities],
@@ -478,6 +508,9 @@ export async function importModelInventory(input: ImportModelInventoryInput) {
       ...(item.observationRef ? { observationRef: item.observationRef } : {}),
       ...(item.observedAt ? { observedAt: timestampFromDate(new Date(item.observedAt)) } : {}) })) });
   context.command!.requestDigest = importInventoryRequestDigest(context, effect, verifiedAxes(session));
+  const phase = finishModelCommand(context, "import_inventory", null, mode);
+  if (!phase.execute) return { recoveryRef: phase.recoveryRef };
+  const rpc = createClient(ModelControlService, await adminControlPlaneTransport());
   return modelMutation(session, rpc, context, "import_inventory", null,
     () => rpc.importInventory({ context, effect }, { headers: authHeaders(session, context.command!.commandId) }),
     (response) => ({ inventoryDigest: response.inventoryDigest, replayed: response.replayed,
@@ -486,15 +519,17 @@ export async function importModelInventory(input: ImportModelInventoryInput) {
       const recovered = receiptResultFor(receipt, "import_inventory");
       return { inventoryDigest: receiptString(recovered.result, "inventoryDigest"), replayed: true,
         receipt: recovered.receipt };
-    });
+    }, phase.recoveryRef);
 }
 
-export async function activateModelInventory(targetDigest: string, expectedPointerRevision: string) {
-  const session = await requireAuthoritySession(); const rpc = createClient(ModelControlService,
-    await adminControlPlaneTransport()); const context = commandContext(session, { kind: "global" });
+async function activateModelInventory(targetDigest: string, expectedPointerRevision: string, mode: ModelCommandMode) {
+  const { session, context } = await beginModelCommand("activate_inventory", null, mode);
   const effect = create(ActivateInventoryEffectSchema, { targetDigest,
     expectedPointerRevision: BigInt(expectedPointerRevision) });
   context.command!.requestDigest = activateInventoryRequestDigest(context, effect, verifiedAxes(session));
+  const phase = finishModelCommand(context, "activate_inventory", null, mode);
+  if (!phase.execute) return { recoveryRef: phase.recoveryRef };
+  const rpc = createClient(ModelControlService, await adminControlPlaneTransport());
   return modelMutation(session, rpc, context, "activate_inventory", null,
     () => rpc.activateInventory({ context, effect }, { headers: authHeaders(session, context.command!.commandId) }),
     (response) => {
@@ -509,12 +544,11 @@ export async function activateModelInventory(targetDigest: string, expectedPoint
       return { targetDigest: recoveredTarget,
         activatedRevision: receiptString(recovered.result, "activatedRevision"), replayed: true,
         receipt: recovered.receipt };
-    });
+    }, phase.recoveryRef);
 }
 
-export async function changeModelSitePolicy(input: ChangeModelSitePolicyInput) {
-  const session = await requireAuthoritySession(); const rpc = createClient(ModelControlService,
-    await adminControlPlaneTransport()); const context = commandContext(session, { kind: "site", siteId: input.siteId });
+async function changeModelSitePolicy(input: ChangeModelSitePolicyInput, mode: ModelCommandMode) {
+  const { session, context } = await beginModelCommand("change_site_policy", input.siteId, mode);
   const effect = create(ChangeSitePolicyEffectSchema, { product: modelProduct(input.product), enabled: input.enabled,
     catalogMode: input.catalogMode === "follow_active" ? ControlSiteModelCatalogMode.FOLLOW_ACTIVE
       : ControlSiteModelCatalogMode.PINNED,
@@ -524,6 +558,9 @@ export async function changeModelSitePolicy(input: ChangeModelSitePolicyInput) {
     assignments: input.assignments.map((item) => ({ ...item, role: modelRole(item.role),
       requiredCapabilities: [...item.requiredCapabilities] })), expectedRevision: BigInt(input.expectedRevision) });
   context.command!.requestDigest = changeSitePolicyRequestDigest(context, input.siteId, effect, verifiedAxes(session));
+  const phase = finishModelCommand(context, "change_site_policy", input.siteId, mode);
+  if (!phase.execute) return { recoveryRef: phase.recoveryRef };
+  const rpc = createClient(ModelControlService, await adminControlPlaneTransport());
   return modelMutation(session, rpc, context, "change_site_policy", input.siteId,
     () => rpc.changeSitePolicy({ context, siteId: input.siteId, effect },
     { headers: authHeaders(session, context.command!.commandId) }), (response) => {
@@ -537,12 +574,11 @@ export async function changeModelSitePolicy(input: ChangeModelSitePolicyInput) {
     return { siteId, policyDigest: receiptString(recovered.result, "policyDigest"),
       revision: receiptString(recovered.result, "revision"), replayed: true,
       receipt: recovered.receipt };
-  });
+  }, phase.recoveryRef);
 }
 
-export async function materializeModelOptions(input: MaterializeModelOptionsInput) {
-  const session = await requireAuthoritySession(); const rpc = createClient(ModelControlService,
-    await adminControlPlaneTransport()); const context = commandContext(session, { kind: "global" });
+async function materializeModelOptions(input: MaterializeModelOptionsInput, mode: ModelCommandMode) {
+  const { session, context } = await beginModelCommand("materialize_options", null, mode);
   const effect = create(MaterializeModelOptionsEffectSchema, { inventoryDigest: input.inventoryDigest,
     options: input.options.map((item) => ({ optionKey: item.optionKey, surface: modelProduct(item.surface),
       label: item.label, ...(item.description ? { description: item.description } : {}),
@@ -553,6 +589,9 @@ export async function materializeModelOptions(input: MaterializeModelOptionsInpu
       generation: { primaryModelKey: item.generation.primaryModelKey,
         fallbackModelKeys: [...item.generation.fallbackModelKeys] } })) });
   context.command!.requestDigest = materializeModelOptionsRequestDigest(context, effect, verifiedAxes(session));
+  const phase = finishModelCommand(context, "materialize_options", null, mode);
+  if (!phase.execute) return { recoveryRef: phase.recoveryRef };
+  const rpc = createClient(ModelControlService, await adminControlPlaneTransport());
   return modelMutation(session, rpc, context, "materialize_options", null,
     () => rpc.materializeModelOptions({ context, effect }, { headers: authHeaders(session, context.command!.commandId) }),
     (response) => {
@@ -569,18 +608,20 @@ export async function materializeModelOptions(input: MaterializeModelOptionsInpu
         materializationDigest: receiptString(recovered.result, "materializationDigest"),
         optionRevisionRefs: receiptStrings(recovered.result, "optionRevisionRefs"), replayed: true,
         receipt: recovered.receipt };
-    });
+    }, phase.recoveryRef);
 }
 
-export async function publishModelSiteReleaseCatalog(input: PublishModelSiteReleaseCatalogInput) {
-  const session = await requireAuthoritySession(); const rpc = createClient(ModelControlService,
-    await adminControlPlaneTransport()); const context = commandContext(session, { kind: "site", siteId: input.siteId });
+async function publishModelSiteReleaseCatalog(input: PublishModelSiteReleaseCatalogInput, mode: ModelCommandMode) {
+  const { session, context } = await beginModelCommand("publish_site_release_catalog", input.siteId, mode);
   const effect = create(PublishSiteReleaseCatalogEffectSchema, { siteReleaseRef: input.siteReleaseRef,
     inventoryDigest: input.inventoryDigest, surfaces: input.surfaces.map((item) => ({
       surface: modelProduct(item.surface), allowedOptionRevisionRefs: [...item.allowedOptionRevisionRefs],
       defaultOptionRevisionRef: item.defaultModelOptionRevisionRef })) });
   context.command!.requestDigest = publishSiteReleaseCatalogRequestDigest(context, input.siteId, effect,
     verifiedAxes(session));
+  const phase = finishModelCommand(context, "publish_site_release_catalog", input.siteId, mode);
+  if (!phase.execute) return { recoveryRef: phase.recoveryRef };
+  const rpc = createClient(ModelControlService, await adminControlPlaneTransport());
   return modelMutation(session, rpc, context, "publish_site_release_catalog", input.siteId,
     () => rpc.publishSiteReleaseCatalog({ context, siteId: input.siteId, effect },
     { headers: authHeaders(session, context.command!.commandId) }), (response) => {
@@ -601,7 +642,7 @@ export async function publishModelSiteReleaseCatalog(input: PublishModelSiteRele
       catalogDigest: receiptString(recovered.result, "catalogDigest"),
       publishedAt: receiptString(recovered.result, "publishedAt"), replayed: true,
       receipt: recovered.receipt };
-  });
+  }, phase.recoveryRef);
 }
 
 export async function getModelCommandReceipt(input: GetModelCommandReceiptInput) {
@@ -777,6 +818,27 @@ async function committedMutation<Response extends Readonly<{ receipt?: CommandRe
 
 type ModelClient = ReturnType<typeof createClient<typeof ModelControlService>>;
 
+async function beginModelCommand(operation: ModelCommandOperationId, siteId: string | null, mode: ModelCommandMode) {
+  const session = await requireAuthoritySession();
+  const recovered = mode.kind === "execute" ? decodeModelRecoveryReference(mode.recoveryRef) : null;
+  if (recovered !== null && (recovered.operation !== operation || recovered.siteId !== siteId)) {
+    throw invalidRecoveryReference();
+  }
+  const selection: ScopeSelection = siteId === null ? { kind: "global" } : { kind: "site", siteId };
+  return { session, context: commandContext(session, selection, recovered?.commandId) };
+}
+
+function finishModelCommand(context: ReturnType<typeof commandContext>, operation: ModelCommandOperationId,
+  siteId: string | null, mode: ModelCommandMode): Readonly<{ execute: false; recoveryRef: string }> |
+    Readonly<{ execute: true; recoveryRef: string }> {
+  const command = context.command!;
+  const recoveryRef = encodeModelRecoveryReference({ version: 1, commandId: command.commandId, operation,
+    digestAlgorithm: "SHA256_COMMAND_ENVELOPE", requestDigest: command.requestDigest, siteId });
+  if (mode.kind === "prepare") return { execute: false, recoveryRef };
+  if (mode.recoveryRef !== recoveryRef) throw invalidRecoveryReference();
+  return { execute: true, recoveryRef };
+}
+
 async function modelMutation<Response extends Readonly<{ receipt?: CommandReceiptV2 }>, Result>(
   session: AdminAuthoritySession,
   rpc: ModelClient,
@@ -786,16 +848,9 @@ async function modelMutation<Response extends Readonly<{ receipt?: CommandReceip
   invoke: () => Promise<Response>,
   map: (response: Response) => Result,
   reconcile: (receipt: Awaited<ReturnType<typeof fetchModelCommandReceipt>>) => Result,
+  recoveryRef: string,
 ): Promise<Result> {
   const command = context.command!;
-  const recoveryRef = encodeModelRecoveryReference({
-    version: 1,
-    commandId: command.commandId,
-    operation,
-    digestAlgorithm: "SHA256_COMMAND_ENVELOPE",
-    requestDigest: command.requestDigest,
-    siteId,
-  });
   try {
     const response = await invoke();
     assertReceipt(response.receipt, context);
@@ -932,8 +987,8 @@ export function queryContext(session: AdminAuthoritySession, selection: ScopeSel
   return create(AuthenticatedOperatorQueryContextSchema, { requestId, ...sessionClaims(session),
     securityEpochs: epochs(session), scope: scope(session, selection) });
 }
-export function commandContext(session: AdminAuthoritySession, selection: ScopeSelection = { kind: "current" }) {
-  const commandId = randomUUID();
+export function commandContext(session: AdminAuthoritySession, selection: ScopeSelection = { kind: "current" },
+  commandId: string = randomUUID()) {
   return create(AuthenticatedOperatorCommandContextSchema, { command: create(CommandIdentityV2Schema, {
     commandId, idempotencyKey: commandId, digestAlgorithm: CommandDigestAlgorithmV2.SHA256_COMMAND_ENVELOPE,
     requestDigest: "0".repeat(64) }), ...sessionClaims(session), securityEpochs: epochs(session),

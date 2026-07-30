@@ -4,10 +4,8 @@ import { Code } from "@connectrpc/connect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const calls = vi.hoisted(() => ({
-  activateModelInventory: vi.fn(),
-  changeModelSitePolicy: vi.fn(),
+  executeModelControlCommand: vi.fn(),
   getModelInventoryRevision: vi.fn(),
-  importModelInventory: vi.fn(),
   listModelInventoryBindings: vi.fn(),
   listModelInventoryDefinitions: vi.fn(),
   listModelInventoryProviders: vi.fn(),
@@ -16,8 +14,7 @@ const calls = vi.hoisted(() => ({
   listModelOptions: vi.fn(),
   listModelSitePolicies: vi.fn(),
   listModelSiteReleaseCatalogs: vi.fn(),
-  materializeModelOptions: vi.fn(),
-  publishModelSiteReleaseCatalog: vi.fn(),
+  prepareModelControlCommand: vi.fn(),
   reconcileModelCommandRecovery: vi.fn(),
 }));
 
@@ -36,6 +33,7 @@ beforeEach(() => {
   for (const call of Object.values(calls)) {
     call.mockResolvedValue({ items: [], nextPageToken: null, asOf: "2026-07-30T00:00:00.000Z" });
   }
+  calls.prepareModelControlCommand.mockResolvedValue({ recoveryRef: "prepared_ref" });
   calls.getModelInventoryRevision.mockResolvedValue({ inventoryDigest: "a".repeat(64),
     sourceReference: "catalog:one", counts: { providers: 1, models: 2, bindings: 3, productRoutes: 0 },
     importedAt: "2026-07-30T00:00:00.000Z", active: true, activePointerRevision: "7",
@@ -54,7 +52,13 @@ function jsonRequest(body: unknown): Request {
   return new Request("https://admin.example/api/control/models", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
+    body: JSON.stringify({ phase: "execute", recoveryRef: "prepared_ref", command: body }),
+  });
+}
+
+function rawJsonRequest(body: unknown): Request {
+  return new Request("https://admin.example/api/control/models", {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
   });
 }
 
@@ -110,7 +114,7 @@ describe("typed Model control route", () => {
   });
 
   it("activates a directory version only from a strict typed command", async () => {
-    calls.activateModelInventory.mockResolvedValue({
+    calls.executeModelControlCommand.mockResolvedValue({
       receipt: { commandId: "command-one", state: "committed" },
     });
     const route = await import("../app/api/control/models/route");
@@ -121,7 +125,8 @@ describe("typed Model control route", () => {
     }));
 
     expect(response.status).toBe(201);
-    expect(calls.activateModelInventory).toHaveBeenCalledWith(inventoryDigest, "17");
+    expect(calls.executeModelControlCommand).toHaveBeenCalledWith({ action: "activate_inventory",
+      targetDigest: inventoryDigest, expectedPointerRevision: "17" }, "prepared_ref");
 
     const rejected = await route.POST(jsonRequest({
       action: "activate_inventory",
@@ -130,11 +135,33 @@ describe("typed Model control route", () => {
       bypassStepUp: true,
     }));
     expect(rejected.status).toBe(400);
-    expect(calls.activateModelInventory).toHaveBeenCalledTimes(1);
+    expect(calls.executeModelControlCommand).toHaveBeenCalledTimes(1);
+  });
+
+  it("prepares a durable command identity without executing the effect", async () => {
+    const input = { action: "activate_inventory" as const, targetDigest: inventoryDigest,
+      expectedPointerRevision: "17" };
+    const route = await import("../app/api/control/models/route");
+    const response = await route.POST(rawJsonRequest({ phase: "prepare", command: input }));
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ data: { recoveryRef: "prepared_ref" } });
+    expect(calls.prepareModelControlCommand).toHaveBeenCalledWith(input);
+    expect(calls.executeModelControlCommand).not.toHaveBeenCalled();
+  });
+
+  it("rejects the retired one-step mutation request", async () => {
+    const route = await import("../app/api/control/models/route");
+    const response = await route.POST(rawJsonRequest({ action: "activate_inventory",
+      targetDigest: inventoryDigest, expectedPointerRevision: "17" }));
+
+    expect(response.status).toBe(400);
+    expect(calls.prepareModelControlCommand).not.toHaveBeenCalled();
+    expect(calls.executeModelControlCommand).not.toHaveBeenCalled();
   });
 
   it("admits the authoritative inventory collection upper bounds and empty product routes", async () => {
-    calls.importModelInventory.mockResolvedValue({ receipt: { commandId: "command-one", state: "committed" } });
+    calls.executeModelControlCommand.mockResolvedValue({ receipt: { commandId: "command-one", state: "committed" } });
     const route = await import("../app/api/control/models/route");
     const input = {
       action: "import_inventory",
@@ -151,7 +178,7 @@ describe("typed Model control route", () => {
     const response = await route.POST(jsonRequest(input));
 
     expect(response.status).toBe(201);
-    expect(calls.importModelInventory).toHaveBeenCalledWith(input);
+    expect(calls.executeModelControlCommand).toHaveBeenCalledWith(input, "prepared_ref");
   });
 
   it("rejects PostgreSQL-unsigned numeric values at the browser boundary", async () => {
@@ -166,8 +193,7 @@ describe("typed Model control route", () => {
     ]) {
       expect((await route.POST(jsonRequest(input))).status).toBe(400);
     }
-    expect(calls.activateModelInventory).not.toHaveBeenCalled();
-    expect(calls.importModelInventory).not.toHaveBeenCalled();
+    expect(calls.executeModelControlCommand).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -290,6 +316,15 @@ describe("Model control console boundary", () => {
     expect(consoleSource).toContain("kokoro.admin.model-recovery.v1");
     expect(consoleSource).toContain("立即对账");
     expect(consoleSource).toContain("pendingRecoveryRef");
+    expect(consoleSource).toContain("只有权威 committed 收据可以解除写入锁定");
+    expect(consoleSource).not.toContain("丢弃恢复引用");
+    expect(consoleSource).not.toContain("线下核对并丢弃");
+    expect(consoleSource.match(/clearRecovery\(\)/gu)).toHaveLength(1);
+    const persisted = consoleSource.indexOf("localStorage.setItem(RECOVERY_STORAGE_KEY, prepared.recoveryRef)");
+    const executed = consoleSource.indexOf("phase: \"execute\"");
+    expect(persisted).toBeGreaterThan(-1);
+    expect(executed).toBeGreaterThan(persisted);
+    expect(consoleSource).not.toContain("localStorage.setItem(RECOVERY_STORAGE_KEY, JSON.stringify(body))");
   });
 
   it("exposes only provider secret presence and keeps the object-first information architecture", () => {

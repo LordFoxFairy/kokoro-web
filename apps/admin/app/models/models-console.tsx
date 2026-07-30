@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ApiOutlined, BranchesOutlined, CloudServerOutlined, DeploymentUnitOutlined,
   RocketOutlined } from "@ant-design/icons";
 import { Alert, App, Button, Card, Col, Descriptions, Empty, Row, Select, Space, Statistic, Tabs, Tag,
@@ -39,8 +39,9 @@ const policy = z.object({ siteId: z.string(), product: z.string(), revision: z.s
   assignmentCount: z.number(), current: z.boolean(), changedAt: z.string().datetime() });
 const catalog = z.object({ siteId: z.string(), siteReleaseRef: z.string(), modelOptionCatalogRef: z.string(),
   catalogDigest: digest, inventoryDigest: digest, surfaceCount: z.number(), publishedAt: z.string().datetime() });
-const mutation = z.object({ receipt: z.object({ commandId: z.string(), state: z.string() }),
+const mutation = z.object({ receipt: z.object({ commandId: z.string(), state: z.literal("committed") }),
   sourceDigest: digest.optional() }).passthrough();
+const preparedMutation = z.object({ recoveryRef: z.string().regex(/^[A-Za-z0-9_-]{1,1024}$/u) }).strict();
 const recoveredMutation = z.object({ operation: z.enum(["import_inventory", "activate_inventory",
   "change_site_policy", "materialize_options", "publish_site_release_catalog"]),
 receipt: z.object({ commandId: z.string(), state: z.literal("committed") }),
@@ -66,12 +67,14 @@ export function ModelsConsole(): React.ReactElement {
   const [selectedDigest, setSelectedDigest] = useState(""); const [generation, setGeneration] = useState(0);
   const [pendingRecoveryRef, setPendingRecoveryRef] = useState<string | null>(null);
   const [reconciling, setReconciling] = useState(false);
+  const mutationBlocked = useRef(false);
   useEffect(() => {
     const stored = window.localStorage.getItem(RECOVERY_STORAGE_KEY);
     let active = true;
-    if (stored !== null && RECOVERY_REF.test(stored)) queueMicrotask(() => {
-      if (active) setPendingRecoveryRef(stored);
-    });
+    if (stored !== null && RECOVERY_REF.test(stored)) {
+      mutationBlocked.current = true;
+      queueMicrotask(() => { if (active) setPendingRecoveryRef(stored); });
+    }
     else if (stored !== null) window.localStorage.removeItem(RECOVERY_STORAGE_KEY);
     return () => { active = false; };
   }, []);
@@ -114,6 +117,7 @@ export function ModelsConsole(): React.ReactElement {
   const reload = () => setGeneration((value) => value + 1);
   const clearRecovery = () => {
     window.localStorage.removeItem(RECOVERY_STORAGE_KEY); setPendingRecoveryRef(null);
+    mutationBlocked.current = false;
   };
   const reconcile = async () => {
     if (pendingRecoveryRef === null || reconciling) return;
@@ -126,15 +130,31 @@ export function ModelsConsole(): React.ReactElement {
     finally { setReconciling(false); }
   };
   const submit = async (body: unknown, success: string) => {
-    if (pendingRecoveryRef !== null) { message.warning("请先完成上一条模型命令的对账"); return false; }
+    if (pendingRecoveryRef !== null || mutationBlocked.current) {
+      message.warning("请先完成上一条模型命令的对账"); return false;
+    }
+    mutationBlocked.current = true;
+    let preparedPersisted = false;
     try {
-    await apiPost("/api/control/models", body, mutation); message.success(success); reload(); return true;
+    const prepared = await apiPost("/api/control/models", { phase: "prepare", command: body }, preparedMutation);
+    window.localStorage.setItem(RECOVERY_STORAGE_KEY, prepared.recoveryRef);
+    setPendingRecoveryRef(prepared.recoveryRef);
+    preparedPersisted = true;
+    await apiPost("/api/control/models", { phase: "execute", recoveryRef: prepared.recoveryRef, command: body },
+      mutation);
+    window.localStorage.removeItem(RECOVERY_STORAGE_KEY); setPendingRecoveryRef(null);
+    mutationBlocked.current = false;
+    message.success(success); reload(); return true;
   } catch (error) {
     if (error instanceof ApiError && error.recoveryRef !== null && RECOVERY_REF.test(error.recoveryRef)) {
       window.localStorage.setItem(RECOVERY_STORAGE_KEY, error.recoveryRef);
       setPendingRecoveryRef(error.recoveryRef);
+      mutationBlocked.current = true;
       message.warning("写入结果暂不明确，已保存恢复引用；完成对账前不会发起新写入");
-    } else message.error(errorMessage(error, "操作失败"));
+    } else {
+      if (!preparedPersisted) mutationBlocked.current = false;
+      message.error(errorMessage(error, "操作失败"));
+    }
     return false;
   } };
 
@@ -149,9 +169,11 @@ export function ModelsConsole(): React.ReactElement {
         系统已阻止新的模型写入。请用同一恢复引用查询权威收据，避免重复执行。
       </Typography.Text><Typography.Text code copyable ellipsis style={{ maxWidth: 720 }}>
         {pendingRecoveryRef}
-      </Typography.Text><Space><Button type="primary" loading={reconciling} onClick={() => void reconcile()}>
+      </Typography.Text><Typography.Text type="secondary">
+        若持续未找到收据，请复制恢复引用联系支持；只有权威 committed 收据可以解除写入锁定。
+      </Typography.Text><Button type="primary" loading={reconciling} onClick={() => void reconcile()}>
         立即对账
-      </Button><Button danger disabled={reconciling} onClick={clearRecovery}>确认已线下核对并丢弃</Button></Space></Space>} />}
+      </Button></Space>} />}
     <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
       <Col xs={24} md={12} xl={6}><Card><Statistic title="当前目录修订" prefix={<DeploymentUnitOutlined />}
         value={active?.activePointerRevision ?? "未激活"} /></Card></Col>
