@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const calls = vi.hoisted(() => ({
@@ -85,5 +87,34 @@ describe("typed Model control route", () => {
     }));
     expect(rejected.status).toBe(400);
     expect(calls.activateModelInventory).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("Model control console boundary", () => {
+  const source = (path: string) => readFileSync(resolve(import.meta.dirname, "..", path), "utf8");
+
+  it("uses one typed BFF for the entire Model control lifecycle", () => {
+    const consoleSource = source("app/models/models-console.tsx");
+
+    expect(consoleSource).toContain("/api/control/models");
+    expect(consoleSource).not.toContain("/api/resource");
+    for (const action of ["import_inventory", "activate_inventory", "materialize_options",
+      "change_site_policy", "publish_site_release_catalog"]) {
+      expect(consoleSource).toContain(`action: "${action}"`);
+    }
+    for (const operation of ["model.inventory.import", "model.inventory.activate", "model.option.materialize",
+      "model.site-policy.change", "model.site-release-catalog.publish"]) {
+      expect(consoleSource).toContain(`stepUp("${operation}"`);
+    }
+  });
+
+  it("exposes only provider secret presence and keeps the object-first information architecture", () => {
+    const consoleSource = source("app/models/models-console.tsx");
+
+    expect(consoleSource).toContain("secretReferencePresent");
+    expect(consoleSource).not.toContain("secretRef:");
+    for (const label of ["版本", "提供方", "模型目录", "产品选项", "站点发布"]) {
+      expect(consoleSource).toContain(`"${label}"`);
+    }
   });
 });
