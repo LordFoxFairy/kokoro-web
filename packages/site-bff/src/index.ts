@@ -47,6 +47,7 @@ export type { LaunchCommandState, LaunchOperation, LaunchStateBinding, LaunchSta
 export { createSiteLaunchApi, SITE_LAUNCH_STATE_COOKIE } from "./launch-api.js"
 export type { SiteLaunchApi } from "./launch-api.js"
 export { createSiteAssetApi } from "./asset-api.js"
+export { createSiteSessionApi, type SiteSessionApi, type SiteSessionApiRuntime } from "./session-api.js"
 export type { BrowserAssetUpload, BrowserAttachmentRef, SiteAssetApi } from "./asset-api.js"
 
 export class SiteBffError extends Error {

@@ -17,10 +17,12 @@ const command: CommandIdentity = {
   request_digest: DIGEST,
 }
 
-function storageFixture(): SessionCommandStorage & { readonly values: Map<string, string> } {
+function storageFixture(): SessionCommandStorage & Pick<Storage, "key" | "length"> & { readonly values: Map<string, string> } {
   const values = new Map<string, string>()
   return {
     values,
+    get length() { return values.size },
+    key: (index) => [...values.keys()][index] ?? null,
     getItem: (key) => values.get(key) ?? null,
     setItem: (key, value) => values.set(key, value),
     removeItem: (key) => void values.delete(key),
@@ -40,7 +42,7 @@ function record(createdAt = 1_000): SessionCommandRecoveryRecord {
 describe("Session command recovery store", () => {
   it("round-trips only the exact non-secret receipt lookup identity", () => {
     const storage = storageFixture()
-    const store = createSessionCommandRecoveryStore({ storage, now: () => 2_000 })
+    const store = createSessionCommandRecoveryStore({ storage, scope: "browser-scope-alpha", now: () => 2_000 })
 
     store.save(record())
 
@@ -56,9 +58,9 @@ describe("Session command recovery store", () => {
   ])("fails closed and removes %s browser state", (_label, value) => {
     const storage = storageFixture()
     const removeItem = vi.spyOn(storage, "removeItem")
-    storage.values.set("kokoro.chat.pending-command.v1", JSON.stringify(value))
+    storage.values.set("kokoro.chat.pending-command.v1.browser-scope-alpha", JSON.stringify(value))
     const now = _label === "expired" ? () => 86_402_001 : () => 2_000
-    const store = createSessionCommandRecoveryStore({ storage, now })
+    const store = createSessionCommandRecoveryStore({ storage, scope: "browser-scope-alpha", now })
 
     expect(store.load()).toBeNull()
     expect(removeItem).toHaveBeenCalledOnce()
@@ -66,7 +68,7 @@ describe("Session command recovery store", () => {
 
   it("does not let an older completion clear a newer pending command", () => {
     const storage = storageFixture()
-    const store = createSessionCommandRecoveryStore({ storage, now: () => 2_000 })
+    const store = createSessionCommandRecoveryStore({ storage, scope: "browser-scope-alpha", now: () => 2_000 })
     store.save(record())
 
     store.clear("different-command")
@@ -74,6 +76,27 @@ describe("Session command recovery store", () => {
 
     store.clear(command.command_id)
     expect(store.load()).toBeNull()
+  })
+
+  it("isolates recovery by opaque browser runtime scope and prunes a prior account scope", () => {
+    const storage = storageFixture()
+    const alpha = createSessionCommandRecoveryStore({
+      storage,
+      scope: "browser-scope-alpha",
+      now: () => 2_000,
+    })
+    alpha.save(record())
+
+    const beta = createSessionCommandRecoveryStore({
+      storage,
+      scope: "browser-scope-beta",
+      pruneOtherScopes: true,
+      now: () => 2_000,
+    })
+
+    expect(beta.load()).toBeNull()
+    expect(alpha.load()).toBeNull()
+    expect([...storage.values.keys()]).toEqual([])
   })
 })
 

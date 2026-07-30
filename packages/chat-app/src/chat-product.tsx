@@ -486,6 +486,7 @@ export function ChatView(props: {
 export type ChatProductProps = Readonly<{
   bootstrap: Readonly<{ defaultProjectRef: string; modelOptionCatalogs: readonly ModelOptionCatalog[] }> | null
   brandName: string
+  browserRuntimeScope: string
   csrfToken?: string
   initialSessionId?: string
   copy?: Partial<ChatProductCopy>
@@ -498,11 +499,15 @@ export function ChatProduct(props: ChatProductProps) {
   const commandRecoveryStore = useMemo(() => {
     if (typeof window === "undefined") return undefined
     try {
-      return createSessionCommandRecoveryStore({ storage: window.sessionStorage })
+      return createSessionCommandRecoveryStore({
+        storage: window.sessionStorage,
+        scope: props.browserRuntimeScope,
+        pruneOtherScopes: true,
+      })
     } catch {
       return undefined
     }
-  }, [])
+  }, [props.browserRuntimeScope])
   const controller = useMemo(() => createChatController({ client, trustedLocale: typeof document === "undefined" ? "en-US" : document.documentElement.lang || "en-US", chatCatalog, defaultProjectRef: props.bootstrap?.defaultProjectRef ?? null, ...(commandRecoveryStore === undefined ? {} : { commandRecoveryStore }) }), [chatCatalog, client, commandRecoveryStore, props.bootstrap?.defaultProjectRef])
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot)
   const organizer = useMemo(() => createSessionOrganizer({ client, projectRef: props.bootstrap?.defaultProjectRef ?? null }), [client, props.bootstrap?.defaultProjectRef])
@@ -516,13 +521,21 @@ export function ChatProduct(props: ChatProductProps) {
     try {
       uploader = createAssetUploader({
         csrfToken: props.csrfToken,
-        store: createLocalAssetRecoveryStore({ storage: window.localStorage, scope: projectRef, pruneOtherScopes: true }),
+        store: createLocalAssetRecoveryStore({
+          storage: window.localStorage,
+          scope: `${props.browserRuntimeScope}:${projectRef}`,
+          pruneOtherScopes: true,
+        }),
       })
     } catch {
       try {
         uploader = createAssetUploader({
           csrfToken: props.csrfToken,
-          store: createLocalAssetRecoveryStore({ storage: window.sessionStorage, scope: projectRef, pruneOtherScopes: true }),
+          store: createLocalAssetRecoveryStore({
+            storage: window.sessionStorage,
+            scope: `${props.browserRuntimeScope}:${projectRef}`,
+            pruneOtherScopes: true,
+          }),
         })
       } catch {
         uploader = null
@@ -533,7 +546,7 @@ export function ChatProduct(props: ChatProductProps) {
       uploader?.dispose()
       setAssetUploader((current) => current === uploader ? null : current)
     }
-  }, [props.bootstrap?.defaultProjectRef, props.csrfToken])
+  }, [props.bootstrap?.defaultProjectRef, props.browserRuntimeScope, props.csrfToken])
 
   useEffect(() => {
     void (async () => {
@@ -562,7 +575,7 @@ export function ChatProduct(props: ChatProductProps) {
   const rail = <SessionRail activeSessionId={state.sessionId} available={productAvailable && state.projection.command.state !== "pending"} brandName={props.brandName} controller={organizer} copy={copy} onNew={createSession} onOpen={openSession} state={organizerState} />
 
   if (state.phase === "idle") return <div className={styles.appShell}>{rail}<main className={styles.startShell}><span className={styles.startMark} aria-hidden>✦</span><span className={styles.eyebrow}>{props.brandName}</span><h1>{copy.startTitle}</h1><p>{copy.startDescription}</p><button type="button" disabled={!productAvailable || state.projection.command.state === "pending"} onClick={createSession}>{state.projection.command.state === "pending" ? copy.creatingChat : copy.newChat}</button>{!productAvailable ? <p className={styles.failure} role="status">{copy.unavailable}</p> : null}{state.failure ? <p className={styles.failure} role="alert">{state.failure.message}</p> : null}</main></div>
-  return <div className={styles.appShell}>{rail}<ChatView assetUploader={assetUploader} brandName={props.brandName} controller={controller} copy={copy} state={state} /></div>
+  return <div className={styles.appShell}>{rail}<ChatView key={props.browserRuntimeScope} assetUploader={assetUploader} brandName={props.brandName} controller={controller} copy={copy} state={state} /></div>
 }
 
 function ModelOptionSelector(props: {

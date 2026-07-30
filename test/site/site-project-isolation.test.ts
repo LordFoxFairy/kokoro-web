@@ -108,6 +108,10 @@ describe("independent Site project scaffold", () => {
       { hostname: "beta.external.invalid", environment: "production" },
     ]);
     expect(alpha.generatedFiles).toContain(".github/workflows/site-ci.yml");
+    expect(alpha.generatedFiles).toContain(".env.example");
+    expect(alpha.generatedFiles).toContain("Dockerfile");
+    expect(alpha.generatedFiles).toContain("src/app/api/health/live/route.ts");
+    expect(alpha.generatedFiles).toContain("src/app/api/health/ready/route.ts");
     expect(beta.generatedFiles).toContain("deploy/artifact-manifest.json");
 
     const occupied = join(root, "occupied");

@@ -1,7 +1,7 @@
 import { ChatProduct } from "@kokoro/chat-app";
 import { notFound, redirect } from "next/navigation";
 
-import { readOpaqueAuthSession } from "../auth";
+import { browserRuntimeScope, readOpaqueAuthSession } from "../auth";
 import { siteBff } from "../bff";
 import { site } from "../site-bootstrap";
 
@@ -18,6 +18,7 @@ export default async function Home(props: { readonly searchParams: Promise<{ rea
     <ChatProduct
       bootstrap={runtime.publicBootstrap}
       brandName={site.displayName}
+      browserRuntimeScope={browserRuntimeScope(opaque, runtime.publicBootstrap.defaultProjectRef)}
       csrfToken={bff.issueBrowserCsrf()}
       initialSessionId={typeof selected === "string" ? selected : undefined}
     />

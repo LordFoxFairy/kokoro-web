@@ -7,14 +7,17 @@ import {
   commandIdentitySchema,
 } from "@kokoro/session-client/contracts"
 
-const STORAGE_KEY = "kokoro.chat.pending-command.v1"
+const STORAGE_ROOT = "kokoro.chat.pending-command.v1."
 const MAXIMUM_AGE_MS = 24 * 60 * 60 * 1_000
 const MAXIMUM_FUTURE_SKEW_MS = 5 * 60 * 1_000
+const SCOPE_PATTERN = /^[A-Za-z0-9._:-]{8,128}$/u
 
 export type SessionCommandStorage = Readonly<{
   getItem(key: string): string | null
   setItem(key: string, value: string): void
   removeItem(key: string): void
+  readonly length?: number
+  key?(index: number): string | null
 }>
 
 export type SessionCommandRecoveryRecord = Readonly<{
@@ -67,13 +70,26 @@ function parseRecord(value: unknown, now: number): SessionCommandRecoveryRecord 
 
 export function createSessionCommandRecoveryStore(input: Readonly<{
   storage: SessionCommandStorage
+  scope: string
+  pruneOtherScopes?: boolean
   now?: () => number
 }>): SessionCommandRecoveryStore {
+  if (!SCOPE_PATTERN.test(input.scope)) throw new TypeError("Invalid browser runtime scope")
+  const storageKey = `${STORAGE_ROOT}${input.scope}`
   const now = input.now ?? Date.now
+
+  if (input.pruneOtherScopes === true) {
+    if (typeof input.storage.key === "function" && typeof input.storage.length === "number") {
+      for (let index = input.storage.length - 1; index >= 0; index -= 1) {
+        const key = input.storage.key(index)
+        if (key?.startsWith(STORAGE_ROOT) === true && key !== storageKey) input.storage.removeItem(key)
+      }
+    }
+  }
 
   const remove = (): void => {
     try {
-      input.storage.removeItem(STORAGE_KEY)
+      input.storage.removeItem(storageKey)
     } catch {
       // Browser storage availability is not an authority signal.
     }
@@ -82,7 +98,7 @@ export function createSessionCommandRecoveryStore(input: Readonly<{
   const load = (): SessionCommandRecoveryRecord | null => {
     let raw: string | null
     try {
-      raw = input.storage.getItem(STORAGE_KEY)
+      raw = input.storage.getItem(storageKey)
     } catch {
       return null
     }
@@ -107,7 +123,7 @@ export function createSessionCommandRecoveryStore(input: Readonly<{
       const parsed = parseRecord(record, now())
       if (parsed === null) throw new TypeError("Invalid Session command recovery record")
       try {
-        input.storage.setItem(STORAGE_KEY, JSON.stringify(parsed))
+        input.storage.setItem(storageKey, JSON.stringify(parsed))
       } catch {
         // The in-memory controller record still prevents a new effect in this page.
       }

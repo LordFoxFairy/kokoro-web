@@ -3,6 +3,15 @@
   "releaseId": __RELEASE_ID_JSON__,
   "target": __DEPLOYMENT_JSON__,
   "domains": __DOMAINS_JSON__,
+  "runtime": {
+    "artifact": "next-standalone-container",
+    "node": "24.13.0",
+    "port": 3000
+  },
+  "probes": {
+    "livenessPath": "/api/health/live",
+    "readinessPath": "/api/health/ready"
+  },
   "activationMode": "platform-exact-binding",
   "rollbackAuthority": "site-project"
 }

@@ -10,7 +10,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start",
+    "start": "node .next/standalone/server.js",
     "lint": "node scripts/check-project-boundaries.mjs",
     "typecheck": "tsc --noEmit",
     "test": "node --test test/*.test.mjs",

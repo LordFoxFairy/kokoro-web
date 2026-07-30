@@ -411,6 +411,9 @@ importers:
       '@kokoro/bff-runtime':
         specifier: workspace:*
         version: link:../bff-runtime
+      '@kokoro/session-client':
+        specifier: workspace:*
+        version: link:../session-client
       '@kokoro/site-client':
         specifier: workspace:*
         version: link:../site-client

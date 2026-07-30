@@ -24,6 +24,7 @@
   "publishConfig": { "access": "public", "provenance": true },
   "dependencies": {
     "@kokoro/bff-runtime": "workspace:*",
+    "@kokoro/session-client": "workspace:*",
     "@kokoro/site-client": "workspace:*",
     "@kokoro/site-runtime-node": "workspace:*",
     "server-only": "0.0.1"

@@ -16,6 +16,7 @@ import {
 } from "@kokoro/site-bff";
 
 import { siteBff } from "./bff";
+import { siteAuthSecret, sitePublicOrigin } from "./runtime-config";
 import { site } from "./site-bootstrap";
 
 export const SITE_SESSION_COOKIE = "__Host-kokoro.session-token";
@@ -48,12 +49,6 @@ type SiteJwt = Record<string, unknown> & Partial<SiteCredentialPair> & {
   refreshPriorCommandId?: string;
 };
 
-function secret(): string {
-  const value = process.env.AUTH_SECRET?.trim();
-  if (!value || value.length < 32) throw new Error("AUTH_SECRET must contain at least 32 characters");
-  return value;
-}
-
 function siteBinding(): string {
   const deployment = siteBff().deploymentIdentity;
   return [
@@ -65,9 +60,21 @@ function siteBinding(): string {
   ].map((value) => `${value.length}:${value}`).join("|");
 }
 
+/** Browser-safe identity boundary. It rotates with the opaque Site session and exposes no Platform authority. */
+export function browserRuntimeScope(auth: OpaqueAuthSession, projectRef: string): string {
+  return createHmac("sha256", siteAuthSecret())
+    .update("kokoro-site-browser-runtime-scope-v1\0")
+    .update(siteBinding())
+    .update("\0")
+    .update(`${auth.sessionRef.length}:${auth.sessionRef}`)
+    .update("\0")
+    .update(`${projectRef.length}:${projectRef}`)
+    .digest("base64url");
+}
+
 function deliveryDigest(flow: DeliveryFlow, values: readonly string[]): string {
   const body = [flow, siteBinding(), ...values].map((value) => `${value.length}:${value}`).join("|");
-  const inputDigestKey = createHmac("sha256", secret())
+  const inputDigestKey = createHmac("sha256", siteAuthSecret())
     .update("kokoro-site-auth-delivery-input-v1")
     .digest();
   return createHmac("sha256", inputDigestKey).update(body).digest("hex");
@@ -173,7 +180,7 @@ function deliveryCookieOptions(maxAge: number) {
 
 async function decodeDelivery(value: string | undefined): Promise<DeliveryState | null> {
   if (!value) return null;
-  const raw = await decode({ token: value, secret: secret(), salt: SITE_AUTH_DELIVERY_COOKIE });
+  const raw = await decode({ token: value, secret: siteAuthSecret(), salt: SITE_AUTH_DELIVERY_COOKIE });
   if (raw === null) return null;
   const candidate = raw as Record<string, unknown>;
   const flow = candidate.flow;
@@ -198,7 +205,7 @@ async function writeDelivery(state: Omit<DeliveryState, "siteBinding" | "exp">):
   };
   const sealed = await encode({
     token: value,
-    secret: secret(),
+    secret: siteAuthSecret(),
     salt: SITE_AUTH_DELIVERY_COOKIE,
     maxAge: DELIVERY_TTL_SECONDS,
   });
@@ -255,15 +262,6 @@ async function preparedDelivery(flow: DeliveryFlow, digest: string): Promise<Sit
     },
     ...(state.priorCommandId === undefined ? {} : { priorCommandId: state.priorCommandId }),
   };
-}
-
-function configuredOrigin(): string {
-  secret();
-  const value = process.env.KOKORO_SITE_PUBLIC_ORIGIN?.trim();
-  if (!value || process.env.AUTH_URL?.trim() !== value) {
-    throw new Error("AUTH_URL must exactly equal KOKORO_SITE_PUBLIC_ORIGIN");
-  }
-  return value;
 }
 
 const nextAuth = NextAuth({
@@ -398,7 +396,7 @@ const nextAuth = NextAuth({
 export const { handlers, signIn, signOut } = nextAuth;
 
 export async function auth() {
-  configuredOrigin();
+  sitePublicOrigin();
   return nextAuth.auth();
 }
 
@@ -406,7 +404,7 @@ export function authRouteAllowed(request: Request): boolean {
   let origin: string, expectedOrigin: string;
   try {
     origin = new URL(request.url).origin;
-    expectedOrigin = configuredOrigin();
+    expectedOrigin = sitePublicOrigin();
   } catch {
     return false;
   }
@@ -418,7 +416,7 @@ export function authRouteAllowed(request: Request): boolean {
 export async function readOpaqueAuthSession(): Promise<OpaqueAuthSession | null> {
   const sealed = assembleChunkedCookie((await cookies()).getAll(), SITE_SESSION_COOKIE);
   if (!sealed) return null;
-  const token = await decode({ token: sealed, secret: secret(), salt: SITE_SESSION_COOKIE });
+  const token = await decode({ token: sealed, secret: siteAuthSecret(), salt: SITE_SESSION_COOKIE });
   const pair = token === null ? null : pairFromToken(token as SiteJwt);
   if (pair === null || !credentialIsActive(pair.sessionCredentialExpiresAt)) return null;
   return Object.freeze({

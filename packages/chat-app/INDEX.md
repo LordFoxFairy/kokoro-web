@@ -26,3 +26,6 @@ Product wording is supplied through a typed copy dictionary. Chat attachments us
 the Site BFF derives owner scope, the browser streams bytes only under a short-lived exact-origin capability,
 and Session receives only ready `{asset_ref, asset_version_ref, asset_grant_ref}` values. Upload credentials
 remain memory-only; refresh recovery reselects the same fingerprint and replays persisted idempotency identities.
+Both command recovery and upload recovery are scoped by a server-derived opaque browser runtime scope that rotates with the Site
+identity session. A scope change aborts active uploads, closes Session/SSE controllers, prunes prior recovery records, and remounts
+the composer so ready attachment grants cannot cross an account switch.
