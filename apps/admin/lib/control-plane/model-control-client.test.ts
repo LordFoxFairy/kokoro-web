@@ -1,8 +1,9 @@
 import { Code, ConnectError } from "@connectrpc/connect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { KokoroErrorDetailSchema } from "@/lib/generated/admin-commerce/kokoro/common/v1/error_pb";
 import { CommandReceiptStateV2 } from
   "@/lib/generated/admin-commerce/kokoro/common/v2/command_envelope_pb";
+import { MODEL_CONTROL_ADMIN_ERRORS, modelControlAdminErrorDetail } from
+  "@/lib/generated/model-control/model-control-errors";
 
 const calls = vi.hoisted(() => ({
   model: {
@@ -10,6 +11,7 @@ const calls = vi.hoisted(() => ({
     listInventoryRevisions: vi.fn(),
     listSiteModelPolicies: vi.fn(),
     listSiteReleaseCatalogs: vi.fn(),
+    activateInventory: vi.fn(),
     changeSitePolicy: vi.fn(),
     publishSiteReleaseCatalog: vi.fn(),
   },
@@ -77,19 +79,35 @@ describe("typed Model query client", () => {
     });
   });
 
-  it("normalizes Connect status, domain detail, and receipt for Model reads", async () => {
-    calls.model.getInventoryRevision.mockRejectedValue(new ConnectError("missing", Code.NotFound, undefined, [{
-      desc: KokoroErrorDetailSchema,
-      value: { domainCode: "model.inventory.not_found", requestId: "request-one",
-        correlationId: "correlation-one", safeMessage: "not found", receiptRef: "receipt:one" },
-    }]));
+  it("preserves the generated provider NotFound detail through the client and HTTP boundary", async () => {
+    const contract = MODEL_CONTROL_ADMIN_ERRORS.inventoryRevisionNotFound;
+    calls.model.getInventoryRevision.mockRejectedValue(new ConnectError(contract.safeMessage, Code.NotFound,
+      undefined, [modelControlAdminErrorDetail("inventoryRevisionNotFound", "request-one")]));
     const { getModelInventoryRevision } = await import("./client");
+    const { controlError } = await import("./http");
 
-    await expect(getModelInventoryRevision(digest)).rejects.toMatchObject({
+    const error = await getModelInventoryRevision(digest).catch((reason: unknown) => reason);
+    expect(error).toMatchObject({
       connectCode: Code.NotFound,
-      domainCode: "model.inventory.not_found",
-      receiptRef: "receipt:one",
+      domainCode: contract.domainCode,
     });
+    const response = controlError(error);
+    expect(response.status).toBe(contract.httpStatus);
+    expect(await response.json()).toEqual({ error: { code: contract.domainCode, receiptRef: null } });
+  });
+
+  it("preserves the generated provider page-token InvalidArgument through HTTP", async () => {
+    const contract = MODEL_CONTROL_ADMIN_ERRORS.adminPageTokenInvalid;
+    calls.model.listInventoryRevisions.mockRejectedValue(new ConnectError(contract.safeMessage,
+      Code.InvalidArgument, undefined, [modelControlAdminErrorDetail("adminPageTokenInvalid", "request-two")]));
+    const { listModelInventoryRevisions } = await import("./client");
+    const { controlError } = await import("./http");
+
+    const error = await listModelInventoryRevisions("malformed").catch((reason: unknown) => reason);
+    expect(error).toMatchObject({ connectCode: Code.InvalidArgument, domainCode: contract.domainCode });
+    const response = controlError(error);
+    expect(response.status).toBe(contract.httpStatus);
+    expect(await response.json()).toEqual({ error: { code: contract.domainCode, receiptRef: null } });
   });
 
   it.each(["policies", "catalogs"])("rejects a cross-Site row in %s", async (kind) => {
@@ -117,6 +135,20 @@ describe("typed Model Site mutation client", () => {
     return { state: CommandReceiptStateV2.COMMITTED, identity: context.command,
       operation: "model.test", recordedAt: instant };
   };
+
+  it("preserves the generated provider receipt conflict through the client and HTTP boundary", async () => {
+    const contract = MODEL_CONTROL_ADMIN_ERRORS.commandReceiptConflict;
+    calls.model.activateInventory.mockRejectedValue(new ConnectError(contract.safeMessage, Code.AlreadyExists,
+      undefined, [modelControlAdminErrorDetail("commandReceiptConflict", "request-three")]));
+    const { activateModelInventory } = await import("./client");
+    const { controlError } = await import("./http");
+
+    const error = await activateModelInventory(digest, "0").catch((reason: unknown) => reason);
+    expect(error).toMatchObject({ connectCode: Code.AlreadyExists, domainCode: contract.domainCode });
+    const response = controlError(error);
+    expect(response.status).toBe(contract.httpStatus);
+    expect(await response.json()).toEqual({ error: { code: contract.domainCode, receiptRef: null } });
+  });
 
   it("rejects a cross-Site policy response after validating its receipt", async () => {
     calls.model.changeSitePolicy.mockImplementation(async (request: unknown) => ({ siteId: "site-other",

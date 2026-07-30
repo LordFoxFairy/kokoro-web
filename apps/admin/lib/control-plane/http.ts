@@ -21,7 +21,8 @@ export function controlError(reason: unknown): NextResponse {
   if (reason instanceof AdminControlPlaneError) {
     const status = reason.connectCode === Code.Unauthenticated ? 401 : reason.connectCode === Code.PermissionDenied ? 403 :
       reason.connectCode === Code.NotFound ? 404 : reason.connectCode === Code.InvalidArgument ? 400 :
-        reason.connectCode === Code.FailedPrecondition ? 409 : reason.connectCode === Code.ResourceExhausted ? 429 : 503;
+        reason.connectCode === Code.AlreadyExists || reason.connectCode === Code.FailedPrecondition ? 409 :
+          reason.connectCode === Code.ResourceExhausted ? 429 : 503;
     return NextResponse.json({ error: { code: reason.domainCode, receiptRef: reason.receiptRef } }, { status, headers: NO_STORE });
   }
   return errorJson("admin_control_plane.unavailable", 503);
