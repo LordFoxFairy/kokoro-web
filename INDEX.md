@@ -11,7 +11,7 @@ owners:
 
 Own the Site application factory, brand-neutral product packages, a reference fixture, and the independently deployed Admin console.
 
-正式工作区成员（`apps/user` 已退出 workspace，不参与安装、构建、测试或发布）：
+正式工作区成员：
 
 ```
 apps/
@@ -29,7 +29,7 @@ packages/
   bff-runtime/                 server-only Site bootstrap、SessionAccessGrant 与 fail-closed proxy trust kernel。
 ```
 
-正式 Next.js surfaces 锁在 Next 16.2.12 / React 19.2.8。根 `dev`/`start` 只启动 reference fixture；
+正式 Next.js surfaces 锁在 Next 16.2.12 / React 19.2.8。根仓不提供默认 `dev`/`start`；
 `build:site` 验证 Site factory、共享依赖与 reference fixture，`build:admin` 独立验证 Admin。
 
 ## Non-responsibilities
@@ -83,15 +83,13 @@ Put app-specific behavior in its app and truly shared Web code in `packages/*`. 
 
 - **Acquisition shutdown**：User Web 保留固定 Site 的只读套餐/credit/account 展示与 Platform Public 合同绑定的卡密 preview→confirm→recover；checkout/mock-pay/refund BFF、购买 CTA、provider secret/SDK 仍禁止。卡密只走 server-only generated client，raw Code 不落状态/日志/响应。仓库门禁对两 app 的完整 API route inventory、Admin rewrite 清单、proxy egress 和 plans GET-only export 采用闭合 allowlist。Admin 的 manifests/billing-overview/user360/resource/action 先经过本地 BFF 深度正向 schema 过滤，payment module/metrics/orders/action 对浏览器恒不可达。
 - **每 Site 一个独立 Web 项目**：Site factory 输出独立产品名、repository、artifact、release、cookie/account
-  边界与 rollback 权；Web 仓不再提供一个共享 `apps/user` 作为生产部署入口。
+  边界与 rollback 权；仓内不存在共享用户站 runtime，reference fixture 也不可作为生产部署入口。
 - **`.npmrc` 使用 `node-linker=isolated`**（非 hoisted），防止 app/private package 依赖被根级幽灵依赖掩盖。切换
   linker 属根工具链迁移，必须以 clean install、两 app build/test 与 dependency-boundary evidence 证明，不能直接改。
-- **jest-dom matchers 挂载**（`apps/user/tests/setup.ts`）：必须 `import * as m from "@testing-library/jest-dom/matchers"`
-  + `expect.extend(m)`。用 `import "@testing-library/jest-dom/vitest"` 在 isolated 下会解析到异 vitest 实例，
-  matcher 静默不注册（报 "Invalid Chai property: toBeInTheDocument"）。
-- **i18n 分层**：解析引擎单一实现在 `@kokoro/i18n`（泛型于各 app 的 `Locale`/`MessageKey`），两 app 各自持有消息字典
-  与 React 绑定（`apps/user/src/i18n`、`apps/admin/lib/i18n`）——字典属 app 专属，不上收共享包。
-- **dev 起环**：仓根 `pnpm run dev` 只启动 reference fixture。真实 Site 必须在自己的项目中启动；Admin 独立启动。
+- **i18n 分层**：解析引擎单一实现在 `@kokoro/i18n`；Admin 持有自己的消息字典与 React 绑定，
+  独立 Site 的品牌与产品 copy 通过生成项目和 brand-neutral packages 注入。
+- **dev 起环**：仓根没有默认 `dev`/`start`，避免把 reference fixture 误部署。只允许显式
+  `pnpm run dev:reference` 做编译夹具调试；真实 Site 必须在自己的项目中启动，Admin 独立启动。
 
 ## Verification
 

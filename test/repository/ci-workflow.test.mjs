@@ -28,7 +28,9 @@ test("web CI installs and verifies with its pinned pnpm lock", async () => {
   assert.match(workflow, /run:\s*pnpm test/u);
   assert.match(workspace, /^packages:\n  - apps\/admin\n  - apps\/reference-site\n  - packages\/\*/u);
   assert.doesNotMatch(workspace, /apps\/\*/u);
-  assert.equal(packageJson.scripts.dev, "pnpm --filter @kokoro/reference-site dev");
+  assert.equal(packageJson.scripts.dev, undefined);
+  assert.equal(packageJson.scripts.start, undefined);
+  assert.equal(packageJson.scripts["dev:reference"], "pnpm --filter @kokoro/reference-site dev");
   assert.equal(
     packageJson.scripts["build:site"],
     "pnpm --filter @kokoro/site-scaffold... --filter @kokoro/reference-site... build",

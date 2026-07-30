@@ -5,11 +5,10 @@
   "packageManager": "pnpm@11.2.2",
   "description": "Kokoro Web shared Site factory, reference fixture, and independently deployed admin console.",
   "scripts": {
-    "dev": "pnpm --filter @kokoro/reference-site dev",
+    "dev:reference": "pnpm --filter @kokoro/reference-site dev",
     "build": "pnpm run build:site && pnpm run build:admin",
     "build:site": "pnpm --filter @kokoro/site-scaffold... --filter @kokoro/reference-site... build",
     "build:admin": "pnpm --filter @kokoro/admin-web... build",
-    "start": "pnpm --filter @kokoro/reference-site start",
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm run test:repository && pnpm -r test",
