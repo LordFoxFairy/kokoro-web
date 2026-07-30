@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import { AdminIdentityService } from "./admin-identity/kokoro/platform/identity/v1/admin_identity_pb";
 import { AdminQueryService } from "./admin-query-v2/kokoro/platform/admin/v2/admin_query_pb";
 import { AdminCommerceService } from "./admin-commerce/kokoro/platform/commerce/v1/admin_commerce_pb";
+import { AdminCreditService } from "./admin-credit/kokoro/platform/credit/v1/admin_credit_pb";
 import { SiteProvisioningService } from "./site-provisioning/kokoro/platform/site/v1/site_provisioning_pb";
 
 const generatedRoot = dirname(fileURLToPath(import.meta.url));
@@ -36,7 +37,7 @@ function resolveImport(importer: string, specifier: string): string | null {
 }
 
 describe("typed Admin control-plane mirrors", () => {
-  it("exposes the complete Identity, Query, Commerce and Site provisioning RPC surfaces", () => {
+  it("exposes the complete Identity, Query, Commerce, Credit and Site provisioning RPC surfaces", () => {
     expect(Object.keys(AdminIdentityService.method)).toEqual(["beginOperatorLogin", "exchangeOidcSession",
       "getOperatorSessionDelivery", "beginStepUp", "completeStepUp", "signOut"]);
     expect(Object.keys(AdminQueryService.method)).toContain("getCurrentOperator");
@@ -45,6 +46,10 @@ describe("typed Admin control-plane mirrors", () => {
       "publishRedemptionProgram", "listRedemptionPrograms", "getRedemptionProgram", "issueCodeBatch",
       "listCodeBatches", "getCodeBatch", "approveCodeBatch", "activateCodeBatch", "abandonCodeBatch",
       "suspendCodeBatch", "revokeCodeBatch"]);
+    expect(Object.keys(AdminCreditService.method)).toEqual(["getSiteCreditSummary", "listCreditAccounts",
+      "getCreditAccount", "listCreditGrants", "listCreditHolds", "listCreditHoldAllocations",
+      "listCreditJournalTransactions", "listCreditJournalEntries", "listRatedUsage",
+      "listRatedUsageSourceAllocations"]);
     expect(Object.keys(SiteProvisioningService.method)).toEqual(["registerSite", "publishSiteRelease"]);
   });
 
@@ -56,6 +61,7 @@ describe("typed Admin control-plane mirrors", () => {
     expect(transport).toContain("rejectUnauthorized: true");
     expect(client).toContain("AdminCommerceService");
     expect(client).toContain("SiteProvisioningService");
+    expect(readFileSync(resolve(appRoot, "lib/control-plane/credit-client.ts"), "utf8")).toContain("AdminCreditService");
     expect(client).not.toContain("/api/action");
     expect(`${transport}\n${client}`).not.toContain("KOKORO_ADMIN_PROXY_SECRET");
   });

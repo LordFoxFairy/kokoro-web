@@ -74,6 +74,46 @@ const ADMIN_CONTROL_ROUTES = new Map([
     methods: ["GET", "POST"],
     imports: ["@/lib/control-plane/client", "@/lib/control-plane/http"],
   }],
+  ["apps/admin/app/api/control/credit/accounts/[accountRef]/route.ts", {
+    methods: ["GET"],
+    imports: ["@/lib/control-plane/credit-client", "@/lib/control-plane/credit-route-query", "@/lib/control-plane/http"],
+  }],
+  ["apps/admin/app/api/control/credit/accounts/route.ts", {
+    methods: ["GET"],
+    imports: ["@/lib/control-plane/credit-client", "@/lib/control-plane/credit-route-query", "@/lib/control-plane/http"],
+  }],
+  ["apps/admin/app/api/control/credit/grants/route.ts", {
+    methods: ["GET"],
+    imports: ["@/lib/control-plane/credit-client", "@/lib/control-plane/credit-route-query", "@/lib/control-plane/http"],
+  }],
+  ["apps/admin/app/api/control/credit/hold-allocations/route.ts", {
+    methods: ["GET"],
+    imports: ["@/lib/control-plane/credit-client", "@/lib/control-plane/credit-route-query", "@/lib/control-plane/http"],
+  }],
+  ["apps/admin/app/api/control/credit/holds/route.ts", {
+    methods: ["GET"],
+    imports: ["@/lib/control-plane/credit-client", "@/lib/control-plane/credit-route-query", "@/lib/control-plane/http"],
+  }],
+  ["apps/admin/app/api/control/credit/journal-entries/route.ts", {
+    methods: ["GET"],
+    imports: ["@/lib/control-plane/credit-client", "@/lib/control-plane/credit-route-query", "@/lib/control-plane/http"],
+  }],
+  ["apps/admin/app/api/control/credit/journal-transactions/route.ts", {
+    methods: ["GET"],
+    imports: ["@/lib/control-plane/credit-client", "@/lib/control-plane/credit-route-query", "@/lib/control-plane/http"],
+  }],
+  ["apps/admin/app/api/control/credit/rated-usage-source-allocations/route.ts", {
+    methods: ["GET"],
+    imports: ["@/lib/control-plane/credit-client", "@/lib/control-plane/credit-route-query", "@/lib/control-plane/http"],
+  }],
+  ["apps/admin/app/api/control/credit/rated-usage/route.ts", {
+    methods: ["GET"],
+    imports: ["@/lib/control-plane/credit-client", "@/lib/control-plane/credit-route-query", "@/lib/control-plane/http"],
+  }],
+  ["apps/admin/app/api/control/credit/summary/route.ts", {
+    methods: ["GET"],
+    imports: ["@/lib/control-plane/credit-client", "@/lib/control-plane/credit-route-query", "@/lib/control-plane/http"],
+  }],
   ["apps/admin/app/api/control/offers/route.ts", {
     methods: ["GET", "POST"],
     imports: ["@/lib/control-plane/client", "@/lib/control-plane/http"],
