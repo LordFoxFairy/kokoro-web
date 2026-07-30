@@ -24,6 +24,8 @@ versioned artifacts, notices, and errors have separate product views. Media oper
 capability, contract status, basis-point progress, safe metadata, and final artifact reference; they are not
 treated as agent orchestration. Artifact views display their exact artifact/version references and content type.
 Unknown generated kinds remain visible through the unsupported safe fallback instead of dropping the message.
+Tool cards distinguish an authoritative tool-result error from transport lifecycle state and disclose when the
+safe result preview was truncated.
 
 Transport reconnect is effect-free and resumes the opaque Session cursor with bounded jitter. Any cursor,
 branch, part-version, or authorization projection repair closes the stale stream and single-flights a fresh

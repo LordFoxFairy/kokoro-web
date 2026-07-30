@@ -341,6 +341,14 @@ function ArtifactCard(props: Readonly<{
   return <aside className={styles.productCard} data-kind="artifact"><div className={styles.cardHeading}><strong>{props.copy.artifact}</strong><span>{props.part.lifecycle}</span></div><dl className={styles.summaryList}><div><dt>{props.copy.finalArtifact}</dt><dd>{props.part.artifactRef}</dd></div><div><dt>{props.copy.artifactVersion}</dt><dd>{props.part.versionRef}</dd></div>{props.part.contentType === undefined ? null : <div><dt>{props.copy.contentType}</dt><dd>{props.part.contentType}</dd></div>}</dl><SafeSummary metadata={props.part.safeMetadata} /></aside>
 }
 
+function ToolPartCard(props: Readonly<{
+  part: Extract<ChatPart, { kind: "tool" }>
+  copy: ChatProductCopy
+}>) {
+  const displayAsError = props.part.isError === true || (props.part.isError === undefined && props.part.status === "error")
+  return <aside className={displayAsError ? styles.errorCard : styles.partCard} data-result-error={props.part.isError} data-status={props.part.status}><div className={styles.cardHeading}><strong>{props.part.name}</strong><span>{props.part.status}</span></div><SafeSummary metadata={props.part.args} />{props.part.result === undefined ? null : <p>{props.part.result}</p>}{props.part.isError === true ? <p className={styles.quiet}>{props.copy.toolError}</p> : null}{props.part.truncated === true ? <p className={styles.quiet}>{props.copy.toolResultTruncated}</p> : null}</aside>
+}
+
 export function ChatPartView(props: {
   readonly part: ChatPart
   readonly runId: string | null
@@ -356,7 +364,7 @@ export function ChatPartView(props: {
       const href = safeHref(part.locator)
       return <aside className={styles.citation}><span aria-hidden>↗</span><div><strong>{href === null ? part.title : <a href={href} rel="noreferrer noopener" target="_blank">{part.title}</a>}</strong>{part.attribution ? <p>{part.attribution}</p> : null}</div></aside>
     }
-    case "tool": return <aside className={styles.partCard} data-status={part.status}><div className={styles.cardHeading}><strong>{part.name}</strong><span>{part.status}</span></div><SafeSummary metadata={part.args} />{part.result ? <p>{part.result}</p> : null}</aside>
+    case "tool": return <ToolPartCard copy={props.copy} part={part} />
     case "approval":
     case "interaction": return <ActionPartCard {...props} part={part} />
     case "plan": return <PlanPartCard {...props} part={part} />

@@ -9,6 +9,8 @@ import {
 
 import type { ChatPart, ChatProjection, ChatProjectionMessage } from "../projection/store.js"
 
+type ThreadMessagePartLike = Exclude<ThreadMessageLike["content"], string>[number]
+
 export type ChatCommandPort = {
   readonly submit: (command: { readonly content: string; readonly parentId: string | null }) => Promise<void>
   readonly edit?: (command: { readonly sourceId: string; readonly content: string; readonly parentId: string | null }) => Promise<void>
@@ -37,7 +39,7 @@ function unreachablePart(part: never): never {
   throw new Error(`Unsupported projected part: ${JSON.stringify(part)}`)
 }
 
-function dataPart(part: Exclude<ChatPart, { kind: "text" | "reasoning-summary" | "tool" | "unsupported" }>) {
+function dataPart(part: Exclude<ChatPart, { kind: "text" | "reasoning-summary" | "tool" | "unsupported" }>): ThreadMessagePartLike {
   const common = { ordinal: part.ordinal, version: part.version, lifecycle: part.lifecycle }
   switch (part.kind) {
     case "citation":
@@ -131,23 +133,34 @@ function dataPart(part: Exclude<ChatPart, { kind: "text" | "reasoning-summary" |
 }
 
 function convertMessage(message: ChatProjectionMessage): ThreadMessageLike {
-  const content = message.parts.map((part) => {
-    if (part.kind === "text") return { type: "text" as const, text: part.text }
-    if (part.kind === "reasoning-summary") return { type: "reasoning" as const, text: part.text }
-    if (part.kind === "tool") return {
+  const content = message.parts.flatMap<ThreadMessagePartLike>((part) => {
+    if (part.kind === "text") return [{ type: "text" as const, text: part.text }]
+    if (part.kind === "reasoning-summary") return [{ type: "reasoning" as const, text: part.text }]
+    if (part.kind === "tool") return [{
       type: "tool-call" as const,
       toolCallId: part.toolCallId,
       toolName: part.name,
       args: jsonObject(part.args),
       argsText: JSON.stringify(part.args),
       ...(part.result === undefined ? {} : { result: part.result }),
-      ...(part.isError === true || part.status === "error" ? { isError: true } : {}),
+      ...(part.isError === undefined ? {} : { isError: part.isError }),
       ...(part.status === "awaiting" ? { interrupt: { type: "human" as const, payload: {
         effectRef: part.effectRef,
         receiptRef: part.receiptRef,
       } } } : {}),
-    }
-    if (part.kind === "unsupported") return {
+    }, {
+      type: "data" as const,
+      name: "kokoro:tool-result-metadata",
+      data: {
+        toolCallId: part.toolCallId,
+        ordinal: part.ordinal,
+        version: part.version,
+        lifecycle: part.lifecycle,
+        ...(part.truncated === undefined ? {} : { truncated: part.truncated }),
+        ...(part.isError === undefined ? {} : { isError: part.isError }),
+      },
+    }]
+    if (part.kind === "unsupported") return [{
       type: "data" as const,
       name: "kokoro:unsupported",
       data: {
@@ -158,8 +171,8 @@ function convertMessage(message: ChatProjectionMessage): ThreadMessageLike {
         version: part.version,
         lifecycle: part.lifecycle,
       },
-    }
-    return dataPart(part)
+    }]
+    return [dataPart(part)]
   })
   const custom = { kokoro: { runId: message.runId, integrity: message.status } }
   if (message.role === "user") {

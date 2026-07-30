@@ -58,6 +58,8 @@ export type ChatProductCopy = Readonly<{
   artifact: string
   artifactVersion: string
   contentType: string
+  toolError: string
+  toolResultTruncated: string
   cost: string
   pending: string
   lastUpdated: string
@@ -158,6 +160,8 @@ export const DEFAULT_CHAT_COPY: ChatProductCopy = Object.freeze({
   artifact: "Artifact",
   artifactVersion: "Version",
   contentType: "Content type",
+  toolError: "Tool error",
+  toolResultTruncated: "Result preview truncated",
   cost: "Cost",
   pending: "Pending",
   lastUpdated: "Updated",

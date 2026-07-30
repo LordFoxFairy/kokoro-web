@@ -13,6 +13,9 @@ type ChatPartBase = {
   readonly lifecycle: MessagePartEnvelope["lifecycle"]
 }
 
+type PartPayload<Kind extends MessagePartEnvelope["kind"]> =
+  Extract<MessagePartEnvelope, { readonly kind: Kind }>["payload"]
+
 export type ChatPart = ChatPartBase & (
   | { readonly kind: "text"; readonly text: string }
   | { readonly kind: "reasoning-summary"; readonly partRef: string; readonly text: string }
@@ -30,8 +33,8 @@ export type ChatPart = ChatPartBase & (
       readonly args: Record<string, unknown>
       readonly result?: string
       readonly status: "running" | "awaiting" | "complete" | "error" | "incomplete"
-      readonly isError?: boolean
-      readonly truncated?: boolean
+      readonly isError?: PartPayload<"tool-call">["is_error"]
+      readonly truncated?: PartPayload<"tool-call">["truncated"]
       readonly effectRef?: string
       readonly receiptRef?: string
     }
@@ -48,9 +51,9 @@ export type ChatPart = ChatPartBase & (
       readonly inputSchemaRef?: string
       readonly safeInputSchema?: Readonly<Record<string, unknown>>
       readonly deadline?: string
-      readonly allowedActions: readonly string[]
+      readonly allowedActions: PartPayload<"approval" | "interaction">["allowed_actions"]
       readonly receiptRef?: string
-      readonly status: string
+      readonly status: PartPayload<"approval" | "interaction">["status"]
     }
   | {
       readonly kind: "plan"
@@ -58,10 +61,10 @@ export type ChatPart = ChatPartBase & (
       readonly planVersion: number
       readonly summary: string
       readonly steps: readonly { readonly stepRef: string; readonly label: string; readonly status: string }[]
-      readonly allowedActions: readonly string[]
+      readonly allowedActions: PartPayload<"plan">["allowed_actions"]
       readonly deadline?: string
       readonly receiptRef?: string
-      readonly status: string
+      readonly status: PartPayload<"plan">["status"]
     }
   | {
       readonly kind: "plan-progress"
@@ -72,14 +75,14 @@ export type ChatPart = ChatPartBase & (
   | {
       readonly kind: "subagent"
       readonly subagentRef: string
-      readonly status: string
+      readonly status: PartPayload<"subagent">["status"]
       readonly summary?: string
     }
   | {
       readonly kind: "media-operation"
       readonly mediaOperationRef: string
       readonly capability: string
-      readonly status: string
+      readonly status: PartPayload<"media-operation">["status"]
       readonly safeMetadata: Readonly<Record<string, unknown>>
       readonly progressBps?: number
       readonly artifactRef?: string
@@ -94,7 +97,7 @@ export type ChatPart = ChatPartBase & (
   | {
       readonly kind: "cost"
       readonly costProjectionRef: string
-      readonly status: string
+      readonly status: PartPayload<"cost">["status"]
       readonly amount?: string
       readonly currencyOrCreditUnit?: string
       readonly freshness: string
@@ -104,8 +107,8 @@ export type ChatPart = ChatPartBase & (
       readonly noticeRef: string
       readonly code: string
       readonly message: string
-      readonly severity: "info" | "warning"
-      readonly retryClass?: string
+      readonly severity: PartPayload<"notice">["severity"]
+      readonly retryClass?: PartPayload<"notice">["retry_class"]
       readonly supportCorrelationRef?: string
     }
   | {
@@ -113,7 +116,7 @@ export type ChatPart = ChatPartBase & (
       readonly errorRef: string
       readonly code: string
       readonly message: string
-      readonly retryClass: string
+      readonly retryClass: PartPayload<"error">["retry_class"]
       readonly supportCorrelationRef?: string
     }
   | {

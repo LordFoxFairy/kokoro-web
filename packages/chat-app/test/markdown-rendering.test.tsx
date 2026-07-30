@@ -41,6 +41,7 @@ describe("Chat Markdown rendering", () => {
       { ...common, id: "artifact-1", ordinal: 4, lifecycle: "completed", kind: "artifact", artifactRef: "artifact-final", versionRef: "artifact-v1", contentType: "image/png", safeMetadata: { title: "Poster" } },
       { ...common, id: "notice-1", ordinal: 5, lifecycle: "completed", kind: "notice", noticeRef: "notice-ref", code: "WAIT", message: "Still working", severity: "warning" },
       { ...common, id: "error-1", ordinal: 6, lifecycle: "failed", kind: "error", errorRef: "error-ref", code: "FAILED", message: "Stopped", retryClass: "never" },
+      { ...common, id: "tool-1", ordinal: 7, lifecycle: "completed", kind: "tool", toolCallId: "tool-call-1", name: "Search", args: {}, result: "Partial preview", status: "complete", isError: true, truncated: true },
     ]
     const html = parts.map((part) => renderToStaticMarkup(
       <ChatPartView controller={controller} copy={DEFAULT_CHAT_COPY} disabled={false} part={part} runId="run-12345678" />,
@@ -63,6 +64,9 @@ describe("Chat Markdown rendering", () => {
     expect(html).toContain("WAIT")
     expect(html).toContain("warning")
     expect(html).toContain("FAILED")
+    expect(html).toContain("Tool error")
+    expect(html).toContain("Result preview truncated")
+    expect(html).toContain("data-result-error=\"true\"")
   })
 
   it("renders a safe recovery control instead of an internal action token", () => {

@@ -1,10 +1,30 @@
-import type { SessionEvent, SessionSnapshot } from "@kokoro/session-client/contracts"
+import type { MessagePartEnvelope, SessionEvent, SessionSnapshot } from "@kokoro/session-client/contracts"
 import { describe, expect, it, vi } from "vitest"
 
-import { createChatProjectionStore } from "../src/projection/store.js"
+import { createChatProjectionStore, type ChatPart } from "../src/projection/store.js"
 import { createKokoroExternalStoreAdapter } from "../src/runtime/kokoro-external-store-adapter.js"
 
 const NOW = "2026-07-28T00:00:00.000Z"
+
+type Exact<Left, Right> =
+  (<Value>() => Value extends Left ? 1 : 2) extends
+  (<Value>() => Value extends Right ? 1 : 2)
+    ? (<Value>() => Value extends Right ? 1 : 2) extends
+      (<Value>() => Value extends Left ? 1 : 2)
+      ? true
+      : false
+    : false
+type ContractPayload<Kind extends MessagePartEnvelope["kind"]> =
+  Extract<MessagePartEnvelope, { readonly kind: Kind }>["payload"]
+type ProjectedPart<Kind extends ChatPart["kind"]> = Extract<ChatPart, { readonly kind: Kind }>
+
+const EXACT_ENUM_TYPES: readonly [
+  Exact<ProjectedPart<"subagent">["status"], ContractPayload<"subagent">["status"]>,
+  Exact<ProjectedPart<"cost">["status"], ContractPayload<"cost">["status"]>,
+  Exact<ProjectedPart<"notice">["severity"], ContractPayload<"notice">["severity"]>,
+  Exact<ProjectedPart<"notice">["retryClass"], ContractPayload<"notice">["retry_class"]>,
+  Exact<ProjectedPart<"error">["retryClass"], ContractPayload<"error">["retry_class"]>,
+] = [true, true, true, true, true]
 
 function snapshot(): SessionSnapshot {
   return {
@@ -104,6 +124,10 @@ function event<Event extends SessionEvent>(value: Omit<Event, keyof SessionEvent
 }
 
 describe("Chat projection", () => {
+  it("keeps generated enum fields exact instead of widening them to string", () => {
+    expect(EXACT_ENUM_TYPES).toEqual([true, true, true, true, true])
+  })
+
   it("rehydrates the active v3 message lineage and active run without legacy repair", () => {
     const store = createChatProjectionStore()
 
@@ -363,6 +387,47 @@ describe("Chat projection", () => {
       expect.objectContaining({ type: "data", name: "kokoro:unsupported", data: expect.objectContaining({ originalKind: "future-visual" }) }),
     ]))
     expect(assistantProjection.parts).toHaveLength(14)
+  })
+
+  it("preserves authoritative tool results and emits typed result metadata without collapsing false or absent", () => {
+    const base = snapshot()
+    const assistant = base.messages[1]
+    if (assistant === undefined) throw new Error("assistant fixture missing")
+    const rich: SessionSnapshot = {
+      ...base,
+      messages: [base.messages[0] as SessionSnapshot["messages"][number], {
+        ...assistant,
+        parts: [
+          { part_id: "tool-false", message_id: assistant.message_id, ordinal: 0, version: 1, schema_version: 1, lifecycle: "completed", kind: "tool-call", payload: { tool_call_id: "tool-call-false", tool_label: "Search", status: "completed", safe_result_preview: "No matches", is_error: false, truncated: true } },
+          { part_id: "tool-true", message_id: assistant.message_id, ordinal: 1, version: 1, schema_version: 1, lifecycle: "completed", kind: "tool-call", payload: { tool_call_id: "tool-call-true", tool_label: "Fetch", status: "completed", safe_result_preview: "Permission denied", is_error: true } },
+          { part_id: "tool-absent", message_id: assistant.message_id, ordinal: 2, version: 1, schema_version: 1, lifecycle: "completed", kind: "tool-call", payload: { tool_call_id: "tool-call-absent", tool_label: "Inspect", status: "completed", safe_result_preview: "Complete" } },
+        ],
+      }],
+    }
+    const store = createChatProjectionStore()
+    store.dispatch({ type: "snapshot", snapshot: rich })
+    const projected = store.getSnapshot().messages[1]
+    if (projected === undefined) throw new Error("assistant projection missing")
+
+    expect(projected.parts).toEqual([
+      expect.objectContaining({ kind: "tool", toolCallId: "tool-call-false", result: "No matches", isError: false, truncated: true }),
+      expect.objectContaining({ kind: "tool", toolCallId: "tool-call-true", result: "Permission denied", isError: true }),
+      expect.objectContaining({ kind: "tool", toolCallId: "tool-call-absent", result: "Complete" }),
+    ])
+    expect(projected.parts[2]).not.toHaveProperty("isError")
+
+    const rendered = createKokoroExternalStoreAdapter(store.getSnapshot(), { submit: async () => undefined })
+      .convertMessage(projected, 1)
+    expect(rendered.content).toEqual([
+      expect.objectContaining({ type: "tool-call", toolCallId: "tool-call-false", result: "No matches", isError: false }),
+      expect.objectContaining({ type: "data", name: "kokoro:tool-result-metadata", data: expect.objectContaining({ toolCallId: "tool-call-false", truncated: true, isError: false, ordinal: 0, version: 1, lifecycle: "completed" }) }),
+      expect.objectContaining({ type: "tool-call", toolCallId: "tool-call-true", result: "Permission denied", isError: true }),
+      expect.objectContaining({ type: "data", name: "kokoro:tool-result-metadata", data: expect.objectContaining({ toolCallId: "tool-call-true", isError: true, ordinal: 1, version: 1, lifecycle: "completed" }) }),
+      expect.objectContaining({ type: "tool-call", toolCallId: "tool-call-absent", result: "Complete" }),
+      expect.objectContaining({ type: "data", name: "kokoro:tool-result-metadata", data: expect.not.objectContaining({ isError: expect.anything() }) }),
+    ])
+    expect(rendered.content[4]).not.toHaveProperty("isError")
+    expect(rendered.content[5]).not.toHaveProperty("data.isError")
   })
 
   it("converges snapshot and SSE media-operation updates through the same versioned reducer", () => {
