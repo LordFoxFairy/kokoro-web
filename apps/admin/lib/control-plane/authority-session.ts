@@ -194,9 +194,12 @@ function validateDeliveryClaims(claims: z.infer<typeof deliveryClaims>, config: 
 
 function selectScope(value: z.infer<typeof authority>, config: AdminWorkloadConfig): z.infer<typeof selectedScope> {
   const active = (expiresAt: string) => Date.parse(expiresAt) > Date.now();
-  const site = value.site_scopes.find((scope) => scope.site_id === config.siteId &&
-    scope.environment === config.axes.environment && scope.region === config.axes.region && active(scope.expires_at));
-  if (site !== undefined) return { kind: "site", siteIds: [site.site_id], environment: site.environment, region: site.region };
+  const matchingSites = [...new Set(value.site_scopes
+    .filter((scope) => scope.environment === config.axes.environment && scope.region === config.axes.region &&
+      active(scope.expires_at))
+    .map((scope) => scope.site_id))].sort();
+  if (matchingSites.length > 0) return { kind: "site", siteIds: matchingSites,
+    environment: config.axes.environment, region: config.axes.region };
   const global = value.global_scopes.find((scope) => scope.environment === config.axes.environment &&
     scope.region === config.axes.region && active(scope.expires_at));
   if (global !== undefined) return { kind: "global", grantId: global.grant_id, environment: global.environment, region: global.region };

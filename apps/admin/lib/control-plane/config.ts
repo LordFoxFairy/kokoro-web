@@ -24,7 +24,6 @@ export interface AdminWorkloadConfig {
     region: string;
     managedDeviceRef: string;
   }>;
-  readonly siteId: string;
   readonly returnIntentRef: string;
   readonly stepUpCallbackRef: string;
   readonly delivery: Readonly<{
@@ -79,7 +78,6 @@ async function load(): Promise<AdminWorkloadConfig> {
       region: env.KOKORO_ADMIN_REGION,
       managedDeviceRef: env.KOKORO_ADMIN_MANAGED_DEVICE_REF,
     }),
-    siteId: env.KOKORO_ADMIN_SITE_ID,
     returnIntentRef: env.KOKORO_ADMIN_RETURN_INTENT_REF,
     stepUpCallbackRef: env.KOKORO_ADMIN_STEP_UP_CALLBACK_REF,
     delivery: Object.freeze({ issuer: ring.issuer, signingKeys: new Map(signingKeys), deliveryKeys: new Map(deliveryKeys) }),

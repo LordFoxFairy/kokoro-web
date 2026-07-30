@@ -16,7 +16,6 @@ const schema = z.object({
   KOKORO_ADMIN_ENVIRONMENT: z.string().min(1),
   KOKORO_ADMIN_REGION: z.string().min(1),
   KOKORO_ADMIN_MANAGED_DEVICE_REF: z.string().min(1),
-  KOKORO_ADMIN_SITE_ID: z.string().min(1),
   KOKORO_ADMIN_RETURN_INTENT_REF: z.string().regex(/^[a-z][a-z0-9_.-]{0,127}$/u).default("dashboard"),
   KOKORO_ADMIN_STEP_UP_CALLBACK_REF: z.string().regex(/^[a-z][a-z0-9_.-]{0,127}$/u).default("step-up"),
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),

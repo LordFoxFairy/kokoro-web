@@ -30,7 +30,7 @@ export default function CodeBatchesPage(): React.ReactElement {
       return;
     }
     const reason = window.prompt(`${action} 理由`); if (!reason) return;
-    try { await apiPost(`/api/control/code-batches/${row.batchRef}/${action}`, { reason }, actionResult);
+    try { await apiPost(`/api/control/code-batches/${row.batchRef}/${action}`, { siteId, reason }, actionResult);
       message.success("状态已更新"); actionRef.current?.reload(); } catch (error) {
       message.error(error instanceof Error ? error.message : "操作失败"); }
   }
@@ -59,7 +59,7 @@ export default function CodeBatchesPage(): React.ReactElement {
       <Button href={`/api/control/auth/step-up?operation=commerce.redemption-program.publish&resource=${encodeURIComponent(siteId)}&return=/code-batches`}>提升计划发布认证</Button>
       <ModalForm title="发布兑换计划" trigger={<Button>发布兑换计划</Button>} width={560}
         modalProps={{ destroyOnHidden: true }} onFinish={async (values) => { try {
-          await apiPost("/api/control/redemption-programs", {
+          await apiPost("/api/control/redemption-programs", { siteId,
             redemptionProgramRevisionRef: String(values.redemptionProgramRevisionRef),
             programRef: String(values.programRef), revision: Number(values.revision),
             productVersionRef: String(values.productVersionRef),
@@ -76,7 +76,7 @@ export default function CodeBatchesPage(): React.ReactElement {
       </ModalForm>
       <Button href={`/api/control/auth/step-up?operation=commerce.code-batch.issue&resource=${encodeURIComponent(siteId)}&return=/code-batches`}>提升签发认证</Button><ModalForm title="签发卡密批次" trigger={<Button type="primary">签发批次</Button>} width={520}
       modalProps={{ destroyOnHidden: true }} onFinish={async (values) => { try {
-        const result = await apiPost("/api/control/code-batches", { batchRef: crypto.randomUUID(),
+        const result = await apiPost("/api/control/code-batches", { siteId, batchRef: crypto.randomUUID(),
           redemptionProgramRevisionRef: String(values.redemptionProgramRevisionRef), count: Number(values.count),
           ...(values.startsAt ? { startsAt: String(values.startsAt) } : {}),
           ...(values.endsAt ? { endsAt: String(values.endsAt) } : {}) }, issueResult);

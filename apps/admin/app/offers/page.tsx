@@ -31,7 +31,7 @@ export default function OffersPage(): React.ReactElement {
       modalProps={{ destroyOnHidden: true }} onFinish={async (values) => { try {
         const outputs = z.array(output).min(1).parse(JSON.parse(String(values.outputs)));
         const plan = String(values.plan ?? "").trim();
-        await apiPost("/api/control/offers", { productRef: String(values.productRef),
+        await apiPost("/api/control/offers", { siteId, productRef: String(values.productRef),
           productVersionRef: String(values.productVersionRef), productKind: values.productKind,
           revision: Number(values.revision), safeLabel: String(values.safeLabel),
           fulfillmentProgramRef: String(values.fulfillmentProgramRef),

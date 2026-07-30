@@ -8,7 +8,7 @@ const base = {
   KOKORO_ADMIN_DELIVERY_KEY_RING_FILE: "/run/secrets/delivery.json",
   KOKORO_ADMIN_WORKLOAD_IDENTITY_REF: "spiffe://kokoro/web/admin", KOKORO_ADMIN_AUDIENCE: "platform-admin",
   KOKORO_ADMIN_ENVIRONMENT: "production", KOKORO_ADMIN_REGION: "us-east-1",
-  KOKORO_ADMIN_MANAGED_DEVICE_REF: "admin-web:prod", KOKORO_ADMIN_SITE_ID: "site:one",
+  KOKORO_ADMIN_MANAGED_DEVICE_REF: "admin-web:prod",
 };
 
 describe("Admin Web environment", () => {
