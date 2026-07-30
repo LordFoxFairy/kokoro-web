@@ -36,6 +36,9 @@ describe("typed Site control routes", () => {
   it.each([
     "https://admin.example/api/control/sites?unknown=value",
     "https://admin.example/api/control/sites?pageToken=one&pageToken=two",
+    "https://admin.example/api/control/sites?pageToken=",
+    `https://admin.example/api/control/sites?pageToken=${"x".repeat(257)}`,
+    `https://admin.example/api/control/sites?pageToken=${"x".repeat(4_097)}`,
   ])("rejects non-canonical Site list queries: %s", async (url) => {
     const route = await import("../app/api/control/sites/route");
     const response = await route.GET(new Request(url));
@@ -56,6 +59,14 @@ describe("typed Site control routes", () => {
   it("rejects query parameters on the Site detail route", async () => {
     const route = await import("../app/api/control/sites/[siteId]/route");
     const response = await route.GET(new Request("https://admin.example/api/control/sites/site-one?unexpected=1"),
+      { params: Promise.resolve({ siteId: "site-one" }) });
+    expect(response.status).toBe(400);
+    expect(calls.getSite).not.toHaveBeenCalled();
+  });
+
+  it("rejects an over-budget query on the Site detail route", async () => {
+    const route = await import("../app/api/control/sites/[siteId]/route");
+    const response = await route.GET(new Request(`https://admin.example/api/control/sites/site-one?x=${"y".repeat(4_097)}`),
       { params: Promise.resolve({ siteId: "site-one" }) });
     expect(response.status).toBe(400);
     expect(calls.getSite).not.toHaveBeenCalled();
@@ -111,6 +122,10 @@ describe("typed Audit control route", () => {
     "https://admin.example/api/control/audit?unexpected=1",
     "https://admin.example/api/control/audit?siteId=one&siteId=two",
     "https://admin.example/api/control/audit?pageToken=one&pageToken=two",
+    "https://admin.example/api/control/audit?siteId=",
+    "https://admin.example/api/control/audit?pageToken=",
+    `https://admin.example/api/control/audit?pageToken=${"x".repeat(257)}`,
+    `https://admin.example/api/control/audit?pageToken=${"x".repeat(4_097)}`,
   ])("rejects non-canonical Audit queries: %s", async (url) => {
     const route = await import("../app/api/control/audit/route");
     const response = await route.GET(new Request(url));

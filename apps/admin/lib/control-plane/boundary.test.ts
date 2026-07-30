@@ -87,11 +87,18 @@ describe("Admin typed control-plane boundary", () => {
     expect(shell).toContain("collectCursorPages");
     expect(shell).toContain("maxItems: 1000");
     expect(shell).toContain("timeoutMs: 5_000");
+    expect(shell).toContain("LatestRequest");
     for (const page of [sites, audit]) {
+      expect(page).toContain("appendCursorPage");
+      expect(page).toContain("clearNextPageToken");
+      expect(page).toContain("resetCursorWindow");
+      expect(page).toContain("maxItems: 1000");
+      expect(page).toContain("maxPages: 20");
       expect(page).toContain("nextPageToken");
       expect(page).toContain("加载更多");
       expect(page).toContain("pageToken");
-      expect(page).toContain("setRows((previous)");
+      expect(page).toContain("dataSource={[");
+      expect(page).toContain("LatestRequest");
     }
   });
 });
