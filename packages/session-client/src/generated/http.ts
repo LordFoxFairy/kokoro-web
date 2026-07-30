@@ -6,7 +6,7 @@ import { z } from "zod"
 export const sessionHttpContractMetadata = Object.freeze({
   schemaId: "kokoro.session.browser.v3",
   schemaVersion: 3,
-  sourceDigestSha256: "2f78defe467b9861f9c94b7e0b35d5db1167b3cabbc07d33327aecbf4aeb5e4d",
+  sourceDigestSha256: "f58d3de5a0bfba3d2a3b9edb86792b575e6be3d5a1a21873f9a3632b9e1a5cec",
 })
 
 export const commandIdentitySchema = z
@@ -901,7 +901,7 @@ export const submitMessageRequestSchema = z
     branch_id: z.string().min(1).max(128),
     parent_message_id: z.string().min(1).max(128).nullable(),
     trusted_locale: z.string().min(2).max(35),
-    parts: z.array(messageInputPartSchema).min(1).max(64),
+    parts: z.array(messageInputPartSchema).max(64),
     attachment_refs: z.array(attachmentIntentSchema).max(64),
     model_option_revision_ref: z.string().min(1).max(256),
     effort: z.string().min(1).max(64).optional(),
@@ -910,6 +910,9 @@ export const submitMessageRequestSchema = z
     requested_mcp_option_refs: z.array(z.string().min(1).max(256)).max(64).optional(),
   })
   .strict()
+.superRefine((value, context) => {
+  if (value.parts.length === 0 && value.attachment_refs.length === 0) context.addIssue({ code: "custom", path: ["parts"], message: "at least one of parts, attachment_refs must be non-empty" })
+})
 export type SubmitMessageRequest = z.infer<typeof submitMessageRequestSchema>
 
 export const editMessageRequestSchema = z

@@ -37,6 +37,7 @@ import {
   type ComposerDraft,
   type ComposerDraftStore,
 } from "./composer-draft"
+import { hasSubmittableComposerContent } from "./composer-content"
 import { resolveChatCopy, type ChatProductCopy } from "./chat-copy"
 import { createSessionOrganizer } from "./session-organizer"
 import { SessionRail } from "./session-rail"
@@ -465,7 +466,8 @@ export function ChatView(props: {
   const connected = props.state.projection.connection.kind === "live"
   const activeRun = props.state.projection.activeRunId !== null
   const attachmentPending = attachments.some(({ status }) => status !== "ready")
-  const sendDisabled = !hasModel || !connected || activeRun || commandPending || attachmentPending || composer.text.trim().length === 0
+  const sendDisabled = !hasModel || !connected || activeRun || commandPending || attachmentPending ||
+    !hasSubmittableComposerContent(composer.text, attachments)
   const branch = props.state.snapshot?.branches.find(({ branch_id }) => branch_id === props.state.projection.activeBranchId)
   const currentOption = props.state.chatCatalog?.options.find(({ modelOptionRevisionRef }) => modelOptionRevisionRef === props.state.selectedModelOptionRevisionRef)
 

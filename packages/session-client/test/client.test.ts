@@ -5,7 +5,7 @@ import {
   SESSION_CLIENT_OPERATION_SURFACE,
   type SessionTransport,
 } from "../src/client.js";
-import { SESSION_HTTP_ENDPOINTS } from "../src/contracts.js";
+import { SESSION_HTTP_ENDPOINTS, submitMessageRequestSchema } from "../src/contracts.js";
 
 const DIGEST = "a".repeat(64);
 
@@ -318,6 +318,38 @@ describe("contract-bound Session v3 client", () => {
 
     expect(bodies).toEqual([expect.objectContaining({ command })]);
     expect(response).toEqual(commandResponse());
+  });
+
+  it("admits attachment-only Submit while rejecting empty commands and explicit empty text", () => {
+    const base = {
+      command: {
+        command_id: "command-attachment-only",
+        idempotency_key: "idempotency-attachment-only",
+        digest_algorithm: "SHA256_CANONICAL_JSON_V2" as const,
+        request_digest: DIGEST,
+      },
+      expected_session_version: 1,
+      branch_id: "branch-12345678",
+      parent_message_id: null,
+      trusted_locale: "en-US",
+      attachment_refs: [{
+        asset_ref: "asset-12345678",
+        asset_version_ref: "asset-version-12345678",
+        asset_grant_ref: "asset-grant-12345678",
+      }],
+      model_option_revision_ref: "model-option-12345678",
+    };
+
+    expect(submitMessageRequestSchema.safeParse({ ...base, parts: [] }).success).toBe(true);
+    expect(submitMessageRequestSchema.safeParse({
+      ...base,
+      parts: [],
+      attachment_refs: [],
+    }).success).toBe(false);
+    expect(submitMessageRequestSchema.safeParse({
+      ...base,
+      parts: [{ kind: "text", schema_version: 1, payload: { text: "" } }],
+    }).success).toBe(false);
   });
 
   it.each([

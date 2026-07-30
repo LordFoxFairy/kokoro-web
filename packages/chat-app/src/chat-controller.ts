@@ -790,7 +790,12 @@ export function createChatController(options: {
     const snapshot = state.snapshot
     const sessionId = state.sessionId
     const text = content.trim()
-    if (snapshot === null || sessionId === null || text.length === 0 || attachments.length > 64) return false
+    if (
+      snapshot === null ||
+      sessionId === null ||
+      (text.length === 0 && attachments.length === 0) ||
+      attachments.length > 64
+    ) return false
     if (state.projection.activeRunId !== null) {
       fail(describeSessionFailure({
         stableCode: "ACTIVE_RUN_EXISTS",
@@ -807,7 +812,9 @@ export function createChatController(options: {
       branch_id: snapshot.session.active_branch_id,
       parent_message_id: snapshot.session.active_leaf_message_id ?? null,
       trusted_locale: options.trustedLocale,
-      parts: [{ schema_version: 1 as const, kind: "text" as const, payload: { text } }],
+      parts: text.length === 0
+        ? []
+        : [{ schema_version: 1 as const, kind: "text" as const, payload: { text } }],
       attachment_refs: attachments.map(({ asset_ref, asset_version_ref, asset_grant_ref }) => ({
         asset_ref,
         asset_version_ref,

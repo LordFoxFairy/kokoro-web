@@ -402,4 +402,63 @@ describe("Chat recovery controller", () => {
     expect(submitMessage).toHaveBeenCalledOnce()
     controller.close()
   })
+
+  it("submits ready attachments without manufacturing an empty text part", async () => {
+    const initial = snapshot("branch-original-12345678", "signed.cursor.1", "1")
+    const submitMessage = vi.fn<SessionClient["submitMessage"]>(async () => {
+      throw new TypeError("response lost")
+    })
+    const getCommandReceipt = vi.fn<SessionClient["getCommandReceipt"]>(async () => {
+      throw new TypeError("receipt temporarily unavailable")
+    })
+    const { client } = clientFixture({
+      initial,
+      fetchSnapshot: vi.fn(async () => initial),
+      getCommandReceipt,
+      submitMessage,
+    })
+    const controller = createChatController({
+      client,
+      trustedLocale: "en-US",
+      chatCatalog: {
+        surfaceId: "chat",
+        catalogRevisionRef: "catalog-12345678",
+        defaultModelOptionRevisionRef: "model-option-12345678",
+        publishedAt: NOW,
+        options: [{
+          modelOptionRevisionRef: "model-option-12345678",
+          optionKey: "standard",
+          label: "Standard",
+          inputModalities: ["text", "image"],
+          outputModalities: ["text"],
+          supportedEfforts: [],
+          badges: [],
+          availability: "available",
+        }],
+      },
+      defaultProjectRef: "project-12345678",
+    })
+
+    await controller.open("session-12345678")
+    await expect(controller.submit("", [])).resolves.toBe(false)
+    expect(submitMessage).not.toHaveBeenCalled()
+
+    await expect(controller.submit("  ", [{
+      asset_ref: "asset-12345678",
+      asset_version_ref: "asset-version-12345678",
+      asset_grant_ref: "grant-12345678",
+    }])).resolves.toBe(false)
+
+    expect(submitMessage).toHaveBeenCalledOnce()
+    expect(submitMessage).toHaveBeenCalledWith("session-12345678", expect.objectContaining({
+      parts: [],
+      attachment_refs: [{
+        asset_ref: "asset-12345678",
+        asset_version_ref: "asset-version-12345678",
+        asset_grant_ref: "grant-12345678",
+      }],
+    }))
+    expect(getCommandReceipt).toHaveBeenCalledOnce()
+    controller.close()
+  })
 })

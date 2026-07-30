@@ -9,6 +9,8 @@ owners: ["@LordFoxFairy"]
 Brand-neutral client over Root-generated Session HTTP/SSE schemas. Callers inject a path-only transport; this package accepts no raw Session URL, Site identity, namespace, bearer token, or credential resolver.
 
 The Root-generated Session browser v3 mirror is live. The client exposes the complete browser command surface, including typed action/plan decisions and receipt reconciliation, validates the full projection snapshot, and hydrates only from its opaque snapshot watermark.
+Submit keeps renderable `parts` and Asset-owned `attachment_refs` separate. Its generated cross-field constraint
+accepts either source while rejecting a truly empty command; any text part that is present remains non-empty.
 
 SSE resume tokens are opaque and travel only in `Last-Event-ID`. Numeric/empty cursors, event/id/cursor mismatches, epoch/order gaps, and sequence reuse under another event identity fail closed; exact cursor/event replays are suppressed. `stream.draining` cannot advance beyond continuously delivered data. Non-success SSE bodies are bounded and decoded through the generated problem schema, preserving stable code/action/retry fields (including contract upgrade). Auth, conflict, contract, and repair outcomes remain distinct.
 
