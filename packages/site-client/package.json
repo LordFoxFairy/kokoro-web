@@ -18,6 +18,7 @@
     },
     "./server": {
       "types": "./src/server.ts",
+      "development": "./src/server.ts",
       "import": "./dist/server.js"
     },
     "./asset-data-plane": {
