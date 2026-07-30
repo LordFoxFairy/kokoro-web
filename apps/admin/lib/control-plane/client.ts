@@ -291,7 +291,7 @@ export async function publishSiteRelease(input: PublishSiteReleaseInput) {
   });
 }
 
-type ScopeSelection = Readonly<{ kind: "current" }> | Readonly<{ kind: "global" }> |
+export type ScopeSelection = Readonly<{ kind: "current" }> | Readonly<{ kind: "global" }> |
   Readonly<{ kind: "site"; siteId: string }>;
 
 async function queryCall(selection: ScopeSelection = { kind: "current" }) {
@@ -341,7 +341,7 @@ async function committedMutation<Response extends Readonly<{ receipt?: CommandRe
   } catch (error) { throw typed(error); }
 }
 
-function queryContext(session: AdminAuthoritySession, selection: ScopeSelection = { kind: "current" }) {
+export function queryContext(session: AdminAuthoritySession, selection: ScopeSelection = { kind: "current" }) {
   return create(AuthenticatedOperatorQueryContextSchema, { requestId: randomUUID(), ...sessionClaims(session),
     securityEpochs: epochs(session), scope: scope(session, selection) });
 }

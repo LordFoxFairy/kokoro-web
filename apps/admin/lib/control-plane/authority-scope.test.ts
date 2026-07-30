@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Code } from "@connectrpc/connect";
 
-import { AdminControlPlaneError, commandContext } from "./client";
+import { AdminControlPlaneError, commandContext, queryContext } from "./client";
 import type { AdminAuthoritySession } from "./authority-session";
 
 const session: AdminAuthoritySession = {
@@ -26,6 +26,11 @@ describe("Admin command authority scope selection", () => {
   it("narrows Site effects to exactly the request-selected Site", () => {
     const context = commandContext(session, { kind: "site", siteId: "site-two" });
     expect(context.scope?.kind).toEqual({ case: "site", value: expect.objectContaining({ siteIds: ["site-two"] }) });
+  });
+
+  it("narrows Site reads to exactly the request-selected Site", () => {
+    const context = queryContext(session, { kind: "site", siteId: "site-one" });
+    expect(context.scope?.kind).toEqual({ case: "site", value: expect.objectContaining({ siteIds: ["site-one"] }) });
   });
 
   it("fails before transport when the requested Site is outside delivered authority", () => {

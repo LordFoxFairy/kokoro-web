@@ -9,7 +9,7 @@ owners:
 
 ## Responsibility
 
-`admin-identity/**`, `admin-query-v2/**`, `admin-commerce/**`, and `site-provisioning/**` are checked-in mirrors generated from the Root-owned Buf module. They contain the privileged typed service descriptors and canonical command-envelope digest helpers.
+`admin-identity/**`, `admin-query-v2/**`, `admin-commerce/**`, `admin-credit/**`, and `site-provisioning/**` are checked-in mirrors generated from the Root-owned Buf module. They contain the privileged typed service descriptors and canonical command-envelope digest helpers.
 
 ## Boundary
 
