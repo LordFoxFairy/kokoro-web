@@ -16,9 +16,10 @@ import {
 
 class MemoryStorage implements ModelRecoveryStorage {
   readonly values = new Map<string, string>();
+  removeCalls = 0;
   getItem(key: string) { return this.values.get(key) ?? null; }
   setItem(key: string, value: string) { this.values.set(key, value); }
-  removeItem(key: string) { this.values.delete(key); }
+  removeItem(key: string) { this.removeCalls += 1; this.values.delete(key); }
 }
 
 class SerialLocks implements ModelRecoveryLockManager {
@@ -225,6 +226,74 @@ describe("model recovery coordinator", () => {
 
     expect(result).toEqual({ kind: "ownership_lost", state: { kind: "pending", recoveryRef: "other_tab" } });
     expect(storage.getItem(MODEL_RECOVERY_STORAGE_KEY)).toBe("other_tab");
+  });
+
+  it("does not clear its restored ref when corruption became sticky during execute", async () => {
+    const storage = new MemoryStorage();
+    const locks = new SerialLocks();
+    const authority = createModelRecoveryStateAuthority();
+    const executed = deferred<string>();
+    const execute = vi.fn(() => executed.promise);
+    const mutation = runModelMutationUnderLock({
+      storage,
+      locks,
+      prepare: async () => ({ recoveryRef: "own_ref" }),
+      execute,
+      onState: vi.fn(),
+      authority,
+    });
+    await vi.waitFor(() => expect(execute).toHaveBeenCalledOnce());
+    storage.setItem(MODEL_RECOVERY_STORAGE_KEY, "corrupt:value");
+    expect(modelRecoveryStateFromStorageEvent({
+      key: MODEL_RECOVERY_STORAGE_KEY, storageArea: storage,
+    }, storage, locks, authority)).toEqual({ kind: "corrupt" });
+    storage.setItem(MODEL_RECOVERY_STORAGE_KEY, "own_ref");
+
+    executed.resolve("committed");
+
+    await expect(mutation).resolves.toEqual({ kind: "ownership_lost", state: { kind: "corrupt" } });
+    expect(storage.getItem(MODEL_RECOVERY_STORAGE_KEY)).toBe("own_ref");
+    expect(storage.removeCalls).toBe(0);
+  });
+
+  it("does not clear its restored ref when corruption became sticky during reconciliation", async () => {
+    const storage = new MemoryStorage();
+    const locks = new SerialLocks();
+    const authority = createModelRecoveryStateAuthority();
+    const reconciled = deferred<string>();
+    const reconcile = vi.fn(() => reconciled.promise);
+    storage.setItem(MODEL_RECOVERY_STORAGE_KEY, "own_ref");
+    const operation = reconcileModelRecoveryUnderLock({
+      storage, locks, recoveryRef: "own_ref", reconcile, onState: vi.fn(), authority,
+    });
+    await vi.waitFor(() => expect(reconcile).toHaveBeenCalledOnce());
+    storage.setItem(MODEL_RECOVERY_STORAGE_KEY, "corrupt:value");
+    expect(modelRecoveryStateFromStorageEvent({
+      key: MODEL_RECOVERY_STORAGE_KEY, storageArea: storage,
+    }, storage, locks, authority)).toEqual({ kind: "corrupt" });
+    storage.setItem(MODEL_RECOVERY_STORAGE_KEY, "own_ref");
+
+    reconciled.resolve("committed");
+
+    await expect(operation).resolves.toEqual({ kind: "ownership_lost", state: { kind: "corrupt" } });
+    expect(storage.getItem(MODEL_RECOVERY_STORAGE_KEY)).toBe("own_ref");
+    expect(storage.removeCalls).toBe(0);
+  });
+
+  it("still clears one exact healthy pending ref after a successful effect", async () => {
+    const storage = new MemoryStorage();
+    const result = await runModelMutationUnderLock({
+      storage,
+      locks: new SerialLocks(),
+      prepare: async () => ({ recoveryRef: "own_ref" }),
+      execute: async () => "committed",
+      onState: vi.fn(),
+      authority: createModelRecoveryStateAuthority(),
+    });
+
+    expect(result).toEqual({ kind: "completed", value: "committed" });
+    expect(storage.getItem(MODEL_RECOVERY_STORAGE_KEY)).toBeNull();
+    expect(storage.removeCalls).toBe(1);
   });
 
   it("reconciliation rereads the exact ref and compare-removes only its own value", async () => {

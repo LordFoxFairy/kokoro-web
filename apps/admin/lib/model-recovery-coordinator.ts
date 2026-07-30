@@ -157,6 +157,10 @@ export async function runModelMutationUnderLock<T>(options: Readonly<{
         publish(readAvailableModelRecoveryState(options.storage, options.locks));
         throw error;
       }
+      const beforeClear = publish(readAvailableModelRecoveryState(options.storage, options.locks));
+      if (beforeClear.kind !== "pending" || beforeClear.recoveryRef !== prepared.recoveryRef) {
+        return { kind: "ownership_lost", state: beforeClear };
+      }
 
       let cleared: ModelRecoveryState;
       try {
@@ -203,6 +207,10 @@ export async function reconcileModelRecoveryUnderLock<T>(options: Readonly<{
       }
 
       const value = await options.reconcile();
+      const beforeClear = publish(readAvailableModelRecoveryState(options.storage, options.locks));
+      if (beforeClear.kind !== "pending" || beforeClear.recoveryRef !== options.recoveryRef) {
+        return { kind: "ownership_lost", state: beforeClear };
+      }
       let cleared: ModelRecoveryState;
       try {
         cleared = compareAndRemoveModelRecovery(options.storage, options.recoveryRef);
