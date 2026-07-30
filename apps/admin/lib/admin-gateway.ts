@@ -6,7 +6,7 @@ const MAX_ACTION_REQUEST_BYTES = 16 * 1024 * 1024;
 const MAX_GATEWAY_RESPONSE_BYTES = 8 * 1024 * 1024;
 const MAX_OPENAPI_RESPONSE_BYTES = 2 * 1024 * 1024;
 const OPENAPI_GATEWAY_TIMEOUT_MS = 5_000;
-const OPENAPI_MODULE_IDS = new Set(["site", "user", "model", "hub"]);
+const OPENAPI_MODULE_IDS = new Set(["site", "user", "hub"]);
 const OPENAPI_UPSTREAM_ERROR_CODES = new Map<number, ReadonlySet<string>>([
   [401, new Set(["operator.auth"])],
   [403, new Set(["operator.auth"])],
@@ -68,6 +68,12 @@ function creditTypedOnly(): Response {
     message: "Credit is available only through typed control routes" } }, { status: 404 });
 }
 
+function modelGenericPathDisabled(): Response {
+  return Response.json({
+    error: { code: "MODEL_GENERIC_PATH_DISABLED", message: "Use the typed Model control plane" },
+  }, { status: 404 });
+}
+
 function trustUnavailable(): Response {
   return Response.json(TRUST_UNAVAILABLE, { status: 503 });
 }
@@ -121,6 +127,14 @@ function isPaymentRoute(value: unknown): boolean {
 
 function isCreditRoute(value: unknown): boolean {
   return typeof value === "string" && /(?:^|\/)credits?(?:\/|$)/iu.test(value.trim());
+}
+
+function isModelModule(value: unknown): boolean {
+  return typeof value === "string" && value.trim().toLowerCase() === "model";
+}
+
+function isModelRoute(value: unknown): boolean {
+  return typeof value === "string" && /(?:^|\/)model(?:s|-[^/]*)?(?:\/|$)/iu.test(value.trim());
 }
 
 function declaredLengthExceeds(headers: Headers, limit: number): boolean {
@@ -289,7 +303,7 @@ export async function getFilteredManifests(request: Request): Promise<Response> 
   const parsed = manifestsEnvelopeSchema.safeParse(read.raw);
   if (!parsed.success) return badGateway();
   return Response.json({ ...parsed.data, data: parsed.data.data.filter((module) =>
-    !isPaymentModule(module.id) && !isCreditModule(module.id)) });
+    !isPaymentModule(module.id) && !isCreditModule(module.id) && !isModelModule(module.id)) });
 }
 
 export async function getFilteredOpenApi(request: Request, moduleId: string): Promise<Response> {
@@ -297,6 +311,7 @@ export async function getFilteredOpenApi(request: Request, moduleId: string): Pr
   if (headers === null) return trustUnavailable();
   if (isPaymentModule(moduleId)) return disabled();
   if (isCreditModule(moduleId)) return creditTypedOnly();
+  if (isModelModule(moduleId)) return modelGenericPathDisabled();
   if (!OPENAPI_MODULE_IDS.has(moduleId)) return invalidModule();
 
   const controller = new AbortController();
@@ -358,6 +373,9 @@ export async function getFilteredResource(request: Request): Promise<Response> {
   if (url.searchParams.getAll("moduleId").some(isCreditModule) || url.searchParams.getAll("route").some(isCreditRoute)) {
     return creditTypedOnly();
   }
+  if (url.searchParams.getAll("moduleId").some(isModelModule) || url.searchParams.getAll("route").some(isModelRoute)) {
+    return modelGenericPathDisabled();
+  }
   const upstream = await fetchGateway(request, "/api/resource", headers);
   return upstream === null ? unavailable() : relayBoundedJson(upstream);
 }
@@ -382,6 +400,7 @@ export async function postFilteredAction(request: Request): Promise<Response> {
   }
   if (isPaymentModule(parsed.data.moduleId) || isPaymentRoute(parsed.data.route)) return disabled();
   if (isCreditModule(parsed.data.moduleId) || isCreditRoute(parsed.data.route)) return creditTypedOnly();
+  if (isModelModule(parsed.data.moduleId) || isModelRoute(parsed.data.route)) return modelGenericPathDisabled();
   const upstream = await fetchGateway(request, "/api/action", headers, read.text);
   return upstream === null ? unavailable() : relayBoundedJson(upstream);
 }

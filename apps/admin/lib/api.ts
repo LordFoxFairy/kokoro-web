@@ -6,7 +6,8 @@ import { z } from "zod";
 // （error 是字符串而非对象），解析不中，因此落到下面的兜底 code/message。
 const errorEnvelope = z
   .object({
-    error: z.object({ code: z.string(), message: z.string(), details: z.unknown() }).partial().passthrough(),
+    error: z.object({ code: z.string(), message: z.string(), details: z.unknown(),
+      receiptRef: z.string().nullable() }).partial().passthrough(),
     requestId: z.string().optional(),
   })
   .passthrough();
@@ -32,6 +33,7 @@ export class ApiError extends Error {
   readonly details: unknown;
   /** 链路 id，只有 POST /api/action 会回显；排障时把它带给后端。 */
   readonly requestId: string | undefined;
+  readonly receiptRef: string | null;
 
   constructor(init: {
     status: number;
@@ -39,6 +41,7 @@ export class ApiError extends Error {
     message: string;
     details?: unknown;
     requestId?: string;
+    receiptRef?: string | null;
   }) {
     super(init.message);
     this.name = "ApiError";
@@ -46,6 +49,7 @@ export class ApiError extends Error {
     this.code = init.code;
     this.details = init.details;
     this.requestId = init.requestId;
+    this.receiptRef = init.receiptRef ?? null;
   }
 }
 
@@ -62,6 +66,7 @@ async function request(path: string, init?: RequestInit): Promise<unknown> {
       message: envelope?.error.message ?? `HTTP ${res.status}`,
       details: envelope?.error.details,
       requestId: envelope?.requestId,
+      receiptRef: envelope?.error.receiptRef,
     });
   }
   const envelope = z.object({ data: z.unknown() }).safeParse(raw);

@@ -48,7 +48,7 @@ export function ImportInventoryAction(props: Readonly<{ submit: Submit }>) {
         <TagSelect name="inputModalities" label="输入模态" required />
         <TagSelect name="outputModalities" label="输出模态" required />
         <TagSelect name="capabilities" label="能力" required />
-        <ProFormDigit name="contextWindow" label="上下文窗口" min={1} max={4_294_967_295} />
+        <ProFormDigit name="contextWindow" label="上下文窗口" min={1} max={2_147_483_647} />
         <ProFormSwitch name="enabled" label="启用" />
       </ObjectList>
       <ObjectList name="bindings" title="提供方绑定" required initialValue={[{ priority: 0, enabled: true }]}>

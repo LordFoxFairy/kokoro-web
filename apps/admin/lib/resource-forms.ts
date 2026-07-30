@@ -44,11 +44,6 @@ const ONOFF = [
   { label: "启用 active", value: "active" },
   { label: "停用 disabled", value: "disabled" },
 ];
-const TRANSPORT = [
-  { label: "litellm", value: "litellm" },
-  { label: "direct", value: "direct" },
-  { label: "internal", value: "internal" },
-];
 
 function str(v: unknown): string {
   return v === undefined || v === null ? "" : String(v);
@@ -67,7 +62,6 @@ function safeJson(v: unknown): Record<string, unknown> {
 }
 
 const USERS_SRC: OptionsFrom = { moduleId: "user", resourceId: "users", labelKeys: ["displayName", "email", "id"], siteScoped: true };
-const PROVIDERS_SRC: OptionsFrom = { moduleId: "model", resourceId: "provider-accounts", labelKeys: ["label", "provider", "id"] };
 
 export const RESOURCE_FORMS: Record<string, ResourceForm> = {
   // ── L1 租户 ──
@@ -180,93 +174,6 @@ export const RESOURCE_FORMS: Record<string, ResourceForm> = {
     buildBody: (v) => ({ slug: str(v.slug), name: str(v.name), ownerUserId: str(v.ownerUserId) }),
   },
 
-  // ── L6 模型 ──
-  "model:provider-accounts": {
-    actionId: "create",
-    createLabel: "新建供应商账号",
-    keyField: "key",
-    fields: [
-      { name: "provider", label: "供应商", type: "text", required: true, placeholder: "openai / anthropic" },
-      { name: "key", label: "账号标识 (key)", type: "text", required: true, editable: false },
-      { name: "label", label: "显示名", type: "text", required: true },
-      { name: "secretRef", label: "密钥引用", type: "text", required: true, placeholder: "密钥管理引用键，非明文" },
-      { name: "transportKind", label: "传输方式", type: "select", required: true, options: TRANSPORT },
-      { name: "priority", label: "优先级", type: "number" },
-    ],
-    buildBody: (v) => {
-      const b: Record<string, unknown> = {
-        provider: str(v.provider),
-        key: str(v.key),
-        label: str(v.label),
-        secretRef: str(v.secretRef),
-        transportKind: str(v.transportKind),
-      };
-      if (has(v.priority)) b.priority = Number(v.priority);
-      return b;
-    },
-  },
-  "model:model-bindings": {
-    actionId: "create",
-    createLabel: "新建模型绑定",
-    keyField: "modelName",
-    fields: [
-      { name: "providerAccountId", label: "供应商账号", type: "select", required: true, optionsFrom: PROVIDERS_SRC },
-      { name: "modelName", label: "模型名", type: "text", required: true, placeholder: "gpt-4o" },
-      { name: "displayName", label: "显示名", type: "text", required: true },
-      { name: "featureKey", label: "能力键", type: "text", required: true, placeholder: "chat / embedding" },
-      { name: "transportKind", label: "传输方式", type: "select", required: true, options: TRANSPORT },
-      { name: "gatewayModelName", label: "网关模型名", type: "text", tip: "transportKind=litellm 时必填" },
-      { name: "contextWindow", label: "上下文窗口", type: "number" },
-    ],
-    buildBody: (v) => {
-      const b: Record<string, unknown> = {
-        providerAccountId: str(v.providerAccountId),
-        modelName: str(v.modelName),
-        displayName: str(v.displayName),
-        featureKey: str(v.featureKey),
-        transportKind: str(v.transportKind),
-      };
-      if (has(v.gatewayModelName)) b.gatewayModelName = str(v.gatewayModelName);
-      if (has(v.contextWindow)) b.contextWindow = Number(v.contextWindow);
-      return b;
-    },
-  },
-  "model:model-labels": {
-    actionId: "create",
-    createLabel: "新建模型标签",
-    keyField: "key",
-    fields: [
-      { name: "key", label: "标签键 (key)", type: "text", required: true, editable: false, placeholder: "如 chat.default（唯一，编辑不可改）" },
-      { name: "displayName", label: "显示名（用户可见）", type: "text", required: true, placeholder: "如 Kokoro 默认 / GLM-4.6" },
-      { name: "featureKey", label: "能力键", type: "text", required: true, placeholder: "chat / embedding" },
-      { name: "defaultBindingId", label: "默认绑定", type: "select", optionsFrom: { moduleId: "model", resourceId: "model-bindings", labelKeys: ["displayName", "modelName", "id"] }, tip: "标签解析时的兜底 binding" },
-      { name: "tier", label: "档位", type: "text", placeholder: "如 standard / premium（可空）" },
-      { name: "description", label: "描述", type: "text" },
-      { name: "status", label: "状态", type: "select", options: [{ label: "启用 active", value: "active" }, { label: "停用 disabled", value: "disabled" }] },
-    ],
-    buildBody: (v) => {
-      const b: Record<string, unknown> = {
-        key: str(v.key),
-        displayName: str(v.displayName),
-        featureKey: str(v.featureKey),
-      };
-      b.description = has(v.description) ? str(v.description) : null;
-      b.tier = has(v.tier) ? str(v.tier) : null;
-      b.defaultBindingId = has(v.defaultBindingId) ? str(v.defaultBindingId) : null;
-      if (has(v.status)) b.status = str(v.status);
-      return b;
-    },
-  },
-  "model:site-policies": {
-    actionId: "set",
-    createLabel: "设置站点模型策略",
-    keyField: "labelKey",
-    fields: [
-      { name: "labelKey", label: "模型标签键", type: "text", required: true, editable: false },
-      { name: "status", label: "可见性", type: "select", required: true, options: [{ label: "可见 visible", value: "visible" }, { label: "隐藏 hidden", value: "hidden" }] },
-    ],
-    buildBody: (v, ctx) => ({ siteId: ctx.siteId, labelKey: str(v.labelKey), status: str(v.status) }),
-  },
   // ── HUB 官方 MCP server 注册（运营写官方目录）──
   // 凭据只收 env:/secret: 引用(明文由 hub 拒收);allowed_tools 逗号分隔 → 数组;scope 固定 official。
   "hub:mcp-servers": {

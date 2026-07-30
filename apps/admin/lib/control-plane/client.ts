@@ -1,6 +1,6 @@
 import "server-only";
 
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { create } from "@bufbuild/protobuf";
 import { timestampFromDate } from "@bufbuild/protobuf/wkt";
 import { Code, ConnectError, createClient } from "@connectrpc/connect";
@@ -43,6 +43,7 @@ import {
   ChangeSitePolicyEffectSchema,
   ImportInventoryEffectSchema,
   MaterializeModelOptionsEffectSchema,
+  ModelControlCommandOperation,
   ModelControlService,
   ModelOptionLifecycle as ControlModelOptionLifecycle,
   ModelProduct as ControlModelProduct,
@@ -135,6 +136,16 @@ export interface PublishModelSiteReleaseCatalogInput {
   readonly siteId: string; readonly siteReleaseRef: string; readonly inventoryDigest: string;
   readonly surfaces: readonly Readonly<{ surface: ModelProductId;
     allowedOptionRevisionRefs: readonly string[]; defaultModelOptionRevisionRef: string }>[];
+}
+
+export type ModelCommandOperationId = "import_inventory" | "activate_inventory" |
+  "change_site_policy" | "materialize_options" | "publish_site_release_catalog";
+
+export interface GetModelCommandReceiptInput {
+  readonly commandId: string;
+  readonly requestDigest: string;
+  readonly operation: ModelCommandOperationId;
+  readonly siteId?: string;
 }
 
 type ModelProductId = "chat" | "music" | "image" | "video";
@@ -442,9 +453,15 @@ export async function importModelInventory(input: ImportModelInventoryInput) {
       ...(item.observationRef ? { observationRef: item.observationRef } : {}),
       ...(item.observedAt ? { observedAt: timestampFromDate(new Date(item.observedAt)) } : {}) })) });
   context.command!.requestDigest = importInventoryRequestDigest(context, effect, verifiedAxes(session));
-  return committedMutation(context, () => rpc.importInventory({ context, effect }, { headers: authHeaders(session) }),
+  return modelMutation(session, rpc, context, "import_inventory", null,
+    () => rpc.importInventory({ context, effect }, { headers: authHeaders(session, context.command!.commandId) }),
     (response) => ({ inventoryDigest: response.inventoryDigest, replayed: response.replayed,
-      receipt: receiptJson(response.receipt) }));
+      receipt: receiptJson(response.receipt) }),
+    (receipt) => {
+      const recovered = receiptResultFor(receipt, "import_inventory");
+      return { inventoryDigest: receiptString(recovered.result, "inventoryDigest"), replayed: true,
+        receipt: recovered.receipt };
+    });
 }
 
 export async function activateModelInventory(targetDigest: string, expectedPointerRevision: string) {
@@ -453,10 +470,21 @@ export async function activateModelInventory(targetDigest: string, expectedPoint
   const effect = create(ActivateInventoryEffectSchema, { targetDigest,
     expectedPointerRevision: BigInt(expectedPointerRevision) });
   context.command!.requestDigest = activateInventoryRequestDigest(context, effect, verifiedAxes(session));
-  return committedMutation(context, () => rpc.activateInventory({ context, effect }, { headers: authHeaders(session) }),
-    (response) => ({ targetDigest: response.targetDigest,
+  return modelMutation(session, rpc, context, "activate_inventory", null,
+    () => rpc.activateInventory({ context, effect }, { headers: authHeaders(session, context.command!.commandId) }),
+    (response) => {
+      if (response.targetDigest !== targetDigest) throw invalidResponse();
+      return { targetDigest: response.targetDigest,
       activatedRevision: response.activatedRevision.toString(), replayed: response.replayed,
-      receipt: receiptJson(response.receipt) }));
+      receipt: receiptJson(response.receipt) };
+    }, (receipt) => {
+      const recovered = receiptResultFor(receipt, "activate_inventory");
+      const recoveredTarget = receiptString(recovered.result, "targetDigest");
+      if (recoveredTarget !== targetDigest) throw invalidResponse();
+      return { targetDigest: recoveredTarget,
+        activatedRevision: receiptString(recovered.result, "activatedRevision"), replayed: true,
+        receipt: recovered.receipt };
+    });
 }
 
 export async function changeModelSitePolicy(input: ChangeModelSitePolicyInput) {
@@ -471,11 +499,19 @@ export async function changeModelSitePolicy(input: ChangeModelSitePolicyInput) {
     assignments: input.assignments.map((item) => ({ ...item, role: modelRole(item.role),
       requiredCapabilities: [...item.requiredCapabilities] })), expectedRevision: BigInt(input.expectedRevision) });
   context.command!.requestDigest = changeSitePolicyRequestDigest(context, input.siteId, effect, verifiedAxes(session));
-  return committedMutation(context, () => rpc.changeSitePolicy({ context, siteId: input.siteId, effect },
-    { headers: authHeaders(session) }), (response) => {
+  return modelMutation(session, rpc, context, "change_site_policy", input.siteId,
+    () => rpc.changeSitePolicy({ context, siteId: input.siteId, effect },
+    { headers: authHeaders(session, context.command!.commandId) }), (response) => {
     if (response.siteId !== input.siteId) throw invalidResponse();
     return { siteId: response.siteId, policyDigest: response.policyDigest,
       revision: response.revision.toString(), replayed: response.replayed, receipt: receiptJson(response.receipt) };
+  }, (receipt) => {
+    const recovered = receiptResultFor(receipt, "change_site_policy");
+    const siteId = receiptString(recovered.result, "siteId");
+    if (siteId !== input.siteId) throw invalidResponse();
+    return { siteId, policyDigest: receiptString(recovered.result, "policyDigest"),
+      revision: receiptString(recovered.result, "revision"), replayed: true,
+      receipt: recovered.receipt };
   });
 }
 
@@ -492,10 +528,22 @@ export async function materializeModelOptions(input: MaterializeModelOptionsInpu
       generation: { primaryModelKey: item.generation.primaryModelKey,
         fallbackModelKeys: [...item.generation.fallbackModelKeys] } })) });
   context.command!.requestDigest = materializeModelOptionsRequestDigest(context, effect, verifiedAxes(session));
-  return committedMutation(context, () => rpc.materializeModelOptions({ context, effect }, { headers: authHeaders(session) }),
-    (response) => ({ inventoryDigest: response.inventoryDigest,
+  return modelMutation(session, rpc, context, "materialize_options", null,
+    () => rpc.materializeModelOptions({ context, effect }, { headers: authHeaders(session, context.command!.commandId) }),
+    (response) => {
+      if (response.inventoryDigest !== input.inventoryDigest) throw invalidResponse();
+      return { inventoryDigest: response.inventoryDigest,
       materializationDigest: response.materializationDigest, optionRevisionRefs: [...response.optionRevisionRefs],
-      replayed: response.replayed, receipt: receiptJson(response.receipt) }));
+      replayed: response.replayed, receipt: receiptJson(response.receipt) };
+    }, (receipt) => {
+      const recovered = receiptResultFor(receipt, "materialize_options");
+      const inventoryDigest = receiptString(recovered.result, "inventoryDigest");
+      if (inventoryDigest !== input.inventoryDigest) throw invalidResponse();
+      return { inventoryDigest,
+        materializationDigest: receiptString(recovered.result, "materializationDigest"),
+        optionRevisionRefs: receiptStrings(recovered.result, "optionRevisionRefs"), replayed: true,
+        receipt: recovered.receipt };
+    });
 }
 
 export async function publishModelSiteReleaseCatalog(input: PublishModelSiteReleaseCatalogInput) {
@@ -507,14 +555,33 @@ export async function publishModelSiteReleaseCatalog(input: PublishModelSiteRele
       defaultOptionRevisionRef: item.defaultModelOptionRevisionRef })) });
   context.command!.requestDigest = publishSiteReleaseCatalogRequestDigest(context, input.siteId, effect,
     verifiedAxes(session));
-  return committedMutation(context, () => rpc.publishSiteReleaseCatalog({ context, siteId: input.siteId, effect },
-    { headers: authHeaders(session) }), (response) => {
-    if (response.siteId !== input.siteId) throw invalidResponse();
+  return modelMutation(session, rpc, context, "publish_site_release_catalog", input.siteId,
+    () => rpc.publishSiteReleaseCatalog({ context, siteId: input.siteId, effect },
+    { headers: authHeaders(session, context.command!.commandId) }), (response) => {
+    if (response.siteId !== input.siteId || response.siteReleaseRef !== input.siteReleaseRef) throw invalidResponse();
     return { siteId: response.siteId, siteReleaseRef: response.siteReleaseRef,
       modelOptionCatalogRef: response.modelOptionCatalogRef, catalogDigest: response.catalogDigest,
       publishedAt: requiredInstant(response.publishedAt), replayed: response.replayed,
       receipt: receiptJson(response.receipt) };
+  }, (receipt) => {
+    const recovered = receiptResultFor(receipt, "publish_site_release_catalog");
+    const siteId = receiptString(recovered.result, "siteId");
+    const siteReleaseRef = receiptString(recovered.result, "siteReleaseRef");
+    if (siteId !== input.siteId || siteReleaseRef !== input.siteReleaseRef) {
+      throw invalidResponse();
+    }
+    return { siteId, siteReleaseRef,
+      modelOptionCatalogRef: receiptString(recovered.result, "modelOptionCatalogRef"),
+      catalogDigest: receiptString(recovered.result, "catalogDigest"),
+      publishedAt: receiptString(recovered.result, "publishedAt"), replayed: true,
+      receipt: recovered.receipt };
   });
+}
+
+export async function getModelCommandReceipt(input: GetModelCommandReceiptInput) {
+  const session = await requireAuthoritySession();
+  const rpc = createClient(ModelControlService, await adminControlPlaneTransport());
+  return fetchModelCommandReceipt(session, rpc, input);
 }
 
 export async function registerSite(input: RegisterSiteInput) {
@@ -619,12 +686,150 @@ async function committedMutation<Response extends Readonly<{ receipt?: CommandRe
   } catch (error) { throw typed(error); }
 }
 
-export function queryContext(session: AdminAuthoritySession, selection: ScopeSelection = { kind: "current" }) {
-  return create(AuthenticatedOperatorQueryContextSchema, { requestId: randomUUID(), ...sessionClaims(session),
+type ModelClient = ReturnType<typeof createClient<typeof ModelControlService>>;
+
+async function modelMutation<Response extends Readonly<{ receipt?: CommandReceiptV2 }>, Result>(
+  session: AdminAuthoritySession,
+  rpc: ModelClient,
+  context: ReturnType<typeof commandContext>,
+  operation: ModelCommandOperationId,
+  siteId: string | null,
+  invoke: () => Promise<Response>,
+  map: (response: Response) => Result,
+  reconcile: (receipt: Awaited<ReturnType<typeof fetchModelCommandReceipt>>) => Result,
+): Promise<Result> {
+  try {
+    const response = await invoke();
+    assertReceipt(response.receipt, context);
+    if (response.receipt?.operation !== modelOperationFacts(operation,
+      siteId === null ? undefined : siteId).wireOperation) throw invalidResponse();
+    return map(response);
+  } catch (error) {
+    if (error instanceof AdminControlPlaneError) throw error;
+    const connect = ConnectError.from(error);
+    if (connect.code !== Code.DeadlineExceeded && connect.code !== Code.Unavailable) throw typed(error);
+    const commandId = context.command!.commandId;
+    try {
+      return reconcile(await fetchModelCommandReceipt(session, rpc, {
+        commandId, requestDigest: context.command!.requestDigest,
+        operation, ...(siteId === null ? {} : { siteId }),
+      }));
+    } catch (receiptError) {
+      const resolved = typed(receiptError);
+      if (resolved.connectCode === Code.DeadlineExceeded || resolved.connectCode === Code.Unavailable) {
+        throw new AdminControlPlaneError(resolved.connectCode, resolved.domainCode, commandId);
+      }
+      if (resolved.connectCode !== Code.NotFound) throw resolved;
+      const original = typed(error);
+      throw new AdminControlPlaneError(connect.code, original.domainCode, commandId);
+    }
+  }
+}
+
+async function fetchModelCommandReceipt(session: AdminAuthoritySession, rpc: ModelClient,
+  input: GetModelCommandReceiptInput) {
+  const facts = modelOperationFacts(input.operation, input.siteId);
+  const context = queryContext(session, facts.siteId === null ? { kind: "global" }
+    : { kind: "site", siteId: facts.siteId }, input.commandId);
+  try {
+    const response = await rpc.getCommandReceipt({ context, commandId: input.commandId,
+      digestAlgorithm: CommandDigestAlgorithmV2.SHA256_COMMAND_ENVELOPE,
+      requestDigest: input.requestDigest,
+      operation: facts.operation, ...(facts.siteId === null ? {} : { siteId: facts.siteId }) },
+    { headers: authHeaders(session, input.commandId) });
+    const receipt = response.receipt;
+    if (receipt?.state !== CommandReceiptStateV2.COMMITTED ||
+        receipt.identity?.commandId !== input.commandId ||
+        receipt.identity.requestDigest !== input.requestDigest || receipt.operation !== facts.wireOperation) {
+      throw invalidResponse();
+    }
+    return { operation: input.operation, receipt: receiptJson(receipt),
+      result: modelReceiptResult(response.result, input.operation, facts.siteId) };
+  } catch (error) {
+    throw typed(error);
+  }
+}
+
+function modelOperationFacts(operation: ModelCommandOperationId, siteId: string | undefined) {
+  const global = siteId === undefined;
+  if (operation === "import_inventory" && global) return { operation: ModelControlCommandOperation.IMPORT_INVENTORY,
+    wireOperation: "model.inventory.import", siteId: null } as const;
+  if (operation === "activate_inventory" && global) return { operation: ModelControlCommandOperation.ACTIVATE_INVENTORY,
+    wireOperation: "model.inventory.activate", siteId: null } as const;
+  if (operation === "materialize_options" && global) return {
+    operation: ModelControlCommandOperation.MATERIALIZE_MODEL_OPTIONS,
+    wireOperation: "model.option.materialize", siteId: null } as const;
+  if (operation === "change_site_policy" && !global) return {
+    operation: ModelControlCommandOperation.CHANGE_SITE_POLICY,
+    wireOperation: "model.site-policy.change", siteId } as const;
+  if (operation === "publish_site_release_catalog" && !global) return {
+    operation: ModelControlCommandOperation.PUBLISH_SITE_RELEASE_CATALOG,
+    wireOperation: "model.site-release-catalog.publish", siteId } as const;
+  throw new AdminControlPlaneError(Code.InvalidArgument, "model.command_receipt.scope_invalid", inputReference(siteId));
+}
+
+function modelReceiptResult(result: Awaited<ReturnType<ModelClient["getCommandReceipt"]>>["result"],
+  operation: ModelCommandOperationId, siteId: string | null): Record<string, unknown> {
+  if (operation === "import_inventory" && result.case === "importInventory" && result.value.counts !== undefined) {
+    return { inventoryDigest: result.value.inventoryDigest, counts: { ...result.value.counts } };
+  }
+  if (operation === "activate_inventory" && result.case === "activateInventory") {
+    return { targetDigest: result.value.targetDigest,
+      activatedRevision: result.value.activatedRevision.toString() };
+  }
+  if (operation === "change_site_policy" && result.case === "changeSitePolicy" &&
+      result.value.siteId === siteId) {
+    return { siteId: result.value.siteId, policyDigest: result.value.policyDigest,
+      revision: result.value.revision.toString() };
+  }
+  if (operation === "materialize_options" && result.case === "materializeModelOptions") {
+    return { inventoryDigest: result.value.inventoryDigest, sourceDigest: result.value.sourceDigest,
+      materializationDigest: result.value.materializationDigest,
+      optionRevisionRefs: [...result.value.optionRevisionRefs] };
+  }
+  if (operation === "publish_site_release_catalog" && result.case === "publishSiteReleaseCatalog" &&
+      result.value.siteId === siteId) {
+    return { siteId: result.value.siteId, siteReleaseRef: result.value.siteReleaseRef,
+      modelOptionCatalogRef: result.value.modelOptionCatalogRef, catalogDigest: result.value.catalogDigest,
+      publishedAt: requiredInstant(result.value.publishedAt) };
+  }
+  throw invalidResponse();
+}
+
+function receiptResultFor(receipt: Awaited<ReturnType<typeof fetchModelCommandReceipt>>,
+  operation: ModelCommandOperationId): Readonly<{
+    result: Record<string, unknown>;
+    receipt: ReturnType<typeof receiptJson>;
+  }> {
+  if (receipt.operation !== operation) throw invalidResponse();
+  return { result: receipt.result, receipt: receipt.receipt };
+}
+
+function receiptString(result: Record<string, unknown>, field: string): string {
+  const value = result[field];
+  if (typeof value !== "string" || value.length === 0) throw invalidResponse();
+  return value;
+}
+
+function receiptStrings(result: Record<string, unknown>, field: string): string[] {
+  const value = result[field];
+  if (!Array.isArray(value) || !value.every((item) => typeof item === "string" && item.length > 0)) {
+    throw invalidResponse();
+  }
+  return [...value];
+}
+
+function inputReference(value: string | undefined): string | null {
+  return value === undefined ? null : value;
+}
+
+export function queryContext(session: AdminAuthoritySession, selection: ScopeSelection = { kind: "current" },
+  requestId: string = randomUUID()) {
+  return create(AuthenticatedOperatorQueryContextSchema, { requestId, ...sessionClaims(session),
     securityEpochs: epochs(session), scope: scope(session, selection) });
 }
 export function commandContext(session: AdminAuthoritySession, selection: ScopeSelection = { kind: "current" }) {
-  const commandId = randomUUID();
+  const commandId = randomBytes(16).toString("hex");
   return create(AuthenticatedOperatorCommandContextSchema, { command: create(CommandIdentityV2Schema, {
     commandId, idempotencyKey: commandId, digestAlgorithm: CommandDigestAlgorithmV2.SHA256_COMMAND_ENVELOPE,
     requestDigest: "0".repeat(64) }), ...sessionClaims(session), securityEpochs: epochs(session),
@@ -671,7 +876,10 @@ export function verifiedAxes(session: AdminAuthoritySession): VerifiedAuthentica
     ...(session.stepUpAt ? { stepUpAt: timestampFromDate(new Date(session.stepUpAt)) } : {}),
     operatorAttestationRef: session.operatorAttestationRef, operatorAttestationDigest: session.operatorAttestationDigest };
 }
-export function authHeaders(session: AdminAuthoritySession): Headers { return new Headers({ authorization: `Bearer ${session.credential}` }); }
+export function authHeaders(session: AdminAuthoritySession, requestId?: string): Headers {
+  return new Headers({ authorization: `Bearer ${session.credential}`,
+    ...(requestId === undefined ? {} : { "x-request-id": requestId }) });
+}
 function assertReceipt(receipt: Readonly<{ state: CommandReceiptStateV2; identity?: Readonly<{ commandId: string;
   requestDigest: string }> }> | undefined, context: ReturnType<typeof commandContext>): void {
   const identity = receipt?.identity;
@@ -742,7 +950,11 @@ function providerHealth(value: ImportModelInventoryInput["providerAvailability"]
     : value === "degraded" ? ControlProviderHealth.DEGRADED : ControlProviderHealth.DOWN;
 }
 function enumLabel(values: Record<number, string>, value: number): string {
-  return (values[value] ?? "UNSPECIFIED").toLowerCase();
+  const label = values[value];
+  if (label === undefined || label === "UNSPECIFIED" || label.endsWith("_UNSPECIFIED")) {
+    throw invalidResponse();
+  }
+  return label.toLowerCase();
 }
 function codeState(value: CodeBatchState): string { return CodeBatchState[value]?.toLowerCase() ?? "unknown"; }
 function approvalState(value: CodeBatchApprovalState): string { return CodeBatchApprovalState[value]?.toLowerCase() ?? "unknown"; }

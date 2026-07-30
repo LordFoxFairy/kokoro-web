@@ -74,6 +74,7 @@ describe("Admin OpenAPI BFF boundary", () => {
 
   it.each([
     ["payment", 404, "ACQUISITION_CHANNEL_DISABLED"],
+    ["model", 404, "MODEL_GENERIC_PATH_DISABLED"],
     ["unknown", 400, "request.invalid"],
     ["SITE", 400, "request.invalid"],
     ["../site", 400, "request.invalid"],

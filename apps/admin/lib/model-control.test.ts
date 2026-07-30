@@ -18,6 +18,7 @@ const calls = vi.hoisted(() => ({
   listModelSiteReleaseCatalogs: vi.fn(),
   materializeModelOptions: vi.fn(),
   publishModelSiteReleaseCatalog: vi.fn(),
+  getModelCommandReceipt: vi.fn(),
 }));
 
 vi.mock("@/lib/control-plane/client", () => ({
@@ -52,6 +53,17 @@ function jsonRequest(body: unknown): Request {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
+  });
+}
+
+function chunkStream(chunkCount: number, chunkBytes: number, cancel: () => void): ReadableStream<Uint8Array> {
+  let emitted = 0;
+  return new ReadableStream<Uint8Array>({
+    pull(controller) {
+      if (emitted >= chunkCount) { controller.close(); return; }
+      emitted += 1; controller.enqueue(new Uint8Array(chunkBytes));
+    },
+    cancel,
   });
 }
 
@@ -132,12 +144,28 @@ describe("typed Model control route", () => {
       bindings: Array.from({ length: 4_096 }, () => bindingDraft),
       productRoutes: [],
       providerAvailability: Array.from({ length: 256 }, () => ({ providerKey: "provider-one",
-        status: "active", health: "healthy", epoch: "18446744073709551615" })),
+        status: "active", health: "healthy", epoch: "9223372036854775807" })),
     };
     const response = await route.POST(jsonRequest(input));
 
     expect(response.status).toBe(201);
     expect(calls.importModelInventory).toHaveBeenCalledWith(input);
+  });
+
+  it("rejects PostgreSQL-unsigned numeric values at the browser boundary", async () => {
+    const route = await import("../app/api/control/models/route");
+    for (const input of [
+      { action: "activate_inventory", targetDigest: inventoryDigest,
+        expectedPointerRevision: "9223372036854775808" },
+      { action: "import_inventory", sourceReference: "catalog:one", providers: [providerDraft],
+        models: [{ ...modelDraft, contextWindow: 2_147_483_648 }], bindings: [bindingDraft],
+        productRoutes: [], providerAvailability: [{ providerKey: "provider-one", status: "active",
+          health: "healthy", epoch: "9223372036854775808" }] },
+    ]) {
+      expect((await route.POST(jsonRequest(input))).status).toBe(400);
+    }
+    expect(calls.activateModelInventory).not.toHaveBeenCalled();
+    expect(calls.importModelInventory).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -182,6 +210,30 @@ describe("typed Model control route", () => {
 
     expect(response.status).toBe(413);
     expect(await response.json()).toEqual({ error: { code: "request.payload_too_large" } });
+  });
+
+  it.each([undefined, "1"])("stops an oversized streamed command with Content-Length %s", async (length) => {
+    const route = await import("../app/api/control/models/route");
+    const cancel = vi.fn();
+    const headers = new Headers({ "content-type": "application/json" });
+    if (length !== undefined) headers.set("content-length", length);
+    const response = await route.POST(new Request("https://admin.example/api/control/models", {
+      method: "POST", headers, body: chunkStream(18, 1024 * 1024, cancel), duplex: "half",
+    } as RequestInit & { duplex: "half" }));
+
+    expect(response.status).toBe(413);
+    expect(cancel).toHaveBeenCalledTimes(1);
+  });
+
+  it("routes receipt reconciliation through the typed Model BFF", async () => {
+    calls.getModelCommandReceipt.mockResolvedValue({ receipt: { commandId: "a".repeat(32), state: "committed" } });
+    const route = await import("../app/api/control/models/route");
+    const response = await route.GET(new Request("https://admin.example/api/control/models?view=receipt"
+      + `&receiptRef=${"a".repeat(32)}&requestDigest=${"b".repeat(64)}&operation=activate_inventory`));
+
+    expect(response.status).toBe(200);
+    expect(calls.getModelCommandReceipt).toHaveBeenCalledWith({ commandId: "a".repeat(32),
+      requestDigest: "b".repeat(64), operation: "activate_inventory" });
   });
 
   it.each([

@@ -8,6 +8,11 @@ describe("redeem-only Admin resource forms", () => {
     expect(Object.keys(RESOURCE_FORMS).filter((key) => key.startsWith("credit:"))).toEqual([]);
     expect(Object.keys(ROW_ACTION_FORMS).filter((key) => key.startsWith("credit:"))).toEqual([]);
   });
+
+  it("does not register Model resources outside the typed control plane", () => {
+    expect(Object.keys(RESOURCE_FORMS).filter((key) => key.startsWith("model:"))).toEqual([]);
+    expect(Object.keys(ROW_ACTION_FORMS).filter((key) => key.startsWith("model:"))).toEqual([]);
+  });
 });
 
 // 官方 MCP 注册 body 构造(纯函数):坐实与 hub registerMcpServerBodySchema 对齐。

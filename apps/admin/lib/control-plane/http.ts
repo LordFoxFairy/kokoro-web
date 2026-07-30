@@ -36,10 +36,33 @@ export async function boundedJson(request: Request, maximum = 64 * 1024): Promis
   if (request.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase() !== "application/json") {
     throw new ZodError([]);
   }
-  const declared = Number(request.headers.get("content-length") ?? "0");
-  if (!Number.isSafeInteger(declared) || declared < 0) throw new ZodError([]);
-  if (declared > maximum) throw new PayloadTooLargeError();
-  const text = await request.text();
-  if (Buffer.byteLength(text, "utf8") > maximum) throw new PayloadTooLargeError();
+  const rawLength = request.headers.get("content-length");
+  if (rawLength !== null && !/^\d+$/u.test(rawLength)) throw new ZodError([]);
+  const declared = rawLength === null ? null : Number(rawLength);
+  if (declared !== null && (!Number.isSafeInteger(declared) || declared < 0)) throw new ZodError([]);
+  if (declared !== null && declared > maximum) {
+    await request.body?.cancel().catch(() => undefined);
+    throw new PayloadTooLargeError();
+  }
+  const text = await boundedText(request, maximum);
   try { return JSON.parse(text) as unknown; } catch { throw new ZodError([]); }
+}
+
+async function boundedText(request: Request, maximum: number): Promise<string> {
+  if (request.body === null) return "";
+  const reader = request.body.getReader();
+  const decoder = new TextDecoder();
+  let text = "";
+  let total = 0;
+  while (true) {
+    const chunk = await reader.read();
+    if (chunk.done) break;
+    total += chunk.value.byteLength;
+    if (total > maximum) {
+      await reader.cancel().catch(() => undefined);
+      throw new PayloadTooLargeError();
+    }
+    text += decoder.decode(chunk.value, { stream: true });
+  }
+  return text + decoder.decode();
 }

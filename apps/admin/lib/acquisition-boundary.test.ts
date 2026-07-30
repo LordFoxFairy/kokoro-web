@@ -70,6 +70,7 @@ describe("Admin acquisition boundary direct requests", () => {
         data: [
           { id: "site", online: true, manifest: null },
           { id: "payment", online: true, manifest: { resources: [] } },
+          { id: "model", online: true, manifest: { resources: [] } },
           { id: "credit", online: true, manifest: null },
         ],
         requestId: "req-manifests",
@@ -124,6 +125,27 @@ describe("Admin acquisition boundary direct requests", () => {
     expect(await response.json()).toEqual({
       error: { code: "CREDIT_TYPED_BOUNDARY_REQUIRED", message: "Credit is available only through typed control routes" },
     });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects generic Model resource and action requests without reaching the gateway", async () => {
+    const resource = await import("../app/api/resource/route");
+    const action = await import("../app/api/action/route");
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const resourceResponse = await resource.GET(adminRequest(
+      "https://admin.example/api/resource?moduleId=model&route=%2Fadmin%2Fmodels",
+    ));
+    const actionResponse = await action.POST(adminRequest("https://admin.example/api/action", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ moduleId: "model", route: "/admin/models/activate", actionId: "activate" }),
+    }));
+
+    expect(resourceResponse.status).toBe(404);
+    expect((await resourceResponse.json()).error.code).toBe("MODEL_GENERIC_PATH_DISABLED");
+    expect(actionResponse.status).toBe(404);
+    expect((await actionResponse.json()).error.code).toBe("MODEL_GENERIC_PATH_DISABLED");
     expect(fetchMock).not.toHaveBeenCalled();
   });
 

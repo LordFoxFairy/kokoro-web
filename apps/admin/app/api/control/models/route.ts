@@ -3,6 +3,7 @@ import { boundedJson, controlError, controlJson } from "@/lib/control-plane/http
 import { strictQuery } from "@/lib/control-plane/strict-query";
 import {
   activateModelInventory, changeModelSitePolicy, importModelInventory,
+  getModelCommandReceipt,
   getModelInventoryRevision,
   listModelInventoryBindings, listModelInventoryDefinitions, listModelInventoryProviders,
   listModelInventoryRevisions, listModelInventoryRoutes, listModelOptions,
@@ -17,8 +18,8 @@ const name128 = z.string().min(1).max(128);
 const reference = z.string().min(3).max(256);
 const siteId = z.string().min(3).max(128);
 const uint64 = z.string().regex(/^(?:0|[1-9][0-9]*)$/u)
-  .refine((value) => BigInt(value) <= 18_446_744_073_709_551_615n);
-const uint32 = z.number().int().min(0).max(4_294_967_295);
+  .refine((value) => BigInt(value) <= 9_223_372_036_854_775_807n);
+const uint32 = z.number().int().min(0).max(2_147_483_647);
 const position = uint32.max(10_000);
 const product = z.enum(["chat", "music", "image", "video"]);
 const role = z.enum(["main", "generation"]);
@@ -76,8 +77,27 @@ const command = z.discriminatedUnion("action", [
 export async function GET(request: Request) {
   try {
     const query = strictQuery(request, { view: z.enum(["inventories", "inventory", "providers", "definitions", "bindings",
-      "routes", "options", "policies", "catalogs"]), inventoryDigest: digest.optional(),
-    surface: product.optional(), siteId: siteId.optional(), pageToken });
+      "routes", "options", "policies", "catalogs", "receipt"]), inventoryDigest: digest.optional(),
+    surface: product.optional(), siteId: siteId.optional(), pageToken,
+    receiptRef: z.string().regex(/^[a-f0-9]{32}$/u).optional(),
+    requestDigest: digest.optional(),
+    operation: z.enum(["import_inventory", "activate_inventory", "change_site_policy",
+      "materialize_options", "publish_site_release_catalog"]).optional() });
+    if (query.view === "receipt") {
+      if (query.inventoryDigest !== undefined || query.surface !== undefined || query.pageToken !== undefined) {
+        z.never().parse(query);
+      }
+      return controlJson(await getModelCommandReceipt({
+        commandId: z.string().regex(/^[a-f0-9]{32}$/u).parse(query.receiptRef),
+        requestDigest: digest.parse(query.requestDigest),
+        operation: z.enum(["import_inventory", "activate_inventory", "change_site_policy",
+          "materialize_options", "publish_site_release_catalog"]).parse(query.operation),
+        ...(query.siteId ? { siteId: query.siteId } : {}),
+      }));
+    }
+    if (query.receiptRef !== undefined || query.requestDigest !== undefined || query.operation !== undefined) {
+      z.never().parse(query);
+    }
     if (query.view === "inventories") return controlJson(await listModelInventoryRevisions(query.pageToken));
     if (query.view === "inventory") return controlJson(await getModelInventoryRevision(digest.parse(query.inventoryDigest)));
     if (["providers", "definitions", "bindings", "routes"].includes(query.view)) {

@@ -14,6 +14,9 @@ const calls = vi.hoisted(() => ({
     activateInventory: vi.fn(),
     changeSitePolicy: vi.fn(),
     publishSiteReleaseCatalog: vi.fn(),
+    importInventory: vi.fn(),
+    materializeModelOptions: vi.fn(),
+    getCommandReceipt: vi.fn(),
   },
   requireAuthoritySession: vi.fn(),
 }));
@@ -144,13 +147,25 @@ describe("typed Model query client", () => {
       domainCode: "admin_control_plane.invalid_response",
     });
   });
+
+  it.each([0, 99])("rejects unspecified or unknown Model enums (%s)", async (product) => {
+    calls.model.listSiteModelPolicies.mockResolvedValue({ policies: [{ siteId: "site-one", product,
+      revision: 1n, policyDigest: digest, enabled: true, catalogMode: 1, assignmentMode: 1,
+      assignmentCount: 0, current: true, changedAt: instant }],
+    page: { nextPageToken: undefined, asOf: instant } });
+    const { listModelSitePolicies } = await import("./client");
+
+    await expect(listModelSitePolicies("site-one")).rejects.toMatchObject({
+      connectCode: Code.Internal, domainCode: "admin_control_plane.invalid_response",
+    });
+  });
 });
 
 describe("typed Model Site mutation client", () => {
-  const receipt = (request: unknown) => {
+  const receipt = (request: unknown, operation = "model.test") => {
     const context = (request as { context: { command?: { commandId: string; requestDigest: string } } }).context;
     return { state: CommandReceiptStateV2.COMMITTED, identity: context.command,
-      operation: "model.test", recordedAt: instant };
+      operation, recordedAt: instant };
   };
 
   it("preserves the generated provider receipt conflict through the client and HTTP boundary", async () => {
@@ -169,7 +184,8 @@ describe("typed Model Site mutation client", () => {
 
   it("rejects a cross-Site policy response after validating its receipt", async () => {
     calls.model.changeSitePolicy.mockImplementation(async (request: unknown) => ({ siteId: "site-other",
-      policyDigest: digest, revision: 1n, replayed: false, receipt: receipt(request) }));
+      policyDigest: digest, revision: 1n, replayed: false,
+      receipt: receipt(request, "model.site-policy.change") }));
     const { changeModelSitePolicy } = await import("./client");
 
     await expect(changeModelSitePolicy({ siteId: "site-one", product: "chat", enabled: true,
@@ -180,12 +196,87 @@ describe("typed Model Site mutation client", () => {
   it("rejects a cross-Site release catalog response after validating its receipt", async () => {
     calls.model.publishSiteReleaseCatalog.mockImplementation(async (request: unknown) => ({ siteId: "site-other",
       siteReleaseRef: "release:one", modelOptionCatalogRef: "catalog:one", catalogDigest: digest,
-      publishedAt: instant, replayed: false, receipt: receipt(request) }));
+      publishedAt: instant, replayed: false,
+      receipt: receipt(request, "model.site-release-catalog.publish") }));
     const { publishModelSiteReleaseCatalog } = await import("./client");
 
     await expect(publishModelSiteReleaseCatalog({ siteId: "site-one", siteReleaseRef: "release:one",
       inventoryDigest: digest, surfaces: [{ surface: "chat", allowedOptionRevisionRefs: ["option:one"],
         defaultModelOptionRevisionRef: "option:one" }],
     })).rejects.toMatchObject({ connectCode: Code.Internal, domainCode: "admin_control_plane.invalid_response" });
+  });
+
+  it("reconciles an ambiguous activation with the same 32-hex command and request ID", async () => {
+    calls.model.activateInventory.mockRejectedValueOnce(new ConnectError("ambiguous", Code.Unavailable));
+    calls.model.getCommandReceipt.mockImplementation(async (request: unknown, options: { headers: Headers }) => {
+      const input = request as { commandId: string; digestAlgorithm: number; requestDigest: string };
+      expect(input.commandId).toMatch(/^[a-f0-9]{32}$/u);
+      expect(input.digestAlgorithm).toBe(1);
+      expect(input.requestDigest).toMatch(/^[a-f0-9]{64}$/u);
+      expect(options.headers.get("x-request-id")).toBe(input.commandId);
+      return { receipt: { state: CommandReceiptStateV2.COMMITTED,
+        identity: { commandId: input.commandId, requestDigest: input.requestDigest },
+        operation: "model.inventory.activate", recordedAt: instant },
+      result: { case: "activateInventory", value: { targetDigest: digest, activatedRevision: 4n } } };
+    });
+    const { activateModelInventory } = await import("./client");
+
+    const result = await activateModelInventory(digest, "3");
+
+    const [effectRequest, effectOptions] = calls.model.activateInventory.mock.calls[0] as
+      [{ context: { command: { commandId: string } } }, { headers: Headers }];
+    expect(effectRequest.context.command.commandId).toMatch(/^[a-f0-9]{32}$/u);
+    expect(effectOptions.headers.get("x-request-id")).toBe(effectRequest.context.command.commandId);
+    expect(calls.model.activateInventory).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({ targetDigest: digest, activatedRevision: "4",
+      receipt: { commandId: effectRequest.context.command.commandId } });
+  });
+
+  it("returns the reusable command ID when an ambiguous effect is not yet receipted", async () => {
+    calls.model.activateInventory.mockRejectedValueOnce(new ConnectError("ambiguous", Code.DeadlineExceeded));
+    const contract = MODEL_CONTROL_ADMIN_ERRORS.commandReceiptNotFound;
+    calls.model.getCommandReceipt.mockRejectedValueOnce(new ConnectError(contract.safeMessage, Code.NotFound,
+      undefined, [modelControlAdminErrorDetail("commandReceiptNotFound", "receipt-query")]));
+    const { activateModelInventory } = await import("./client");
+
+    const error = await activateModelInventory(digest, "3").catch((reason: unknown) => reason);
+
+    expect(error).toMatchObject({ connectCode: Code.DeadlineExceeded,
+      receiptRef: expect.stringMatching(/^[a-f0-9]{32}$/u) });
+    const receiptRef = (error as { receiptRef: string }).receiptRef;
+    expect(calls.model.activateInventory).toHaveBeenCalledTimes(1);
+    expect(calls.model.getCommandReceipt.mock.calls[0]?.[0]).toMatchObject({ commandId: receiptRef });
+    expect(calls.model.getCommandReceipt.mock.calls[0]?.[0]).toMatchObject({
+      digestAlgorithm: 1, requestDigest: expect.stringMatching(/^[a-f0-9]{64}$/u),
+    });
+  });
+
+  it("rejects effect responses whose immutable identity does not match the request", async () => {
+    calls.model.activateInventory.mockImplementation(async (request: unknown) => ({
+      targetDigest: "f".repeat(64), activatedRevision: 1n, replayed: false,
+      receipt: receipt(request, "model.inventory.activate"),
+    }));
+    calls.model.materializeModelOptions.mockImplementation(async (request: unknown) => ({
+      inventoryDigest: "f".repeat(64), sourceDigest: digest, materializationDigest: digest,
+      optionRevisionRefs: ["option:one"], replayed: false,
+      receipt: receipt(request, "model.option.materialize"),
+    }));
+    calls.model.publishSiteReleaseCatalog.mockImplementation(async (request: unknown) => ({
+      siteId: "site-one", siteReleaseRef: "release:other", modelOptionCatalogRef: "catalog:one",
+      catalogDigest: digest, publishedAt: instant, replayed: false,
+      receipt: receipt(request, "model.site-release-catalog.publish"),
+    }));
+    const client = await import("./client");
+
+    await expect(client.activateModelInventory(digest, "0")).rejects.toMatchObject({ connectCode: Code.Internal });
+    await expect(client.materializeModelOptions({ inventoryDigest: digest, options: [{ optionKey: "chat-one",
+      surface: "chat", label: "Chat", lifecycle: "active",
+      orchestration: { primaryModelKey: "model-one", fallbackModelKeys: [] },
+      generation: { primaryModelKey: "model-one", fallbackModelKeys: [] } }] }))
+      .rejects.toMatchObject({ connectCode: Code.Internal });
+    await expect(client.publishModelSiteReleaseCatalog({ siteId: "site-one", siteReleaseRef: "release:one",
+      inventoryDigest: digest, surfaces: [{ surface: "chat", allowedOptionRevisionRefs: ["option:one"],
+        defaultModelOptionRevisionRef: "option:one" }] }))
+      .rejects.toMatchObject({ connectCode: Code.Internal });
   });
 });
