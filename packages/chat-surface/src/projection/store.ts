@@ -1,4 +1,5 @@
 import type { SessionConnectionState } from "@kokoro/session-client"
+import stableStringify from "fast-json-stable-stringify"
 import type {
   MessagePartEnvelope,
   MessageRecord,
@@ -127,6 +128,8 @@ export type ChatPart = ChatPartBase & (
     }
 )
 
+const PART_ENVELOPE_FINGERPRINTS = new WeakMap<ChatPart, string>()
+
 export type ChatProjectionMessage = {
   readonly id: string
   readonly runId: string | null
@@ -207,7 +210,7 @@ function toolStatus(part: Extract<MessagePartEnvelope, { kind: "tool-call" }>): 
   return "running"
 }
 
-function projectPart(part: MessagePartEnvelope): ChatPart {
+function projectPartView(part: MessagePartEnvelope): ChatPart {
   const base = {
     id: part.part_id,
     ordinal: part.ordinal,
@@ -358,6 +361,16 @@ function projectPart(part: MessagePartEnvelope): ChatPart {
   }
 }
 
+function projectPart(part: MessagePartEnvelope): ChatPart {
+  const projected = projectPartView(part)
+  PART_ENVELOPE_FINGERPRINTS.set(projected, stableStringify(part))
+  return projected
+}
+
+function envelopeFingerprint(part: ChatPart): string | undefined {
+  return PART_ENVELOPE_FINGERPRINTS.get(part)
+}
+
 function sortParts(parts: readonly ChatPart[]): readonly ChatPart[] {
   return [...parts].sort((left, right) => left.ordinal - right.ordinal || left.id.localeCompare(right.id))
 }
@@ -408,7 +421,8 @@ function upsertPart(
   }
   if (part.version < current.version) return { message, conflict: "part_version_regression" }
   if (part.version === current.version) {
-    return JSON.stringify(part) === JSON.stringify(current)
+    const currentFingerprint = envelopeFingerprint(current)
+    return currentFingerprint !== undefined && currentFingerprint === envelopeFingerprint(part)
       ? { message }
       : { message, conflict: "part_version_conflict" }
   }

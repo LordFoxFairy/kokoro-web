@@ -23,7 +23,8 @@
   "publishConfig": { "access": "public", "provenance": true },
   "dependencies": {
     "@assistant-ui/react": "0.14.28",
-    "@kokoro/session-client": "workspace:*"
+    "@kokoro/session-client": "workspace:*",
+    "fast-json-stable-stringify": "2.1.0"
   },
   "peerDependencies": { "react": "^18 || ^19", "react-dom": "^18 || ^19" },
   "devDependencies": {

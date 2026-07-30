@@ -307,6 +307,138 @@ describe("Chat projection", () => {
     expect(listener).toHaveBeenCalledOnce()
   })
 
+  it("rejects same-version envelopes that only become equal after lossy projection", () => {
+    const base = snapshot()
+    const assistant = base.messages[1]
+    if (assistant === undefined) throw new Error("assistant fixture missing")
+    const textBase = {
+      part_id: "lossy-text",
+      message_id: assistant.message_id,
+      ordinal: 0,
+      version: 1,
+      schema_version: 1 as const,
+      lifecycle: "streaming" as const,
+      kind: "text" as const,
+    }
+    const toolBase = {
+      part_id: "lossy-tool",
+      message_id: assistant.message_id,
+      ordinal: 0,
+      version: 1,
+      schema_version: 1 as const,
+      lifecycle: "streaming" as const,
+      kind: "tool-call" as const,
+    }
+    const cases: readonly Readonly<{
+      label: string
+      initial: MessagePartEnvelope
+      replay: MessagePartEnvelope
+    }>[] = [
+      {
+        label: "text part_ref",
+        initial: { ...textBase, payload: { part_ref: "text-ref-a", spans: [{ text: "hi" }] } },
+        replay: { ...textBase, payload: { part_ref: "text-ref-b", spans: [{ text: "hi" }] } },
+      },
+      {
+        label: "text span boundaries",
+        initial: { ...textBase, payload: { part_ref: "text-ref", spans: [{ text: "h" }, { text: "i" }] } },
+        replay: { ...textBase, payload: { part_ref: "text-ref", spans: [{ text: "hi" }] } },
+      },
+      {
+        label: "raw tool status",
+        initial: { ...toolBase, payload: { tool_call_id: "tool-call-1", tool_label: "Search", status: "queued" } },
+        replay: { ...toolBase, payload: { tool_call_id: "tool-call-1", tool_label: "Search", status: "started" } },
+      },
+    ]
+
+    for (const candidate of cases) {
+      const store = createChatProjectionStore()
+      store.dispatch({
+        type: "snapshot",
+        snapshot: {
+          ...base,
+          messages: [base.messages[0] as SessionSnapshot["messages"][number], { ...assistant, parts: [candidate.initial] }],
+        },
+      })
+      const before = store.getSnapshot().messages[1]?.parts
+      store.dispatch({
+        type: "event",
+        event: event({ kind: "message.part.updated", payload: { part: candidate.replay } }),
+      })
+
+      expect(store.getSnapshot().repair, candidate.label).toEqual({ required: true, reason: "part_version_conflict" })
+      expect(store.getSnapshot().messages[1]?.parts, candidate.label).toBe(before)
+      if (candidate.label === "text part_ref") {
+        expect(JSON.stringify(store.getSnapshot())).not.toContain("text-ref-a")
+        const projected = store.getSnapshot().messages[1]
+        if (projected === undefined) throw new Error("assistant projection missing")
+        const rendered = createKokoroExternalStoreAdapter(store.getSnapshot(), { submit: async () => undefined })
+          .convertMessage(projected, 1)
+        expect(JSON.stringify(rendered)).not.toContain("text-ref-a")
+      }
+    }
+  })
+
+  it("treats object key order as semantically irrelevant while preserving array order", () => {
+    const base = snapshot()
+    const assistant = base.messages[1]
+    if (assistant === undefined) throw new Error("assistant fixture missing")
+    const initial: MessagePartEnvelope = {
+      part_id: "tool-key-order",
+      message_id: assistant.message_id,
+      ordinal: 0,
+      version: 1,
+      schema_version: 1,
+      lifecycle: "streaming",
+      kind: "tool-call",
+      payload: {
+        tool_call_id: "tool-call-key-order",
+        tool_label: "Search",
+        input_summary: { query: "fox", options: { safe: true, locale: "en" }, order: ["recent", "relevant"] },
+        status: "started",
+      },
+    }
+    const replay: MessagePartEnvelope = {
+      ...initial,
+      payload: {
+        status: "started",
+        input_summary: { ignored_by_json_wire: undefined, order: ["recent", "relevant"], options: { locale: "en", safe: true }, query: "fox" },
+        tool_label: "Search",
+        tool_call_id: "tool-call-key-order",
+      },
+    }
+    const store = createChatProjectionStore()
+    store.dispatch({
+      type: "snapshot",
+      snapshot: {
+        ...base,
+        messages: [base.messages[0] as SessionSnapshot["messages"][number], { ...assistant, parts: [initial] }],
+      },
+    })
+    const before = store.getSnapshot()
+    store.dispatch({ type: "event", event: event({ kind: "message.part.updated", payload: { part: replay } }) })
+
+    expect(store.getSnapshot()).toBe(before)
+    expect(store.getSnapshot().repair).toEqual({ required: false })
+
+    store.dispatch({
+      type: "event",
+      event: event({
+        kind: "message.part.updated",
+        payload: {
+          part: {
+            ...replay,
+            payload: {
+              ...replay.payload,
+              input_summary: { query: "fox", options: { safe: true, locale: "en" }, order: ["relevant", "recent"] },
+            },
+          },
+        },
+      }),
+    })
+    expect(store.getSnapshot().repair).toEqual({ required: true, reason: "part_version_conflict" })
+  })
+
   it("fails closed and requests a snapshot when the active branch changes", () => {
     const store = createChatProjectionStore()
     store.dispatch({ type: "snapshot", snapshot: snapshot() })
