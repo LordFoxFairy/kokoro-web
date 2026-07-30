@@ -16,10 +16,10 @@ import type {
   SessionSnapshot,
 } from "@kokoro/session-client/contracts"
 import {
-  createChatProjection,
-  reduceChatProjection,
+  createChatProjectionStore,
   type ChatPart,
   type ChatProjection,
+  type ChatProjectionMutation,
 } from "@kokoro/chat-surface"
 
 import {
@@ -244,11 +244,12 @@ export function createChatController(options: {
   readonly defaultProjectRef: string | null
   readonly commandRecoveryStore?: SessionCommandRecoveryStore
 }): ChatController {
+  const projectionStore = createChatProjectionStore()
   let state: ChatState = {
     phase: "idle",
     sessionId: null,
     snapshot: null,
-    projection: createChatProjection(),
+    projection: projectionStore.getSnapshot(),
     failure: null,
     chatCatalog: options.chatCatalog,
     selectedModelOptionRevisionRef: null,
@@ -271,8 +272,9 @@ export function createChatController(options: {
     state = next
     for (const listener of listeners) listener()
   }
-  const project = (action: Parameters<typeof reduceChatProjection>[1]): void => {
-    publish({ ...state, projection: reduceChatProjection(state.projection, action) })
+  const project = (action: ChatProjectionMutation): void => {
+    projectionStore.dispatch(action)
+    publish({ ...state, projection: projectionStore.getSnapshot() })
   }
   const fail = (failure: ChatFailure): void => {
     publish({ ...state, failure })
@@ -361,6 +363,7 @@ export function createChatController(options: {
             ? "medium"
             : selectedOption.supportedEfforts[0] ?? null
     selectionSessionId = sessionId
+    projectionStore.hydrate(snapshot)
     publish({
       ...state,
       phase: "ready",
@@ -369,7 +372,7 @@ export function createChatController(options: {
       failure: null,
       selectedModelOptionRevisionRef,
       selectedEffort,
-      projection: reduceChatProjection(state.projection, { type: "snapshot", snapshot }),
+      projection: projectionStore.getSnapshot(),
     })
     const previousStream = stream
     stream = null
@@ -459,16 +462,18 @@ export function createChatController(options: {
     const currentGeneration = generation
     stream?.close()
     stream = null
+    projectionStore.reset()
+    projectionStore.dispatch({
+      type: "connection",
+      connection: { kind: "connecting" },
+    })
     publish({
       ...state,
       phase: "loading",
       sessionId: normalized,
       snapshot: null,
       failure: null,
-      projection: reduceChatProjection(createChatProjection(), {
-        type: "connection",
-        connection: { kind: "connecting" },
-      }),
+      projection: projectionStore.getSnapshot(),
     })
     try {
       const hydration = await options.client.hydrate(normalized)
@@ -673,12 +678,13 @@ export function createChatController(options: {
       await open(sessionId)
       const ready = state.phase === "ready" && state.sessionId === sessionId
       if (ready) {
+        projectionStore.dispatch({ type: "command", state: "idle" })
         publish({
           ...state,
           appliedDraft: appliedDraftRevision === null
             ? state.appliedDraft
             : { sessionId, revision: appliedDraftRevision },
-          projection: reduceChatProjection(state.projection, { type: "command", state: "idle" }),
+          projection: projectionStore.getSnapshot(),
         })
       }
       return ready
@@ -730,12 +736,13 @@ export function createChatController(options: {
   ): Promise<boolean> => {
     try {
       if (await refresh(sessionId, expectedGeneration)) {
+        projectionStore.dispatch({ type: "command", state: "idle" })
         publish({
           ...state,
           appliedDraft: appliedDraftRevision === null
             ? state.appliedDraft
             : { sessionId, revision: appliedDraftRevision },
-          projection: reduceChatProjection(state.projection, { type: "command", state: "idle" }),
+          projection: projectionStore.getSnapshot(),
         })
         return true
       }

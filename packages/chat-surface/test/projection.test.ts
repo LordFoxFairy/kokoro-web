@@ -1,7 +1,13 @@
 import type { MessagePartEnvelope, SessionEvent, SessionSnapshot } from "@kokoro/session-client/contracts"
 import { describe, expect, it, vi } from "vitest"
 
-import { createChatProjectionStore, type ChatPart } from "../src/projection/store.js"
+import * as ChatProjectionModule from "../src/projection/store.js"
+import {
+  createChatProjection,
+  createChatProjectionStore,
+  type ChatPart,
+  type ChatProjection,
+} from "../src/projection/store.js"
 import { createKokoroExternalStoreAdapter } from "../src/runtime/kokoro-external-store-adapter.js"
 
 const NOW = "2026-07-28T00:00:00.000Z"
@@ -128,10 +134,63 @@ describe("Chat projection", () => {
     expect(EXACT_ENUM_TYPES).toEqual([true, true, true, true, true])
   })
 
+  it("keeps reducer ownership inside a store and rejects cloned projection initial state", () => {
+    expect("reduceChatProjection" in ChatProjectionModule).toBe(false)
+
+    const structuredCloneProjection = structuredClone(createChatProjection())
+    const jsonCloneProjection = JSON.parse(JSON.stringify(createChatProjection())) as ChatProjection
+    expect(structuredCloneProjection).toEqual(createChatProjection())
+    expect(jsonCloneProjection).toEqual(createChatProjection())
+
+    const assertInvalidInputs = (): void => {
+      // @ts-expect-error Public projection views are not valid store initial state.
+      createChatProjectionStore(structuredCloneProjection)
+      // @ts-expect-error JSON-cloned projection views are not valid store initial state.
+      createChatProjectionStore(jsonCloneProjection)
+      const store = createChatProjectionStore()
+      // @ts-expect-error Authoritative snapshots use hydrate, not the mutation channel.
+      store.dispatch({ type: "snapshot", snapshot: snapshot() })
+    }
+    expect(assertInvalidInputs).toBeTypeOf("function")
+  })
+
+  it("hydrates JSON-roundtripped authoritative snapshots without false replay conflicts", () => {
+    const store = createChatProjectionStore()
+
+    store.hydrate(JSON.parse(JSON.stringify(snapshot())) as SessionSnapshot)
+    const beforeReplay = store.getSnapshot()
+    store.dispatch({
+      type: "event",
+      event: event({
+        kind: "message.part.updated",
+        payload: {
+          part: snapshot().messages[1]!.parts[0]!,
+        },
+      }),
+    })
+
+    expect(store.getSnapshot()).toBe(beforeReplay)
+
+    store.dispatch({
+      type: "event",
+      event: event({
+        kind: "message.part.updated",
+        payload: {
+          part: {
+            ...snapshot().messages[1]!.parts[0]!,
+            payload: { part_ref: "drifted-part-ref", spans: [{ text: "hi" }] },
+          },
+        },
+      }),
+    })
+
+    expect(store.getSnapshot().repair).toEqual({ required: true, reason: "part_version_conflict" })
+  })
+
   it("rehydrates the active v3 message lineage and active run without legacy repair", () => {
     const store = createChatProjectionStore()
 
-    store.dispatch({ type: "snapshot", snapshot: snapshot() })
+    store.hydrate(snapshot())
 
     expect(store.getSnapshot()).toMatchObject({
       activeRunId: "run-12345678",
@@ -152,7 +211,7 @@ describe("Chat projection", () => {
 
   it("replaces a versioned v3 part projection instead of appending legacy deltas", () => {
     const store = createChatProjectionStore()
-    store.dispatch({ type: "snapshot", snapshot: snapshot() })
+    store.hydrate(snapshot())
     store.dispatch({
       type: "event",
       event: event({
@@ -179,7 +238,7 @@ describe("Chat projection", () => {
 
   it("requests snapshot repair without applying a part version gap", () => {
     const store = createChatProjectionStore()
-    store.dispatch({ type: "snapshot", snapshot: snapshot() })
+    store.hydrate(snapshot())
     store.dispatch({
       type: "event",
       event: event({
@@ -203,7 +262,7 @@ describe("Chat projection", () => {
     expect(store.getSnapshot().repair).toEqual({ required: true, reason: "part_version_gap" })
 
     const unseenPartStore = createChatProjectionStore()
-    unseenPartStore.dispatch({ type: "snapshot", snapshot: snapshot() })
+    unseenPartStore.hydrate(snapshot())
     unseenPartStore.dispatch({
       type: "event",
       event: event({
@@ -229,7 +288,7 @@ describe("Chat projection", () => {
 
   it("requests snapshot repair without applying part identity drift", () => {
     const store = createChatProjectionStore()
-    store.dispatch({ type: "snapshot", snapshot: snapshot() })
+    store.hydrate(snapshot())
     store.dispatch({
       type: "event",
       event: event({
@@ -253,7 +312,7 @@ describe("Chat projection", () => {
     expect(store.getSnapshot().repair).toEqual({ required: true, reason: "part_identity_conflict" })
 
     const messageDriftStore = createChatProjectionStore()
-    messageDriftStore.dispatch({ type: "snapshot", snapshot: snapshot() })
+    messageDriftStore.hydrate(snapshot())
     messageDriftStore.dispatch({
       type: "event",
       event: event({
@@ -280,7 +339,7 @@ describe("Chat projection", () => {
 
   it("treats an exact part replay as a no-op", () => {
     const store = createChatProjectionStore()
-    store.dispatch({ type: "snapshot", snapshot: snapshot() })
+    store.hydrate(snapshot())
     const listener = vi.fn()
     store.subscribe(listener)
     const update = event({
@@ -353,12 +412,9 @@ describe("Chat projection", () => {
 
     for (const candidate of cases) {
       const store = createChatProjectionStore()
-      store.dispatch({
-        type: "snapshot",
-        snapshot: {
-          ...base,
-          messages: [base.messages[0] as SessionSnapshot["messages"][number], { ...assistant, parts: [candidate.initial] }],
-        },
+      store.hydrate({
+        ...base,
+        messages: [base.messages[0] as SessionSnapshot["messages"][number], { ...assistant, parts: [candidate.initial] }],
       })
       const before = store.getSnapshot().messages[1]?.parts
       store.dispatch({
@@ -408,12 +464,9 @@ describe("Chat projection", () => {
       },
     }
     const store = createChatProjectionStore()
-    store.dispatch({
-      type: "snapshot",
-      snapshot: {
-        ...base,
-        messages: [base.messages[0] as SessionSnapshot["messages"][number], { ...assistant, parts: [initial] }],
-      },
+    store.hydrate({
+      ...base,
+      messages: [base.messages[0] as SessionSnapshot["messages"][number], { ...assistant, parts: [initial] }],
     })
     const before = store.getSnapshot()
     store.dispatch({ type: "event", event: event({ kind: "message.part.updated", payload: { part: replay } }) })
@@ -441,7 +494,7 @@ describe("Chat projection", () => {
 
   it("fails closed and requests a snapshot when the active branch changes", () => {
     const store = createChatProjectionStore()
-    store.dispatch({ type: "snapshot", snapshot: snapshot() })
+    store.hydrate(snapshot())
     store.dispatch({
       type: "event",
       event: event({
@@ -484,7 +537,7 @@ describe("Chat projection", () => {
       }],
     }
     const store = createChatProjectionStore()
-    store.dispatch({ type: "snapshot", snapshot: rich })
+    store.hydrate(rich)
     const assistantProjection = store.getSnapshot().messages[1]
     if (assistantProjection === undefined) throw new Error("assistant projection missing")
 
@@ -537,7 +590,7 @@ describe("Chat projection", () => {
       }],
     }
     const store = createChatProjectionStore()
-    store.dispatch({ type: "snapshot", snapshot: rich })
+    store.hydrate(rich)
     const projected = store.getSnapshot().messages[1]
     if (projected === undefined) throw new Error("assistant projection missing")
 
@@ -594,13 +647,13 @@ describe("Chat projection", () => {
     })
 
     const streamed = createChatProjectionStore()
-    streamed.dispatch({ type: "snapshot", snapshot: withPart(first) })
+    streamed.hydrate(withPart(first))
     streamed.dispatch({ type: "event", event: event({
       kind: "message.part.updated",
       payload: { part: second },
     }) })
     const hydrated = createChatProjectionStore()
-    hydrated.dispatch({ type: "snapshot", snapshot: withPart(second) })
+    hydrated.hydrate(withPart(second))
 
     expect(streamed.getSnapshot().messages[1]?.parts).toEqual(hydrated.getSnapshot().messages[1]?.parts)
     expect(streamed.getSnapshot().messages[1]?.parts[0]).toMatchObject({
@@ -613,7 +666,7 @@ describe("Chat projection", () => {
 
   it("rejects part version regression without mutating the current projection", () => {
     const store = createChatProjectionStore()
-    store.dispatch({ type: "snapshot", snapshot: snapshot() })
+    store.hydrate(snapshot())
     store.dispatch({
       type: "event",
       event: event({
@@ -680,7 +733,7 @@ describe("Chat projection", () => {
       }],
     }
     const store = createChatProjectionStore()
-    store.dispatch({ type: "snapshot", snapshot: launching })
+    store.hydrate(launching)
     expect(store.getSnapshot()).toMatchObject({ activeRunId: "run-12345678", activeRunState: "cancelling" })
 
     store.dispatch({

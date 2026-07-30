@@ -45,6 +45,33 @@ function snapshot(branchId: string, cursor: string, durableSeq: string): Session
   }
 }
 
+function withAssistantText(base: SessionSnapshot, text: string): SessionSnapshot {
+  const messageId = "message-assistant-12345678"
+  return {
+    ...base,
+    session: { ...base.session, active_leaf_message_id: messageId },
+    messages: [{
+      message_id: messageId,
+      branch_id: base.session.active_branch_id,
+      role: "assistant",
+      ordinal: 0,
+      lifecycle: "completed",
+      parts: [{
+        part_id: "part-assistant-12345678",
+        message_id: messageId,
+        ordinal: 0,
+        version: 1,
+        schema_version: 1,
+        lifecycle: "completed",
+        kind: "text",
+        payload: { spans: [{ text }] },
+      }],
+      attachments: [],
+      created_at: NOW,
+    }],
+  }
+}
+
 function branchActivated(branchId: string): SessionEvent {
   return {
     kind: "branch.activated",
@@ -109,8 +136,8 @@ function clientFixture(input: Readonly<{
 
 describe("Chat recovery controller", () => {
   it("does not carry one conversation's model draft selection into another conversation", async () => {
-    const first = snapshot("branch-first-12345678", "signed.cursor.1", "1")
-    const second: SessionSnapshot = {
+    const first = withAssistantText(snapshot("branch-first-12345678", "signed.cursor.1", "1"), "first session")
+    const secondBase: SessionSnapshot = {
       ...snapshot("branch-second-12345678", "signed.cursor.2", "2"),
       session: {
         ...snapshot("branch-second-12345678", "signed.cursor.2", "2").session,
@@ -118,6 +145,7 @@ describe("Chat recovery controller", () => {
       },
       model_history: [{ model_option_revision_ref: "model-option-second-12345678", label: "Second" }],
     }
+    const second = withAssistantText(secondBase, "second session")
     const hydrate = vi.fn<SessionClient["hydrate"]>(async (sessionId) => {
       const selected = sessionId === "session-second-12345678" ? second : first
       return {
@@ -143,11 +171,20 @@ describe("Chat recovery controller", () => {
       },
       defaultProjectRef: "project-12345678",
     })
+    const published: ReturnType<typeof controller.getSnapshot>[] = []
+    controller.subscribe(() => published.push(controller.getSnapshot()))
 
     await controller.open("session-12345678")
     expect(controller.getSnapshot().selectedModelOptionRevisionRef).toBe("model-option-first-12345678")
+    expect(controller.getSnapshot().projection.messages[0]?.parts[0]).toMatchObject({ text: "first session" })
     await controller.open("session-second-12345678")
     expect(controller.getSnapshot().selectedModelOptionRevisionRef).toBe("model-option-second-12345678")
+    expect(controller.getSnapshot().projection.messages[0]?.parts[0]).toMatchObject({ text: "second session" })
+    expect(published.find((value) =>
+      value.phase === "loading" && value.sessionId === "session-second-12345678",
+    )?.projection).toMatchObject({ messages: [], connection: { kind: "connecting" } })
+    expect(published.find((value) => value.snapshot === second)?.projection.messages[0]?.parts[0])
+      .toMatchObject({ text: "second session" })
     controller.close()
   })
 
@@ -312,6 +349,23 @@ describe("Chat recovery controller", () => {
       messages: [{ parts: [{ version: 3, text: "repaired" }] }],
       repair: { required: false },
     })
+
+    const repairedProjection = controller.getSnapshot().projection
+    streams[1]?.onEvent({
+      kind: "message.part.updated",
+      event_id: "event-exact-replay-12345678",
+      cursor: "signed.cursor.4",
+      session_id: "session-12345678",
+      stream_epoch: "epoch-12345678",
+      durable_seq: "4",
+      projection_version: 4,
+      schema_revision: 3,
+      recorded_at: NOW,
+      payload: { part: repaired.messages[0]!.parts[0]! },
+    }, "signed.cursor.4" as SessionCursor)
+    await Promise.resolve()
+    expect(fetchSnapshot).toHaveBeenCalledOnce()
+    expect(controller.getSnapshot().projection).toBe(repairedProjection)
     controller.close()
   })
 

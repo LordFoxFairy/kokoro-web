@@ -128,8 +128,6 @@ export type ChatPart = ChatPartBase & (
     }
 )
 
-const PART_ENVELOPE_FINGERPRINTS = new WeakMap<ChatPart, string>()
-
 export type ChatProjectionMessage = {
   readonly id: string
   readonly runId: string | null
@@ -152,8 +150,7 @@ export type ChatProjection = {
   readonly repair: { readonly required: boolean; readonly reason?: string }
 }
 
-export type ChatProjectionAction =
-  | { readonly type: "snapshot"; readonly snapshot: SessionSnapshot }
+export type ChatProjectionMutation =
   | { readonly type: "event"; readonly event: SessionEvent }
   | { readonly type: "connection"; readonly connection: SessionConnectionState }
   | {
@@ -163,6 +160,11 @@ export type ChatProjectionAction =
     }
   | { readonly type: "repair"; readonly reason: string }
   | { readonly type: "unsupported"; readonly runId: string; readonly originalKind: string }
+
+type ChatProjectionAction =
+  | { readonly type: "snapshot"; readonly snapshot: SessionSnapshot }
+  | ChatProjectionMutation
+type PartEnvelopeFingerprints = WeakMap<ChatPart, string>
 
 const ACTIVE_RUN_STATUSES = new Set([
   "admission_pending",
@@ -361,28 +363,27 @@ function projectPartView(part: MessagePartEnvelope): ChatPart {
   }
 }
 
-function projectPart(part: MessagePartEnvelope): ChatPart {
+function projectPart(part: MessagePartEnvelope, fingerprints: PartEnvelopeFingerprints): ChatPart {
   const projected = projectPartView(part)
-  PART_ENVELOPE_FINGERPRINTS.set(projected, stableStringify(part))
+  fingerprints.set(projected, stableStringify(part))
   return projected
-}
-
-function envelopeFingerprint(part: ChatPart): string | undefined {
-  return PART_ENVELOPE_FINGERPRINTS.get(part)
 }
 
 function sortParts(parts: readonly ChatPart[]): readonly ChatPart[] {
   return [...parts].sort((left, right) => left.ordinal - right.ordinal || left.id.localeCompare(right.id))
 }
 
-function projectMessage(message: MessageRecord): ChatProjectionMessage | null {
+function projectMessage(
+  message: MessageRecord,
+  fingerprints: PartEnvelopeFingerprints,
+): ChatProjectionMessage | null {
   if (message.role === "system") return null
   return {
     id: message.message_id,
     runId: message.run_id ?? null,
     role: message.role,
     createdAt: message.created_at,
-    parts: sortParts(message.parts.map(projectPart)),
+    parts: sortParts(message.parts.map((part) => projectPart(part, fingerprints))),
     status: messageStatus(message.lifecycle),
   }
 }
@@ -401,6 +402,7 @@ function upsertMessage(
 function upsertPart(
   message: ChatProjectionMessage,
   part: ChatPart,
+  fingerprints: PartEnvelopeFingerprints,
 ): {
   readonly message: ChatProjectionMessage
   readonly conflict?:
@@ -421,8 +423,8 @@ function upsertPart(
   }
   if (part.version < current.version) return { message, conflict: "part_version_regression" }
   if (part.version === current.version) {
-    const currentFingerprint = envelopeFingerprint(current)
-    return currentFingerprint !== undefined && currentFingerprint === envelopeFingerprint(part)
+    const currentFingerprint = fingerprints.get(current)
+    return currentFingerprint !== undefined && currentFingerprint === fingerprints.get(part)
       ? { message }
       : { message, conflict: "part_version_conflict" }
   }
@@ -481,11 +483,15 @@ function activeRun(snapshot: SessionSnapshot): Pick<ChatProjection, "activeRunId
   return { activeRunId: runId, activeRunState: run === undefined ? "launching" : "running" }
 }
 
-function reduceEvent(state: ChatProjection, event: SessionEvent): ChatProjection {
+function reduceEvent(
+  state: ChatProjection,
+  event: SessionEvent,
+  fingerprints: PartEnvelopeFingerprints,
+): ChatProjection {
   switch (event.kind) {
     case "message.created": {
       if (event.payload.message.branch_id !== state.activeBranchId) return state
-      const message = projectMessage(event.payload.message)
+      const message = projectMessage(event.payload.message, fingerprints)
       return message === null ? state : { ...state, messages: upsertMessage(state.messages, message) }
     }
     case "message.part.updated": {
@@ -499,7 +505,7 @@ function reduceEvent(state: ChatProjection, event: SessionEvent): ChatProjection
         return { ...state, repair: { required: true, reason: "message_part_without_message" } }
       }
       const currentMessage = state.messages[index] as ChatProjectionMessage
-      const result = upsertPart(currentMessage, projectPart(part))
+      const result = upsertPart(currentMessage, projectPart(part, fingerprints), fingerprints)
       if (result.conflict !== undefined) {
         return { ...state, repair: { required: true, reason: result.conflict } }
       }
@@ -577,14 +583,20 @@ function reduceEvent(state: ChatProjection, event: SessionEvent): ChatProjection
   }
 }
 
-export function reduceChatProjection(state: ChatProjection, action: ChatProjectionAction): ChatProjection {
+function reduceChatProjection(
+  state: ChatProjection,
+  action: ChatProjectionAction,
+  fingerprints: PartEnvelopeFingerprints,
+): ChatProjection {
   switch (action.type) {
     case "snapshot": {
       const active = activeMessageRecords(action.snapshot)
       const activeExecution = activeRun(action.snapshot)
       return {
         ...state,
-        messages: active.messages.map(projectMessage).filter((message): message is ChatProjectionMessage => message !== null),
+        messages: active.messages
+          .map((message) => projectMessage(message, fingerprints))
+          .filter((message): message is ChatProjectionMessage => message !== null),
         activeBranchId: action.snapshot.session.active_branch_id,
         ...activeExecution,
         repair: active.complete
@@ -593,7 +605,7 @@ export function reduceChatProjection(state: ChatProjection, action: ChatProjecti
       }
     }
     case "event":
-      return reduceEvent(state, action.event)
+      return reduceEvent(state, action.event, fingerprints)
     case "connection":
       return { ...state, connection: action.connection }
     case "command":
@@ -621,7 +633,7 @@ export function reduceChatProjection(state: ChatProjection, action: ChatProjecti
           originalKind: action.originalKind,
           originalSchemaVersion: 1,
           safeFallback: "This content requires a newer client.",
-        }).message),
+        }, fingerprints).message),
       }
     }
   }
@@ -630,23 +642,38 @@ export function reduceChatProjection(state: ChatProjection, action: ChatProjecti
 export type ChatProjectionStore = {
   readonly getSnapshot: () => ChatProjection
   readonly subscribe: (listener: () => void) => () => void
-  readonly dispatch: (action: ChatProjectionAction) => void
+  readonly hydrate: (snapshot: SessionSnapshot) => void
+  readonly reset: () => void
+  readonly dispatch: (action: ChatProjectionMutation) => void
 }
 
-export function createChatProjectionStore(initial = createChatProjection()): ChatProjectionStore {
-  let state = initial
+export function createChatProjectionStore(): ChatProjectionStore {
+  let state = createChatProjection()
+  let fingerprints: PartEnvelopeFingerprints = new WeakMap()
   const listeners = new Set<() => void>()
+  const commit = (next: ChatProjection): void => {
+    if (next === state) return
+    state = next
+    for (const listener of listeners) listener()
+  }
   return {
     getSnapshot: () => state,
     subscribe(listener) {
       listeners.add(listener)
       return () => listeners.delete(listener)
     },
+    hydrate(snapshot) {
+      const nextFingerprints: PartEnvelopeFingerprints = new WeakMap()
+      const next = reduceChatProjection(state, { type: "snapshot", snapshot }, nextFingerprints)
+      fingerprints = nextFingerprints
+      commit(next)
+    },
+    reset() {
+      fingerprints = new WeakMap()
+      commit(createChatProjection())
+    },
     dispatch(action) {
-      const next = reduceChatProjection(state, action)
-      if (next === state) return
-      state = next
-      for (const listener of listeners) listener()
+      commit(reduceChatProjection(state, action, fingerprints))
     },
   }
 }
