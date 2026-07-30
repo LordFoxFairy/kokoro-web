@@ -107,6 +107,10 @@ test("new Site packages use one Node 24 toolchain and the generated client owns 
   assert.equal(assetClientPackage.dependencies["@kokoro/site-client"], "workspace:*");
   assert.equal(chatSurfacePackage.exports["."].development, "./src/index.ts");
   assert.equal(chatSurfacePackage.exports["."].import, "./dist/index.js");
+  assert.equal(bffRuntimePackage.exports["."].development, "./src/index.ts");
+  assert.equal(bffRuntimePackage.exports["."].import, "./dist/index.js");
+  assert.equal(siteClientPackage.exports["./server"].development, "./src/server.ts");
+  assert.equal(siteClientPackage.exports["./server"].import, "./dist/server.js");
   assert.equal(referenceSitePackage.engines.node, ">=24.0.0");
   assert.equal(referenceSitePackage.dependencies.next, "16.2.12");
   assert.equal(referenceSitePackage.dependencies.react, "19.2.8");
