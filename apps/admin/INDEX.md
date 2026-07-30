@@ -32,7 +32,7 @@ Admin effects use stable command IDs and generated canonical protobuf digests. N
 Add control-plane UI here and Platform behavior behind generated service methods. Never restore Prisma or `DATABASE_URL_ADMIN`.
 
 ## Current gotchas
-The typed P0 surface covers current operator, operator listing, pending approvals, Site registration/publication/query, scoped audit, offer publication and code-batch issuance/lifecycle. SiteRelease certification signatures come from external CI/release authority; Admin accepts proof bytes and key references, never signing private keys. Older generic resource screens remain outside this surface and must not be used to add Site or Commerce operations.
+The typed P0 surface covers current operator, operator listing, pending approvals, Site registration/publication/query, scoped audit, offer publication, code-batch issuance/lifecycle, and the read-only Credit fact plane. Credit reads use the generated AdminCredit contract and exact GET-only BFF routes; the console exposes accounts, grants, holds, allocations, journal facts, and rated usage without forwarding evidence or provider payloads. SiteRelease certification signatures come from external CI/release authority; Admin accepts proof bytes and key references, never signing private keys. Older generic resource screens remain outside this surface and must not be used to add Site, Commerce, or Credit operations.
 
 ## Verification
 Run Admin tests, lint, typecheck, build, and the Root-owned live compatibility scenario.
