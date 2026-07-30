@@ -14,7 +14,7 @@ Render a read-only, Site-scoped trace across Credit accounts, grants, holds, hol
 The component calls only `/api/control/credit/**`. Browser payloads must pass the strict schemas in `lib/credit-contract.ts`; protobuf clients, workload credentials, raw evidence, and provider payloads remain server-only.
 
 ## Navigation and observation semantics
-Trace actions preserve explicit Grant ↔ Hold ↔ RatedUsage relationships. Source filters are an atomic `sourceType` plus `sourceRef` pair. Cursor accumulation is bounded and late responses are discarded. List membership watermarks and per-page observation times are displayed separately because reads are authoritative database observations, not a cross-request transactional snapshot.
+Trace actions preserve explicit Grant ↔ Hold ↔ RatedUsage relationships, including both RatedUsage-ref and Settlement-ref source-allocation entry points. Source filters are an atomic `sourceType` plus `sourceRef` pair. Cursor accumulation is bounded, late responses are discarded, the first membership watermark is locked across all later pages, and any page observed before that watermark is rejected. List membership watermarks and per-page observation times are displayed separately because reads are authoritative database observations, not a cross-request transactional snapshot.
 
 ## Extension rule
 Add a generated AdminCredit operation and reviewed BFF mapping before adding a new console fact. Never route Credit data through the legacy generic resource API.

@@ -7,12 +7,10 @@ export const en: Partial<Record<MessageKey, string>> = {
   "admin.modules.site": "Sites",
   "admin.modules.user": "Users & Teams",
   "admin.modules.model": "Models",
-  "admin.modules.credit": "Credits",
   "admin.modules.hub": "Capability Hub",
   "platform.modules.site": "Sites",
   "platform.modules.user": "Users & Teams",
   "platform.modules.model": "Models",
-  "platform.modules.credit": "Credits",
   "platform.modules.hub": "Capability Hub",
 
   // site
@@ -63,21 +61,6 @@ export const en: Partial<Record<MessageKey, string>> = {
   "admin.model.actions.deleteBinding": "Delete Binding",
   "admin.model.actions.restoreBinding": "Restore Binding",
   "admin.model.actions.setSitePolicy": "Set Site Policy",
-
-  // credit
-  "admin.credit.resources.accounts": "Credit Accounts",
-  "admin.credit.resources.ledgerEntries": "Ledger",
-  "admin.credit.resources.usageRecords": "Usage",
-  "admin.credit.resources.pricingRules": "Pricing Rules",
-  "admin.credit.actions.grant": "Grant Credits",
-  "admin.credit.actions.reset": "Reset Balance",
-  "admin.credit.actions.setQuota": "Set Quota",
-  "admin.credit.actions.delete": "Delete",
-  "admin.credit.actions.restore": "Restore",
-  "admin.credit.actions.createPricingRule": "New Pricing Rule",
-  "admin.credit.actions.updatePricingRule": "Edit Pricing Rule",
-  "admin.credit.actions.deletePricingRule": "Delete Pricing Rule",
-  "admin.credit.actions.restorePricingRule": "Restore Pricing Rule",
 
   // hub
   "admin.hub.resources.skills": "Skill Pool",

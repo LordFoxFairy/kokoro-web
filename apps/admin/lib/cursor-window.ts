@@ -2,6 +2,8 @@ export interface CursorWindow<Item> {
   readonly rows: readonly Item[];
   readonly nextPageToken: string | null;
   readonly pageCount: number;
+  readonly membershipWatermark: string | null;
+  readonly observedAt: string | null;
   readonly seenCursors: ReadonlySet<string>;
   readonly seenIdentities: ReadonlySet<string>;
 }
@@ -9,6 +11,8 @@ export interface CursorWindow<Item> {
 export interface CursorWindowPage<Item> {
   readonly items: readonly Item[];
   readonly nextPageToken: string | null;
+  readonly membershipWatermark?: string;
+  readonly observedAt?: string;
 }
 
 export interface CursorWindowLimits<Item> {
@@ -31,7 +35,8 @@ function validateLimit(value: number): void {
 }
 
 export function resetCursorWindow<Item>(): CursorWindow<Item> {
-  return { rows: [], nextPageToken: null, pageCount: 0, seenCursors: new Set(), seenIdentities: new Set() };
+  return { rows: [], nextPageToken: null, pageCount: 0, membershipWatermark: null, observedAt: null,
+    seenCursors: new Set(), seenIdentities: new Set() };
 }
 
 export function clearNextPageToken<Item>(window: CursorWindow<Item>): CursorWindow<Item> {
@@ -46,6 +51,18 @@ export function appendCursorPage<Item>(
 ): CursorWindow<Item> {
   validateLimit(limits.maxItems);
   validateLimit(limits.maxPages);
+  const hasWatermark = page.membershipWatermark !== undefined;
+  if (hasWatermark !== (page.observedAt !== undefined)) fail("admin_cursor_window_observation_incomplete");
+  if (window.membershipWatermark !== null && !hasWatermark) fail("admin_cursor_window_watermark_drift");
+  if (hasWatermark) {
+    const watermark = Date.parse(page.membershipWatermark!);
+    const observed = Date.parse(page.observedAt!);
+    if (!Number.isFinite(watermark) || !Number.isFinite(observed)) fail("admin_cursor_window_observation_invalid");
+    if (observed < watermark) fail("admin_cursor_window_observation_before_watermark");
+    if (window.membershipWatermark !== null && page.membershipWatermark !== window.membershipWatermark) {
+      fail("admin_cursor_window_watermark_drift");
+    }
+  }
   const pageCount = window.pageCount + 1;
   if (pageCount > limits.maxPages) fail("admin_cursor_window_page_limit");
   if (window.rows.length + page.items.length > limits.maxItems) fail("admin_cursor_window_item_limit");
@@ -68,6 +85,8 @@ export function appendCursorPage<Item>(
     rows: [...window.rows, ...page.items],
     nextPageToken: page.nextPageToken,
     pageCount,
+    membershipWatermark: page.membershipWatermark ?? window.membershipWatermark,
+    observedAt: page.observedAt ?? window.observedAt,
     seenCursors,
     seenIdentities: new Set([...window.seenIdentities, ...pageIdentities]),
   };

@@ -33,8 +33,8 @@ import {
   type RatedUsageSourceAllocation,
   type SiteCreditSummary,
 } from "@/lib/credit-contract";
-import { creditQuery, grantToHolds, holdToUsage, sourceAllocationToGrant,
-  type CreditFilters, type CreditNavigation, type CreditView } from "@/lib/credit-navigation";
+import { creditQuery, grantToHolds, holdToUsage, openUsageSourceTrace, sourceAllocationToGrant,
+  type CreditFilters, type CreditNavigation, type CreditView, type UsageSourceTrace } from "@/lib/credit-navigation";
 import { appendCursorPage, clearNextPageToken, CursorWindowError, LatestRequest, resetCursorWindow,
   type CursorWindow } from "@/lib/cursor-window";
 
@@ -52,7 +52,6 @@ const ENDPOINTS = {
 const WINDOW_LIMITS = { maxItems: 1000, maxPages: 20 } as const;
 
 type HoldAllocationDrawer = Readonly<{ kind: "grant" | "hold"; ref: string }>;
-type UsageSourceDrawer = Readonly<{ kind: "usage" | "settlement"; ref: string }>;
 
 const accountIdentity = (row: CreditAccount) => row.creditAccountRef;
 const grantIdentity = (row: CreditGrant) => row.creditGrantId;
@@ -76,7 +75,7 @@ function CreditConsoleSite({ siteId }: Readonly<{ siteId: string }>): React.Reac
   const [filters, setFilters] = useState<CreditFilters>({});
   const [holdAllocations, setHoldAllocations] = useState<HoldAllocationDrawer | null>(null);
   const [journalEntries, setJournalEntries] = useState<string | null>(null);
-  const [usageSources, setUsageSources] = useState<UsageSourceDrawer | null>(null);
+  const [usageSources, setUsageSources] = useState<UsageSourceTrace | null>(null);
   const [accountDetail, setAccountDetail] = useState<string | null>(null);
   const summary = useCreditSummary(siteId);
 
@@ -107,7 +106,7 @@ function CreditConsoleSite({ siteId }: Readonly<{ siteId: string }>): React.Reac
           onAllocations={(ref) => setHoldAllocations({ kind: "hold", ref })} />}
         {view === "journal" && <JournalPanel siteId={siteId} filters={filters} onEntries={setJournalEntries} />}
         {view === "usage" && <UsagePanel siteId={siteId} filters={filters} onNavigate={navigate}
-          onSources={(ref) => setUsageSources({ kind: "usage", ref })} />}
+          onSources={setUsageSources} />}
       </>}
       <AccountDrawer key={`${siteId}:${accountDetail ?? "closed"}`} siteId={siteId}
         accountRef={accountDetail} onClose={() => setAccountDetail(null)} />
@@ -265,19 +264,22 @@ function JournalPanel({ siteId, filters, onEntries }: Readonly<{ siteId: string;
 }
 
 function UsagePanel({ siteId, filters, onNavigate, onSources }: Readonly<{ siteId: string; filters: CreditFilters;
-  onNavigate: (next: CreditNavigation) => void; onSources: (ref: string) => void }>) {
+  onNavigate: (next: CreditNavigation) => void; onSources: (trace: UsageSourceTrace) => void }>) {
   const columns: ProColumns<RatedUsage>[] = [
     { title: "Rated Usage", render: (_, row) => <RefText value={row.ratedUsageRef} /> },
-    { title: "Settlement", render: (_, row) => <RefText value={row.settlementRef} /> },
+    { title: "Settlement", render: (_, row) => <Button type="link"
+      onClick={() => onSources(openUsageSourceTrace("settlement", row.settlementRef))}>
+      {row.settlementRef}</Button> },
     { title: "Attempt", dataIndex: "attemptRef", ellipsis: true },
     { title: "客户金额", align: "right", render: (_, row) => <Amount value={row.customerAmount} unit={row.unit} /> },
     { title: "平台敞口", align: "right", render: (_, row) => <Amount value={row.platformExposureAmount} unit={row.unit} /> },
     { title: "Source", dataIndex: "sourceCount", align: "right" },
     { title: "创建时间", render: (_, row) => displayTime(row.createdAt), width: 180 },
     { title: "追踪", valueType: "option", fixed: "right", render: (_, row) => [
-      <Button key="sources" type="link" onClick={() => onSources(row.ratedUsageRef)}>来源 Grant</Button>,
+      <Button key="sources" type="link"
+        onClick={() => onSources(openUsageSourceTrace("usage", row.ratedUsageRef))}>来源 Grant</Button>,
       <Button key="journal" type="link" onClick={() => onNavigate({ view: "journal",
-        filters: { creditHoldRef: row.creditHoldRef } })}>结算流水</Button>,
+        filters: { creditHoldRef: row.creditHoldRef } })}>该 Hold 的全部流水</Button>,
     ] },
   ];
   return <CreditTable siteId={siteId} endpoint={ENDPOINTS.ratedUsage} schema={ratedUsageListSchema}
@@ -416,7 +418,7 @@ function JournalEntryDrawer({ siteId, transactionRef, onClose }: Readonly<{ site
 }
 
 function UsageSourceTraceDrawer({ siteId, trace, onClose, onNavigate }: Readonly<{ siteId: string;
-  trace: UsageSourceDrawer | null; onClose: () => void; onNavigate: (next: CreditNavigation) => void }>) {
+  trace: UsageSourceTrace | null; onClose: () => void; onNavigate: (next: CreditNavigation) => void }>) {
   const filters = useMemo<CreditFilters>(() => trace
     ? { [trace.kind === "usage" ? "ratedUsageRef" : "settlementRef"]: trace.ref }
     : {}, [trace]);

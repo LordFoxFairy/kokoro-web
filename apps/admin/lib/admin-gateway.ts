@@ -6,7 +6,7 @@ const MAX_ACTION_REQUEST_BYTES = 16 * 1024 * 1024;
 const MAX_GATEWAY_RESPONSE_BYTES = 8 * 1024 * 1024;
 const MAX_OPENAPI_RESPONSE_BYTES = 2 * 1024 * 1024;
 const OPENAPI_GATEWAY_TIMEOUT_MS = 5_000;
-const OPENAPI_MODULE_IDS = new Set(["site", "user", "model", "credit", "hub"]);
+const OPENAPI_MODULE_IDS = new Set(["site", "user", "model", "hub"]);
 const OPENAPI_UPSTREAM_ERROR_CODES = new Map<number, ReadonlySet<string>>([
   [401, new Set(["operator.auth"])],
   [403, new Set(["operator.auth"])],
@@ -47,39 +47,6 @@ const manifestsEnvelopeSchema = z.object({
   requestId: z.string().optional(),
 });
 
-const creditStatsSchema = z.object({
-  accountsTotal: z.number(),
-  accountsActive: z.number(),
-  balanceSumMicros: z.string(),
-  heldSumMicros: z.string(),
-  grantedTotalMicros: z.string(),
-  spentTotalMicros: z.string(),
-});
-const billingOverviewEnvelopeSchema = z.object({
-  data: z.object({ credit: creditStatsSchema.nullable() }),
-  requestId: z.string().optional(),
-});
-
-const identitySchema = z.object({
-  id: z.string(),
-  email: z.string().nullish(),
-  displayName: z.string().nullish(),
-  status: z.string().nullish(),
-});
-const creditAccountSchema = z.object({
-  id: z.string(),
-  status: z.string().nullish(),
-  balanceMicros: z.string().nullish(),
-  heldMicros: z.string().nullish(),
-});
-const user360EnvelopeSchema = z.object({
-  data: z.object({
-    identity: identitySchema.nullable(),
-    creditAccount: creditAccountSchema.nullable(),
-  }),
-  requestId: z.string().optional(),
-});
-
 const errorEnvelopeSchema = z.object({
   error: z.object({ code: z.string(), message: z.string() }),
   requestId: z.string().optional(),
@@ -94,6 +61,11 @@ type BoundedRead =
 
 function disabled(): Response {
   return Response.json(ACQUISITION_DISABLED, { status: 404 });
+}
+
+function creditTypedOnly(): Response {
+  return Response.json({ error: { code: "CREDIT_TYPED_BOUNDARY_REQUIRED",
+    message: "Credit is available only through typed control routes" } }, { status: 404 });
 }
 
 function trustUnavailable(): Response {
@@ -139,8 +111,16 @@ function isPaymentModule(value: unknown): boolean {
   return typeof value === "string" && value.trim().toLowerCase() === "payment";
 }
 
+function isCreditModule(value: unknown): boolean {
+  return typeof value === "string" && value.trim().toLowerCase() === "credit";
+}
+
 function isPaymentRoute(value: unknown): boolean {
   return typeof value === "string" && /(?:^|\/)payments?(?:\/|$)/iu.test(value.trim());
+}
+
+function isCreditRoute(value: unknown): boolean {
+  return typeof value === "string" && /(?:^|\/)credits?(?:\/|$)/iu.test(value.trim());
 }
 
 function declaredLengthExceeds(headers: Headers, limit: number): boolean {
@@ -308,13 +288,15 @@ export async function getFilteredManifests(request: Request): Promise<Response> 
   if (read.kind === "response") return read.response;
   const parsed = manifestsEnvelopeSchema.safeParse(read.raw);
   if (!parsed.success) return badGateway();
-  return Response.json({ ...parsed.data, data: parsed.data.data.filter((module) => !isPaymentModule(module.id)) });
+  return Response.json({ ...parsed.data, data: parsed.data.data.filter((module) =>
+    !isPaymentModule(module.id) && !isCreditModule(module.id)) });
 }
 
 export async function getFilteredOpenApi(request: Request, moduleId: string): Promise<Response> {
   const headers = trustedGatewayHeaders(request, false);
   if (headers === null) return trustUnavailable();
   if (isPaymentModule(moduleId)) return disabled();
+  if (isCreditModule(moduleId)) return creditTypedOnly();
   if (!OPENAPI_MODULE_IDS.has(moduleId)) return invalidModule();
 
   const controller = new AbortController();
@@ -366,36 +348,15 @@ export async function getFilteredOpenApi(request: Request, moduleId: string): Pr
   }
 }
 
-export async function getCreditBillingOverview(request: Request): Promise<Response> {
-  const headers = trustedGatewayHeaders(request, false);
-  if (headers === null) return trustUnavailable();
-  const upstream = await fetchGateway(request, "/api/billing-overview", headers);
-  if (upstream === null) return unavailable();
-  const read = await parsedUpstream(upstream);
-  if (read.kind === "response") return read.response;
-  const parsed = billingOverviewEnvelopeSchema.safeParse(read.raw);
-  if (!parsed.success) return badGateway();
-  return Response.json(parsed.data);
-}
-
-export async function getAccountUser360(request: Request): Promise<Response> {
-  const headers = trustedGatewayHeaders(request, false);
-  if (headers === null) return trustUnavailable();
-  const upstream = await fetchGateway(request, "/api/user360", headers);
-  if (upstream === null) return unavailable();
-  const read = await parsedUpstream(upstream);
-  if (read.kind === "response") return read.response;
-  const parsed = user360EnvelopeSchema.safeParse(read.raw);
-  if (!parsed.success) return badGateway();
-  return Response.json(parsed.data);
-}
-
 export async function getFilteredResource(request: Request): Promise<Response> {
   const headers = trustedGatewayHeaders(request, false);
   if (headers === null) return trustUnavailable();
   const url = new URL(request.url);
   if (url.searchParams.getAll("moduleId").some(isPaymentModule) || url.searchParams.getAll("route").some(isPaymentRoute)) {
     return disabled();
+  }
+  if (url.searchParams.getAll("moduleId").some(isCreditModule) || url.searchParams.getAll("route").some(isCreditRoute)) {
+    return creditTypedOnly();
   }
   const upstream = await fetchGateway(request, "/api/resource", headers);
   return upstream === null ? unavailable() : relayBoundedJson(upstream);
@@ -420,6 +381,7 @@ export async function postFilteredAction(request: Request): Promise<Response> {
     return Response.json({ error: { code: "request.invalid", message: "Invalid action request" } }, { status: 400 });
   }
   if (isPaymentModule(parsed.data.moduleId) || isPaymentRoute(parsed.data.route)) return disabled();
+  if (isCreditModule(parsed.data.moduleId) || isCreditRoute(parsed.data.route)) return creditTypedOnly();
   const upstream = await fetchGateway(request, "/api/action", headers, read.text);
   return upstream === null ? unavailable() : relayBoundedJson(upstream);
 }

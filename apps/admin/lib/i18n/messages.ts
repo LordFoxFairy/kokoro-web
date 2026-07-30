@@ -15,12 +15,10 @@ export const zh = {
   "admin.modules.site": "站点",
   "admin.modules.user": "用户与团队",
   "admin.modules.model": "模型",
-  "admin.modules.credit": "积分",
   "admin.modules.hub": "能力枢纽",
   "platform.modules.site": "站点",
   "platform.modules.user": "用户与团队",
   "platform.modules.model": "模型",
-  "platform.modules.credit": "积分",
   "platform.modules.hub": "能力枢纽",
 
   // ── site 资源/动作 ──
@@ -71,21 +69,6 @@ export const zh = {
   "admin.model.actions.deleteBinding": "删除绑定",
   "admin.model.actions.restoreBinding": "恢复绑定",
   "admin.model.actions.setSitePolicy": "设置站点策略",
-
-  // ── credit 资源/动作 ──
-  "admin.credit.resources.accounts": "积分账户",
-  "admin.credit.resources.ledgerEntries": "流水",
-  "admin.credit.resources.usageRecords": "用量",
-  "admin.credit.resources.pricingRules": "定价规则",
-  "admin.credit.actions.grant": "发放积分",
-  "admin.credit.actions.reset": "重置余额",
-  "admin.credit.actions.setQuota": "设置配额",
-  "admin.credit.actions.delete": "删除",
-  "admin.credit.actions.restore": "恢复",
-  "admin.credit.actions.createPricingRule": "新建定价规则",
-  "admin.credit.actions.updatePricingRule": "编辑定价规则",
-  "admin.credit.actions.deletePricingRule": "删除定价规则",
-  "admin.credit.actions.restorePricingRule": "恢复定价规则",
 
   // ── hub 资源/动作 ──
   "admin.hub.resources.skills": "技能池",

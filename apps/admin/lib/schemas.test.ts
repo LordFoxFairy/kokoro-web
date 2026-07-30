@@ -1,22 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { manifestsSchema, user360Schema } from "./schemas";
-
-describe("redeem-only user 360 wire", () => {
-  it("does not expose payment orders", () => {
-    const parsed = user360Schema.parse({ creditAccount: null, identity: null, orders: [{ id: "ord_1" }] });
-    expect(parsed).not.toHaveProperty("orders");
-  });
-});
+import { manifestsSchema } from "./schemas";
 
 function nestedManifest(siteScopeField: unknown, includeField = true): unknown {
   const resource = {
     id: "accounts",
-    labelKey: "admin.credit.accounts",
-    route: "/admin/credits/accounts",
+    labelKey: "admin.site.resources.sites",
+    route: "/admin/sites",
     actions: [],
     ...(includeField ? { siteScopeField } : {}),
   };
-  return [{ id: "credit", online: true, manifest: { resources: [resource] } }];
+  return [{ id: "site", online: true, manifest: { resources: [resource] } }];
 }
 
 describe("nested Admin manifest wire", () => {

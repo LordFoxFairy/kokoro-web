@@ -52,6 +52,7 @@ for (const fixture of [
   "admin-payment-bff",
   "plans-post-reexport",
   "admin-proxy-bypass",
+  "admin-credit-legacy-surface",
 ]) {
   test(`mutation gate rejects ${fixture} independently`, async () => {
     const violations = await acquisitionShutdownViolations(resolve(fixtureRoot, fixture));

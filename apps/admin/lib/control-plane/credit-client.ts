@@ -56,24 +56,36 @@ export interface RatedUsageListInput extends PageInput, SourceFilter {
 export type HoldAllocationTrace = Readonly<{ kind: "hold" | "grant"; ref: string }>;
 export type RatedUsageAllocationTrace = Readonly<{ kind: "usage" | "settlement"; ref: string }>;
 
+export class AdminCreditInvalidResponseError extends AdminControlPlaneError {
+  constructor() {
+    super(Code.Internal, "admin_credit.invalid_response");
+    this.name = "AdminCreditInvalidResponseError";
+  }
+}
+
 export function createAdminCreditReader(runtime: RuntimeResolver) {
   return Object.freeze({
     async getSiteCreditSummary(siteId: string) {
       const { rpc, context, headers } = await runtime(siteId);
       const response = await call(() => rpc.getSiteCreditSummary({ context, siteId }, { headers }));
       if (response.summary === undefined) throw invalidResponse();
+      assertEqual(response.summary.siteId, siteId);
       return siteSummaryJson(response.summary);
     },
     async listCreditAccounts(input: PageInput & Readonly<{ billingAccountRef?: string }>) {
       const { rpc, context, headers } = await runtime(input.siteId);
       const response = await call(() => rpc.listCreditAccounts({ context, siteId: input.siteId, pageSize: 100,
         ...optional("billingAccountRef", input.billingAccountRef), ...optional("pageToken", input.pageToken) }, { headers }));
+      assertItems(response.accounts, input.siteId, (item) => assertOptional(item.billingAccountRef,
+        input.billingAccountRef));
       return listJson(response, response.accounts.map(accountJson));
     },
     async getCreditAccount(siteId: string, creditAccountRef: string) {
       const { rpc, context, headers } = await runtime(siteId);
       const response = await call(() => rpc.getCreditAccount({ context, siteId, creditAccountRef }, { headers }));
       if (response.account === undefined) throw invalidResponse();
+      assertEqual(response.account.siteId, siteId);
+      assertEqual(response.account.creditAccountRef, creditAccountRef);
       return accountJson(response.account);
     },
     async listCreditGrants(input: CreditGrantListInput) {
@@ -82,6 +94,12 @@ export function createAdminCreditReader(runtime: RuntimeResolver) {
         ...optional("creditAccountRef", input.creditAccountRef), ...optional("creditGrantId", input.creditGrantId),
         ...sourceInput(input), ...optional("executionRootRef", input.executionRootRef),
         ...optional("pageToken", input.pageToken) }, { headers }));
+      assertItems(response.grants, input.siteId, (item) => {
+        assertOptional(item.creditAccountRef, input.creditAccountRef);
+        assertOptional(item.creditGrantId, input.creditGrantId);
+        if (input.sourceType !== undefined) assertEqual(sourceType(item.sourceType), input.sourceType);
+        assertOptional(item.sourceRef, input.sourceRef);
+      });
       return listJson(response, response.grants.map(grantJson));
     },
     async listCreditHolds(input: CreditHoldListInput) {
@@ -90,6 +108,10 @@ export function createAdminCreditReader(runtime: RuntimeResolver) {
         ...optional("creditAccountRef", input.creditAccountRef), ...optional("creditGrantId", input.creditGrantId),
         ...sourceInput(input), ...optional("executionRootRef", input.executionRootRef),
         ...optional("pageToken", input.pageToken) }, { headers }));
+      assertItems(response.holds, input.siteId, (item) => {
+        assertOptional(item.creditAccountRef, input.creditAccountRef);
+        assertOptional(item.executionRootRef, input.executionRootRef);
+      });
       return listJson(response, response.holds.map(holdJson));
     },
     async listCreditHoldAllocations(input: PageInput & Readonly<{ trace: HoldAllocationTrace }>) {
@@ -98,6 +120,8 @@ export function createAdminCreditReader(runtime: RuntimeResolver) {
         { case: "creditGrantId" as const, value: input.trace.ref };
       const response = await call(() => rpc.listCreditHoldAllocations({ context, siteId: input.siteId, trace,
         pageSize: 100, ...optional("pageToken", input.pageToken) }, { headers }));
+      assertItems(response.allocations, input.siteId, (item) => assertEqual(
+        input.trace.kind === "hold" ? item.creditHoldRef : item.creditGrantId, input.trace.ref));
       return listJson(response, response.allocations.map(holdAllocationJson));
     },
     async listCreditJournalTransactions(input: CreditJournalTransactionListInput) {
@@ -107,6 +131,8 @@ export function createAdminCreditReader(runtime: RuntimeResolver) {
         ...optional("creditGrantId", input.creditGrantId), ...optional("creditHoldRef", input.creditHoldRef),
         ...sourceInput(input), ...optional("executionRootRef", input.executionRootRef),
         ...optional("pageToken", input.pageToken) }, { headers }));
+      assertItems(response.transactions, input.siteId, (item) => assertOptional(item.creditAccountRef,
+        input.creditAccountRef));
       return listJson(response, response.transactions.map(journalTransactionJson));
     },
     async listCreditJournalEntries(input: PageInput & Readonly<{ journalTransactionRef: string }>) {
@@ -114,6 +140,8 @@ export function createAdminCreditReader(runtime: RuntimeResolver) {
       const response = await call(() => rpc.listCreditJournalEntries({ context, siteId: input.siteId,
         journalTransactionRef: input.journalTransactionRef, pageSize: 100,
         ...optional("pageToken", input.pageToken) }, { headers }));
+      assertItems(response.entries, input.siteId, (item) => assertEqual(item.journalTransactionRef,
+        input.journalTransactionRef));
       return listJson(response, response.entries.map(journalEntryJson));
     },
     async listRatedUsage(input: RatedUsageListInput) {
@@ -123,6 +151,12 @@ export function createAdminCreditReader(runtime: RuntimeResolver) {
         ...optional("creditHoldRef", input.creditHoldRef), ...sourceInput(input),
         ...optional("executionRootRef", input.executionRootRef), ...optional("attemptRef", input.attemptRef),
         ...optional("pageToken", input.pageToken) }, { headers }));
+      assertItems(response.ratedUsage, input.siteId, (item) => {
+        assertOptional(item.creditAccountRef, input.creditAccountRef);
+        assertOptional(item.creditHoldRef, input.creditHoldRef);
+        assertOptional(item.executionRootRef, input.executionRootRef);
+        assertOptional(item.attemptRef, input.attemptRef);
+      });
       return listJson(response, response.ratedUsage.map(ratedUsageJson));
     },
     async listRatedUsageSourceAllocations(input: PageInput & Readonly<{ trace: RatedUsageAllocationTrace }>) {
@@ -131,6 +165,8 @@ export function createAdminCreditReader(runtime: RuntimeResolver) {
         { case: "settlementRef" as const, value: input.trace.ref };
       const response = await call(() => rpc.listRatedUsageSourceAllocations({ context, siteId: input.siteId, trace,
         pageSize: 100, ...optional("pageToken", input.pageToken) }, { headers }));
+      assertItems(response.allocations, input.siteId, (item) => assertEqual(
+        input.trace.kind === "usage" ? item.ratedUsageRef : item.settlementRef, input.trace.ref));
       return listJson(response, response.allocations.map(ratedUsageSourceAllocationJson));
     },
   });
@@ -242,6 +278,19 @@ function optionalInstant(value: TimestampLike | undefined): string | null {
 function optional<Key extends string>(key: Key, value: string | undefined): Partial<Record<Key, string>> {
   return value === undefined ? {} : { [key]: value } as Partial<Record<Key, string>>;
 }
+function assertEqual(actual: string, expected: string): void {
+  if (actual !== expected) throw invalidResponse();
+}
+function assertOptional(actual: string, expected: string | undefined): void {
+  if (expected !== undefined) assertEqual(actual, expected);
+}
+function assertItems<Item extends Readonly<{ siteId: string }>>(items: readonly Item[], siteId: string,
+  validate: (item: Item) => void = () => {}): void {
+  for (const item of items) {
+    assertEqual(item.siteId, siteId);
+    validate(item);
+  }
+}
 function sourceInput(value: SourceFilter) {
   if ((value.sourceType === undefined) !== (value.sourceRef === undefined)) {
     throw new AdminControlPlaneError(Code.InvalidArgument, "credit.source_filter_incomplete");
@@ -313,4 +362,4 @@ async function call<Value>(invoke: () => Promise<Value>): Promise<Value> {
       detail?.receiptRef || null);
   }
 }
-function invalidResponse() { return new AdminControlPlaneError(Code.Internal, "admin_credit.invalid_response"); }
+function invalidResponse() { return new AdminCreditInvalidResponseError(); }

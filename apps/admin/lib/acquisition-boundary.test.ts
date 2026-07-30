@@ -4,8 +4,6 @@ import nextConfig from "../next.config";
 
 const FILTERED_ADMIN_PATHS = [
   "/api/manifests",
-  "/api/billing-overview",
-  "/api/user360",
   "/api/resource",
   "/api/action",
 ] as const;
@@ -62,7 +60,7 @@ function chunkStream(chunkCount: number, chunkBytes: number, cancel: () => void)
 }
 
 describe("Admin acquisition boundary direct requests", () => {
-  it("filters the payment manifest while preserving other modules", async () => {
+  it("filters payment and typed-only Credit manifests while preserving legacy modules", async () => {
     const route = await import("../app/api/manifests/route").catch(() => null);
     expect(route).not.toBeNull();
     if (route === null) return;
@@ -84,66 +82,8 @@ describe("Admin acquisition boundary direct requests", () => {
     expect(await response.json()).toEqual({
       data: [
         { id: "site", online: true, manifest: null },
-        { id: "credit", online: true, manifest: null },
       ],
       requestId: "req-manifests",
-    });
-  });
-
-  it("strips payment metrics from billing overview while preserving credit metrics", async () => {
-    const route = await import("../app/api/billing-overview/route").catch(() => null);
-    expect(route).not.toBeNull();
-    if (route === null) return;
-
-    const credit = {
-      accountsTotal: 2,
-      accountsActive: 1,
-      balanceSumMicros: "10000",
-      heldSumMicros: "0",
-      grantedTotalMicros: "20000",
-      spentTotalMicros: "10000",
-    };
-    const fetchMock = vi.fn().mockResolvedValue(
-      jsonResponse(200, {
-        data: { credit, payment: { ordersPaid: 99, revenueByCurrency: [{ currency: "USD", amountMinor: "100" }] } },
-        requestId: "req-overview",
-      }),
-    );
-    vi.stubGlobal("fetch", fetchMock);
-
-    const response = await route.GET(
-      adminRequest("https://admin.example/api/billing-overview?siteId=site-a"),
-    );
-    expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ data: { credit }, requestId: "req-overview" });
-  });
-
-  it("strips orders from user360 while preserving identity and credit account data", async () => {
-    const route = await import("../app/api/user360/route").catch(() => null);
-    expect(route).not.toBeNull();
-    if (route === null) return;
-
-    const identity = { id: "user-1", email: "user@example.com" };
-    const creditAccount = { id: "credit-1", balanceMicros: "10000", heldMicros: "0", status: "active" };
-    const fetchMock = vi.fn().mockResolvedValue(
-      jsonResponse(200, {
-        data: {
-          identity,
-          creditAccount,
-          orders: [{ id: "order-1", status: "paid", amountMinor: "100" }],
-        },
-        requestId: "req-user360",
-      }),
-    );
-    vi.stubGlobal("fetch", fetchMock);
-
-    const response = await route.GET(
-      adminRequest("https://admin.example/api/user360?siteId=site-a&ownerKind=team&ownerId=team-1"),
-    );
-    expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({
-      data: { identity, creditAccount },
-      requestId: "req-user360",
     });
   });
 
@@ -167,12 +107,12 @@ describe("Admin acquisition boundary direct requests", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("proxies a non-payment resource request with its operator boundary headers", async () => {
+  it("rejects a legacy Credit resource request without reaching the gateway", async () => {
     const route = await import("../app/api/resource/route").catch(() => null);
     expect(route).not.toBeNull();
     if (route === null) return;
 
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ id: "credit-1" }] }));
+    const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
     const response = await route.GET(
       adminRequest(
@@ -180,15 +120,11 @@ describe("Admin acquisition boundary direct requests", () => {
       ),
     );
 
-    expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ data: [{ id: "credit-1" }] });
-    const [target, init] = fetchMock.mock.calls[0] as [URL, RequestInit];
-    expect(target.toString()).toBe(
-      "http://gateway.test/api/resource?moduleId=credit&route=%2Fadmin%2Fcredits%2Faccounts&siteId=site-a",
-    );
-    const headers = init.headers as Headers;
-    expect(headers.get("x-kokoro-operator")).toBe("operator@example.com");
-    expect(headers.get("x-kokoro-proxy-secret")).toBe("server-proxy-secret");
+    expect(response.status).toBe(404);
+    expect(await response.json()).toEqual({
+      error: { code: "CREDIT_TYPED_BOUNDARY_REQUIRED", message: "Credit is available only through typed control routes" },
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("rejects a manual payment action without reaching the gateway", async () => {
@@ -229,6 +165,27 @@ describe("Admin acquisition boundary direct requests", () => {
     expect(response.status).toBe(200);
     const [, init] = fetchMock.mock.calls[0] as [URL, RequestInit];
     expect(JSON.parse(init.body as string)).toEqual(body);
+  });
+
+  it("rejects legacy Credit actions and OpenAPI without gateway egress", async () => {
+    const action = await import("../app/api/action/route");
+    const openapi = await import("../app/api/openapi/[moduleId]/route");
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const actionResponse = await action.POST(adminRequest("https://admin.example/api/action", {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({
+        moduleId: "credit", resourceId: "credit-accounts", actionId: "grant", siteId: "site-a",
+      }),
+    }));
+    const openApiResponse = await openapi.GET(adminRequest("https://admin.example/api/openapi/credit"),
+      { params: Promise.resolve({ moduleId: "credit" }) });
+    for (const response of [actionResponse, openApiResponse]) {
+      expect(response.status).toBe(404);
+      expect(await response.json()).toEqual({
+        error: { code: "CREDIT_TYPED_BOUNDARY_REQUIRED", message: "Credit is available only through typed control routes" },
+      });
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("rejects spoofed browser trust headers before gateway egress", async () => {
@@ -306,100 +263,7 @@ describe("Admin acquisition boundary direct requests", () => {
     );
 
     const response = await route.GET(adminRequest("https://admin.example/api/manifests"));
-    expect(await response.json()).toEqual({
-      data: [
-        {
-          id: "credit",
-          online: true,
-          manifest: {
-            resources: [
-              {
-                id: "accounts",
-                labelKey: "admin.credit.accounts",
-                route: "/admin/credits/accounts",
-                siteScopeField: "siteId",
-                actions: [
-                  {
-                    id: "grant",
-                    labelKey: "admin.credit.actions.grant",
-                    kind: "mutation",
-                    requiredPermission: "credit.grant",
-                    route: "/admin/credits/grants",
-                  },
-                ],
-              },
-            ],
-          },
-        },
-      ],
-      requestId: "req-safe",
-    });
-  });
-
-  it("deeply allowlists billing credit fields", async () => {
-    const route = await import("../app/api/billing-overview/route");
-    const credit = {
-      accountsTotal: 2,
-      accountsActive: 1,
-      balanceSumMicros: "10000",
-      heldSumMicros: "0",
-      grantedTotalMicros: "20000",
-      spentTotalMicros: "10000",
-    };
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(
-        jsonResponse(200, {
-          data: {
-            credit: { ...credit, revenue: "must-not-leak", orders: [{ id: "order-1" }] },
-            payment: { ordersPaid: 1 },
-            payments: [{ id: "payment-1" }],
-            subscriptions: [{ id: "sub-1" }],
-            refunds: [{ id: "refund-1" }],
-            revenue: "must-not-leak",
-          },
-          requestId: "req-credit",
-        }),
-      ),
-    );
-
-    const response = await route.GET(adminRequest("https://admin.example/api/billing-overview?siteId=site-a"));
-    expect(await response.json()).toEqual({ data: { credit }, requestId: "req-credit" });
-  });
-
-  it("deeply allowlists user360 identity and creditAccount fields", async () => {
-    const route = await import("../app/api/user360/route");
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(
-        jsonResponse(200, {
-          data: {
-            identity: { id: "user-1", email: "u@example.com", displayName: "U", status: "active", payments: [] },
-            creditAccount: {
-              id: "credit-1",
-              status: "active",
-              balanceMicros: "10000",
-              heldMicros: "0",
-              revenue: "must-not-leak",
-            },
-            orders: [{ id: "order-1" }],
-            subscriptions: [{ id: "sub-1" }],
-          },
-          requestId: "req-user",
-        }),
-      ),
-    );
-
-    const response = await route.GET(
-      adminRequest("https://admin.example/api/user360?siteId=site-a&ownerKind=user&ownerId=user-1"),
-    );
-    expect(await response.json()).toEqual({
-      data: {
-        identity: { id: "user-1", email: "u@example.com", displayName: "U", status: "active" },
-        creditAccount: { id: "credit-1", status: "active", balanceMicros: "10000", heldMicros: "0" },
-      },
-      requestId: "req-user",
-    });
+    expect(await response.json()).toEqual({ data: [], requestId: "req-safe" });
   });
 
   it("normalizes non-2xx gateway errors and strips arbitrary fields", async () => {

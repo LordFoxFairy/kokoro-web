@@ -3,6 +3,7 @@ import { creditSourceTypeSchema, pairedSourceFilter } from "./credit-contract";
 export type CreditView = "accounts" | "grants" | "holds" | "journal" | "usage";
 export type CreditFilters = Readonly<Record<string, string | undefined>>;
 export interface CreditNavigation { readonly view: CreditView; readonly filters: CreditFilters }
+export type UsageSourceTrace = Readonly<{ kind: "usage" | "settlement"; ref: string }>;
 
 const FILTER_KEYS = new Set([
   "billingAccountRef", "creditAccountRef", "creditGrantId", "creditHoldRef", "sourceType", "sourceRef",
@@ -19,6 +20,10 @@ export function holdToUsage(creditHoldRef: string): CreditNavigation {
 
 export function sourceAllocationToGrant(creditGrantId: string): CreditNavigation {
   return Object.freeze({ view: "grants", filters: Object.freeze({ creditGrantId }) });
+}
+
+export function openUsageSourceTrace(kind: UsageSourceTrace["kind"], ref: string): UsageSourceTrace {
+  return Object.freeze({ kind, ref });
 }
 
 export function creditQuery(siteId: string, filters: CreditFilters = {}, pageToken?: string): string {

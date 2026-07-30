@@ -1,7 +1,6 @@
 import { z } from "zod";
 
-// 网关 user360 各段复用上游服务 list 行（松散 ResourceRow）。只洗本页要用的字段，
-// 多余字段默认 strip；缺省字段一律可空，不让一行脏数据炸掉整页。
+// 仍由 legacy manifest gateway 使用的非 Credit 资源 wire schemas。
 export const siteSchema = z.object({
   id: z.string(),
   name: z.string().nullish(),
@@ -9,28 +8,6 @@ export const siteSchema = z.object({
 });
 export type Site = z.infer<typeof siteSchema>;
 export const sitesSchema = z.array(siteSchema);
-
-export const creditAccountSchema = z.object({
-  id: z.string(),
-  status: z.string().nullish(),
-  balanceMicros: z.string().nullish(),
-  heldMicros: z.string().nullish(),
-});
-export type CreditAccount = z.infer<typeof creditAccountSchema>;
-
-export const identitySchema = z.object({
-  id: z.string(),
-  email: z.string().nullish(),
-  displayName: z.string().nullish(),
-  status: z.string().nullish(),
-});
-export type Identity = z.infer<typeof identitySchema>;
-
-export const user360Schema = z.object({
-  creditAccount: creditAccountSchema.nullable(),
-  identity: identitySchema.nullable(),
-});
-export type User360 = z.infer<typeof user360Schema>;
 
 // /api/action 成功载荷：只关心待审批标记，其余字段无需消费。
 export const actionResultSchema = z.object({
@@ -73,8 +50,6 @@ export const skillUploadConfirmSchema = z.object({
   ),
 });
 export type SkillUploadConfirm = z.infer<typeof skillUploadConfirmSchema>;
-
-export type OwnerKind = "team" | "user";
 
 // /api/me：当前操作员能力面，UI 据此决定可见操作（服务端仍二次强制）。
 export const meSchema = z.object({

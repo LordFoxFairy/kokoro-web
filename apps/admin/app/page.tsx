@@ -16,15 +16,15 @@ import {
 import { z } from "zod";
 import { apiGet } from "@/lib/api";
 import {
-  billingOverviewRequestKey,
-  startBillingOverviewRequest,
-  type BillingOverview,
-  type SettledBillingOverview,
-} from "@/lib/billing-overview";
+  creditSummaryRequestKey,
+  startCreditSummaryRequest,
+  type SettledCreditSummary,
+} from "@/lib/credit-summary-request";
+import { formatCreditDecimal, type SiteCreditSummary } from "@/lib/credit-contract";
 import { useAdmin } from "@/components/shell/app-shell";
 
 const ENTRIES = [
-  { label: "用户 360", href: "/users", icon: <UserOutlined />, desc: "查身份 · 积分，并操作" },
+  { label: "用户", href: "/users", icon: <UserOutlined />, desc: "按站点查询用户身份" },
   { label: "积分", href: "/credit", icon: <WalletOutlined />, desc: "账户 · 流水 · 定价" },
   { label: "站点", href: "/sites", icon: <GlobalOutlined />, desc: "站点 · 域名 · 策略" },
   { label: "模型", href: "/models", icon: <ApiOutlined />, desc: "目录 · 绑定" },
@@ -35,17 +35,14 @@ const ENTRIES = [
 
 const pendingSchema = z.array(z.object({ status: z.string() }).passthrough());
 
-// 微单位 → 积分（÷10000）。仅展示用（admin 量级 Number 足够）。
-const toCredits = (micros: string): string => (Number(micros) / 10000).toLocaleString(undefined, { maximumFractionDigits: 2 });
-
 export default function Page(): React.ReactElement {
   const { me, sites, siteId, can } = useAdmin();
   const [pending, setPending] = useState<number | null>(null);
-  const [settledBilling, setSettledBilling] = useState<SettledBillingOverview | null>(null);
-  const canReadBilling = can("billing.read");
-  const billingSiteId = billingOverviewRequestKey({ siteId, canRead: canReadBilling });
-  const billing: BillingOverview | null =
-    billingSiteId !== null && settledBilling?.siteId === billingSiteId ? settledBilling.data : null;
+  const [settledCredit, setSettledCredit] = useState<SettledCreditSummary | null>(null);
+  const canReadCredit = can("credit.account.read");
+  const creditSiteId = creditSummaryRequestKey({ siteId, canRead: canReadCredit });
+  const credit: SiteCreditSummary | null =
+    creditSiteId !== null && settledCredit?.siteId === creditSiteId ? settledCredit.data : null;
 
   useEffect(() => {
     (async () => {
@@ -59,9 +56,14 @@ export default function Page(): React.ReactElement {
   }, []);
 
   useEffect(
-    () => startBillingOverviewRequest({ siteId, canRead: canReadBilling }, setSettledBilling),
-    [siteId, canReadBilling],
+    () => startCreditSummaryRequest({ siteId, canRead: canReadCredit }, setSettledCredit),
+    [siteId, canReadCredit],
   );
+
+  const available = credit?.balances.map((balance) =>
+    `${formatCreditDecimal(balance.availableAmount)} ${balance.unit}`).join(" · ") || "—";
+  const reserved = credit?.balances.map((balance) =>
+    `${formatCreditDecimal(balance.reservedAmount)} ${balance.unit}`).join(" · ") || "—";
 
   const scope = me?.scopeSites?.includes("*") ? "全部站点" : `${me?.scopeSites?.length ?? 0} 个站点`;
 
@@ -97,31 +99,31 @@ export default function Page(): React.ReactElement {
         <StatisticCard statistic={{ title: "我的角色", value: me?.roleKey ?? "—" }} />
       </StatisticCard.Group>
 
-      {/* 积分总览：累计发放·消费 / 当前余额 / 账户。模块离线段显 —。 */}
+      {/* Typed AdminCredit summary：所有金额保持 decimal string，不跨 unit 求和。 */}
       <ProCard title="积分总览" variant="outlined" headerBordered style={{ marginBottom: 16 }}>
         <StatisticCard.Group direction="row">
           <StatisticCard
-            statistic={{ title: "累计发放", value: billing?.credit ? toCredits(billing.credit.grantedTotalMicros) : "—", suffix: "积分" }}
+            statistic={{ title: "积分账户", value: credit ?
+              `${formatCreditDecimal(credit.activeCreditAccountCount)}/${formatCreditDecimal(credit.creditAccountCount)}` : "—",
+              description: <span style={{ color: "rgba(0,0,0,0.45)" }}>活跃/总</span> }}
           />
           <StatisticCard.Divider />
           <StatisticCard
-            statistic={{ title: "累计消费", value: billing?.credit ? toCredits(billing.credit.spentTotalMicros) : "—", suffix: "积分" }}
+            statistic={{ title: "Open Hold", value: credit ? formatCreditDecimal(credit.openHoldCount) : "—" }}
           />
           <StatisticCard.Divider />
           <StatisticCard
             statistic={{
-              title: "当前余额总额",
-              value: billing?.credit ? toCredits(billing.credit.balanceSumMicros) : "—",
-              suffix: "积分",
-              description: <span style={{ color: "rgba(0,0,0,0.45)" }}>冻结 {billing?.credit ? toCredits(billing.credit.heldSumMicros) : "—"}</span>,
+              title: "需对账 Hold",
+              value: credit ? formatCreditDecimal(credit.reconciliationRequiredHoldCount) : "—",
             }}
           />
           <StatisticCard.Divider />
           <StatisticCard
             statistic={{
-              title: "积分账户",
-              value: billing?.credit ? `${billing.credit.accountsActive}/${billing.credit.accountsTotal}` : "—",
-              description: <span style={{ color: "rgba(0,0,0,0.45)" }}>活跃/总</span>,
+              title: "可用余额",
+              value: available,
+              description: <span style={{ color: "rgba(0,0,0,0.45)" }}>预留 {reserved}</span>,
             }}
           />
         </StatisticCard.Group>
