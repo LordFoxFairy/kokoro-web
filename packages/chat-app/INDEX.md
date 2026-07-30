@@ -22,5 +22,7 @@ Before a Chat mutation crosses the BFF, its non-secret receipt lookup identity i
 current browser session. An ambiguous response can therefore only query the exact command/digest after a
 refresh; it never creates a replacement command or stores prompt/effect input in browser recovery state.
 
-Product wording is supplied through a typed copy dictionary. Asset attachment controls remain absent
-until the Asset owner exposes its grant-backed intake contract; Chat never invents upload authority.
+Product wording is supplied through a typed copy dictionary. Chat attachments use the shared Asset client:
+the Site BFF derives owner scope, the browser streams bytes only under a short-lived exact-origin capability,
+and Session receives only ready `{asset_ref, asset_version_ref, asset_grant_ref}` values. Upload credentials
+remain memory-only; refresh recovery reselects the same fingerprint and replays persisted idempotency identities.

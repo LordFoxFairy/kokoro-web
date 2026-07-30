@@ -14,6 +14,7 @@ assert.match(artifact.packages["@kokoro/session-client"].sha256, /^[0-9a-f]{64}$
 assert.match(artifact.packages["@kokoro/bff-runtime"].sha256, /^[0-9a-f]{64}$/u);
 assert.match(artifact.packages["@kokoro/site-runtime-node"].sha256, /^[0-9a-f]{64}$/u);
 assert.match(artifact.packages["@kokoro/chat-surface"].sha256, /^[0-9a-f]{64}$/u);
+assert.match(artifact.packages["@kokoro/asset-client"].sha256, /^[0-9a-f]{64}$/u);
 assert.match(artifact.packages["@kokoro/chat-app"].sha256, /^[0-9a-f]{64}$/u);
 assert.match(artifact.packages["@kokoro/site-bff"].sha256, /^[0-9a-f]{64}$/u);
 assert.match(artifact.packages["@kokoro/account-app"].sha256, /^[0-9a-f]{64}$/u);
@@ -40,6 +41,10 @@ assert.equal(
 assert.equal(
   createHash("sha256").update(await readFile("vendor/chat-surface.tgz")).digest("hex"),
   artifact.packages["@kokoro/chat-surface"].sha256,
+);
+assert.equal(
+  createHash("sha256").update(await readFile("vendor/asset-client.tgz")).digest("hex"),
+  artifact.packages["@kokoro/asset-client"].sha256,
 );
 assert.equal(
   createHash("sha256").update(await readFile("vendor/chat-app.tgz")).digest("hex"),

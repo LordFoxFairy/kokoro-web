@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { createAssetUploader, type AssetRecoveryRecord, type AssetRecoveryStore } from "../src/index.js"
+import { createAssetUploader, createLocalAssetRecoveryStore, type AssetRecoveryRecord, type AssetRecoveryStore } from "../src/index.js"
 
 const instant = "2026-07-30T00:00:00.000Z"
 const uploadRef = "upload-reference-12345678"
@@ -30,6 +30,24 @@ function receipt(operation: "initiate" | "put_part" | "complete") {
 }
 
 describe("capability-scoped Asset uploader", () => {
+  it("prunes recovery identities from a previous account scope without touching unrelated storage", () => {
+    const values = new Map<string, string>([
+      ["kokoro.asset-upload.v1.old-project.fingerprint", "{}"],
+      ["application.preference", "keep"],
+    ])
+    const storage = {
+      get length() { return values.size },
+      clear: () => values.clear(),
+      getItem: (key: string) => values.get(key) ?? null,
+      key: (index: number) => [...values.keys()][index] ?? null,
+      removeItem: (key: string) => { values.delete(key) },
+      setItem: (key: string, value: string) => { values.set(key, value) },
+    } satisfies Storage
+    createLocalAssetRecoveryStore({ storage, scope: "new-project", pruneOtherScopes: true })
+    expect(values.has("kokoro.asset-upload.v1.old-project.fingerprint")).toBe(false)
+    expect(values.get("application.preference")).toBe("keep")
+  })
+
   it("persists identities before effects, reconciles an ambiguous part, and returns only a trusted attachment ref", async () => {
     const { store, values } = memoryStore()
     const ownerBodies: string[] = []

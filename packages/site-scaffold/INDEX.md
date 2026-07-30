@@ -23,7 +23,7 @@ brandless BFF kernel, and Node deployment-adapter package closure.
 
 `scripts/certify-external-sites.mjs` proves only local Phase A packaging/isolation/build mechanics. Its ephemeral self-signed key is a test fixture and is not Task 18, live Platform, live auth, deploy or rollback qualification.
 The generated project is now a complete app composition: Auth.js password/TOTP ceremony, opaque credential rotation,
-Platform-owned bootstrap, exact generated Session Browser v3 proxy, and the shared Chat product. Platform catalog publication remains
+Platform-owned bootstrap, exact generated Session Browser v3 proxy, shared capability-scoped Asset upload client, and the shared Chat product. Platform catalog publication remains
 the fail-closed source of enabled surfaces. Live activation, auth journey, cookie isolation, deploy and rollback evidence are still required.
 
 ## Verification

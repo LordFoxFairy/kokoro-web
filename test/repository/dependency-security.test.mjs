@@ -19,6 +19,7 @@ const sessionClientPackage = await readPackage("packages/session-client");
 const bffRuntimePackage = await readPackage("packages/bff-runtime");
 const siteRuntimeNodePackage = await readPackage("packages/site-runtime-node");
 const chatSurfacePackage = await readPackage("packages/chat-surface");
+const assetClientPackage = await readPackage("packages/asset-client");
 const chatAppPackage = await readPackage("packages/chat-app");
 const siteBffPackage = await readPackage("packages/site-bff");
 const referenceSitePackage = await readPackage("apps/reference-site");
@@ -83,6 +84,7 @@ test("new Site packages use one Node 24 toolchain and the generated client owns 
     bffRuntimePackage,
     siteRuntimeNodePackage,
     chatSurfacePackage,
+    assetClientPackage,
     chatAppPackage,
     siteBffPackage,
   ]) {
@@ -96,6 +98,8 @@ test("new Site packages use one Node 24 toolchain and the generated client owns 
   assert.equal(siteScaffoldPackage.dependencies.tar, "7.5.19");
   assert.equal(siteBffPackage.dependencies["server-only"], "0.0.1");
   assert.equal(chatAppPackage.dependencies["@kokoro/chat-surface"], "workspace:*");
+  assert.equal(chatAppPackage.dependencies["@kokoro/asset-client"], "workspace:*");
+  assert.equal(assetClientPackage.dependencies["@kokoro/site-client"], "workspace:*");
   assert.equal(chatSurfacePackage.exports["."].development, "./src/index.ts");
   assert.equal(chatSurfacePackage.exports["."].import, "./dist/index.js");
   assert.equal(referenceSitePackage.engines.node, ">=24.0.0");

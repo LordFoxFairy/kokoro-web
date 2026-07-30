@@ -22,6 +22,7 @@
   },
   "publishConfig": { "access": "public", "provenance": true },
   "dependencies": {
+    "@kokoro/asset-client": "workspace:*",
     "@kokoro/chat-surface": "workspace:*",
     "@kokoro/session-client": "workspace:*",
     "react-markdown": "^10.1.0",

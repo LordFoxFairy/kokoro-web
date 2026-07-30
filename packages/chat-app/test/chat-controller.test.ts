@@ -274,7 +274,11 @@ describe("Chat recovery controller", () => {
     })
 
     await controller.open("session-12345678")
-    await expect(controller.submit("hello")).resolves.toBe(false)
+    await expect(controller.submit("hello", [{
+      asset_ref: "asset-12345678",
+      asset_version_ref: "asset-version-12345678",
+      asset_grant_ref: "grant-12345678",
+    }])).resolves.toBe(false)
 
     expect(save).toHaveBeenCalledOnce()
     expect(save).toHaveBeenCalledWith(expect.objectContaining({
@@ -284,6 +288,13 @@ describe("Chat recovery controller", () => {
       command: expect.objectContaining({ digest_algorithm: "SHA256_CANONICAL_JSON_V2" }),
     }))
     expect(submitMessage).toHaveBeenCalledOnce()
+    expect(submitMessage).toHaveBeenCalledWith("session-12345678", expect.objectContaining({
+      attachment_refs: [{
+        asset_ref: "asset-12345678",
+        asset_version_ref: "asset-version-12345678",
+        asset_grant_ref: "grant-12345678",
+      }],
+    }))
     expect(getCommandReceipt).toHaveBeenCalledOnce()
     expect(clear).not.toHaveBeenCalled()
     expect(controller.getSnapshot().failure).toMatchObject({ action: "reconcile_receipt" })

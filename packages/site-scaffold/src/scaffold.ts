@@ -20,6 +20,7 @@ export interface ImmutablePackageArtifact {
     | "@kokoro/bff-runtime"
     | "@kokoro/site-runtime-node"
     | "@kokoro/chat-surface"
+    | "@kokoro/asset-client"
     | "@kokoro/chat-app"
     | "@kokoro/site-bff"
     | "@kokoro/account-app";
@@ -46,6 +47,7 @@ export interface CreateSiteProjectInput {
   readonly deployment: SiteDeploymentTarget;
   readonly contractFloor: SiteContractFloor;
   readonly packages: readonly [
+    ImmutablePackageArtifact,
     ImmutablePackageArtifact,
     ImmutablePackageArtifact,
     ImmutablePackageArtifact,
@@ -234,6 +236,7 @@ export async function createSiteProject(input: CreateSiteProjectInput): Promise<
     "@kokoro/bff-runtime",
     "@kokoro/site-runtime-node",
     "@kokoro/chat-surface",
+    "@kokoro/asset-client",
     "@kokoro/chat-app",
     "@kokoro/site-bff",
     "@kokoro/account-app",
@@ -260,6 +263,7 @@ export async function createSiteProject(input: CreateSiteProjectInput): Promise<
     const bffRuntime = artifact("@kokoro/bff-runtime");
     const nodeRuntime = artifact("@kokoro/site-runtime-node");
     const chatSurface = artifact("@kokoro/chat-surface");
+    const assetClient = artifact("@kokoro/asset-client");
     const chatApp = artifact("@kokoro/chat-app");
     const siteBff = artifact("@kokoro/site-bff");
     const accountApp = artifact("@kokoro/account-app");
@@ -286,6 +290,8 @@ export async function createSiteProject(input: CreateSiteProjectInput): Promise<
       __SITE_RUNTIME_NODE_SHA256_JSON__: JSON.stringify(nodeRuntime.sha256),
       __CHAT_SURFACE_VERSION_JSON__: JSON.stringify(chatSurface.version),
       __CHAT_SURFACE_SHA256_JSON__: JSON.stringify(chatSurface.sha256),
+      __ASSET_CLIENT_VERSION_JSON__: JSON.stringify(assetClient.version),
+      __ASSET_CLIENT_SHA256_JSON__: JSON.stringify(assetClient.sha256),
       __CHAT_APP_VERSION_JSON__: JSON.stringify(chatApp.version),
       __CHAT_APP_SHA256_JSON__: JSON.stringify(chatApp.sha256),
       __SITE_BFF_VERSION_JSON__: JSON.stringify(siteBff.version),
@@ -310,6 +316,7 @@ export async function createSiteProject(input: CreateSiteProjectInput): Promise<
     const copiedBffRuntime = join(staging, "vendor", "bff-runtime.tgz");
     const copiedNodeRuntime = join(staging, "vendor", "site-runtime-node.tgz");
     const copiedChatSurface = join(staging, "vendor", "chat-surface.tgz");
+    const copiedAssetClient = join(staging, "vendor", "asset-client.tgz");
     const copiedChatApp = join(staging, "vendor", "chat-app.tgz");
     const copiedSiteBff = join(staging, "vendor", "site-bff.tgz");
     const copiedAccountApp = join(staging, "vendor", "account-app.tgz");
@@ -320,6 +327,7 @@ export async function createSiteProject(input: CreateSiteProjectInput): Promise<
       [bffRuntime, copiedBffRuntime],
       [nodeRuntime, copiedNodeRuntime],
       [chatSurface, copiedChatSurface],
+      [assetClient, copiedAssetClient],
       [chatApp, copiedChatApp],
       [siteBff, copiedSiteBff],
       [accountApp, copiedAccountApp],
@@ -341,6 +349,7 @@ export async function createSiteProject(input: CreateSiteProjectInput): Promise<
         [bffRuntime.name]: bffRuntime.sha256,
         [nodeRuntime.name]: nodeRuntime.sha256,
         [chatSurface.name]: chatSurface.sha256,
+        [assetClient.name]: assetClient.sha256,
         [chatApp.name]: chatApp.sha256,
         [siteBff.name]: siteBff.sha256,
         [accountApp.name]: accountApp.sha256,
@@ -353,6 +362,7 @@ export async function createSiteProject(input: CreateSiteProjectInput): Promise<
         "vendor/bff-runtime.tgz",
         "vendor/site-runtime-node.tgz",
         "vendor/chat-surface.tgz",
+        "vendor/asset-client.tgz",
         "vendor/chat-app.tgz",
         "vendor/site-bff.tgz",
         "vendor/account-app.tgz",

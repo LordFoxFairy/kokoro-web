@@ -1,5 +1,11 @@
 "use client"
 
+import {
+  createAssetUploader,
+  createLocalAssetRecoveryStore,
+  type AssetAttachmentRef,
+  type AssetUploadProgress,
+} from "@kokoro/asset-client"
 import { createSessionClient } from "@kokoro/session-client"
 import type { ChatPart, ChatProjectionMessage } from "@kokoro/chat-surface"
 import rehypeHighlight from "rehype-highlight"
@@ -7,6 +13,7 @@ import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import {
   type FormEvent,
+  type ChangeEvent,
   isValidElement,
   type KeyboardEvent,
   type ReactNode,
@@ -385,22 +392,63 @@ export function ChatView(props: {
   readonly controller: ChatController
   readonly state: ChatState
   readonly copy: ChatProductCopy
+  readonly assetUploader?: ReturnType<typeof createAssetUploader> | null
 }) {
   const [draft, setDraft] = useState("")
   const [composing, setComposing] = useState(false)
+  const [attachments, setAttachments] = useState<readonly Readonly<{
+    id: string
+    file: File
+    status: "uploading" | "ready" | "failed"
+    progress: AssetUploadProgress | null
+    attachment: AssetAttachmentRef | null
+  }>[]>([])
   const hasModel = props.state.selectedModelOptionRevisionRef !== null
   const commandPending = props.state.projection.command.state === "pending"
   const connected = props.state.projection.connection.kind === "live"
   const activeRun = props.state.projection.activeRunId !== null
-  const sendDisabled = !hasModel || !connected || activeRun || commandPending || draft.trim().length === 0
+  const attachmentPending = attachments.some(({ status }) => status !== "ready")
+  const sendDisabled = !hasModel || !connected || activeRun || commandPending || attachmentPending || draft.trim().length === 0
   const branch = props.state.snapshot?.branches.find(({ branch_id }) => branch_id === props.state.projection.activeBranchId)
   const currentOption = props.state.chatCatalog?.options.find(({ modelOptionRevisionRef }) => modelOptionRevisionRef === props.state.selectedModelOptionRevisionRef)
+
+  const beginUpload = (entry: Readonly<{ id: string; file: File }>): void => {
+    const uploader = props.assetUploader ?? null
+    if (uploader === null) return
+    setAttachments((current) => current.map((candidate) => candidate.id === entry.id
+      ? { ...candidate, status: "uploading", progress: null, attachment: null }
+      : candidate))
+    void uploader.upload(entry.file, {
+      onProgress: (progress) => setAttachments((current) => current.map((candidate) => candidate.id === entry.id
+        ? { ...candidate, progress }
+        : candidate)),
+    }).then((attachment) => setAttachments((current) => current.map((candidate) => candidate.id === entry.id
+      ? { ...candidate, status: "ready", attachment }
+      : candidate))).catch(() => setAttachments((current) => current.map((candidate) => candidate.id === entry.id
+        ? { ...candidate, status: "failed", attachment: null }
+        : candidate)))
+  }
+  const attach = (event: ChangeEvent<HTMLInputElement>): void => {
+    const remaining = Math.max(0, 8 - attachments.length)
+    const additions = [...(event.target.files ?? [])].slice(0, remaining).map((file) => Object.freeze({
+      id: globalThis.crypto.randomUUID(), file, status: "uploading" as const, progress: null, attachment: null,
+    }))
+    event.target.value = ""
+    if (additions.length === 0) return
+    setAttachments((current) => [...current, ...additions])
+    for (const addition of additions) beginUpload(addition)
+  }
 
   const submitDraft = (): void => {
     if (sendDisabled) return
     const content = draft
-    void props.controller.submit(content).then((applied) => {
-      if (applied) setDraft((current) => current === content ? "" : current)
+    const ready = attachments.filter((entry): entry is typeof entry & { attachment: AssetAttachmentRef } => entry.attachment !== null)
+    const sentAttachmentIds = new Set(ready.map(({ id }) => id))
+    void props.controller.submit(content, ready.map(({ attachment }) => attachment)).then((applied) => {
+      if (applied) {
+        setDraft((current) => current === content ? "" : current)
+        setAttachments((current) => current.filter(({ id }) => !sentAttachmentIds.has(id)))
+      }
     })
   }
   const submit = (event: FormEvent<HTMLFormElement>): void => {
@@ -428,7 +476,9 @@ export function ChatView(props: {
     <form className={styles.composer} onSubmit={submit}>
       <div className={styles.composerControls}>{props.state.chatCatalog ? <ModelOptionSelector catalog={props.state.chatCatalog} copy={props.copy} disabled={activeRun || commandPending} onChange={(value) => props.controller.selectModelOption(value)} value={props.state.selectedModelOptionRevisionRef} /> : null}{currentOption && currentOption.supportedEfforts.length > 0 ? <label className={styles.compactSelector}><span>{props.copy.effort}</span><select disabled={activeRun || commandPending} onChange={(event) => props.controller.selectEffort(event.target.value)} value={props.state.selectedEffort ?? ""}>{currentOption.supportedEfforts.map((effort) => <option key={effort} value={effort}>{effort}</option>)}</select></label> : null}</div>
       {!hasModel && props.state.phase === "ready" ? <p className={styles.modelNotice}>{props.copy.modelRequired}</p> : null}
+      {attachments.length > 0 ? <ul className={styles.attachments} aria-live="polite">{attachments.map((entry) => <li key={entry.id} data-status={entry.status}><span aria-hidden>◆</span><div><strong>{entry.file.name}</strong><small>{entry.status === "uploading" ? `${props.copy.uploadingFile} ${entry.progress === null ? "" : `${Math.round(entry.progress.uploadedBytes / entry.progress.totalBytes * 100)}%`}` : entry.status === "ready" ? props.copy.attachmentReady : props.copy.attachmentFailed}</small></div>{entry.status === "failed" ? <button type="button" disabled={mutationDisabled} onClick={() => beginUpload(entry)}>{props.copy.retryUpload}</button> : null}<button type="button" disabled={entry.status === "uploading" || commandPending} onClick={() => setAttachments((current) => current.filter(({ id }) => id !== entry.id))}>{props.copy.removeAttachment}</button></li>)}</ul> : null}
       <div className={styles.composerBox}><textarea aria-label={props.copy.messageLabel} maxLength={1_048_576} onChange={(event) => setDraft(event.target.value)} onCompositionEnd={() => setComposing(false)} onCompositionStart={() => setComposing(true)} onKeyDown={onComposerKeyDown} placeholder={activeRun ? props.copy.activeRunPlaceholder : props.copy.messagePlaceholder} rows={3} value={draft} /><button type="submit" disabled={sendDisabled}>{commandPending ? props.copy.sending : props.copy.send}<span aria-hidden>↗</span></button></div><p className={styles.composerHint}>Enter to send · Shift + Enter for a new line</p>
+      {props.assetUploader !== null && props.assetUploader !== undefined ? <label className={styles.attachButton} data-disabled={mutationDisabled || attachments.length >= 8}><input type="file" multiple disabled={mutationDisabled || attachments.length >= 8} onChange={attach} /><span aria-hidden>＋</span>{props.copy.attachFiles}</label> : null}
     </form>
   </main>
 }
@@ -457,6 +507,33 @@ export function ChatProduct(props: ChatProductProps) {
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot)
   const organizer = useMemo(() => createSessionOrganizer({ client, projectRef: props.bootstrap?.defaultProjectRef ?? null }), [client, props.bootstrap?.defaultProjectRef])
   const organizerState = useSyncExternalStore(organizer.subscribe, organizer.getSnapshot, organizer.getSnapshot)
+  const [assetUploader, setAssetUploader] = useState<ReturnType<typeof createAssetUploader> | null>(null)
+
+  useEffect(() => {
+    const projectRef = props.bootstrap?.defaultProjectRef
+    if (props.csrfToken === undefined || projectRef === undefined) return
+    let uploader: ReturnType<typeof createAssetUploader> | null = null
+    try {
+      uploader = createAssetUploader({
+        csrfToken: props.csrfToken,
+        store: createLocalAssetRecoveryStore({ storage: window.localStorage, scope: projectRef, pruneOtherScopes: true }),
+      })
+    } catch {
+      try {
+        uploader = createAssetUploader({
+          csrfToken: props.csrfToken,
+          store: createLocalAssetRecoveryStore({ storage: window.sessionStorage, scope: projectRef, pruneOtherScopes: true }),
+        })
+      } catch {
+        uploader = null
+      }
+    }
+    setAssetUploader(uploader)
+    return () => {
+      uploader?.dispose()
+      setAssetUploader((current) => current === uploader ? null : current)
+    }
+  }, [props.bootstrap?.defaultProjectRef, props.csrfToken])
 
   useEffect(() => {
     void (async () => {
@@ -485,7 +562,7 @@ export function ChatProduct(props: ChatProductProps) {
   const rail = <SessionRail activeSessionId={state.sessionId} available={productAvailable && state.projection.command.state !== "pending"} brandName={props.brandName} controller={organizer} copy={copy} onNew={createSession} onOpen={openSession} state={organizerState} />
 
   if (state.phase === "idle") return <div className={styles.appShell}>{rail}<main className={styles.startShell}><span className={styles.startMark} aria-hidden>✦</span><span className={styles.eyebrow}>{props.brandName}</span><h1>{copy.startTitle}</h1><p>{copy.startDescription}</p><button type="button" disabled={!productAvailable || state.projection.command.state === "pending"} onClick={createSession}>{state.projection.command.state === "pending" ? copy.creatingChat : copy.newChat}</button>{!productAvailable ? <p className={styles.failure} role="status">{copy.unavailable}</p> : null}{state.failure ? <p className={styles.failure} role="alert">{state.failure.message}</p> : null}</main></div>
-  return <div className={styles.appShell}>{rail}<ChatView brandName={props.brandName} controller={controller} copy={copy} state={state} /></div>
+  return <div className={styles.appShell}>{rail}<ChatView assetUploader={assetUploader} brandName={props.brandName} controller={controller} copy={copy} state={state} /></div>
 }
 
 function ModelOptionSelector(props: {

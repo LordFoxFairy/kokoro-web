@@ -23,6 +23,7 @@ async function createPackageArtifact(
     | "@kokoro/bff-runtime"
     | "@kokoro/site-runtime-node"
     | "@kokoro/chat-surface"
+    | "@kokoro/asset-client"
     | "@kokoro/chat-app"
     | "@kokoro/site-bff"
     | "@kokoro/account-app",
@@ -54,6 +55,7 @@ describe("independent Site project scaffold", () => {
       await createPackageArtifact(root, "bff-runtime", "@kokoro/bff-runtime"),
       await createPackageArtifact(root, "site-runtime-node", "@kokoro/site-runtime-node"),
       await createPackageArtifact(root, "chat-surface", "@kokoro/chat-surface"),
+      await createPackageArtifact(root, "asset-client", "@kokoro/asset-client"),
       await createPackageArtifact(root, "chat-app", "@kokoro/chat-app"),
       await createPackageArtifact(root, "site-bff", "@kokoro/site-bff"),
       await createPackageArtifact(root, "account-app", "@kokoro/account-app"),

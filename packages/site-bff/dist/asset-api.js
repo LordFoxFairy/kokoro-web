@@ -37,6 +37,7 @@ async function boundedJson(request) {
         throw new SyntaxError("content type");
     const declared = request.headers.get("content-length");
     if (declared !== null && (!/^\d+$/u.test(declared) || Number(declared) > MAXIMUM_CONTROL_BODY_BYTES)) {
+        await request.body?.cancel("body too large").catch(() => undefined);
         throw new RangeError("body too large");
     }
     if (request.body === null)

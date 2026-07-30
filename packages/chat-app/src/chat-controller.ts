@@ -5,6 +5,7 @@ import {
 } from "@kokoro/session-client"
 import type {
   ActionDecision,
+  AttachmentIntent,
   BrowserCommandOperation,
   CommandIdentity,
   ErrorDetail,
@@ -206,7 +207,7 @@ export type ChatController = Readonly<{
   subscribe(listener: () => void): () => void
   create(): Promise<string | null>
   open(sessionId: string): Promise<void>
-  submit(content: string): Promise<boolean>
+  submit(content: string, attachments?: readonly AttachmentIntent[]): Promise<boolean>
   editMessage(messageId: string, content: string): Promise<boolean>
   regenerateMessage(messageId: string): Promise<boolean>
   forkBranch(branchId: string): Promise<boolean>
@@ -672,11 +673,11 @@ export function createChatController(options: {
     }
   }
 
-  const submit = async (content: string): Promise<boolean> => {
+  const submit = async (content: string, attachments: readonly AttachmentIntent[] = []): Promise<boolean> => {
     const snapshot = state.snapshot
     const sessionId = state.sessionId
     const text = content.trim()
-    if (snapshot === null || sessionId === null || text.length === 0) return false
+    if (snapshot === null || sessionId === null || text.length === 0 || attachments.length > 64) return false
     const execution = selectedExecutionInput()
     if (execution === null) return false
     const effect = {
@@ -685,7 +686,11 @@ export function createChatController(options: {
       parent_message_id: snapshot.session.active_leaf_message_id ?? null,
       trusted_locale: options.trustedLocale,
       parts: [{ schema_version: 1 as const, kind: "text" as const, payload: { text } }],
-      attachment_refs: [],
+      attachment_refs: attachments.map(({ asset_ref, asset_version_ref, asset_grant_ref }) => ({
+        asset_ref,
+        asset_version_ref,
+        asset_grant_ref,
+      })),
       model_option_revision_ref: execution.modelOptionRevisionRef,
       ...(execution.effort === undefined ? {} : { effort: execution.effort }),
     }

@@ -699,6 +699,80 @@
   text-align: center;
 }
 
+.attachments {
+  display: flex;
+  gap: 0.55rem;
+  margin: 0 0 0.55rem;
+  padding: 0;
+  overflow-x: auto;
+  list-style: none;
+}
+
+.attachments li {
+  display: grid;
+  grid-template-columns: auto minmax(8rem, 1fr) auto auto;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 17rem;
+  border: 1px solid var(--k-border-strong);
+  border-radius: 0.8rem;
+  padding: 0.5rem 0.65rem;
+  background: var(--k-bg-container);
+}
+
+.attachments li[data-status="failed"] {
+  border-color: var(--k-error-border);
+}
+
+.attachments li > div {
+  min-width: 0;
+}
+
+.attachments strong,
+.attachments small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachments small {
+  color: var(--k-ink-muted);
+}
+
+.attachments button,
+.attachButton {
+  border: 1px solid var(--k-border-strong);
+  border-radius: 0.65rem;
+  padding: 0.35rem 0.55rem;
+  background: var(--k-bg-container);
+  color: var(--k-ink);
+  cursor: pointer;
+}
+
+.attachButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-top: 0.5rem;
+  font-size: 0.82rem;
+}
+
+.attachButton[data-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.attachButton input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 .shell button:disabled,
 .shell select:disabled,
 .startShell button:disabled {

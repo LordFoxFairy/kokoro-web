@@ -21,6 +21,7 @@ test("the independently generated Site template owns the complete Browser v3 pro
     "@kokoro/site-bff",
     "@kokoro/session-client",
     "@kokoro/chat-surface",
+    "@kokoro/asset-client",
     "@kokoro/chat-app",
     "@kokoro/account-app",
   ]) assert.match(manifest, new RegExp(packageName.replace("/", "\\/"), "u"))

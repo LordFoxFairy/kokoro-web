@@ -250,15 +250,20 @@ export function createSiteBffRuntime(input: Readonly<{
     csrfToken: () => input.provider.platformCsrfToken(),
   })
 
-  const assemble = async (authSession: OpaqueAuthSession): Promise<SiteSessionRuntime> => {
+  const resolveSite = async (authSession: OpaqueAuthSession) => {
     const platform = authenticatedClient(authSession)
-    const resolved = await bootstrapSiteRuntimeFromOpaqueSession({
+    return bootstrapSiteRuntimeFromOpaqueSession({
       productContexts,
       authSession,
       personalAuthority: {
         getPersonalContext: () => platform.execute({ operationId: "getPersonalContext", data: {} }),
       },
     })
+  }
+
+  const assemble = async (authSession: OpaqueAuthSession): Promise<SiteSessionRuntime> => {
+    const platform = authenticatedClient(authSession)
+    const resolved = await resolveSite(authSession)
     const access = new SessionAccessManager({
       bootstrap: resolved.bootstrap,
       authSession: resolved.authSession,
@@ -289,10 +294,10 @@ export function createSiteBffRuntime(input: Readonly<{
     platform: ReturnType<typeof createPlatformPublicClient>
     projectRef: string
   }>> => {
-    const runtime = await assemble(authSession)
+    const resolved = await resolveSite(authSession)
     return Object.freeze({
       platform: authenticatedClient(authSession),
-      projectRef: runtime.bootstrap.defaultProjectRef,
+      projectRef: resolved.bootstrap.defaultProjectRef,
     })
   }
 

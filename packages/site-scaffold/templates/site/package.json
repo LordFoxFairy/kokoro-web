@@ -23,6 +23,7 @@
     "@kokoro/bff-runtime": "file:vendor/bff-runtime.tgz",
     "@kokoro/site-runtime-node": "file:vendor/site-runtime-node.tgz",
     "@kokoro/chat-surface": "file:vendor/chat-surface.tgz",
+    "@kokoro/asset-client": "file:vendor/asset-client.tgz",
     "@kokoro/chat-app": "file:vendor/chat-app.tgz",
     "@kokoro/site-bff": "file:vendor/site-bff.tgz",
     "@kokoro/account-app": "file:vendor/account-app.tgz",

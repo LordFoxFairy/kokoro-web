@@ -78,8 +78,21 @@ export class AssetUploadError extends Error {
   }
 }
 
-export function createLocalAssetRecoveryStore(storage: Storage = globalThis.localStorage): AssetRecoveryStore {
-  const prefix = "kokoro.asset-upload.v1."
+export function createLocalAssetRecoveryStore(options: Readonly<{
+  storage?: Storage
+  scope?: string
+  pruneOtherScopes?: boolean
+}> = {}): AssetRecoveryStore {
+  const storage = options.storage ?? globalThis.localStorage
+  const root = "kokoro.asset-upload.v1."
+  const scope = encodeURIComponent(options.scope ?? "default")
+  const prefix = `${root}${scope}.`
+  if (options.pruneOtherScopes === true) {
+    for (let index = storage.length - 1; index >= 0; index -= 1) {
+      const key = storage.key(index)
+      if (key?.startsWith(root) === true && !key.startsWith(prefix)) storage.removeItem(key)
+    }
+  }
   return Object.freeze({
     get(fingerprint: string) {
       const raw = storage.getItem(prefix + fingerprint)
@@ -208,10 +221,11 @@ export function createAssetUploader(options: Readonly<{
   const store = options.store ?? createLocalAssetRecoveryStore()
   const wait = options.poll?.wait ?? ((milliseconds: number) => new Promise<void>((resolve) => setTimeout(resolve, milliseconds)))
   const pollAttempts = options.poll?.attempts ?? 90
+  const lifetime = new AbortController()
 
   async function control(path: string, init?: Readonly<{ method: "POST"; body: unknown }>): Promise<unknown> {
     const response = await fetcher(`/api/assets${path}`, init === undefined ? {
-      method: "GET", credentials: "same-origin", cache: "no-store",
+      method: "GET", credentials: "same-origin", cache: "no-store", signal: lifetime.signal,
     } : {
       method: init.method,
       headers: {
@@ -220,6 +234,7 @@ export function createAssetUploader(options: Readonly<{
       },
       credentials: "same-origin",
       cache: "no-store",
+      signal: lifetime.signal,
       body: JSON.stringify(init.body),
     })
     const body = await json(response)
@@ -261,6 +276,7 @@ export function createAssetUploader(options: Readonly<{
       },
       body: input.body,
       cache: "no-store",
+      signal: lifetime.signal,
     })
     const body = await json(response)
     if (!response.ok) dataPlaneFailure(response.status, body)
@@ -305,6 +321,11 @@ export function createAssetUploader(options: Readonly<{
     }
     record = withOwner(record, ownerResponse.upload)
     await store.put(record)
+    if (ownerResponse.upload.stage === "ready" && ownerResponse.upload.attachment !== null) {
+      await store.delete(fingerprint)
+      progress("ready", file.size)
+      return Object.freeze({ ...ownerResponse.upload.attachment })
+    }
     const capability = ownerResponse.capability
 
     let multipart: MultipartUploadStateResponse
@@ -456,5 +477,8 @@ export function createAssetUploader(options: Readonly<{
     throw new AssetUploadError("PROCESSING_TIMEOUT", "Asset processing is still in progress; retry status later")
   }
 
-  return Object.freeze({ upload })
+  return Object.freeze({
+    upload,
+    dispose() { lifetime.abort("Asset uploader scope changed") },
+  })
 }

@@ -19,6 +19,10 @@ only for Platform-enabled Site surfaces. Registration additionally requires serv
 `KOKORO_SITE_REGISTRATION_LEGAL_DOCUMENTS`; one strict typed SiteRelease projection derives server-only term refs and
 browser-safe labels/HTTPS or same-origin links. Browser input can accept the published set but cannot choose authority refs.
 
+Chat attachments create owner intent through the same-origin Site BFF, then upload bytes directly to the registered Asset
+data plane with an opaque, short-lived capability bound to this Site origin. Provider credentials, object locations and
+Platform project selection never cross into browser code. Only a ready trusted grant is submitted to Session.
+
 One-time login, MFA and refresh delivery is fail-safe: a generic upstream timeout retains the exact secret command identity for the
 next retry. Only Platform's typed `delivery_unavailable` result permits a new secret command bound to the prior command through the
 generated supersede input. Receipt recovery capability never enters client JavaScript, React props, the public Auth.js session, or logs.

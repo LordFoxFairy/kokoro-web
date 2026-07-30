@@ -107,6 +107,7 @@ async function main() {
     await run(pnpm, ["--filter", "@kokoro/bff-runtime", "build"], webRoot);
     await run(pnpm, ["--filter", "@kokoro/site-runtime-node", "build"], webRoot);
     await run(pnpm, ["--filter", "@kokoro/chat-surface", "build"], webRoot);
+    await run(pnpm, ["--filter", "@kokoro/asset-client", "build"], webRoot);
     await run(pnpm, ["--filter", "@kokoro/chat-app", "build"], webRoot);
     await run(pnpm, ["--filter", "@kokoro/site-bff", "build"], webRoot);
     await run(pnpm, ["--filter", "@kokoro/account-app", "build"], webRoot);
@@ -118,6 +119,7 @@ async function main() {
       pack("@kokoro/bff-runtime", packageDirectory),
       pack("@kokoro/site-runtime-node", packageDirectory),
       pack("@kokoro/chat-surface", packageDirectory),
+      pack("@kokoro/asset-client", packageDirectory),
       pack("@kokoro/chat-app", packageDirectory),
       pack("@kokoro/site-bff", packageDirectory),
       pack("@kokoro/account-app", packageDirectory),

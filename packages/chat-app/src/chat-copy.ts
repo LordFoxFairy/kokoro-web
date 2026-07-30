@@ -22,6 +22,12 @@ export type ChatProductCopy = Readonly<{
   activeRunPlaceholder: string
   send: string
   sending: string
+  attachFiles: string
+  uploadingFile: string
+  attachmentReady: string
+  retryUpload: string
+  removeAttachment: string
+  attachmentFailed: string
   stop: string
   copy: string
   copied: string
@@ -108,6 +114,12 @@ export const DEFAULT_CHAT_COPY: ChatProductCopy = Object.freeze({
   activeRunPlaceholder: "The current response is still running",
   send: "Send",
   sending: "Sending…",
+  attachFiles: "Attach files",
+  uploadingFile: "Uploading…",
+  attachmentReady: "Ready",
+  retryUpload: "Retry",
+  removeAttachment: "Remove",
+  attachmentFailed: "Upload failed",
   stop: "Stop",
   copy: "Copy",
   copied: "Copied",

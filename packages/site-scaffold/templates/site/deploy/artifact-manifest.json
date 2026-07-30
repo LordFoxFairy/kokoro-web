@@ -26,6 +26,10 @@
       "version": __CHAT_SURFACE_VERSION_JSON__,
       "sha256": __CHAT_SURFACE_SHA256_JSON__
     },
+    "@kokoro/asset-client": {
+      "version": __ASSET_CLIENT_VERSION_JSON__,
+      "sha256": __ASSET_CLIENT_SHA256_JSON__
+    },
     "@kokoro/chat-app": {
       "version": __CHAT_APP_VERSION_JSON__,
       "sha256": __CHAT_APP_SHA256_JSON__
