@@ -34,6 +34,7 @@ import { z } from "zod";
 import { antdTheme, proLayoutToken } from "@/lib/theme";
 import { LocaleProvider, useLocale, useT } from "@/lib/i18n/context";
 import type { MessageKey } from "@/lib/i18n/messages";
+import { adminNavigationAccess } from "@/lib/admin-surface-permissions";
 
 interface AdminCtx {
   me: Me | null;
@@ -58,6 +59,7 @@ interface NavItem {
   href: string;
   icon: React.ReactNode;
   perm: string | null;
+  signedSurface?: "users" | "credit";
 }
 
 // 导航文案走 i18n（labelKey）；此处只声明结构，渲染时经 useT 解析。
@@ -66,9 +68,9 @@ const NAV: { groupKey: MessageKey | null; items: NavItem[] }[] = [
   {
     groupKey: "nav.group.business",
     items: [
-      { labelKey: "nav.users", href: "/users", icon: <UserOutlined />, perm: null },
+      { labelKey: "nav.users", href: "/users", icon: <UserOutlined />, perm: null, signedSurface: "users" },
       { labelKey: "nav.teams", href: "/teams", icon: <TeamOutlined />, perm: null },
-      { labelKey: "nav.credit", href: "/credit", icon: <WalletOutlined />, perm: "credit.account.read" },
+      { labelKey: "nav.credit", href: "/credit", icon: <WalletOutlined />, perm: null, signedSurface: "credit" },
       { labelKey: "nav.offers", href: "/offers", icon: <ShoppingOutlined />, perm: "commerce.offer.read" },
       { labelKey: "nav.codeBatches", href: "/code-batches", icon: <KeyOutlined />, perm: "commerce.code-batch.read" },
       { labelKey: "nav.sites", href: "/sites", icon: <GlobalOutlined />, perm: "site.read" },
@@ -142,6 +144,7 @@ function AppShellInner({ children }: { children: React.ReactNode }): React.React
 
   const can = (permission: string | null): boolean =>
     permission === null || permits(me?.permissions ?? [], permission);
+  const signedNavigation = adminNavigationAccess(me?.permissions ?? []);
 
   const ctx: AdminCtx = { me, sites, siteId, setSiteId, can, manifests, reloadSites };
 
@@ -157,7 +160,7 @@ function AppShellInner({ children }: { children: React.ReactNode }): React.React
   }
 
   const routes: MenuRoute[] = NAV.flatMap((section): MenuRoute[] => {
-    const items = section.items.filter((i) => can(i.perm));
+    const items = section.items.filter((i) => i.signedSurface ? signedNavigation[i.signedSurface] : can(i.perm));
     if (items.length === 0) return [];
     const mapped: MenuRoute[] = items.map((i) => ({ path: i.href, name: t(i.labelKey), icon: i.icon }));
     return section.groupKey

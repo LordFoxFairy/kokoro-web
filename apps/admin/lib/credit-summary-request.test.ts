@@ -27,12 +27,15 @@ const summary = (siteId: string, availableAmount = "900719925474099312345") => (
 });
 
 describe("home Credit summary request", () => {
-  it("requires Credit read authority and calls only the typed summary route", async () => {
+  it("requires exact summary authority and calls only the typed summary route", async () => {
     const credit = await subject(); if (credit === null) return;
-    expect(credit.creditSummaryRequestKey({ siteId: "site-a", canRead: false })).toBeNull();
+    expect(credit.creditSummaryRequestKey({ siteId: "site-a", permissions: ["credit.account.read"] })).toBeNull();
+    const deniedFetcher = vi.fn();
+    credit.startCreditSummaryRequest({ siteId: "site-a", permissions: ["credit.account.read"] }, vi.fn(), deniedFetcher);
+    expect(deniedFetcher).not.toHaveBeenCalled();
     const fetcher = vi.fn().mockResolvedValue(summary("site /?"));
     const settled = vi.fn();
-    credit.startCreditSummaryRequest({ siteId: "site /?", canRead: true }, settled, fetcher);
+    credit.startCreditSummaryRequest({ siteId: "site /?", permissions: ["credit.summary.read"] }, settled, fetcher);
     await Promise.resolve();
     expect(fetcher).toHaveBeenCalledWith("/api/control/credit/summary?siteId=site+%2F%3F");
     expect(settled).toHaveBeenCalledWith({ siteId: "site /?", data: expect.objectContaining({
@@ -47,9 +50,10 @@ describe("home Credit summary request", () => {
     const siteB = deferred<CreditSummary>();
     const fetcher = vi.fn((path: string) => path.endsWith("siteId=site-a") ? siteA.promise : siteB.promise);
     const settled = vi.fn();
-    const cancelA = credit.startCreditSummaryRequest({ siteId: "site-a", canRead: true }, settled, fetcher);
+    const cancelA = credit.startCreditSummaryRequest({ siteId: "site-a", permissions: ["credit.summary.read"] },
+      settled, fetcher);
     cancelA();
-    credit.startCreditSummaryRequest({ siteId: "site-b", canRead: true }, settled, fetcher);
+    credit.startCreditSummaryRequest({ siteId: "site-b", permissions: ["credit.summary.read"] }, settled, fetcher);
     siteB.resolve(summary("site-wrong"));
     await Promise.resolve();
     siteA.resolve(summary("site-a"));

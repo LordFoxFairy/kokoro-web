@@ -3,7 +3,8 @@ import "server-only";
 import type { Client } from "@connectrpc/connect";
 import { Code, ConnectError, createClient } from "@connectrpc/connect";
 
-import { requireAuthoritySession } from "./authority-session";
+import type { AdminSurface } from "../admin-surface-permissions";
+import { requireAdminSurfaceSession } from "./admin-surface-authority";
 import { AdminControlPlaneError, authHeaders, queryContext } from "./client";
 import { adminControlPlaneTransport } from "./transport";
 import { KokoroErrorDetailSchema } from
@@ -14,7 +15,7 @@ import { AdminQueryService } from
 type UserRpc = Client<typeof AdminQueryService>;
 type UserRuntime = Readonly<{ rpc: UserRpc;
   context: Parameters<UserRpc["getUserWithinSite"]>[0]["context"]; headers: Headers }>;
-type RuntimeResolver = (siteId: string) => Promise<UserRuntime>;
+type RuntimeResolver = (siteId: string, surface: AdminSurface) => Promise<UserRuntime>;
 
 export class AdminUserInvalidResponseError extends AdminControlPlaneError {
   constructor() {
@@ -26,7 +27,7 @@ export class AdminUserInvalidResponseError extends AdminControlPlaneError {
 export function createAdminUserReader(runtime: RuntimeResolver) {
   return Object.freeze({
     async getUserWithinSite(siteId: string, userRef: string) {
-      const { rpc, context, headers } = await runtime(siteId);
+      const { rpc, context, headers } = await runtime(siteId, "users");
       const selectedScope = context?.scope?.kind;
       if (selectedScope?.case !== "site") throw invalidResponse();
       const selectedSiteIds = selectedScope.value.siteIds ?? [];
@@ -40,7 +41,7 @@ export function createAdminUserReader(runtime: RuntimeResolver) {
 }
 
 async function liveRuntime(siteId: string): Promise<UserRuntime> {
-  const session = await requireAuthoritySession();
+  const session = await requireAdminSurfaceSession("users");
   return { rpc: createClient(AdminQueryService, await adminControlPlaneTransport()),
     context: queryContext(session, { kind: "site", siteId }), headers: authHeaders(session) };
 }

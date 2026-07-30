@@ -43,11 +43,54 @@ describe("typed Admin Credit client", () => {
         expiredAmount: "0", revokedAmount: "0", recoveryExposureAmount: "1" }],
       freshness: "database_observation", asOf: "2026-07-30T00:00:00.000Z",
     });
-    expect(runtime).toHaveBeenCalledWith("site-one");
+    expect(runtime).toHaveBeenCalledWith("site-one", "creditSummary");
     expect(getSiteCreditSummary).toHaveBeenCalledWith(
       { context: { requestId: "request-one" }, siteId: "site-one" },
       { headers: expect.any(Headers) },
     );
+  });
+
+  it("resolves every RPC through its exact server-authorized surface", async () => {
+    const page = { nextPageToken: undefined, membershipWatermark: watermark, observedAt: watermark };
+    const rpc = {
+      getSiteCreditSummary: vi.fn(async () => ({ summary: identityOnly({ siteId: wrongSite }) })),
+      listCreditAccounts: vi.fn(async () => ({ accounts: [], ...page })),
+      getCreditAccount: vi.fn(async () => ({ account: identityOnly({ siteId: wrongSite }) })),
+      listCreditGrants: vi.fn(async () => ({ grants: [], ...page })),
+      listCreditHolds: vi.fn(async () => ({ holds: [], ...page })),
+      listCreditHoldAllocations: vi.fn(async () => ({ allocations: [], ...page })),
+      listCreditJournalTransactions: vi.fn(async () => ({ transactions: [], ...page })),
+      listCreditJournalEntries: vi.fn(async () => ({ entries: [], ...page })),
+      listRatedUsage: vi.fn(async () => ({ ratedUsage: [], ...page })),
+      listRatedUsageSourceAllocations: vi.fn(async () => ({ allocations: [], ...page })),
+    };
+    const runtime = vi.fn(async () => ({ rpc, context: {}, headers: new Headers() }));
+    const reader = createAdminCreditReader(runtime as never);
+    const reads = [
+      reader.getSiteCreditSummary("site-one"),
+      reader.listCreditAccounts({ siteId: "site-one" }),
+      reader.getCreditAccount("site-one", "account-one"),
+      reader.listCreditGrants({ siteId: "site-one" }),
+      reader.listCreditHolds({ siteId: "site-one" }),
+      reader.listCreditHoldAllocations({ siteId: "site-one", trace: { kind: "hold", ref: "hold-one" } }),
+      reader.listCreditJournalTransactions({ siteId: "site-one" }),
+      reader.listCreditJournalEntries({ siteId: "site-one", journalTransactionRef: "journal-one" }),
+      reader.listRatedUsage({ siteId: "site-one" }),
+      reader.listRatedUsageSourceAllocations({ siteId: "site-one", trace: { kind: "settlement", ref: "settle-one" } }),
+    ];
+    await Promise.allSettled(reads);
+    expect(runtime.mock.calls).toEqual([
+      ["site-one", "creditSummary"],
+      ["site-one", "creditAccounts"],
+      ["site-one", "creditAccountDetail"],
+      ["site-one", "creditGrants"],
+      ["site-one", "creditHolds"],
+      ["site-one", "creditHoldAllocations"],
+      ["site-one", "creditJournalTransactions"],
+      ["site-one", "creditJournalEntries"],
+      ["site-one", "creditRatedUsage"],
+      ["site-one", "creditRatedUsageSourceAllocations"],
+    ]);
   });
 
   it("sends a complete source identity and preserves pagination observation facts", async () => {
