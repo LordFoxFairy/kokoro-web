@@ -1,14 +1,3 @@
-import { redirect } from "next/navigation";
-import { signIn } from "@/auth";
-
-async function login(formData: FormData): Promise<void> {
-  "use server";
-  // redirect:false 抑制 next-auth 默认中转页（v5 server-action 流不认 pages.verifyRequest），
-  // 发信后手动跳品牌化确认页；redirectTo 仍决定点链接后的落点。
-  await signIn("nodemailer", { email: String(formData.get("email")), redirect: false, redirectTo: "/" });
-  redirect("/auth/verify");
-}
-
 export default function LoginPage(): React.ReactElement {
   return (
     <div className="grid min-h-screen lg:grid-cols-[1.1fr_1fr]">
@@ -56,25 +45,18 @@ export default function LoginPage(): React.ReactElement {
           </div>
 
           <h2 className="text-2xl font-semibold text-foreground">运营登录</h2>
-          <p className="mt-2 text-sm text-muted-foreground">输入运营邮箱，我们发送一次性登录链接。</p>
+          <p className="mt-2 text-sm text-muted-foreground">通过组织身份提供方完成安全登录。</p>
 
-          <form action={login} className="mt-7 space-y-3">
-            <input
-              name="email"
-              type="email"
-              required
-              placeholder="you@kokoro.local"
-              className="h-11 w-full rounded-lg border border-input bg-card px-3.5 text-sm text-foreground shadow-sm transition focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-            />
+          <form action="/api/control/auth/login" method="get" className="mt-7 space-y-3">
             <button
               type="submit"
               className="h-11 w-full rounded-lg bg-primary text-sm font-medium text-primary-foreground shadow-sm transition hover:opacity-90"
             >
-              发送登录链接
+              使用组织账号登录
             </button>
           </form>
 
-          <p className="mt-8 text-xs text-muted-foreground/60">仅限已授权运营账号 · 链接短时有效</p>
+          <p className="mt-8 text-xs text-muted-foreground/60">仅限已授权运营账号 · 会话短时有效 · 全程审计</p>
         </div>
       </div>
     </div>

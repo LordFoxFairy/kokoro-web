@@ -112,6 +112,8 @@ export const zh = {
   "nav.users": "用户",
   "nav.teams": "团队",
   "nav.credit": "积分",
+  "nav.offers": "套餐与商品",
+  "nav.codeBatches": "卡密批次",
   "nav.sites": "站点",
   "nav.models": "模型",
   "nav.hub": "能力枢纽",

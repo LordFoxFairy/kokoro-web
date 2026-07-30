@@ -134,6 +134,8 @@ export const en: Partial<Record<MessageKey, string>> = {
   "nav.users": "Users",
   "nav.teams": "Teams",
   "nav.credit": "Credits",
+  "nav.offers": "Offers",
+  "nav.codeBatches": "Code batches",
   "nav.sites": "Sites",
   "nav.models": "Models",
   "nav.hub": "Capability Hub",

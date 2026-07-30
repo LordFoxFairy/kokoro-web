@@ -1,201 +1,74 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { dirname, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
-import { create } from "@bufbuild/protobuf";
-import { timestampFromDate } from "@bufbuild/protobuf/wkt";
 
-import { AdminAuthService } from "./contracts/kokoro/platform/admin/v1/admin_auth_pb";
-import {
-  ADMIN_AUTH_COMMAND_DIGEST_ALGORITHM,
-  consumeVerificationTokenEffectDigest,
-  createVerificationTokenEffectDigest,
-  recordAuthEventEffectDigest,
-} from "./contracts/admin-auth-effect-digest";
-import { CommandDigestAlgorithm } from "./contracts/kokoro/common/v1/receipt_pb";
-import {
-  AuthEventKind,
-  ConsumeVerificationTokenEffectSchema,
-  CreateVerificationTokenEffectSchema,
-  RecordAuthEventEffectSchema,
-} from "./contracts/kokoro/platform/admin/v1/admin_auth_pb";
+import { AdminIdentityService } from "./admin-identity/kokoro/platform/identity/v1/admin_identity_pb";
+import { AdminQueryService } from "./admin-query-v2/kokoro/platform/admin/v2/admin_query_pb";
+import { AdminCommerceService } from "./admin-commerce/kokoro/platform/commerce/v1/admin_commerce_pb";
 
-const libRoot = dirname(fileURLToPath(import.meta.url));
-const appRoot = resolve(libRoot, "../..");
+const generatedRoot = dirname(fileURLToPath(import.meta.url));
+const appRoot = resolve(generatedRoot, "../..");
 
-function sourceFilesUnder(directory: string): string[] {
+function files(directory: string): string[] {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
     if ([".next", "node_modules"].includes(entry.name)) return [];
     const path = resolve(directory, entry.name);
-    if (entry.isDirectory()) return sourceFilesUnder(path);
-    return /\.(?:ts|tsx)$/.test(entry.name) && !entry.name.endsWith(".test.ts") ? [path] : [];
+    return entry.isDirectory() ? files(path) : /\.(?:ts|tsx)$/u.test(entry.name) && !entry.name.endsWith(".test.ts") ? [path] : [];
   });
 }
 
 function runtimeImports(path: string): string[] {
   const source = ts.createSourceFile(path, readFileSync(path, "utf8"), ts.ScriptTarget.Latest, true);
-  const imports: string[] = [];
-
-  for (const statement of source.statements) {
-    if (ts.isImportDeclaration(statement) && ts.isStringLiteral(statement.moduleSpecifier)) {
-      const clause = statement.importClause;
-      const hasRuntimeBinding =
-        clause === undefined ||
-        (!clause.isTypeOnly &&
-          (clause.name !== undefined ||
-            clause.namedBindings === undefined ||
-            ts.isNamespaceImport(clause.namedBindings) ||
-            clause.namedBindings.elements.some((element) => !element.isTypeOnly)));
-      if (hasRuntimeBinding) imports.push(statement.moduleSpecifier.text);
-    }
-    if (
-      ts.isExportDeclaration(statement) &&
-      !statement.isTypeOnly &&
-      statement.moduleSpecifier !== undefined &&
-      ts.isStringLiteral(statement.moduleSpecifier)
-    ) {
-      imports.push(statement.moduleSpecifier.text);
-    }
-  }
-
-  function visit(node: ts.Node): void {
-    if (
-      ts.isCallExpression(node) &&
-      node.arguments.length === 1 &&
-      ts.isStringLiteral(node.arguments[0]) &&
-      (node.expression.kind === ts.SyntaxKind.ImportKeyword ||
-        (ts.isIdentifier(node.expression) && node.expression.text === "require"))
-    ) {
-      imports.push(node.arguments[0].text);
-    }
-    ts.forEachChild(node, visit);
-  }
-  ts.forEachChild(source, visit);
-
-  return imports;
+  return source.statements.flatMap((statement) => ts.isImportDeclaration(statement) &&
+    ts.isStringLiteral(statement.moduleSpecifier) && statement.importClause?.isTypeOnly !== true
+    ? [statement.moduleSpecifier.text] : []);
 }
 
-function resolveLocalImport(importer: string, specifier: string): string | null {
-  if (!specifier.startsWith("@/") && !specifier.startsWith("./") && !specifier.startsWith("../")) return null;
-  let base = specifier.startsWith("@/")
-    ? resolve(appRoot, specifier.slice(2))
-    : resolve(dirname(importer), specifier);
+const sources = files(appRoot); const sourceSet = new Set(sources);
+function resolveImport(importer: string, specifier: string): string | null {
+  if (!specifier.startsWith("@/") && !specifier.startsWith(".")) return null;
+  let base = specifier.startsWith("@/") ? resolve(appRoot, specifier.slice(2)) : resolve(dirname(importer), specifier);
   if (base.endsWith(".js")) base = base.slice(0, -3);
-  const candidates = [base, `${base}.ts`, `${base}.tsx`, resolve(base, "index.ts"), resolve(base, "index.tsx")];
-  return candidates.find((candidate) => sourceFileSet.has(candidate)) ?? null;
+  return [base, `${base}.ts`, `${base}.tsx`].find((candidate) => sourceSet.has(candidate)) ?? null;
 }
 
-const sourceFiles = sourceFilesUnder(appRoot);
-const sourceFileSet = new Set(sourceFiles);
-
-function clientReachableFiles(): Set<string> {
-  const roots = sourceFiles.filter((path) => {
-    const source = ts.createSourceFile(path, readFileSync(path, "utf8"), ts.ScriptTarget.Latest, true);
-    const first = source.statements[0];
-    return (
-      first !== undefined &&
-      ts.isExpressionStatement(first) &&
-      ts.isStringLiteral(first.expression) &&
-      first.expression.text === "use client"
-    );
+describe("typed Admin control-plane mirrors", () => {
+  it("exposes the complete Identity, Query and Commerce RPC surfaces", () => {
+    expect(Object.keys(AdminIdentityService.method)).toEqual(["beginOperatorLogin", "exchangeOidcSession",
+      "getOperatorSessionDelivery", "beginStepUp", "completeStepUp", "signOut"]);
+    expect(Object.keys(AdminQueryService.method)).toContain("getCurrentOperator");
+    expect(Object.keys(AdminQueryService.method)).toContain("listPendingApprovals");
+    expect(Object.keys(AdminCommerceService.method)).toEqual(["publishOffer", "listOffers", "getOffer",
+      "publishRedemptionProgram", "listRedemptionPrograms", "getRedemptionProgram", "issueCodeBatch",
+      "listCodeBatches", "getCodeBatch", "approveCodeBatch", "activateCodeBatch", "abandonCodeBatch",
+      "suspendCodeBatch", "revokeCodeBatch"]);
   });
-  const reachable = new Set(roots);
-  const pending = [...roots];
 
-  while (pending.length > 0) {
-    const importer = pending.pop()!;
-    for (const specifier of runtimeImports(importer)) {
-      const imported = resolveLocalImport(importer, specifier);
-      if (imported !== null && !reachable.has(imported)) {
-        reachable.add(imported);
-        pending.push(imported);
+  it("uses only the server-only HTTP/2 mTLS client boundary", () => {
+    const transport = readFileSync(resolve(appRoot, "lib/control-plane/transport.ts"), "utf8");
+    const client = readFileSync(resolve(appRoot, "lib/control-plane/client.ts"), "utf8");
+    expect(transport).toContain('import "server-only"');
+    expect(transport).toContain('httpVersion: "2"');
+    expect(transport).toContain("rejectUnauthorized: true");
+    expect(client).toContain("AdminCommerceService");
+    expect(client).not.toContain("/api/action");
+    expect(`${transport}\n${client}`).not.toContain("KOKORO_ADMIN_PROXY_SECRET");
+  });
+
+  it("keeps generated descriptors and credentials out of client component bundles", () => {
+    const roots = sources.filter((path) => readFileSync(path, "utf8").startsWith('"use client"'));
+    const reached = new Set(roots); const pending = [...roots];
+    while (pending.length > 0) {
+      const importer = pending.pop()!;
+      for (const specifier of runtimeImports(importer)) {
+        const imported = resolveImport(importer, specifier);
+        if (imported && !reached.has(imported)) { reached.add(imported); pending.push(imported); }
       }
     }
-  }
-
-  return reachable;
-}
-
-describe("generated Admin Auth contract mirror", () => {
-  it("exports the six generated service methods", () => {
-    expect(Object.keys(AdminAuthService.method)).toEqual([
-      "getOperatorByEmail",
-      "getOperator",
-      "createVerificationToken",
-      "consumeVerificationToken",
-      "recordAuthEvent",
-      "getCommandReceipt",
-    ]);
-  });
-
-  it("is consumed by the server auth client without a second transport schema", () => {
-    const source = readFileSync(resolve(libRoot, "../auth/client.ts"), "utf8");
-    expect(source).toContain("AdminAuthService");
-    expect(source).toContain("@connectrpc/connect-node");
-    expect(source).toContain('import "server-only"');
-    expect(source).not.toContain('from "zod"');
-    expect(source).not.toContain("/internal/admin-auth/v1");
-    expect(source).not.toContain("x-kokoro-contract-version");
-  });
-
-  it("keeps generated descriptors and the Node transport out of client component bundles", () => {
-    const generatedRoot = resolve(appRoot, "lib/generated/contracts");
-    const authClient = resolve(appRoot, "lib/auth/client.ts");
-    const leaked = [...clientReachableFiles()]
-      .filter((path) => path === authClient || path.startsWith(`${generatedRoot}${sep}`))
-      .map((path) => relative(appRoot, path))
-      .sort();
-
+    const leaked = [...reached].filter((path) => path.includes(`${sep}lib${sep}generated${sep}`) ||
+      path.includes(`${sep}lib${sep}control-plane${sep}`)).map((path) => relative(appRoot, path));
     expect(leaked).toEqual([]);
-  });
-
-  it("owns one domain-separated canonical protobuf digest algorithm", () => {
-    const expires = timestampFromDate(new Date("2030-01-02T03:04:05.000Z"));
-    const createEffect = create(CreateVerificationTokenEffectSchema, {
-      identifier: " Admin@Example.Test ",
-      token: "same-token",
-      expires,
-    });
-    const normalizedCreateEffect = create(CreateVerificationTokenEffectSchema, {
-      identifier: "admin@example.test",
-      token: "same-token",
-      expires,
-    });
-    const consumeEffect = create(ConsumeVerificationTokenEffectSchema, {
-      identifier: "admin@example.test",
-      token: "same-token",
-    });
-
-    expect(ADMIN_AUTH_COMMAND_DIGEST_ALGORITHM).toBe(CommandDigestAlgorithm.SHA256_PROTOBUF_V1);
-    expect(createVerificationTokenEffectDigest(createEffect)).toBe(
-      createVerificationTokenEffectDigest(normalizedCreateEffect),
-    );
-    expect(createVerificationTokenEffectDigest(createEffect)).toMatch(/^[0-9a-f]{64}$/);
-    expect(createVerificationTokenEffectDigest(createEffect)).not.toBe(
-      consumeVerificationTokenEffectDigest(consumeEffect),
-    );
-    expect(createVerificationTokenEffectDigest(createEffect)).not.toBe(
-      createVerificationTokenEffectDigest(
-        create(CreateVerificationTokenEffectSchema, {
-          identifier: "admin@example.test",
-          token: "changed-token",
-          expires,
-        }),
-      ),
-    );
-  });
-
-  it("canonicalizes an absent and empty auth-event reason identically", () => {
-    const base = {
-      email: "ADMIN@example.test",
-      event: AuthEventKind.SIGN_IN,
-      occurredAt: timestampFromDate(new Date("2030-01-02T03:04:05.000Z")),
-    };
-
-    expect(recordAuthEventEffectDigest(create(RecordAuthEventEffectSchema, base))).toBe(
-      recordAuthEventEffectDigest(create(RecordAuthEventEffectSchema, { ...base, reason: "" })),
-    );
   });
 });

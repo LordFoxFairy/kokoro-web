@@ -1,39 +1,22 @@
 # Kokoro Admin Web
 
-Next.js BFF and Ant Design Pro operations console for Kokoro Platform.
+Next.js BFF and Ant Design Pro operations console for one configured Kokoro Site.
 
-## Runtime
+## Runtime boundary
 
-- Next.js App Router renders the console and owns Auth.js magic-link login.
-- `/api/auth/*` is handled by Auth.js.
-- Transparent `/api/*` requests use enumerated same-origin rewrites to `kokoro-platform-admin`; manifests, module OpenAPI, billing overview, user360, generic resources, and generic actions use local Route Handlers so acquisition and module-allowlist policy is enforced before gateway egress.
-- Middleware first removes every browser-supplied `x-kokoro-*` header, then injects the Auth.js email and required server-only `x-kokoro-proxy-secret`; missing identity/secret fails closed. Local handlers revalidate that secret before egress. platform-admin remains the authority for RBAC, tenant scope, approval, and audit.
-- Auth.js resolves operators, verification tokens, and auth events through the generated server-only `AdminAuthService` Connect client. This app has no Platform database credential or Prisma client.
+- Operator login is Platform-owned OIDC through typed `AdminIdentityService`; magic-link and email authority are not supported.
+- The BFF calls the dedicated Platform Admin listener over HTTP/2 mTLS. Browsers call only same-origin typed `/api/control/*` routes.
+- Platform session deliveries are fixed-profile signed-then-encrypted JOSE envelopes. The BFF verifies both layers, exact headers, issuer, audience, workload axes, transaction digest, epochs and attestation before creating its short-lived encrypted HttpOnly session.
+- The deployment-fixed `KOKORO_ADMIN_SITE_ID` is injected server-side. Browser `siteId` claims cannot steer Commerce queries or commands.
+- Card codes exist only in the first `IssueCodeBatch` response and transient component state. They are never cached, logged, placed in Web Storage or recoverably persisted by Web.
 
-## Environment
-
-Copy `.env.example` to `.env.local` and fill real values.
-
-Important local defaults:
-
-- `AUTH_URL` must match the browser host used for login, for example `http://localhost:3000`.
-- `KOKORO_GATEWAY_URL` points to platform-admin, usually `http://127.0.0.1:4290`.
-- `KOKORO_ADMIN_PROXY_SECRET` must match one value in platform-admin `KOKORO_ADMIN_PROXY_SECRETS`.
-- SMTP may be omitted in development; magic links print to the server console.
-
-## Commands
+Copy `.env.example` to the deployment secret configuration. TLS keys and delivery key rings are loaded lazily from bounded private files; no secret is a build argument.
 
 ```bash
-pnpm --filter @kokoro/admin-web dev
 pnpm --filter @kokoro/admin-web test
 pnpm --filter @kokoro/admin-web lint
 pnpm --filter @kokoro/admin-web typecheck
 pnpm --filter @kokoro/admin-web build
-pnpm --filter @kokoro/admin-web compat:admin-auth # Root live-compatibility harness only
 ```
 
-## Data Boundary
-
-This package owns no Platform data or migrations. Platform Admin owns operator lookup, one-time verification-token lifecycle, command receipts, and auth-event persistence. Generated protobuf descriptors are checked in under `lib/generated/contracts`; application code must not import contract source or sibling repositories.
-
-The local acquisition boundary deeply allowlists manifest, credit-overview, and user360 response fields, normalizes non-2xx envelopes, and caps action requests at 16 MiB and gateway JSON responses at 8 MiB using both `Content-Length` preflight and streaming hard limits. Module OpenAPI uses its own fixed non-payment allowlist, 2 MiB streaming cap and 5 second deadline; the BFF authenticates the operator boundary while Platform enforces `docs.read`.
+This package owns no Platform database, business transaction, operator authority, offer, redemption program, code inventory or receipt data.

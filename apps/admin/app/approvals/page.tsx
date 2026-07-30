@@ -1,140 +1,29 @@
 "use client";
 
-// manifest 外专属页：审批工作流（网关本地 /api/approvals 状态机 + 复核动作），非模块 manifest 资源。
-import { useRef, useState } from "react";
 import { App, Tag } from "antd";
-import {
-  PageContainer,
-  ProTable,
-  ModalForm,
-  ProFormTextArea,
-  type ActionType,
-  type ProColumns,
-} from "@ant-design/pro-components";
+import { PageContainer, ProTable, type ProColumns } from "@ant-design/pro-components";
 import { z } from "zod";
-import { apiGet, apiPost } from "@/lib/api";
+import { apiGet } from "@/lib/api";
+import { useAdmin } from "@/components/shell/app-shell";
 
-const approvalSchema = z
-  .object({
-    id: z.string(),
-    status: z.string(),
-    moduleId: z.string(),
-    actionId: z.string(),
-    siteId: z.string().nullable().optional(),
-    reason: z.string().nullable().optional(),
-    requestedByEmail: z.string().nullable().optional(),
-  })
-  .passthrough();
-const approvalsSchema = z.array(approvalSchema);
-type Approval = z.infer<typeof approvalSchema>;
-
-const STATUS_COLOR: Record<string, string> = {
-  pending: "gold",
-  approved: "green",
-  executed: "green",
-  rejected: "default",
-  failed: "red",
-};
+const approval = z.object({ approvalRef: z.string(), operation: z.string(), makerRef: z.string(),
+  targetSiteRef: z.string().nullable(), environment: z.string(), region: z.string(), operatorReason: z.string(),
+  admittedAt: z.string(), expiresAt: z.string() });
+type Approval = z.infer<typeof approval>;
+const response = z.object({ items: z.array(approval), nextPageToken: z.string().nullable() });
 
 export default function ApprovalsPage(): React.ReactElement {
-  const { message } = App.useApp();
-  const actionRef = useRef<ActionType>(undefined);
-  const [rejectId, setRejectId] = useState<string | null>(null);
-
-  async function approve(id: string) {
-    try {
-      await apiPost(`/api/approvals/${id}/approve`, {}, z.unknown());
-      message.success("已批准 · 已执行");
-      actionRef.current?.reload();
-    } catch (e) {
-      message.error(e instanceof Error ? e.message : "批准失败");
-    }
-  }
-
+  const { message } = App.useApp(); const { siteId } = useAdmin();
   const columns: ProColumns<Approval>[] = [
-    {
-      title: "动作",
-      render: (_, r) => (
-        <span style={{ fontFamily: "var(--font-mono)" }}>
-          {r.moduleId}/{r.actionId}
-        </span>
-      ),
-    },
-    { title: "站点", dataIndex: "siteId", render: (_, r) => r.siteId ?? "—" },
-    { title: "申请人", dataIndex: "requestedByEmail", render: (_, r) => r.requestedByEmail ?? "—" },
-    { title: "理由", dataIndex: "reason", ellipsis: true, render: (_, r) => r.reason ?? "—" },
-    {
-      title: "状态",
-      dataIndex: "status",
-      width: 110,
-      render: (_, r) => <Tag color={STATUS_COLOR[r.status] ?? "default"}>{r.status}</Tag>,
-    },
-    {
-      title: "操作",
-      valueType: "option",
-      width: 160,
-      render: (_, r) =>
-        r.status === "pending"
-          ? [
-              <a key="approve" onClick={() => approve(r.id)}>
-                批准
-              </a>,
-              <a key="reject" style={{ color: "#c2410c" }} onClick={() => setRejectId(r.id)}>
-                拒绝
-              </a>,
-            ]
-          : [<span key="none" style={{ color: "rgba(0,0,0,0.35)" }}>—</span>],
-    },
+    { title: "操作", dataIndex: "operation", render: (_, row) => <Tag color="gold">{row.operation}</Tag> },
+    { title: "站点", dataIndex: "targetSiteRef", render: (_, row) => row.targetSiteRef ?? "全局" },
+    { title: "申请人", dataIndex: "makerRef", copyable: true },
+    { title: "理由", dataIndex: "operatorReason", ellipsis: true },
+    { title: "申请时间", dataIndex: "admittedAt", valueType: "dateTime", width: 180 },
+    { title: "到期", dataIndex: "expiresAt", valueType: "dateTime", width: 180 },
   ];
-
-  return (
-    <PageContainer header={{ title: "审批" }} content="maker-checker 审批队列；危险/大额动作在此二次确认。">
-      <ProTable<Approval>
-        actionRef={actionRef}
-        rowKey="id"
-        columns={columns}
-        search={false}
-        options={{ reload: true, density: true, setting: true }}
-        pagination={{ pageSize: 20 }}
-        headerTitle="待审批与历史"
-        request={async () => {
-          try {
-            const rows = await apiGet("/api/approvals", approvalsSchema);
-            return { data: rows, success: true, total: rows.length };
-          } catch (e) {
-            message.error(e instanceof Error ? e.message : "加载失败");
-            return { data: [], success: false, total: 0 };
-          }
-        }}
-      />
-
-      <ModalForm
-        open={rejectId !== null}
-        title="拒绝审批"
-        width={420}
-        onOpenChange={(o) => !o && setRejectId(null)}
-        modalProps={{ destroyOnHidden: true, okText: "确认拒绝", cancelText: "取消", okButtonProps: { danger: true } }}
-        onFinish={async (values) => {
-          if (!rejectId) return false;
-          try {
-            await apiPost(`/api/approvals/${rejectId}/reject`, { note: String(values.note ?? "") }, z.unknown());
-            message.success("已拒绝");
-            setRejectId(null);
-            actionRef.current?.reload();
-            return true;
-          } catch (e) {
-            message.error(e instanceof Error ? e.message : "拒绝失败");
-            return false;
-          }
-        }}
-      >
-        <ProFormTextArea
-          name="note"
-          label="拒绝理由"
-          rules={[{ required: true, message: "请填写拒绝理由" }]}
-          fieldProps={{ rows: 3 }}
-        />
-      </ModalForm>
-    </PageContainer>
-  );
+  return <PageContainer header={{ title: "待审批" }} content="只展示当前权限范围内仍有效的 maker-checker 请求。具体批准在对应资源页完成。">
+    <ProTable<Approval> rowKey="approvalRef" columns={columns} search={false} pagination={false}
+      params={{ siteId }} options={{ reload: true, density: true }} request={async () => { try { const query = siteId ? `?siteId=${encodeURIComponent(siteId)}` : ""; const result = await apiGet(`/api/control/approvals${query}`, response); return { data: result.items, success: true, total: result.items.length }; } catch (error) { message.error(error instanceof Error ? error.message : "加载失败"); return { data: [], success: false, total: 0 }; } }} />
+  </PageContainer>;
 }

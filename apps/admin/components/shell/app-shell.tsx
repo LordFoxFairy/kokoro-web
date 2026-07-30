@@ -3,7 +3,6 @@
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { signOut } from "next-auth/react";
 import { App, ConfigProvider, Dropdown, Select } from "antd";
 import zhCN from "antd/locale/zh_CN";
 import { ProLayout } from "@ant-design/pro-components";
@@ -19,17 +18,17 @@ import {
   TeamOutlined,
   UserOutlined,
   WalletOutlined,
+  ShoppingOutlined,
+  KeyOutlined,
 } from "@ant-design/icons";
 import { apiGet } from "@/lib/api";
 import {
-  manifestsSchema,
-  meSchema,
   permits,
-  sitesSchema,
   type Me,
   type ModuleManifest,
   type Site,
 } from "@/lib/schemas";
+import { z } from "zod";
 import { antdTheme, proLayoutToken } from "@/lib/theme";
 import { LocaleProvider, useLocale, useT } from "@/lib/i18n/context";
 import type { MessageKey } from "@/lib/i18n/messages";
@@ -68,6 +67,8 @@ const NAV: { groupKey: MessageKey | null; items: NavItem[] }[] = [
       { labelKey: "nav.users", href: "/users", icon: <UserOutlined />, perm: null },
       { labelKey: "nav.teams", href: "/teams", icon: <TeamOutlined />, perm: null },
       { labelKey: "nav.credit", href: "/credit", icon: <WalletOutlined />, perm: "credit.account.read" },
+      { labelKey: "nav.offers", href: "/offers", icon: <ShoppingOutlined />, perm: "commerce.offer.read" },
+      { labelKey: "nav.codeBatches", href: "/code-batches", icon: <KeyOutlined />, perm: "commerce.code-batch.read" },
       { labelKey: "nav.sites", href: "/sites", icon: <GlobalOutlined />, perm: "site.read" },
       { labelKey: "nav.models", href: "/models", icon: <ApiOutlined />, perm: "model.read" },
       { labelKey: "nav.hub", href: "/hub", icon: <AppstoreOutlined />, perm: "hub.skill.read" },
@@ -96,21 +97,22 @@ function AppShellInner({ children }: { children: React.ReactNode }): React.React
   const [me, setMe] = useState<Me | null>(null);
   const [sites, setSites] = useState<Site[]>([]);
   const [siteId, setSiteId] = useState("");
-  const [manifests, setManifests] = useState<ModuleManifest[]>([]);
+  const [manifests] = useState<ModuleManifest[]>([]);
   const pathname = usePathname();
 
   const reloadSites = useCallback(() => {
-    apiGet("/api/sites", sitesSchema)
+    apiGet("/api/control/operator", currentOperatorSchema)
       .then((loaded) => {
-        setSites(loaded);
-        setSiteId((prev) => prev || loaded[0]?.id || "");
+        const scoped = loaded.effectiveSiteScopes.map((site) => ({ id: site.siteId, name: site.siteId, key: site.siteId }));
+        setMe({ email: loaded.operatorRef, roleKey: loaded.state, permissions: loaded.effectivePermissions,
+          scopeSites: scoped.map((site) => site.id) });
+        setSites(scoped);
+        setSiteId((prev) => prev || scoped[0]?.id || "");
       })
       .catch(() => {});
   }, []);
 
   useEffect(() => {
-    apiGet("/api/me", meSchema).then(setMe).catch(() => {});
-    apiGet("/api/manifests", manifestsSchema).then(setManifests).catch(() => {});
     reloadSites();
   }, [reloadSites]);
 
@@ -169,7 +171,8 @@ function AppShellInner({ children }: { children: React.ReactNode }): React.React
                         key: "logout",
                         icon: <LogoutOutlined />,
                         label: t("ui.logout"),
-                        onClick: () => signOut({ callbackUrl: "/login" }),
+                        onClick: () => fetch("/api/control/auth/logout", { method: "POST" })
+                          .then(() => { window.location.href = "/login"; }),
                       },
                     ],
                   }}
@@ -210,6 +213,11 @@ function AppShellInner({ children }: { children: React.ReactNode }): React.React
     </ConfigProvider>
   );
 }
+
+const currentOperatorSchema = z.object({
+  operatorRef: z.string(), state: z.string(), effectivePermissions: z.array(z.string()),
+  effectiveSiteScopes: z.array(z.object({ siteId: z.string() })),
+});
 
 export function AppShell({ children }: { children: React.ReactNode }): React.ReactElement {
   return (
