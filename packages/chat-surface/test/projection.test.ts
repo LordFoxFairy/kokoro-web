@@ -1,5 +1,5 @@
 import type { SessionEvent, SessionSnapshot } from "@kokoro/session-client/contracts"
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 
 import { createChatProjectionStore } from "../src/projection/store.js"
 import { createKokoroExternalStoreAdapter } from "../src/runtime/kokoro-external-store-adapter.js"
@@ -153,6 +153,112 @@ describe("Chat projection", () => {
     ])
   })
 
+  it("requests snapshot repair without applying a part version gap", () => {
+    const store = createChatProjectionStore()
+    store.dispatch({ type: "snapshot", snapshot: snapshot() })
+    store.dispatch({
+      type: "event",
+      event: event({
+        kind: "message.part.updated",
+        payload: {
+          part: {
+            part_id: "part-assistant-12345678",
+            message_id: "message-assistant-12345678",
+            ordinal: 0,
+            version: 3,
+            schema_version: 1,
+            lifecycle: "completed",
+            kind: "text",
+            payload: { spans: [{ text: "skipped version" }] },
+          },
+        },
+      }),
+    })
+
+    expect(store.getSnapshot().messages[1]?.parts[0]).toMatchObject({ text: "hi", version: 1 })
+    expect(store.getSnapshot().repair).toEqual({ required: true, reason: "part_version_gap" })
+  })
+
+  it("requests snapshot repair without applying part identity drift", () => {
+    const store = createChatProjectionStore()
+    store.dispatch({ type: "snapshot", snapshot: snapshot() })
+    store.dispatch({
+      type: "event",
+      event: event({
+        kind: "message.part.updated",
+        payload: {
+          part: {
+            part_id: "part-assistant-12345678",
+            message_id: "message-assistant-12345678",
+            ordinal: 1,
+            version: 2,
+            schema_version: 1,
+            lifecycle: "streaming",
+            kind: "reasoning",
+            payload: { safe_summary: "drifted identity" },
+          },
+        },
+      }),
+    })
+
+    expect(store.getSnapshot().messages[1]?.parts[0]).toMatchObject({ kind: "text", text: "hi", ordinal: 0, version: 1 })
+    expect(store.getSnapshot().repair).toEqual({ required: true, reason: "part_identity_conflict" })
+
+    const messageDriftStore = createChatProjectionStore()
+    messageDriftStore.dispatch({ type: "snapshot", snapshot: snapshot() })
+    messageDriftStore.dispatch({
+      type: "event",
+      event: event({
+        kind: "message.part.updated",
+        payload: {
+          part: {
+            part_id: "part-assistant-12345678",
+            message_id: "message-user-12345678",
+            ordinal: 0,
+            version: 2,
+            schema_version: 1,
+            lifecycle: "completed",
+            kind: "text",
+            payload: { spans: [{ text: "moved message" }] },
+          },
+        },
+      }),
+    })
+
+    expect(messageDriftStore.getSnapshot().messages[0]?.parts).toHaveLength(1)
+    expect(messageDriftStore.getSnapshot().messages[1]?.parts[0]).toMatchObject({ text: "hi", version: 1 })
+    expect(messageDriftStore.getSnapshot().repair).toEqual({ required: true, reason: "part_identity_conflict" })
+  })
+
+  it("treats an exact part replay as a no-op", () => {
+    const store = createChatProjectionStore()
+    store.dispatch({ type: "snapshot", snapshot: snapshot() })
+    const listener = vi.fn()
+    store.subscribe(listener)
+    const update = event({
+      kind: "message.part.updated",
+      payload: {
+        part: {
+          part_id: "part-assistant-12345678",
+          message_id: "message-assistant-12345678",
+          ordinal: 0,
+          version: 2,
+          schema_version: 1,
+          lifecycle: "completed",
+          kind: "text",
+          payload: { spans: [{ text: "hi there" }] },
+        },
+      },
+    })
+
+    store.dispatch({ type: "event", event: update })
+    const afterUpdate = store.getSnapshot()
+    store.dispatch({ type: "event", event: update })
+
+    expect(store.getSnapshot()).toBe(afterUpdate)
+    expect(listener).toHaveBeenCalledOnce()
+  })
+
   it("fails closed and requests a snapshot when the active branch changes", () => {
     const store = createChatProjectionStore()
     store.dispatch({ type: "snapshot", snapshot: snapshot() })
@@ -218,7 +324,7 @@ describe("Chat projection", () => {
     ]))
   })
 
-  it("rejects part version regression and keeps parts in stable ordinal order", () => {
+  it("rejects part version regression without mutating the current projection", () => {
     const store = createChatProjectionStore()
     store.dispatch({ type: "snapshot", snapshot: snapshot() })
     store.dispatch({
@@ -229,7 +335,7 @@ describe("Chat projection", () => {
           part: {
             part_id: "part-assistant-12345678",
             message_id: "message-assistant-12345678",
-            ordinal: 2,
+            ordinal: 0,
             version: 2,
             schema_version: 1,
             lifecycle: "streaming",
@@ -247,7 +353,7 @@ describe("Chat projection", () => {
           part: {
             part_id: "part-assistant-12345678",
             message_id: "message-assistant-12345678",
-            ordinal: 9,
+            ordinal: 0,
             version: 1,
             schema_version: 1,
             lifecycle: "completed",
@@ -258,7 +364,7 @@ describe("Chat projection", () => {
       }),
     })
 
-    expect(store.getSnapshot().messages[1]?.parts[0]).toMatchObject({ text: "fresh", version: 2, ordinal: 2 })
+    expect(store.getSnapshot().messages[1]?.parts[0]).toMatchObject({ text: "fresh", version: 2, ordinal: 0 })
     expect(store.getSnapshot().repair).toEqual({ required: true, reason: "part_version_regression" })
   })
 

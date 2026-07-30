@@ -292,16 +292,27 @@ function upsertMessage(
 function upsertPart(
   message: ChatProjectionMessage,
   part: ChatPart,
-): { readonly message: ChatProjectionMessage; readonly conflict?: "part_version_regression" | "part_version_conflict" } {
+): {
+  readonly message: ChatProjectionMessage
+  readonly conflict?:
+    | "part_identity_conflict"
+    | "part_version_regression"
+    | "part_version_conflict"
+    | "part_version_gap"
+} {
   const index = message.parts.findIndex((candidate) => candidate.id === part.id)
   if (index < 0) return { message: { ...message, parts: sortParts([...message.parts, part]) } }
   const current = message.parts[index] as ChatPart
+  if (part.ordinal !== current.ordinal || part.kind !== current.kind) {
+    return { message, conflict: "part_identity_conflict" }
+  }
   if (part.version < current.version) return { message, conflict: "part_version_regression" }
   if (part.version === current.version) {
     return JSON.stringify(part) === JSON.stringify(current)
       ? { message }
       : { message, conflict: "part_version_conflict" }
   }
+  if (part.version !== current.version + 1) return { message, conflict: "part_version_gap" }
   const next = [...message.parts]
   next[index] = part
   return { message: { ...message, parts: sortParts(next) } }
@@ -364,16 +375,24 @@ function reduceEvent(state: ChatProjection, event: SessionEvent): ChatProjection
       return message === null ? state : { ...state, messages: upsertMessage(state.messages, message) }
     }
     case "message.part.updated": {
-      const index = state.messages.findIndex((message) => message.id === event.payload.part.message_id)
+      const part = event.payload.part
+      const owner = state.messages.find((message) => message.parts.some((candidate) => candidate.id === part.part_id))
+      if (owner !== undefined && owner.id !== part.message_id) {
+        return { ...state, repair: { required: true, reason: "part_identity_conflict" } }
+      }
+      const index = state.messages.findIndex((message) => message.id === part.message_id)
       if (index < 0) {
         return { ...state, repair: { required: true, reason: "message_part_without_message" } }
       }
+      const currentMessage = state.messages[index] as ChatProjectionMessage
+      const result = upsertPart(currentMessage, projectPart(part))
+      if (result.conflict !== undefined) {
+        return { ...state, repair: { required: true, reason: result.conflict } }
+      }
+      if (result.message === currentMessage) return state
       const messages = [...state.messages]
-      const result = upsertPart(messages[index] as ChatProjectionMessage, projectPart(event.payload.part))
       messages[index] = result.message
-      return result.conflict === undefined
-        ? { ...state, messages }
-        : { ...state, messages, repair: { required: true, reason: result.conflict } }
+      return { ...state, messages }
     }
     case "run.launch.updated": {
       const launch = event.payload.launch
