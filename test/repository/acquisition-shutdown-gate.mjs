@@ -40,7 +40,11 @@ const ADMIN_FILTERED_ROUTES = new Map([
 const ADMIN_CONTROL_ROUTES = new Map([
   ["apps/admin/app/api/control/approvals/route.ts", {
     methods: ["GET"],
-    imports: ["@/lib/control-plane/client", "@/lib/control-plane/config", "@/lib/control-plane/http"],
+    imports: ["@/lib/control-plane/client", "@/lib/control-plane/http"],
+  }],
+  ["apps/admin/app/api/control/audit/route.ts", {
+    methods: ["GET"],
+    imports: ["@/lib/control-plane/client", "@/lib/control-plane/http", "@/lib/control-plane/strict-query"],
   }],
   ["apps/admin/app/api/control/auth/callback/route.ts", {
     methods: ["GET"],
@@ -64,15 +68,15 @@ const ADMIN_CONTROL_ROUTES = new Map([
   }],
   ["apps/admin/app/api/control/code-batches/[batchRef]/[action]/route.ts", {
     methods: ["POST"],
-    imports: ["@/lib/control-plane/client", "@/lib/control-plane/config", "@/lib/control-plane/http"],
+    imports: ["@/lib/control-plane/client", "@/lib/control-plane/http"],
   }],
   ["apps/admin/app/api/control/code-batches/route.ts", {
     methods: ["GET", "POST"],
-    imports: ["@/lib/control-plane/client", "@/lib/control-plane/config", "@/lib/control-plane/http"],
+    imports: ["@/lib/control-plane/client", "@/lib/control-plane/http"],
   }],
   ["apps/admin/app/api/control/offers/route.ts", {
     methods: ["GET", "POST"],
-    imports: ["@/lib/control-plane/client", "@/lib/control-plane/config", "@/lib/control-plane/http"],
+    imports: ["@/lib/control-plane/client", "@/lib/control-plane/http"],
   }],
   ["apps/admin/app/api/control/operator/route.ts", {
     methods: ["GET"],
@@ -84,7 +88,19 @@ const ADMIN_CONTROL_ROUTES = new Map([
   }],
   ["apps/admin/app/api/control/redemption-programs/route.ts", {
     methods: ["GET", "POST"],
-    imports: ["@/lib/control-plane/client", "@/lib/control-plane/config", "@/lib/control-plane/http"],
+    imports: ["@/lib/control-plane/client", "@/lib/control-plane/http"],
+  }],
+  ["apps/admin/app/api/control/sites/[siteId]/route.ts", {
+    methods: ["GET"],
+    imports: ["@/lib/control-plane/client", "@/lib/control-plane/http", "@/lib/control-plane/strict-query"],
+  }],
+  ["apps/admin/app/api/control/sites/releases/route.ts", {
+    methods: ["POST"],
+    imports: ["@/lib/control-plane/client", "@/lib/control-plane/http"],
+  }],
+  ["apps/admin/app/api/control/sites/route.ts", {
+    methods: ["GET", "POST"],
+    imports: ["@/lib/control-plane/client", "@/lib/control-plane/http", "@/lib/control-plane/strict-query"],
   }],
 ]);
 const ADMIN_API_ROUTES = new Set([

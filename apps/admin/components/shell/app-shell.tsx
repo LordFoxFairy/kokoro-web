@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { App, ConfigProvider, Dropdown, Select } from "antd";
@@ -23,6 +23,7 @@ import {
 } from "@ant-design/icons";
 import { apiGet } from "@/lib/api";
 import { collectCursorPages } from "@/lib/cursor-pagination";
+import { LatestRequest } from "@/lib/cursor-window";
 import {
   permits,
   type Me,
@@ -100,11 +101,14 @@ function AppShellInner({ children }: { children: React.ReactNode }): React.React
   const [siteId, setSiteId] = useState("");
   const [siteCatalogError, setSiteCatalogError] = useState<string | null>(null);
   const [manifests] = useState<ModuleManifest[]>([]);
+  const siteCatalogRequests = useRef(new LatestRequest());
   const pathname = usePathname();
 
   const reloadSites = useCallback(() => {
+    const generation = siteCatalogRequests.current.begin();
     apiGet("/api/control/operator", currentOperatorSchema)
       .then((loaded) => {
+        if (!siteCatalogRequests.current.isCurrent(generation)) return;
         setMe({ email: loaded.operatorRef, roleKey: loaded.state, permissions: loaded.effectivePermissions,
           scopeSites: loaded.effectiveSiteScopes.map((site) => site.siteId) });
       })
@@ -118,18 +122,22 @@ function AppShellInner({ children }: { children: React.ReactNode }): React.React
       { identity: (site) => site.siteRef, maxItems: 1000, maxPages: 20, timeoutMs: 5_000 },
     )
       .then((loaded) => {
+        if (!siteCatalogRequests.current.isCurrent(generation)) return;
         const available = loaded.map((site) => ({ id: site.siteRef, name: site.siteRef, key: site.siteRef }));
         setSiteCatalogError(null);
         setSites(available);
         setSiteId((previous) => available.some((site) => site.id === previous) ? previous : available[0]?.id ?? "");
       })
       .catch((error: unknown) => {
+        if (!siteCatalogRequests.current.isCurrent(generation)) return;
         setSiteCatalogError(error instanceof Error ? error.message : "admin_site_catalog_incomplete");
       });
   }, []);
 
   useEffect(() => {
+    const requestGate = siteCatalogRequests.current;
     reloadSites();
+    return () => { requestGate.invalidate(); };
   }, [reloadSites]);
 
   const can = (permission: string | null): boolean =>

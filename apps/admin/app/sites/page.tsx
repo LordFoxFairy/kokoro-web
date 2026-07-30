@@ -1,13 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { App, Button, Descriptions, Modal, Space, Tag } from "antd";
+import { Alert, App, Button, Descriptions, Modal, Space, Tag } from "antd";
 import { ModalForm, PageContainer, ProFormText, ProFormTextArea, ProTable,
   type ProColumns } from "@ant-design/pro-components";
 import { z } from "zod";
 
 import { useAdmin } from "@/components/shell/app-shell";
 import { apiGet, apiPost } from "@/lib/api";
+import { appendCursorPage, clearNextPageToken, CursorWindowError, LatestRequest, resetCursorWindow,
+  type CursorWindow } from "@/lib/cursor-window";
 
 const site = z.object({ siteRef: z.string(), status: z.string(), securityEpoch: z.string() });
 type Site = z.infer<typeof site>;
@@ -16,6 +18,7 @@ const receipt = z.object({ commandId: z.string(), state: z.string() });
 const registered = z.object({ siteId: z.string(), state: z.string(), replayed: z.boolean(), receipt });
 const published = z.object({ siteId: z.string(), releaseRef: z.string(), state: z.string(),
   replayed: z.boolean(), receipt });
+const loadMoreLimits = { identity: (item: Site) => item.siteRef, maxItems: 1000, maxPages: 20 } as const;
 
 const splitValues = (value: unknown): string[] => String(value ?? "").split(/[\n,]/u)
   .map((item) => item.trim()).filter(Boolean);
@@ -23,37 +26,51 @@ const splitValues = (value: unknown): string[] => String(value ?? "").split(/[\n
 export default function SitesPage(): React.ReactElement {
   const { message } = App.useApp();
   const { siteId, reloadSites } = useAdmin();
-  const [rows, setRows] = useState<Site[]>([]);
-  const [nextPageToken, setNextPageToken] = useState<string | null>(null);
+  const [window, setWindow] = useState<CursorWindow<Site>>(() => resetCursorWindow());
+  const [paginationError, setPaginationError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [detail, setDetail] = useState<Site | null>(null);
-  const requestGeneration = useRef(0);
+  const windowRef = useRef(window);
+  const requests = useRef(new LatestRequest());
+  const commitWindow = useCallback((next: CursorWindow<Site>) => {
+    windowRef.current = next;
+    setWindow(next);
+  }, []);
   const loadPage = useCallback((pageToken: string | null, replace: boolean) => {
-    const generation = ++requestGeneration.current;
+    const generation = requests.current.begin();
     const path = pageToken ? `/api/control/sites?pageToken=${encodeURIComponent(pageToken)}` : "/api/control/sites";
     return apiGet(path, siteList)
       .then((result) => {
-        if (generation !== requestGeneration.current) return;
-        setRows((previous) => replace ? result.items : [...previous, ...result.items]);
-        setNextPageToken(result.nextPageToken);
+        if (!requests.current.isCurrent(generation)) return;
+        const base = replace ? resetCursorWindow<Site>() : windowRef.current;
+        commitWindow(appendCursorPage(base, result, loadMoreLimits));
+        setPaginationError(null);
       })
       .catch((error: unknown) => {
-        if (generation === requestGeneration.current) {
-          message.error(error instanceof Error ? error.message : "加载失败");
+        if (!requests.current.isCurrent(generation)) return;
+        const errorMessage = error instanceof Error ? error.message : "加载失败";
+        if (error instanceof CursorWindowError) {
+          const base = replace ? resetCursorWindow<Site>() : windowRef.current;
+          commitWindow(clearNextPageToken(base));
         }
+        setPaginationError(errorMessage);
+        message.error(errorMessage);
       })
       .finally(() => {
-        if (generation === requestGeneration.current) setLoading(false);
+        if (requests.current.isCurrent(generation)) setLoading(false);
       });
-  }, [message]);
+  }, [commitWindow, message]);
   const startLoad = useCallback((pageToken: string | null, replace: boolean) => {
+    if (replace) commitWindow(resetCursorWindow());
+    setPaginationError(null);
     setLoading(true);
     void loadPage(pageToken, replace);
-  }, [loadPage]);
+  }, [commitWindow, loadPage]);
 
   useEffect(() => {
+    const requestGate = requests.current;
     void loadPage(null, true);
-    return () => { requestGeneration.current += 1; };
+    return () => { requestGate.invalidate(); };
   }, [loadPage]);
 
   const columns: ProColumns<Site>[] = [
@@ -77,10 +94,11 @@ export default function SitesPage(): React.ReactElement {
       </Button>
       <PublishRelease siteId={siteId} onPublished={() => { startLoad(null, true); }} />
     </Space>}>
+    {paginationError && <Alert type="error" showIcon message="站点列表未完整加载" description={paginationError} />}
     <ProTable<Site> rowKey="siteRef" columns={columns} search={false} pagination={false}
-      dataSource={rows} loading={loading} options={{ reload: () => { startLoad(null, true); }, density: true }}
-      toolBarRender={() => nextPageToken ? [<Button key="load-more" loading={loading}
-        onClick={() => { startLoad(nextPageToken, false); }}>加载更多</Button>] : []} />
+      dataSource={[...window.rows]} loading={loading} options={{ reload: () => { startLoad(null, true); }, density: true }}
+      toolBarRender={() => window.nextPageToken ? [<Button key="load-more" loading={loading}
+        onClick={() => { startLoad(window.nextPageToken, false); }}>加载更多</Button>] : []} />
     <Modal title="站点详情" open={detail !== null} footer={null} onCancel={() => setDetail(null)} destroyOnHidden>
       {detail && <Descriptions column={1} items={[
         { key: "site", label: "Site", children: detail.siteRef },

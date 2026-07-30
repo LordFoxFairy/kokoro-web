@@ -32,6 +32,15 @@ describe("collectCursorPages", () => {
       maxItems: 10, maxPages: 5, timeoutMs: 1_000 })).rejects.toThrow("admin_cursor_pagination_loop");
   });
 
+  it("fails loudly on a duplicate identity without returning a partial collection", async () => {
+    const pagination = await subject(); if (pagination === null) return;
+    const loader = async (cursor: string | undefined): Promise<Page> => cursor === undefined
+      ? { items: [{ id: "one" }], nextPageToken: "p2" }
+      : { items: [{ id: "one" }, { id: "two" }], nextPageToken: null };
+    await expect(pagination.collectCursorPages(loader, { identity: (item: { id: string }) => item.id,
+      maxItems: 10, maxPages: 5, timeoutMs: 1_000 })).rejects.toThrow("admin_cursor_pagination_duplicate_item");
+  });
+
   it("fails loudly instead of truncating item or page limits", async () => {
     const pagination = await subject(); if (pagination === null) return;
     await expect(pagination.collectCursorPages(async () => ({ items: [{ id: "one" }, { id: "two" }],
