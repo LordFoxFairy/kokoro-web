@@ -3,12 +3,11 @@ import { boundedJson, controlError, controlJson } from "@/lib/control-plane/http
 import { strictQuery } from "@/lib/control-plane/strict-query";
 import {
   activateModelInventory, changeModelSitePolicy, importModelInventory,
-  getModelCommandReceipt,
   getModelInventoryRevision,
   listModelInventoryBindings, listModelInventoryDefinitions, listModelInventoryProviders,
   listModelInventoryRevisions, listModelInventoryRoutes, listModelOptions,
   listModelSitePolicies, listModelSiteReleaseCatalogs, materializeModelOptions,
-  publishModelSiteReleaseCatalog,
+  publishModelSiteReleaseCatalog, reconcileModelCommandRecovery,
 } from "@/lib/control-plane/client";
 
 export const runtime = "nodejs";
@@ -79,25 +78,16 @@ export async function GET(request: Request) {
     const query = strictQuery(request, { view: z.enum(["inventories", "inventory", "providers", "definitions", "bindings",
       "routes", "options", "policies", "catalogs", "receipt"]), inventoryDigest: digest.optional(),
     surface: product.optional(), siteId: siteId.optional(), pageToken,
-    receiptRef: z.string().regex(/^[a-f0-9]{32}$/u).optional(),
-    requestDigest: digest.optional(),
-    operation: z.enum(["import_inventory", "activate_inventory", "change_site_policy",
-      "materialize_options", "publish_site_release_catalog"]).optional() });
+    recoveryRef: z.string().min(1).max(1024).regex(/^[A-Za-z0-9_-]+$/u).optional() });
     if (query.view === "receipt") {
-      if (query.inventoryDigest !== undefined || query.surface !== undefined || query.pageToken !== undefined) {
+      if (query.inventoryDigest !== undefined || query.surface !== undefined || query.siteId !== undefined ||
+          query.pageToken !== undefined) {
         z.never().parse(query);
       }
-      return controlJson(await getModelCommandReceipt({
-        commandId: z.string().regex(/^[a-f0-9]{32}$/u).parse(query.receiptRef),
-        requestDigest: digest.parse(query.requestDigest),
-        operation: z.enum(["import_inventory", "activate_inventory", "change_site_policy",
-          "materialize_options", "publish_site_release_catalog"]).parse(query.operation),
-        ...(query.siteId ? { siteId: query.siteId } : {}),
-      }));
+      return controlJson(await reconcileModelCommandRecovery(z.string().min(1).max(1024)
+        .regex(/^[A-Za-z0-9_-]+$/u).parse(query.recoveryRef)));
     }
-    if (query.receiptRef !== undefined || query.requestDigest !== undefined || query.operation !== undefined) {
-      z.never().parse(query);
-    }
+    if (query.recoveryRef !== undefined) z.never().parse(query);
     if (query.view === "inventories") return controlJson(await listModelInventoryRevisions(query.pageToken));
     if (query.view === "inventory") return controlJson(await getModelInventoryRevision(digest.parse(query.inventoryDigest)));
     if (["providers", "definitions", "bindings", "routes"].includes(query.view)) {

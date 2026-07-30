@@ -24,10 +24,12 @@ const roles = [{ value: "main", label: "主模型" }, { value: "generation", lab
 const adapterKinds = [{ value: "litellm", label: "LiteLLM" }, { value: "direct", label: "Direct" }];
 const lifecycle = [{ value: "active", label: "启用" }, { value: "disabled", label: "停用" }];
 
-export function ImportInventoryAction(props: Readonly<{ submit: Submit }>) {
+export function ImportInventoryAction(props: Readonly<{ submit: Submit; disabled?: boolean }>) {
   return <Space wrap>
-    <StepUp operation="model.inventory.import" resource="model-inventory" label="提升导入认证" />
-    <ModalForm title="导入不可变模型目录" width={1180} trigger={<Button type="primary">导入目录</Button>}
+    <StepUp operation="model.inventory.import" resource="model-inventory" label="提升导入认证"
+      disabled={props.disabled} />
+    <ModalForm title="导入不可变模型目录" width={1180}
+      trigger={<Button type="primary" disabled={props.disabled}>导入目录</Button>}
       modalProps={{ destroyOnHidden: true }} initialValues={{ productRoutes: [], providerAvailability: [] }}
       onFinish={(values) => props.submit({ action: "import_inventory", sourceReference: values.sourceReference,
         providers: records(values.providers), models: records(values.models), bindings: records(values.bindings),
@@ -84,11 +86,13 @@ export function ImportInventoryAction(props: Readonly<{ submit: Submit }>) {
 }
 
 export function ActivateInventoryAction(props: Readonly<{ submit: Submit; inventories: readonly InventoryChoice[];
-  selectedDigest: string }>) {
+  selectedDigest: string; disabled?: boolean }>) {
   const active = props.inventories.find((item) => item.active);
   return <Space wrap>
-    <StepUp operation="model.inventory.activate" resource={props.selectedDigest || "model-inventory"} label="提升激活认证" />
-    <ModalForm title="激活目录版本" width={560} trigger={<Button disabled={!props.selectedDigest}>激活所选版本</Button>}
+    <StepUp operation="model.inventory.activate" resource={props.selectedDigest || "model-inventory"}
+      label="提升激活认证" disabled={props.disabled} />
+    <ModalForm title="激活目录版本" width={560}
+      trigger={<Button disabled={props.disabled || !props.selectedDigest}>激活所选版本</Button>}
       onFinish={(values) => props.submit({ action: "activate_inventory", targetDigest: values.targetDigest,
         expectedPointerRevision: String(values.expectedPointerRevision) }, "目录已激活") }>
       <ProFormSelect name="targetDigest" label="目标版本" initialValue={props.selectedDigest || undefined}
@@ -102,13 +106,13 @@ export function ActivateInventoryAction(props: Readonly<{ submit: Submit; invent
 }
 
 export function MaterializeOptionsAction(props: Readonly<{ submit: Submit; inventories: readonly InventoryChoice[];
-  selectedDigest: string; models: readonly ModelChoice[] }>) {
+  selectedDigest: string; models: readonly ModelChoice[]; disabled?: boolean }>) {
   const modelOptions = choices(props.models, "modelKey", "displayName");
   return <Space wrap>
     <StepUp operation="model.option.materialize" resource={props.selectedDigest || "model-inventory"}
-      label="提升物化认证" />
+      label="提升物化认证" disabled={props.disabled} />
     <ModalForm title="物化产品模型选项" width={1080} trigger={<Button type="primary"
-      disabled={!props.selectedDigest}>物化选项</Button>} initialValues={{ options: [{ surface: "chat", lifecycle: "active",
+      disabled={props.disabled || !props.selectedDigest}>物化选项</Button>} initialValues={{ options: [{ surface: "chat", lifecycle: "active",
         orchestration: { fallbackModelKeys: [] }, generation: { fallbackModelKeys: [] } }] }}
       onFinish={(values) => props.submit({ action: "materialize_options", inventoryDigest: values.inventoryDigest,
         options: records(values.options) }, "产品选项已物化") }>
@@ -134,12 +138,14 @@ export function MaterializeOptionsAction(props: Readonly<{ submit: Submit; inven
 }
 
 export function ChangeSitePolicyAction(props: Readonly<{ submit: Submit; siteId: string;
-  inventories: readonly InventoryChoice[]; models: readonly ModelChoice[]; policies: readonly PolicyChoice[] }>) {
+  inventories: readonly InventoryChoice[]; models: readonly ModelChoice[]; policies: readonly PolicyChoice[];
+  disabled?: boolean }>) {
   const modelOptions = choices(props.models, "modelKey", "displayName");
   return <Space wrap>
-    <StepUp operation="model.site-policy.change" resource={props.siteId || "site-required"} label="提升策略认证" />
+    <StepUp operation="model.site-policy.change" resource={props.siteId || "site-required"} label="提升策略认证"
+      disabled={props.disabled} />
     <ModalForm title={`修订站点模型策略 · ${props.siteId}`} width={980}
-      trigger={<Button type="primary" disabled={!props.siteId}>修订站点策略</Button>}
+      trigger={<Button type="primary" disabled={props.disabled || !props.siteId}>修订站点策略</Button>}
       initialValues={{ enabled: true, catalogMode: "follow_active", assignmentMode: "inherit", assignments: [] }}
       onFinish={(values) => props.submit({ action: "change_site_policy", siteId: props.siteId,
         product: values.product, enabled: Boolean(values.enabled), catalogMode: values.catalogMode,
@@ -171,13 +177,14 @@ export function ChangeSitePolicyAction(props: Readonly<{ submit: Submit; siteId:
 }
 
 export function PublishSiteCatalogAction(props: Readonly<{ submit: Submit; siteId: string;
-  inventories: readonly InventoryChoice[]; selectedDigest: string; options: readonly OptionChoice[] }>) {
+  inventories: readonly InventoryChoice[]; selectedDigest: string; options: readonly OptionChoice[];
+  disabled?: boolean }>) {
   const optionChoices = choices(props.options, "revisionRef", "label");
   return <Space wrap>
     <StepUp operation="model.site-release-catalog.publish" resource={props.siteId || "site-required"}
-      label="提升发布认证" />
+      label="提升发布认证" disabled={props.disabled} />
     <ModalForm title={`发布站点模型目录 · ${props.siteId}`} width={980}
-      trigger={<Button disabled={!props.siteId || !props.selectedDigest}>发布模型目录</Button>}
+      trigger={<Button disabled={props.disabled || !props.siteId || !props.selectedDigest}>发布模型目录</Button>}
       initialValues={{ surfaces: [{ surface: "chat", allowedOptionRevisionRefs: [] }] }}
       onFinish={(values) => props.submit({ action: "publish_site_release_catalog", siteId: props.siteId,
         siteReleaseRef: values.siteReleaseRef, inventoryDigest: values.inventoryDigest,
@@ -218,8 +225,9 @@ function TagSelect(props: Readonly<{ name: string; label: string; required?: boo
     rules={props.required ? [{ required: true }] : undefined} />;
 }
 
-function StepUp(props: Readonly<{ operation: string; resource: string; label: string }>) {
-  return <Button href={`/api/control/auth/step-up?operation=${encodeURIComponent(props.operation)}`
+function StepUp(props: Readonly<{ operation: string; resource: string; label: string; disabled?: boolean }>) {
+  return <Button disabled={props.disabled} href={props.disabled ? undefined
+    : `/api/control/auth/step-up?operation=${encodeURIComponent(props.operation)}`
     + `&resource=${encodeURIComponent(props.resource)}&return=${encodeURIComponent("/models")}`}>{props.label}</Button>;
 }
 

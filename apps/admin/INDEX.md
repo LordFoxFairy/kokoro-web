@@ -26,7 +26,7 @@ The app owns only short-lived encrypted Web session state and UI caches. Platfor
 Workload credentials are lazy bounded private files, never browser/build-time data. The BFF uses HTTP/2 mTLS plus the opaque Platform session credential. Platform deliveries require exact RSA-OAEP-256/A256GCM and ES256 profiles, complete session epochs and signed scope-selection grants. The session retains bounded Site scopes and an independently granted global scope; every effect selects its required scope and Platform re-authorizes it. No deployment-fixed Site is trusted.
 
 ## Idempotency, failure, and recovery
-Admin effects use stable command IDs and generated canonical protobuf digests. Model mutations propagate one 32-hex command ID as the transport request ID and reconcile an ambiguous outcome through the typed receipt query instead of issuing a new command. Card issuance never auto-replays an unknown delivery outcome.
+Admin effects use stable command IDs and generated canonical protobuf digests. Model mutations propagate one lowercase UUIDv4 command ID as the transport request ID. An ambiguous outcome returns one bounded opaque recovery reference; the browser persists at most one pending reference, blocks new Model writes, and sends only that reference to the BFF for a later authoritative receipt query. The BFF reconstructs and reauthorizes the original operation/scope instead of issuing a new command. Card issuance never auto-replays an unknown delivery outcome.
 
 ## Extension rules and forbidden dependencies
 Add control-plane UI here and Platform behavior behind generated service methods. Never restore Prisma or `DATABASE_URL_ADMIN`.

@@ -7,7 +7,7 @@ import { Alert, App, Button, Card, Col, Descriptions, Empty, Row, Select, Space,
   Typography } from "antd";
 import { PageContainer, ProTable, type ProColumns } from "@ant-design/pro-components";
 import { z } from "zod";
-import { apiGet, apiPost } from "@/lib/api";
+import { ApiError, apiGet, apiPost } from "@/lib/api";
 import { collectCursorPages } from "@/lib/cursor-pagination";
 import { useAdmin } from "@/components/shell/app-shell";
 import { ActivateInventoryAction, ChangeSitePolicyAction, ImportInventoryAction, MaterializeOptionsAction,
@@ -39,7 +39,14 @@ const policy = z.object({ siteId: z.string(), product: z.string(), revision: z.s
   assignmentCount: z.number(), current: z.boolean(), changedAt: z.string().datetime() });
 const catalog = z.object({ siteId: z.string(), siteReleaseRef: z.string(), modelOptionCatalogRef: z.string(),
   catalogDigest: digest, inventoryDigest: digest, surfaceCount: z.number(), publishedAt: z.string().datetime() });
-const mutation = z.object({ receipt: z.object({ commandId: z.string(), state: z.string() }) }).passthrough();
+const mutation = z.object({ receipt: z.object({ commandId: z.string(), state: z.string() }),
+  sourceDigest: digest.optional() }).passthrough();
+const recoveredMutation = z.object({ operation: z.enum(["import_inventory", "activate_inventory",
+  "change_site_policy", "materialize_options", "publish_site_release_catalog"]),
+receipt: z.object({ commandId: z.string(), state: z.literal("committed") }),
+result: z.record(z.string(), z.unknown()) });
+const RECOVERY_STORAGE_KEY = "kokoro.admin.model-recovery.v1";
+const RECOVERY_REF = /^[A-Za-z0-9_-]{1,1024}$/u;
 
 type Inventory = z.infer<typeof inventory>;
 type Provider = z.infer<typeof provider>;
@@ -57,6 +64,17 @@ export function ModelsConsole(): React.ReactElement {
   const [models, setModels] = useState<Definition[]>([]); const [options, setOptions] = useState<Option[]>([]);
   const [policies, setPolicies] = useState<Policy[]>([]); const [policySiteId, setPolicySiteId] = useState("");
   const [selectedDigest, setSelectedDigest] = useState(""); const [generation, setGeneration] = useState(0);
+  const [pendingRecoveryRef, setPendingRecoveryRef] = useState<string | null>(null);
+  const [reconciling, setReconciling] = useState(false);
+  useEffect(() => {
+    const stored = window.localStorage.getItem(RECOVERY_STORAGE_KEY);
+    let active = true;
+    if (stored !== null && RECOVERY_REF.test(stored)) queueMicrotask(() => {
+      if (active) setPendingRecoveryRef(stored);
+    });
+    else if (stored !== null) window.localStorage.removeItem(RECOVERY_STORAGE_KEY);
+    return () => { active = false; };
+  }, []);
   useEffect(() => { let active = true; collectCursorPages<Inventory>((token, signal) => apiGet(
     `/api/control/models?view=inventories${token ? `&pageToken=${encodeURIComponent(token)}` : ""}`,
     page(inventory), { signal }), { identity: (item) => item.inventoryDigest, maxItems: 1000,
@@ -94,15 +112,46 @@ export function ModelsConsole(): React.ReactElement {
   const currentOptions = detail?.inventoryDigest === selectedDigest ? options : [];
   const currentPolicies = policySiteId === siteId ? policies : [];
   const reload = () => setGeneration((value) => value + 1);
-  const submit = async (body: unknown, success: string) => { try {
+  const clearRecovery = () => {
+    window.localStorage.removeItem(RECOVERY_STORAGE_KEY); setPendingRecoveryRef(null);
+  };
+  const reconcile = async () => {
+    if (pendingRecoveryRef === null || reconciling) return;
+    setReconciling(true);
+    try {
+      await apiGet(`/api/control/models?view=receipt&recoveryRef=${encodeURIComponent(pendingRecoveryRef)}`,
+        recoveredMutation);
+      clearRecovery(); message.success("已确认上一条模型命令提交成功"); reload();
+    } catch (error) { message.error(errorMessage(error, "对账尚未完成，请稍后重试")); }
+    finally { setReconciling(false); }
+  };
+  const submit = async (body: unknown, success: string) => {
+    if (pendingRecoveryRef !== null) { message.warning("请先完成上一条模型命令的对账"); return false; }
+    try {
     await apiPost("/api/control/models", body, mutation); message.success(success); reload(); return true;
-  } catch (error) { message.error(errorMessage(error, "操作失败")); return false; } };
+  } catch (error) {
+    if (error instanceof ApiError && error.recoveryRef !== null && RECOVERY_REF.test(error.recoveryRef)) {
+      window.localStorage.setItem(RECOVERY_STORAGE_KEY, error.recoveryRef);
+      setPendingRecoveryRef(error.recoveryRef);
+      message.warning("写入结果暂不明确，已保存恢复引用；完成对账前不会发起新写入");
+    } else message.error(errorMessage(error, "操作失败"));
+    return false;
+  } };
 
   return <PageContainer header={{ title: "模型控制台", subTitle: "一个全局目录，按产品组合，并按站点发布" }}
     content="从目录版本到站点发布的完整控制链路。提供方密钥只显示配置状态，永不返回引用或明文。"
-    extra={<ImportInventoryAction submit={submit} />}>
+    extra={<ImportInventoryAction submit={submit} disabled={pendingRecoveryRef !== null} />}>
     <Alert type="info" showIcon style={{ marginBottom: 16 }} message="控制面与运行面分离"
       description="这里管理不可变目录、产品选项与站点发布；实际模型执行仍由 Model Gateway 承担。所有写操作要求对应的提升认证与预期修订。" />
+    {pendingRecoveryRef === null ? null : <Alert type="warning" showIcon style={{ marginBottom: 16 }}
+      message="上一条模型命令结果待确认"
+      description={<Space direction="vertical"><Typography.Text>
+        系统已阻止新的模型写入。请用同一恢复引用查询权威收据，避免重复执行。
+      </Typography.Text><Typography.Text code copyable ellipsis style={{ maxWidth: 720 }}>
+        {pendingRecoveryRef}
+      </Typography.Text><Space><Button type="primary" loading={reconciling} onClick={() => void reconcile()}>
+        立即对账
+      </Button><Button danger disabled={reconciling} onClick={clearRecovery}>确认已线下核对并丢弃</Button></Space></Space>} />}
     <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
       <Col xs={24} md={12} xl={6}><Card><Statistic title="当前目录修订" prefix={<DeploymentUnitOutlined />}
         value={active?.activePointerRevision ?? "未激活"} /></Card></Col>
@@ -124,7 +173,7 @@ export function ModelsConsole(): React.ReactElement {
         <Space direction="vertical" size="middle" style={{ width: "100%" }}>
           <InventoryDetailCard detail={currentDetail} />
           <Card size="small"><ActivateInventoryAction submit={submit} inventories={inventories}
-            selectedDigest={selectedDigest} /></Card>
+            selectedDigest={selectedDigest} disabled={pendingRecoveryRef !== null} /></Card>
           <CursorTable schema={inventory} view="inventories" rowKey="inventoryDigest" generation={generation}
             columns={inventoryColumns(setSelectedDigest)} />
         </Space> },
@@ -143,7 +192,7 @@ export function ModelsConsole(): React.ReactElement {
       { key: "options", label: iconLabel(<BranchesOutlined />, "产品选项"), children:
         <Space direction="vertical" size="middle" style={{ width: "100%" }}>
           <Card size="small"><MaterializeOptionsAction submit={submit} inventories={inventories}
-            selectedDigest={selectedDigest} models={currentModels} /></Card>
+            selectedDigest={selectedDigest} models={currentModels} disabled={pendingRecoveryRef !== null} /></Card>
           <CursorTable schema={option} view="options" inventoryDigest={selectedDigest || undefined}
             rowKey="revisionRef" generation={generation} columns={optionColumns} />
         </Space> },
@@ -151,9 +200,9 @@ export function ModelsConsole(): React.ReactElement {
         ? <Space direction="vertical" size="large" style={{ width: "100%" }}>
           <Card size="small"><Space wrap>
             <ChangeSitePolicyAction submit={submit} siteId={siteId} inventories={inventories}
-              models={currentModels} policies={currentPolicies} />
+              models={currentModels} policies={currentPolicies} disabled={pendingRecoveryRef !== null} />
             <PublishSiteCatalogAction submit={submit} siteId={siteId} inventories={inventories}
-              selectedDigest={selectedDigest} options={currentOptions} />
+              selectedDigest={selectedDigest} options={currentOptions} disabled={pendingRecoveryRef !== null} />
           </Space></Card>
           <Section title={`策略修订 · ${siteId}`}><CursorTable schema={policy} view="policies" siteId={siteId}
             rowKey={(row) => `${row.product}:${row.revision}`} generation={generation} columns={policyColumns} /></Section>

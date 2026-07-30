@@ -18,13 +18,15 @@ const calls = vi.hoisted(() => ({
   listModelSiteReleaseCatalogs: vi.fn(),
   materializeModelOptions: vi.fn(),
   publishModelSiteReleaseCatalog: vi.fn(),
-  getModelCommandReceipt: vi.fn(),
+  reconcileModelCommandRecovery: vi.fn(),
 }));
 
 vi.mock("@/lib/control-plane/client", () => ({
   AdminControlPlaneError: class AdminControlPlaneError extends Error {
     constructor(readonly connectCode: Code, readonly domainCode: string,
-      readonly receiptRef: string | null = null) { super("admin_control_plane_request_failed"); }
+      readonly receiptRef: string | null = null, readonly recoveryRef: string | null = null) {
+      super("admin_control_plane_request_failed");
+    }
   },
   ...calls,
 }));
@@ -226,14 +228,24 @@ describe("typed Model control route", () => {
   });
 
   it("routes receipt reconciliation through the typed Model BFF", async () => {
-    calls.getModelCommandReceipt.mockResolvedValue({ receipt: { commandId: "a".repeat(32), state: "committed" } });
+    calls.reconcileModelCommandRecovery.mockResolvedValue({ receipt: {
+      commandId: "018f23d4-52aa-4c36-8b2c-2df90cf76953", state: "committed" } });
+    const route = await import("../app/api/control/models/route");
+    const recoveryRef = "eyJ2ZXJzaW9uIjoxfQ";
+    const response = await route.GET(new Request("https://admin.example/api/control/models?view=receipt"
+      + `&recoveryRef=${recoveryRef}`));
+
+    expect(response.status).toBe(200);
+    expect(calls.reconcileModelCommandRecovery).toHaveBeenCalledWith(recoveryRef);
+  });
+
+  it("rejects raw command receipt identity fields and accepts only one opaque recovery reference", async () => {
     const route = await import("../app/api/control/models/route");
     const response = await route.GET(new Request("https://admin.example/api/control/models?view=receipt"
       + `&receiptRef=${"a".repeat(32)}&requestDigest=${"b".repeat(64)}&operation=activate_inventory`));
 
-    expect(response.status).toBe(200);
-    expect(calls.getModelCommandReceipt).toHaveBeenCalledWith({ commandId: "a".repeat(32),
-      requestDigest: "b".repeat(64), operation: "activate_inventory" });
+    expect(response.status).toBe(400);
+    expect(calls.reconcileModelCommandRecovery).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -254,6 +266,7 @@ describe("typed Model control route", () => {
     expect(await response.json()).toEqual({ error: {
       code: "model.inventory.read_failed",
       receiptRef: "receipt:one",
+      recoveryRef: null,
     } });
   });
 });
@@ -274,6 +287,9 @@ describe("Model control console boundary", () => {
       "model.site-policy.change", "model.site-release-catalog.publish"]) {
       expect(consoleSource).toContain(`operation="${operation}"`);
     }
+    expect(consoleSource).toContain("kokoro.admin.model-recovery.v1");
+    expect(consoleSource).toContain("立即对账");
+    expect(consoleSource).toContain("pendingRecoveryRef");
   });
 
   it("exposes only provider secret presence and keeps the object-first information architecture", () => {

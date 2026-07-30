@@ -7,7 +7,7 @@ import { z } from "zod";
 const errorEnvelope = z
   .object({
     error: z.object({ code: z.string(), message: z.string(), details: z.unknown(),
-      receiptRef: z.string().nullable() }).partial().passthrough(),
+      receiptRef: z.string().nullable(), recoveryRef: z.string().nullable() }).partial().passthrough(),
     requestId: z.string().optional(),
   })
   .passthrough();
@@ -34,6 +34,8 @@ export class ApiError extends Error {
   /** 链路 id，只有 POST /api/action 会回显；排障时把它带给后端。 */
   readonly requestId: string | undefined;
   readonly receiptRef: string | null;
+  /** Opaque、有限长的 Model 写结果恢复引用；浏览器只保存并原样交回 BFF。 */
+  readonly recoveryRef: string | null;
 
   constructor(init: {
     status: number;
@@ -42,6 +44,7 @@ export class ApiError extends Error {
     details?: unknown;
     requestId?: string;
     receiptRef?: string | null;
+    recoveryRef?: string | null;
   }) {
     super(init.message);
     this.name = "ApiError";
@@ -50,6 +53,7 @@ export class ApiError extends Error {
     this.details = init.details;
     this.requestId = init.requestId;
     this.receiptRef = init.receiptRef ?? null;
+    this.recoveryRef = init.recoveryRef ?? null;
   }
 }
 
@@ -67,6 +71,7 @@ async function request(path: string, init?: RequestInit): Promise<unknown> {
       details: envelope?.error.details,
       requestId: envelope?.requestId,
       receiptRef: envelope?.error.receiptRef,
+      recoveryRef: envelope?.error.recoveryRef,
     });
   }
   const envelope = z.object({ data: z.unknown() }).safeParse(raw);

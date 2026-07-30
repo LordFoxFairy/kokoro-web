@@ -96,7 +96,8 @@ describe("typed Model query client", () => {
     });
     const response = controlError(error);
     expect(response.status).toBe(contract.httpStatus);
-    expect(await response.json()).toEqual({ error: { code: contract.domainCode, receiptRef: null } });
+    expect(await response.json()).toEqual({ error: { code: contract.domainCode, receiptRef: null,
+      recoveryRef: null } });
   });
 
   it("preserves the generated provider page-token InvalidArgument through HTTP", async () => {
@@ -110,7 +111,8 @@ describe("typed Model query client", () => {
     expect(error).toMatchObject({ connectCode: Code.InvalidArgument, domainCode: contract.domainCode });
     const response = controlError(error);
     expect(response.status).toBe(contract.httpStatus);
-    expect(await response.json()).toEqual({ error: { code: contract.domainCode, receiptRef: null } });
+    expect(await response.json()).toEqual({ error: { code: contract.domainCode, receiptRef: null,
+      recoveryRef: null } });
   });
 
   it.each([
@@ -127,7 +129,8 @@ describe("typed Model query client", () => {
     expect(error).toMatchObject({ connectCode: code, domainCode: contract.domainCode });
     const response = controlError(error);
     expect(response.status).toBe(contract.httpStatus);
-    expect(await response.json()).toEqual({ error: { code: contract.domainCode, receiptRef: null } });
+    expect(await response.json()).toEqual({ error: { code: contract.domainCode, receiptRef: null,
+      recoveryRef: null } });
   });
 
   it.each(["policies", "catalogs"])("rejects a cross-Site row in %s", async (kind) => {
@@ -179,7 +182,8 @@ describe("typed Model Site mutation client", () => {
     expect(error).toMatchObject({ connectCode: Code.AlreadyExists, domainCode: contract.domainCode });
     const response = controlError(error);
     expect(response.status).toBe(contract.httpStatus);
-    expect(await response.json()).toEqual({ error: { code: contract.domainCode, receiptRef: null } });
+    expect(await response.json()).toEqual({ error: { code: contract.domainCode, receiptRef: null,
+      recoveryRef: null } });
   });
 
   it("rejects a cross-Site policy response after validating its receipt", async () => {
@@ -206,16 +210,16 @@ describe("typed Model Site mutation client", () => {
     })).rejects.toMatchObject({ connectCode: Code.Internal, domainCode: "admin_control_plane.invalid_response" });
   });
 
-  it("reconciles an ambiguous activation with the same 32-hex command and request ID", async () => {
+  it("reconciles an ambiguous activation with the same canonical UUIDv4 command and request ID", async () => {
     calls.model.activateInventory.mockRejectedValueOnce(new ConnectError("ambiguous", Code.Unavailable));
     calls.model.getCommandReceipt.mockImplementation(async (request: unknown, options: { headers: Headers }) => {
       const input = request as { commandId: string; digestAlgorithm: number; requestDigest: string };
-      expect(input.commandId).toMatch(/^[a-f0-9]{32}$/u);
+      expect(input.commandId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u);
       expect(input.digestAlgorithm).toBe(1);
       expect(input.requestDigest).toMatch(/^[a-f0-9]{64}$/u);
       expect(options.headers.get("x-request-id")).toBe(input.commandId);
       return { receipt: { state: CommandReceiptStateV2.COMMITTED,
-        identity: { commandId: input.commandId, requestDigest: input.requestDigest },
+        identity: { commandId: input.commandId, digestAlgorithm: 1, requestDigest: input.requestDigest },
         operation: "model.inventory.activate", recordedAt: instant },
       result: { case: "activateInventory", value: { targetDigest: digest, activatedRevision: 4n } } };
     });
@@ -225,31 +229,110 @@ describe("typed Model Site mutation client", () => {
 
     const [effectRequest, effectOptions] = calls.model.activateInventory.mock.calls[0] as
       [{ context: { command: { commandId: string } } }, { headers: Headers }];
-    expect(effectRequest.context.command.commandId).toMatch(/^[a-f0-9]{32}$/u);
+    expect(effectRequest.context.command.commandId)
+      .toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u);
     expect(effectOptions.headers.get("x-request-id")).toBe(effectRequest.context.command.commandId);
     expect(calls.model.activateInventory).toHaveBeenCalledTimes(1);
     expect(result).toMatchObject({ targetDigest: digest, activatedRevision: "4",
       receipt: { commandId: effectRequest.context.command.commandId } });
   });
 
-  it("returns the reusable command ID when an ambiguous effect is not yet receipted", async () => {
+  it("returns an opaque durable recovery reference and can reconcile it later", async () => {
     calls.model.activateInventory.mockRejectedValueOnce(new ConnectError("ambiguous", Code.DeadlineExceeded));
     const contract = MODEL_CONTROL_ADMIN_ERRORS.commandReceiptNotFound;
     calls.model.getCommandReceipt.mockRejectedValueOnce(new ConnectError(contract.safeMessage, Code.NotFound,
       undefined, [modelControlAdminErrorDetail("commandReceiptNotFound", "receipt-query")]));
-    const { activateModelInventory } = await import("./client");
+    const { activateModelInventory, reconcileModelCommandRecovery } = await import("./client");
 
     const error = await activateModelInventory(digest, "3").catch((reason: unknown) => reason);
 
     expect(error).toMatchObject({ connectCode: Code.DeadlineExceeded,
-      receiptRef: expect.stringMatching(/^[a-f0-9]{32}$/u) });
-    const receiptRef = (error as { receiptRef: string }).receiptRef;
+      receiptRef: expect.stringMatching(/^[0-9a-f-]{36}$/u),
+      recoveryRef: expect.stringMatching(/^[A-Za-z0-9_-]{1,1024}$/u) });
+    const { receiptRef, recoveryRef } = error as { receiptRef: string; recoveryRef: string };
+    expect(JSON.parse(Buffer.from(recoveryRef, "base64url").toString("utf8"))).toEqual({
+      version: 1, commandId: receiptRef, operation: "activate_inventory",
+      digestAlgorithm: "SHA256_COMMAND_ENVELOPE", requestDigest: expect.stringMatching(/^[a-f0-9]{64}$/u),
+      siteId: null,
+    });
     expect(calls.model.activateInventory).toHaveBeenCalledTimes(1);
     expect(calls.model.getCommandReceipt.mock.calls[0]?.[0]).toMatchObject({ commandId: receiptRef });
     expect(calls.model.getCommandReceipt.mock.calls[0]?.[0]).toMatchObject({
       digestAlgorithm: 1, requestDigest: expect.stringMatching(/^[a-f0-9]{64}$/u),
     });
+    calls.model.getCommandReceipt.mockImplementationOnce(async (request: unknown) => {
+      const input = request as { commandId: string; digestAlgorithm: number; requestDigest: string };
+      return { receipt: { state: CommandReceiptStateV2.COMMITTED,
+        identity: { commandId: input.commandId, digestAlgorithm: input.digestAlgorithm,
+          requestDigest: input.requestDigest }, operation: "model.inventory.activate", recordedAt: instant },
+      result: { case: "activateInventory", value: { targetDigest: digest, activatedRevision: 4n } } };
+    });
+
+    await expect(reconcileModelCommandRecovery(recoveryRef)).resolves.toMatchObject({
+      operation: "activate_inventory", result: { targetDigest: digest, activatedRevision: "4" },
+    });
+    expect(calls.model.getCommandReceipt).toHaveBeenCalledTimes(2);
   });
+
+  it.each([0, 99])("rejects Model effect and reconciliation receipts with digest algorithm %s", async (algorithm) => {
+    calls.model.activateInventory.mockImplementationOnce(async (request: unknown) => {
+      const value = receipt(request, "model.inventory.activate");
+      return { targetDigest: digest, activatedRevision: 1n, replayed: false,
+        receipt: { ...value, identity: { ...value.identity, digestAlgorithm: algorithm } } };
+    });
+    const client = await import("./client");
+
+    await expect(client.activateModelInventory(digest, "0")).rejects.toMatchObject({ connectCode: Code.Internal });
+
+    const commandId = "018f23d4-52aa-4c36-8b2c-2df90cf76953";
+    calls.model.getCommandReceipt.mockResolvedValueOnce({ receipt: { state: CommandReceiptStateV2.COMMITTED,
+      identity: { commandId, digestAlgorithm: algorithm, requestDigest: digest },
+      operation: "model.inventory.activate", recordedAt: instant },
+    result: { case: "activateInventory", value: { targetDigest: digest, activatedRevision: 1n } } });
+    await expect(client.getModelCommandReceipt({ commandId, requestDigest: digest,
+      operation: "activate_inventory" })).rejects.toMatchObject({ connectCode: Code.Internal });
+  });
+
+  it("preserves and validates materialization source digests in immediate and recovered results", async () => {
+    const sourceDigest = "b".repeat(64);
+    calls.model.materializeModelOptions.mockImplementationOnce(async (request: unknown) => ({
+      inventoryDigest: digest, sourceDigest, materializationDigest: "c".repeat(64),
+      optionRevisionRefs: ["option:one"], replayed: false,
+      receipt: receipt(request, "model.option.materialize"),
+    }));
+    const client = await import("./client");
+    const input = { inventoryDigest: digest, options: [{ optionKey: "chat-one", surface: "chat" as const,
+      label: "Chat", lifecycle: "active" as const,
+      orchestration: { primaryModelKey: "model-one", fallbackModelKeys: [] },
+      generation: { primaryModelKey: "model-one", fallbackModelKeys: [] } }] };
+
+    await expect(client.materializeModelOptions(input)).resolves.toMatchObject({ sourceDigest });
+
+    const commandId = "018f23d4-52aa-4c36-8b2c-2df90cf76953";
+    calls.model.getCommandReceipt.mockResolvedValueOnce({ receipt: { state: CommandReceiptStateV2.COMMITTED,
+      identity: { commandId, digestAlgorithm: 1, requestDigest: digest },
+      operation: "model.option.materialize", recordedAt: instant },
+    result: { case: "materializeModelOptions", value: { inventoryDigest: digest, sourceDigest,
+      materializationDigest: "c".repeat(64), optionRevisionRefs: ["option:one"] } } });
+    await expect(client.getModelCommandReceipt({ commandId, requestDigest: digest,
+      operation: "materialize_options" })).resolves.toMatchObject({ result: { sourceDigest } });
+
+    calls.model.materializeModelOptions.mockImplementationOnce(async (request: unknown) => ({
+      inventoryDigest: digest, sourceDigest: "invalid", materializationDigest: "c".repeat(64),
+      optionRevisionRefs: ["option:one"], replayed: false,
+      receipt: receipt(request, "model.option.materialize"),
+    }));
+    await expect(client.materializeModelOptions(input)).rejects.toMatchObject({ connectCode: Code.Internal });
+  });
+
+  it.each(["", "not+base64url", "a".repeat(1025), "eyJ2ZXJzaW9uIjoyfQ"])(
+    "rejects malformed or noncanonical recovery references: %s", async (recoveryRef) => {
+      const { reconcileModelCommandRecovery } = await import("./client");
+      await expect(reconcileModelCommandRecovery(recoveryRef)).rejects.toMatchObject({
+        connectCode: Code.InvalidArgument, domainCode: "model.command_receipt.recovery_ref_invalid",
+      });
+      expect(calls.model.getCommandReceipt).not.toHaveBeenCalled();
+    });
 
   it("rejects effect responses whose immutable identity does not match the request", async () => {
     calls.model.activateInventory.mockImplementation(async (request: unknown) => ({

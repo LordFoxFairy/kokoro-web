@@ -1,6 +1,6 @@
 import "server-only";
 
-import { randomBytes, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { create } from "@bufbuild/protobuf";
 import { timestampFromDate } from "@bufbuild/protobuf/wkt";
 import { Code, ConnectError, createClient } from "@connectrpc/connect";
@@ -64,7 +64,12 @@ import {
 } from "@/lib/generated/model-control/command-envelope-digest";
 
 export class AdminControlPlaneError extends Error {
-  constructor(readonly connectCode: Code, readonly domainCode: string, readonly receiptRef: string | null = null) {
+  constructor(
+    readonly connectCode: Code,
+    readonly domainCode: string,
+    readonly receiptRef: string | null = null,
+    readonly recoveryRef: string | null = null,
+  ) {
     super("admin_control_plane_request_failed");
     this.name = "AdminControlPlaneError";
   }
@@ -146,6 +151,26 @@ export interface GetModelCommandReceiptInput {
   readonly requestDigest: string;
   readonly operation: ModelCommandOperationId;
   readonly siteId?: string;
+}
+
+const MODEL_RECOVERY_REFERENCE_VERSION = 1 as const;
+const MODEL_RECOVERY_REFERENCE_MAX_LENGTH = 1024;
+const MODEL_RECOVERY_REFERENCE_MAX_BYTES = 768;
+const MODEL_COMMAND_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
+const MODEL_REQUEST_DIGEST = /^[0-9a-f]{64}$/u;
+const MODEL_RECOVERY_REFERENCE = /^[A-Za-z0-9_-]+$/u;
+const MODEL_OPERATIONS = new Set<ModelCommandOperationId>([
+  "import_inventory", "activate_inventory", "change_site_policy", "materialize_options",
+  "publish_site_release_catalog",
+]);
+
+interface ModelRecoveryReference {
+  readonly version: 1;
+  readonly commandId: string;
+  readonly operation: ModelCommandOperationId;
+  readonly digestAlgorithm: "SHA256_COMMAND_ENVELOPE";
+  readonly requestDigest: string;
+  readonly siteId: string | null;
 }
 
 type ModelProductId = "chat" | "music" | "image" | "video";
@@ -533,13 +558,14 @@ export async function materializeModelOptions(input: MaterializeModelOptionsInpu
     (response) => {
       if (response.inventoryDigest !== input.inventoryDigest) throw invalidResponse();
       return { inventoryDigest: response.inventoryDigest,
+      sourceDigest: receiptDigest(response.sourceDigest),
       materializationDigest: response.materializationDigest, optionRevisionRefs: [...response.optionRevisionRefs],
       replayed: response.replayed, receipt: receiptJson(response.receipt) };
     }, (receipt) => {
       const recovered = receiptResultFor(receipt, "materialize_options");
       const inventoryDigest = receiptString(recovered.result, "inventoryDigest");
       if (inventoryDigest !== input.inventoryDigest) throw invalidResponse();
-      return { inventoryDigest,
+      return { inventoryDigest, sourceDigest: receiptDigest(recovered.result.sourceDigest),
         materializationDigest: receiptString(recovered.result, "materializationDigest"),
         optionRevisionRefs: receiptStrings(recovered.result, "optionRevisionRefs"), replayed: true,
         receipt: recovered.receipt };
@@ -582,6 +608,69 @@ export async function getModelCommandReceipt(input: GetModelCommandReceiptInput)
   const session = await requireAuthoritySession();
   const rpc = createClient(ModelControlService, await adminControlPlaneTransport());
   return fetchModelCommandReceipt(session, rpc, input);
+}
+
+export async function reconcileModelCommandRecovery(recoveryRef: string) {
+  const input = decodeModelRecoveryReference(recoveryRef);
+  return getModelCommandReceipt({
+    commandId: input.commandId,
+    requestDigest: input.requestDigest,
+    operation: input.operation,
+    ...(input.siteId === null ? {} : { siteId: input.siteId }),
+  });
+}
+
+function encodeModelRecoveryReference(input: ModelRecoveryReference): string {
+  assertModelRecoveryReference(input);
+  const encoded = Buffer.from(JSON.stringify(input), "utf8").toString("base64url");
+  if (encoded.length > MODEL_RECOVERY_REFERENCE_MAX_LENGTH) throw invalidRecoveryReference();
+  return encoded;
+}
+
+function decodeModelRecoveryReference(value: string): ModelRecoveryReference {
+  if (value.length < 1 || value.length > MODEL_RECOVERY_REFERENCE_MAX_LENGTH ||
+      !MODEL_RECOVERY_REFERENCE.test(value)) throw invalidRecoveryReference();
+  let decoded: Buffer;
+  try { decoded = Buffer.from(value, "base64url"); } catch { throw invalidRecoveryReference(); }
+  if (decoded.byteLength < 1 || decoded.byteLength > MODEL_RECOVERY_REFERENCE_MAX_BYTES) {
+    throw invalidRecoveryReference();
+  }
+  let parsed: unknown;
+  try { parsed = JSON.parse(decoded.toString("utf8")) as unknown; } catch { throw invalidRecoveryReference(); }
+  if (parsed === null || Array.isArray(parsed) || typeof parsed !== "object") throw invalidRecoveryReference();
+  const record = parsed as Record<string, unknown>;
+  const keys = Object.keys(record);
+  const expectedKeys = ["version", "commandId", "operation", "digestAlgorithm", "requestDigest", "siteId"];
+  if (keys.length !== expectedKeys.length || keys.some((key, index) => key !== expectedKeys[index])) {
+    throw invalidRecoveryReference();
+  }
+  const input: ModelRecoveryReference = {
+    version: record.version as 1,
+    commandId: record.commandId as string,
+    operation: record.operation as ModelCommandOperationId,
+    digestAlgorithm: record.digestAlgorithm as "SHA256_COMMAND_ENVELOPE",
+    requestDigest: record.requestDigest as string,
+    siteId: record.siteId as string | null,
+  };
+  assertModelRecoveryReference(input);
+  if (encodeModelRecoveryReference(input) !== value) throw invalidRecoveryReference();
+  return input;
+}
+
+function assertModelRecoveryReference(input: ModelRecoveryReference): void {
+  if (input.version !== MODEL_RECOVERY_REFERENCE_VERSION || !MODEL_COMMAND_ID.test(input.commandId) ||
+      !MODEL_OPERATIONS.has(input.operation) || input.digestAlgorithm !== "SHA256_COMMAND_ENVELOPE" ||
+      !MODEL_REQUEST_DIGEST.test(input.requestDigest) ||
+      (input.siteId !== null && (input.siteId.length < 3 || input.siteId.length > 128))) {
+    throw invalidRecoveryReference();
+  }
+  try {
+    modelOperationFacts(input.operation, input.siteId === null ? undefined : input.siteId);
+  } catch { throw invalidRecoveryReference(); }
+}
+
+function invalidRecoveryReference(): AdminControlPlaneError {
+  return new AdminControlPlaneError(Code.InvalidArgument, "model.command_receipt.recovery_ref_invalid");
 }
 
 export async function registerSite(input: RegisterSiteInput) {
@@ -698,6 +787,15 @@ async function modelMutation<Response extends Readonly<{ receipt?: CommandReceip
   map: (response: Response) => Result,
   reconcile: (receipt: Awaited<ReturnType<typeof fetchModelCommandReceipt>>) => Result,
 ): Promise<Result> {
+  const command = context.command!;
+  const recoveryRef = encodeModelRecoveryReference({
+    version: 1,
+    commandId: command.commandId,
+    operation,
+    digestAlgorithm: "SHA256_COMMAND_ENVELOPE",
+    requestDigest: command.requestDigest,
+    siteId,
+  });
   try {
     const response = await invoke();
     assertReceipt(response.receipt, context);
@@ -708,7 +806,7 @@ async function modelMutation<Response extends Readonly<{ receipt?: CommandReceip
     if (error instanceof AdminControlPlaneError) throw error;
     const connect = ConnectError.from(error);
     if (connect.code !== Code.DeadlineExceeded && connect.code !== Code.Unavailable) throw typed(error);
-    const commandId = context.command!.commandId;
+    const commandId = command.commandId;
     try {
       return reconcile(await fetchModelCommandReceipt(session, rpc, {
         commandId, requestDigest: context.command!.requestDigest,
@@ -717,11 +815,11 @@ async function modelMutation<Response extends Readonly<{ receipt?: CommandReceip
     } catch (receiptError) {
       const resolved = typed(receiptError);
       if (resolved.connectCode === Code.DeadlineExceeded || resolved.connectCode === Code.Unavailable) {
-        throw new AdminControlPlaneError(resolved.connectCode, resolved.domainCode, commandId);
+        throw new AdminControlPlaneError(resolved.connectCode, resolved.domainCode, commandId, recoveryRef);
       }
       if (resolved.connectCode !== Code.NotFound) throw resolved;
       const original = typed(error);
-      throw new AdminControlPlaneError(connect.code, original.domainCode, commandId);
+      throw new AdminControlPlaneError(connect.code, original.domainCode, commandId, recoveryRef);
     }
   }
 }
@@ -740,6 +838,7 @@ async function fetchModelCommandReceipt(session: AdminAuthoritySession, rpc: Mod
     const receipt = response.receipt;
     if (receipt?.state !== CommandReceiptStateV2.COMMITTED ||
         receipt.identity?.commandId !== input.commandId ||
+        receipt.identity.digestAlgorithm !== CommandDigestAlgorithmV2.SHA256_COMMAND_ENVELOPE ||
         receipt.identity.requestDigest !== input.requestDigest || receipt.operation !== facts.wireOperation) {
       throw invalidResponse();
     }
@@ -783,7 +882,7 @@ function modelReceiptResult(result: Awaited<ReturnType<ModelClient["getCommandRe
       revision: result.value.revision.toString() };
   }
   if (operation === "materialize_options" && result.case === "materializeModelOptions") {
-    return { inventoryDigest: result.value.inventoryDigest, sourceDigest: result.value.sourceDigest,
+    return { inventoryDigest: result.value.inventoryDigest, sourceDigest: receiptDigest(result.value.sourceDigest),
       materializationDigest: result.value.materializationDigest,
       optionRevisionRefs: [...result.value.optionRevisionRefs] };
   }
@@ -819,6 +918,11 @@ function receiptStrings(result: Record<string, unknown>, field: string): string[
   return [...value];
 }
 
+function receiptDigest(value: unknown): string {
+  if (typeof value !== "string" || !/^[0-9a-f]{64}$/u.test(value)) throw invalidResponse();
+  return value;
+}
+
 function inputReference(value: string | undefined): string | null {
   return value === undefined ? null : value;
 }
@@ -829,7 +933,7 @@ export function queryContext(session: AdminAuthoritySession, selection: ScopeSel
     securityEpochs: epochs(session), scope: scope(session, selection) });
 }
 export function commandContext(session: AdminAuthoritySession, selection: ScopeSelection = { kind: "current" }) {
-  const commandId = randomBytes(16).toString("hex");
+  const commandId = randomUUID();
   return create(AuthenticatedOperatorCommandContextSchema, { command: create(CommandIdentityV2Schema, {
     commandId, idempotencyKey: commandId, digestAlgorithm: CommandDigestAlgorithmV2.SHA256_COMMAND_ENVELOPE,
     requestDigest: "0".repeat(64) }), ...sessionClaims(session), securityEpochs: epochs(session),
@@ -881,11 +985,14 @@ export function authHeaders(session: AdminAuthoritySession, requestId?: string):
     ...(requestId === undefined ? {} : { "x-request-id": requestId }) });
 }
 function assertReceipt(receipt: Readonly<{ state: CommandReceiptStateV2; identity?: Readonly<{ commandId: string;
-  requestDigest: string }> }> | undefined, context: ReturnType<typeof commandContext>): void {
+  requestDigest: string; digestAlgorithm: CommandDigestAlgorithmV2 }> }> | undefined,
+  context: ReturnType<typeof commandContext>): void {
   const identity = receipt?.identity;
   const expected = context.command;
   if (receipt?.state !== CommandReceiptStateV2.COMMITTED || identity === undefined || expected === undefined ||
-      identity.commandId !== expected.commandId || identity.requestDigest !== expected.requestDigest) throw invalidResponse();
+      identity.commandId !== expected.commandId ||
+      identity.digestAlgorithm !== CommandDigestAlgorithmV2.SHA256_COMMAND_ENVELOPE ||
+      identity.requestDigest !== expected.requestDigest) throw invalidResponse();
 }
 function receiptJson(receipt: Readonly<{ identity?: Readonly<{ commandId: string }>; operation: string; state: CommandReceiptStateV2;
   recordedAt?: Readonly<{ seconds: bigint; nanos: number }> }> | undefined) {
