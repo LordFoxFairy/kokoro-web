@@ -31,8 +31,6 @@ const ALLOWED_USER_CATCH_ALL_ROUTES = new Set([
 ]);
 const ADMIN_FILTERED_ROUTES = new Map([
   ["apps/admin/app/api/manifests/route.ts", { method: "GET", handler: "getFilteredManifests" }],
-  ["apps/admin/app/api/billing-overview/route.ts", { method: "GET", handler: "getCreditBillingOverview" }],
-  ["apps/admin/app/api/user360/route.ts", { method: "GET", handler: "getAccountUser360" }],
   ["apps/admin/app/api/openapi/[moduleId]/route.ts", { method: "GET", handler: "getFilteredOpenApi" }],
   ["apps/admin/app/api/resource/route.ts", { method: "GET", handler: "getFilteredResource" }],
   ["apps/admin/app/api/action/route.ts", { method: "POST", handler: "postFilteredAction" }],
@@ -113,6 +111,10 @@ const ADMIN_CONTROL_ROUTES = new Map([
   ["apps/admin/app/api/control/credit/summary/route.ts", {
     methods: ["GET"],
     imports: ["@/lib/control-plane/credit-client", "@/lib/control-plane/credit-route-query", "@/lib/control-plane/http"],
+  }],
+  ["apps/admin/app/api/control/users/[userRef]/route.ts", {
+    methods: ["GET"],
+    imports: ["@/lib/control-plane/http", "@/lib/control-plane/strict-query", "@/lib/control-plane/user-client"],
   }],
   ["apps/admin/app/api/control/offers/route.ts", {
     methods: ["GET", "POST"],
@@ -249,6 +251,15 @@ const RULES = [
         /(?:admin\.payment|platform\.modules\.payment|nav\.payment|href:\s*["']\/payment["']|moduleId[=:]\s*["']payment["']|payment\.order\.refund|ordersRefunded|ordersPaid|actionId:\s*["']refund["'])/u.test(
           source,
         )
+      );
+    },
+  },
+  {
+    id: "admin-credit-legacy-surface",
+    rejects(path, source) {
+      if (!path.startsWith("apps/admin/")) return false;
+      return /(?:\/api\/(?:billing-overview|user360)\b|moduleId\s*[:=]\s*["']credit["']|["']credit:[^"']+["']|admin\.credit\.(?:resources|actions)\.|\/admin\/credits?(?:\/|$))/u.test(
+        source,
       );
     },
   },

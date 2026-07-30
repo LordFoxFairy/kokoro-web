@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { creditQuery, grantToHolds, holdToUsage, sourceAllocationToGrant } from "./credit-navigation";
+import { creditQuery, grantToHolds, holdToUsage, openUsageSourceTrace,
+  sourceAllocationToGrant } from "./credit-navigation";
 
 describe("Admin Credit trace navigation", () => {
   it("moves from Grant to the exact related Hold set", () => {
@@ -13,6 +14,13 @@ describe("Admin Credit trace navigation", () => {
 
   it("moves from a Usage source allocation back to its Grant", () => {
     expect(sourceAllocationToGrant("grant-one")).toEqual({ view: "grants", filters: { creditGrantId: "grant-one" } });
+  });
+
+  it("opens the exact Settlement allocation trace before drilling into its Grant", () => {
+    expect(openUsageSourceTrace("settlement", "settlement-one"))
+      .toEqual({ kind: "settlement", ref: "settlement-one" });
+    expect(sourceAllocationToGrant("grant-from-settlement"))
+      .toEqual({ view: "grants", filters: { creditGrantId: "grant-from-settlement" } });
   });
 
   it("builds a bounded query without undefined or half-source filters", () => {

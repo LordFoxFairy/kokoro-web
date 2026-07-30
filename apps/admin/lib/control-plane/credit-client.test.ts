@@ -9,6 +9,18 @@ import { createAdminCreditReader } from "./credit-client";
 
 const at = (seconds: bigint) => ({ seconds, nanos: 0 });
 const watermark = at(1_785_369_600n);
+const wrongSite = "site-two";
+
+function identityOnly(values: Readonly<Record<string, unknown>>): never {
+  return new Proxy(values, {
+    get(target, key) {
+      if (key in target) return Reflect.get(target, key);
+      throw new Error(`mapped_before_identity_validation:${String(key)}`);
+    },
+  }) as never;
+}
+
+const invalidResponse = { name: "AdminCreditInvalidResponseError", domainCode: "admin_credit.invalid_response" };
 
 describe("typed Admin Credit client", () => {
   it("maps authority summary and uint64 facts to browser-safe decimal strings", async () => {
@@ -89,5 +101,74 @@ describe("typed Admin Credit client", () => {
     const usage = await reader.listRatedUsage({ siteId: "site-one" });
     expect(usage.items[0]).not.toHaveProperty("evidenceRef");
     expect(usage.items[0]).not.toHaveProperty("ratedUsageDigest");
+  });
+
+  it("rejects cross-Site summary, detail and every list item before mapping payload fields", async () => {
+    const page = { nextPageToken: undefined, membershipWatermark: watermark, observedAt: watermark };
+    const rpc = {
+      getSiteCreditSummary: vi.fn(async () => ({ summary: identityOnly({ siteId: wrongSite }) })),
+      listCreditAccounts: vi.fn(async () => ({ accounts: [identityOnly({ siteId: wrongSite })], ...page })),
+      getCreditAccount: vi.fn(async () => ({ account: identityOnly({ siteId: wrongSite }) })),
+      listCreditGrants: vi.fn(async () => ({ grants: [identityOnly({ siteId: wrongSite })], ...page })),
+      listCreditHolds: vi.fn(async () => ({ holds: [identityOnly({ siteId: wrongSite })], ...page })),
+      listCreditHoldAllocations: vi.fn(async () => ({ allocations: [identityOnly({ siteId: wrongSite })], ...page })),
+      listCreditJournalTransactions: vi.fn(async () => ({ transactions: [identityOnly({ siteId: wrongSite })], ...page })),
+      listCreditJournalEntries: vi.fn(async () => ({ entries: [identityOnly({ siteId: wrongSite })], ...page })),
+      listRatedUsage: vi.fn(async () => ({ ratedUsage: [identityOnly({ siteId: wrongSite })], ...page })),
+      listRatedUsageSourceAllocations: vi.fn(async () => ({ allocations: [identityOnly({ siteId: wrongSite })], ...page })),
+    };
+    const reader = createAdminCreditReader(vi.fn(async () => ({ rpc, context: {}, headers: new Headers() })) as never);
+    const accountRef = "11111111-1111-4111-8111-111111111111";
+    const transactionRef = "22222222-2222-4222-8222-222222222222";
+    const grantRef = "33333333-3333-4333-8333-333333333333";
+    const usageRef = "55555555-5555-4555-8555-555555555555";
+    const reads = [
+      reader.getSiteCreditSummary("site-one"),
+      reader.listCreditAccounts({ siteId: "site-one" }),
+      reader.getCreditAccount("site-one", accountRef),
+      reader.listCreditGrants({ siteId: "site-one" }),
+      reader.listCreditHolds({ siteId: "site-one" }),
+      reader.listCreditHoldAllocations({ siteId: "site-one", trace: { kind: "grant", ref: grantRef } }),
+      reader.listCreditJournalTransactions({ siteId: "site-one" }),
+      reader.listCreditJournalEntries({ siteId: "site-one", journalTransactionRef: transactionRef }),
+      reader.listRatedUsage({ siteId: "site-one" }),
+      reader.listRatedUsageSourceAllocations({ siteId: "site-one", trace: { kind: "usage", ref: usageRef } }),
+    ];
+    await Promise.all(reads.map((read) => expect(read).rejects.toMatchObject(invalidResponse)));
+    expect(rpc.listCreditHoldAllocations).toHaveBeenCalledWith(expect.objectContaining({ trace: {
+      case: "creditGrantId", value: grantRef,
+    } }), expect.anything());
+  });
+
+  it("rejects wrong detail and trace identity keys with one stable invalid-response error", async () => {
+    const accountRef = "11111111-1111-4111-8111-111111111111";
+    const transactionRef = "22222222-2222-4222-8222-222222222222";
+    const grantRef = "33333333-3333-4333-8333-333333333333";
+    const holdRef = "44444444-4444-4444-8444-444444444444";
+    const usageRef = "55555555-5555-4555-8555-555555555555";
+    const settlementRef = "66666666-6666-4666-8666-666666666666";
+    const otherRef = "77777777-7777-4777-8777-777777777777";
+    const page = { nextPageToken: undefined, membershipWatermark: watermark, observedAt: watermark };
+    const rpc = {
+      getCreditAccount: vi.fn(async () => ({ account: identityOnly({ siteId: "site-one", creditAccountRef: otherRef }) })),
+      listCreditHoldAllocations: vi.fn(async () => ({ allocations: [identityOnly({ siteId: "site-one",
+        creditHoldRef: otherRef, creditGrantId: otherRef })], ...page })),
+      listCreditJournalEntries: vi.fn(async () => ({ entries: [identityOnly({ siteId: "site-one",
+        journalTransactionRef: otherRef })], ...page })),
+      listRatedUsageSourceAllocations: vi.fn(async () => ({ allocations: [identityOnly({ siteId: "site-one",
+        ratedUsageRef: otherRef, settlementRef: otherRef })], ...page })),
+    };
+    const reader = createAdminCreditReader(vi.fn(async () => ({ rpc, context: {}, headers: new Headers() })) as never);
+    await expect(reader.getCreditAccount("site-one", accountRef)).rejects.toMatchObject(invalidResponse);
+    await expect(reader.listCreditHoldAllocations({ siteId: "site-one", trace: { kind: "grant", ref: grantRef } }))
+      .rejects.toMatchObject(invalidResponse);
+    await expect(reader.listCreditHoldAllocations({ siteId: "site-one", trace: { kind: "hold", ref: holdRef } }))
+      .rejects.toMatchObject(invalidResponse);
+    await expect(reader.listCreditJournalEntries({ siteId: "site-one", journalTransactionRef: transactionRef }))
+      .rejects.toMatchObject(invalidResponse);
+    await expect(reader.listRatedUsageSourceAllocations({ siteId: "site-one", trace: { kind: "usage", ref: usageRef } }))
+      .rejects.toMatchObject(invalidResponse);
+    await expect(reader.listRatedUsageSourceAllocations({ siteId: "site-one",
+      trace: { kind: "settlement", ref: settlementRef } })).rejects.toMatchObject(invalidResponse);
   });
 });

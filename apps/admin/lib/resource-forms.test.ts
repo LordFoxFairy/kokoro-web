@@ -3,15 +3,10 @@ import { describe, expect, it } from "vitest";
 import { RESOURCE_FORMS, ROW_ACTION_FORMS } from "./resource-forms";
 
 describe("redeem-only Admin resource forms", () => {
-  it("does not register payment resource forms", () => {
+  it("does not register payment or typed-only Credit resource forms", () => {
     expect(Object.keys(RESOURCE_FORMS).filter((key) => key.startsWith("payment:"))).toEqual([]);
-  });
-
-  it("credit actions expose manual adjustment only", () => {
-    for (const key of ["credit:credit-accounts:grant", "credit:credit-accounts:reset"]) {
-      const reason = ROW_ACTION_FORMS[key]?.fields.find((field) => field.name === "reason");
-      expect(reason?.options).toEqual([{ label: "手动调整 manual_adjustment", value: "manual_adjustment" }]);
-    }
+    expect(Object.keys(RESOURCE_FORMS).filter((key) => key.startsWith("credit:"))).toEqual([]);
+    expect(Object.keys(ROW_ACTION_FORMS).filter((key) => key.startsWith("credit:"))).toEqual([]);
   });
 });
 
@@ -73,61 +68,4 @@ describe("ROW_ACTION_FORMS buildBody", () => {
     expect(form.buildBody({ review_status: "rejected" })).toEqual({ status: "rejected" });
   });
 
-  it("credit grant: 整数积分 → micros(×10000)、owner 由行预填透传", () => {
-    const form = ROW_ACTION_FORMS["credit:credit-accounts:grant"]!;
-    expect(form.buildBody({ ownerKind: "team", ownerId: "t1", amountCredits: "100", reason: "manual_adjustment" })).toEqual({
-      ownerKind: "team",
-      ownerId: "t1",
-      amountMicros: "1000000",
-      reason: "manual_adjustment",
-    });
-  });
-
-  it("credit reset: 目标积分 → targetMicros(可清零)、reason 缺省 manual_adjustment", () => {
-    const form = ROW_ACTION_FORMS["credit:credit-accounts:reset"]!;
-    expect(form.buildBody({ ownerKind: "user", ownerId: "u1", targetCredits: "0" })).toEqual({
-      ownerKind: "user",
-      ownerId: "u1",
-      targetMicros: "0",
-      reason: "manual_adjustment",
-    });
-  });
-
-  it("credit set-quota: 填积分 → quotaMicros(×10000)+monthly；留空 → null 清除", () => {
-    const form = ROW_ACTION_FORMS["credit:credit-accounts:set-quota"]!;
-    expect(form.buildBody({ quotaCredits: "5000" })).toEqual({ quotaMicros: "50000000", quotaPeriod: "monthly" });
-    expect(form.buildBody({})).toEqual({ quotaMicros: null, quotaPeriod: "monthly" });
-  });
-
-  it("pricing update: 单价/状态直透，缺省字段省略（部分更新）", () => {
-    const form = ROW_ACTION_FORMS["credit:pricing-rules:update"]!;
-    expect(form.buildBody({ amountMicros: "480", status: "disabled" })).toEqual({ amountMicros: "480", status: "disabled" });
-    expect(form.buildBody({ amountMicros: "40" })).toEqual({ amountMicros: "40" });
-  });
-});
-
-describe("RESOURCE_FORMS credit:pricing-rules buildBody", () => {
-  const form = RESOURCE_FORMS["credit:pricing-rules"]!;
-  const ctx = { siteId: "" };
-
-  it("createOnly + 必填直透，labelKey/status 缺省省略", () => {
-    expect(form.createOnly).toBe(true);
-    expect(form.buildBody({ featureKey: "chat.input_token", unit: "token", amountMicros: "40" }, ctx)).toEqual({
-      featureKey: "chat.input_token",
-      unit: "token",
-      amountMicros: "40",
-    });
-  });
-
-  it("带 labelKey/status 时并入", () => {
-    expect(
-      form.buildBody({ featureKey: "chat.output_token", labelKey: "claude-code", unit: "token", amountMicros: "120", status: "active" }, ctx),
-    ).toEqual({
-      featureKey: "chat.output_token",
-      labelKey: "claude-code",
-      unit: "token",
-      amountMicros: "120",
-      status: "active",
-    });
-  });
 });
