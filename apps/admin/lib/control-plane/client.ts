@@ -38,6 +38,29 @@ import {
 } from "@/lib/generated/site-provisioning/kokoro/platform/site/v1/site_provisioning_pb";
 import { publishSiteReleaseRequestDigest, registerSiteRequestDigest } from
   "@/lib/generated/site-provisioning/command-envelope-digest";
+import {
+  ActivateInventoryEffectSchema,
+  ChangeSitePolicyEffectSchema,
+  ImportInventoryEffectSchema,
+  MaterializeModelOptionsEffectSchema,
+  ModelControlService,
+  ModelOptionLifecycle as ControlModelOptionLifecycle,
+  ModelProduct as ControlModelProduct,
+  ModelRouteRole as ControlModelRouteRole,
+  ProviderAdapterKind as ControlProviderAdapterKind,
+  ProviderHealth as ControlProviderHealth,
+  ProviderOperationalStatus as ControlProviderOperationalStatus,
+  PublishSiteReleaseCatalogEffectSchema,
+  SiteModelAssignmentMode as ControlSiteModelAssignmentMode,
+  SiteModelCatalogMode as ControlSiteModelCatalogMode,
+} from "@/lib/generated/model-control/kokoro/platform/model/v1/model_control_pb";
+import {
+  activateInventoryRequestDigest,
+  changeSitePolicyRequestDigest,
+  importInventoryRequestDigest,
+  materializeModelOptionsRequestDigest,
+  publishSiteReleaseCatalogRequestDigest,
+} from "@/lib/generated/model-control/command-envelope-digest";
 
 export class AdminControlPlaneError extends Error {
   constructor(readonly connectCode: Code, readonly domainCode: string, readonly receiptRef: string | null = null) {
@@ -75,6 +98,47 @@ export interface PublishSiteReleaseInput {
   readonly certification: Readonly<{ signingKeyRef: string; issuedAt: string; expiresAt: string;
     signatureBase64: string }>;
 }
+
+export interface ImportModelInventoryInput {
+  readonly sourceReference: string;
+  readonly providers: readonly Readonly<{ key: string; provider: string; accountKey: string;
+    secretRef: string; adapterKind: "litellm" | "direct"; priority: number }>[];
+  readonly models: readonly Readonly<{ key: string; displayName: string; inputModalities: readonly string[];
+    outputModalities: readonly string[]; capabilities: readonly string[]; contextWindow?: number;
+    enabled: boolean }>[];
+  readonly bindings: readonly Readonly<{ key: string; modelKey: string; providerKey: string;
+    upstreamModel: string; gatewayModelName: string; priority: number; enabled: boolean }>[];
+  readonly productRoutes: readonly Readonly<{ product: ModelProductId; role: ModelRoleId;
+    modelKey: string; position: number; requiredCapabilities: readonly string[] }>[];
+  readonly providerAvailability: readonly Readonly<{ providerKey: string;
+    status: "active" | "disabled"; health: "unknown" | "healthy" | "degraded" | "down";
+    epoch: string; observationRef?: string; observedAt?: string }>[];
+}
+
+export interface ChangeModelSitePolicyInput {
+  readonly siteId: string; readonly product: ModelProductId; readonly enabled: boolean;
+  readonly catalogMode: "follow_active" | "pinned"; readonly catalogDigest?: string;
+  readonly assignmentMode: "inherit" | "replace"; readonly expectedRevision: string;
+  readonly assignments: readonly Readonly<{ role: ModelRoleId; modelKey: string; position: number;
+    requiredCapabilities: readonly string[]; enabled: boolean }>[];
+}
+
+export interface MaterializeModelOptionsInput {
+  readonly inventoryDigest: string;
+  readonly options: readonly Readonly<{ optionKey: string; surface: ModelProductId; label: string;
+    description?: string; tier?: string; lifecycle: "active" | "disabled";
+    orchestration: Readonly<{ primaryModelKey: string; fallbackModelKeys: readonly string[] }>;
+    generation: Readonly<{ primaryModelKey: string; fallbackModelKeys: readonly string[] }> }>[];
+}
+
+export interface PublishModelSiteReleaseCatalogInput {
+  readonly siteId: string; readonly siteReleaseRef: string; readonly inventoryDigest: string;
+  readonly surfaces: readonly Readonly<{ surface: ModelProductId;
+    allowedOptionRevisionRefs: readonly string[]; defaultModelOptionRevisionRef: string }>[];
+}
+
+type ModelProductId = "chat" | "music" | "image" | "video";
+type ModelRoleId = "main" | "generation";
 
 export async function getCurrentOperator() {
   const { query, headers, context } = await queryCall();
@@ -240,6 +304,189 @@ export async function codeBatchAction(action: "approve" | "activate" | "suspend"
     (response) => ({ batchRef: response.result?.batchRef ?? input.batchRef, receipt: receiptJson(response.receipt) }));
 }
 
+export async function listModelInventoryRevisions(pageToken?: string) {
+  const { model, headers, context } = await queryCall({ kind: "global" });
+  const response = await model.listInventoryRevisions({ context, page: { pageSize: 100,
+    ...(pageToken ? { pageToken } : {}) } }, { headers });
+  return { items: response.revisions.map((item) => ({ inventoryDigest: item.inventoryDigest,
+    sourceReference: item.sourceReference, counts: item.counts === undefined ? null : {
+      providers: item.counts.providers, models: item.counts.models, bindings: item.counts.bindings,
+      productRoutes: item.counts.productRoutes }, importedAt: requiredInstant(item.importedAt), active: item.active,
+    activePointerRevision: item.activePointerRevision?.toString() ?? null })),
+  nextPageToken: response.page?.nextPageToken ?? null, asOf: requiredInstant(response.page?.asOf) };
+}
+
+export async function listModelInventoryProviders(inventoryDigest: string, pageToken?: string) {
+  const { model, headers, context } = await queryCall({ kind: "global" });
+  const response = await model.listInventoryProviders({ context, inventoryDigest,
+    page: { pageSize: 100, ...(pageToken ? { pageToken } : {}) } }, { headers });
+  return { items: response.providers.map((item) => ({ providerKey: item.providerKey, provider: item.provider,
+    accountKey: item.accountKey, adapterKind: enumLabel(ControlProviderAdapterKind, item.adapterKind),
+    priority: item.priority, secretReferencePresent: item.secretReferencePresent,
+    status: enumLabel(ControlProviderOperationalStatus, item.status),
+    health: enumLabel(ControlProviderHealth, item.health), availabilityEpoch: item.availabilityEpoch.toString(),
+    observedAt: item.observedAt ? requiredInstant(item.observedAt) : null })),
+  nextPageToken: response.page?.nextPageToken ?? null, asOf: requiredInstant(response.page?.asOf) };
+}
+
+export async function listModelInventoryDefinitions(inventoryDigest: string, pageToken?: string) {
+  const { model, headers, context } = await queryCall({ kind: "global" });
+  const response = await model.listInventoryModels({ context, inventoryDigest,
+    page: { pageSize: 100, ...(pageToken ? { pageToken } : {}) } }, { headers });
+  return { items: response.models.map((item) => ({ modelKey: item.modelKey, displayName: item.displayName,
+    inputModalities: [...item.inputModalities], outputModalities: [...item.outputModalities],
+    capabilities: [...item.capabilities], contextWindow: item.contextWindow ?? null, enabled: item.enabled })),
+  nextPageToken: response.page?.nextPageToken ?? null, asOf: requiredInstant(response.page?.asOf) };
+}
+
+export async function listModelInventoryBindings(inventoryDigest: string, pageToken?: string) {
+  const { model, headers, context } = await queryCall({ kind: "global" });
+  const response = await model.listInventoryBindings({ context, inventoryDigest,
+    page: { pageSize: 100, ...(pageToken ? { pageToken } : {}) } }, { headers });
+  return { items: response.bindings.map((item) => ({ bindingKey: item.bindingKey, modelKey: item.modelKey,
+    providerKey: item.providerKey, upstreamModel: item.upstreamModel, gatewayModelName: item.gatewayModelName,
+    priority: item.priority, enabled: item.enabled })), nextPageToken: response.page?.nextPageToken ?? null,
+  asOf: requiredInstant(response.page?.asOf) };
+}
+
+export async function listModelInventoryRoutes(inventoryDigest: string, pageToken?: string) {
+  const { model, headers, context } = await queryCall({ kind: "global" });
+  const response = await model.listInventoryProductRoutes({ context, inventoryDigest,
+    page: { pageSize: 100, ...(pageToken ? { pageToken } : {}) } }, { headers });
+  return { items: response.routes.map((item) => ({ product: enumLabel(ControlModelProduct, item.product),
+    role: enumLabel(ControlModelRouteRole, item.role), modelKey: item.modelKey, position: item.position,
+    requiredCapabilities: [...item.requiredCapabilities] })), nextPageToken: response.page?.nextPageToken ?? null,
+  asOf: requiredInstant(response.page?.asOf) };
+}
+
+export async function listModelOptions(input: Readonly<{ inventoryDigest?: string; surface?: ModelProductId;
+  pageToken?: string }>) {
+  const { model, headers, context } = await queryCall({ kind: "global" });
+  const response = await model.listModelOptions({ context,
+    ...(input.inventoryDigest ? { inventoryDigest: input.inventoryDigest } : {}),
+    ...(input.surface ? { surface: modelProduct(input.surface) } : {}),
+    page: { pageSize: 100, ...(input.pageToken ? { pageToken: input.pageToken } : {}) } }, { headers });
+  return { items: response.options.map((item) => ({ revisionRef: item.revisionRef,
+    inventoryDigest: item.inventoryDigest, optionKey: item.optionKey,
+    surface: enumLabel(ControlModelProduct, item.surface), label: item.label,
+    description: item.description ?? null, tier: item.tier ?? null,
+    lifecycle: enumLabel(ControlModelOptionLifecycle, item.lifecycle),
+    inputModalities: [...item.inputModalities], outputModalities: [...item.outputModalities],
+    supportedEfforts: [...item.supportedEfforts], badges: [...item.badges],
+    createdAt: requiredInstant(item.createdAt) })), nextPageToken: response.page?.nextPageToken ?? null,
+  asOf: requiredInstant(response.page?.asOf) };
+}
+
+export async function listModelSitePolicies(siteId: string, pageToken?: string) {
+  const { model, headers, context } = await queryCall({ kind: "site", siteId });
+  const response = await model.listSiteModelPolicies({ context, siteId,
+    page: { pageSize: 100, ...(pageToken ? { pageToken } : {}) } }, { headers });
+  return { items: response.policies.map((item) => ({ siteId: item.siteId,
+    product: enumLabel(ControlModelProduct, item.product), revision: item.revision.toString(),
+    policyDigest: item.policyDigest, enabled: item.enabled,
+    catalogMode: enumLabel(ControlSiteModelCatalogMode, item.catalogMode),
+    catalogDigest: item.catalogDigest ?? null,
+    assignmentMode: enumLabel(ControlSiteModelAssignmentMode, item.assignmentMode),
+    assignmentCount: item.assignmentCount, current: item.current, changedAt: requiredInstant(item.changedAt) })),
+  nextPageToken: response.page?.nextPageToken ?? null, asOf: requiredInstant(response.page?.asOf) };
+}
+
+export async function listModelSiteReleaseCatalogs(siteId: string, pageToken?: string) {
+  const { model, headers, context } = await queryCall({ kind: "site", siteId });
+  const response = await model.listSiteReleaseCatalogs({ context, siteId,
+    page: { pageSize: 100, ...(pageToken ? { pageToken } : {}) } }, { headers });
+  return { items: response.catalogs.map((item) => ({ siteId: item.siteId,
+    siteReleaseRef: item.siteReleaseRef, modelOptionCatalogRef: item.modelOptionCatalogRef,
+    catalogDigest: item.catalogDigest, inventoryDigest: item.inventoryDigest,
+    surfaceCount: item.surfaceCount, publishedAt: requiredInstant(item.publishedAt) })),
+  nextPageToken: response.page?.nextPageToken ?? null, asOf: requiredInstant(response.page?.asOf) };
+}
+
+export async function importModelInventory(input: ImportModelInventoryInput) {
+  const session = await requireAuthoritySession(); const rpc = createClient(ModelControlService,
+    await adminControlPlaneTransport()); const context = commandContext(session, { kind: "global" });
+  const effect = create(ImportInventoryEffectSchema, { inventory: { sourceReference: input.sourceReference,
+    providers: input.providers.map((item) => ({ ...item, adapterKind: providerAdapter(item.adapterKind) })),
+    models: input.models.map((item) => ({ ...item, inputModalities: [...item.inputModalities],
+      outputModalities: [...item.outputModalities], capabilities: [...item.capabilities] })),
+    bindings: input.bindings.map((item) => ({ ...item })),
+    productRoutes: input.productRoutes.map((item) => ({ ...item, product: modelProduct(item.product),
+      role: modelRole(item.role), requiredCapabilities: [...item.requiredCapabilities] })) },
+    providerAvailability: input.providerAvailability.map((item) => ({ providerKey: item.providerKey,
+      status: providerStatus(item.status), health: providerHealth(item.health), epoch: BigInt(item.epoch),
+      ...(item.observationRef ? { observationRef: item.observationRef } : {}),
+      ...(item.observedAt ? { observedAt: timestampFromDate(new Date(item.observedAt)) } : {}) })) });
+  context.command!.requestDigest = importInventoryRequestDigest(context, effect, verifiedAxes(session));
+  return committedMutation(context, () => rpc.importInventory({ context, effect }, { headers: authHeaders(session) }),
+    (response) => ({ inventoryDigest: response.inventoryDigest, replayed: response.replayed,
+      receipt: receiptJson(response.receipt) }));
+}
+
+export async function activateModelInventory(targetDigest: string, expectedPointerRevision: string) {
+  const session = await requireAuthoritySession(); const rpc = createClient(ModelControlService,
+    await adminControlPlaneTransport()); const context = commandContext(session, { kind: "global" });
+  const effect = create(ActivateInventoryEffectSchema, { targetDigest,
+    expectedPointerRevision: BigInt(expectedPointerRevision) });
+  context.command!.requestDigest = activateInventoryRequestDigest(context, effect, verifiedAxes(session));
+  return committedMutation(context, () => rpc.activateInventory({ context, effect }, { headers: authHeaders(session) }),
+    (response) => ({ targetDigest: response.targetDigest,
+      activatedRevision: response.activatedRevision.toString(), replayed: response.replayed,
+      receipt: receiptJson(response.receipt) }));
+}
+
+export async function changeModelSitePolicy(input: ChangeModelSitePolicyInput) {
+  const session = await requireAuthoritySession(); const rpc = createClient(ModelControlService,
+    await adminControlPlaneTransport()); const context = commandContext(session, { kind: "site", siteId: input.siteId });
+  const effect = create(ChangeSitePolicyEffectSchema, { product: modelProduct(input.product), enabled: input.enabled,
+    catalogMode: input.catalogMode === "follow_active" ? ControlSiteModelCatalogMode.FOLLOW_ACTIVE
+      : ControlSiteModelCatalogMode.PINNED,
+    ...(input.catalogDigest ? { catalogDigest: input.catalogDigest } : {}),
+    assignmentMode: input.assignmentMode === "inherit" ? ControlSiteModelAssignmentMode.INHERIT
+      : ControlSiteModelAssignmentMode.REPLACE,
+    assignments: input.assignments.map((item) => ({ ...item, role: modelRole(item.role),
+      requiredCapabilities: [...item.requiredCapabilities] })), expectedRevision: BigInt(input.expectedRevision) });
+  context.command!.requestDigest = changeSitePolicyRequestDigest(context, input.siteId, effect, verifiedAxes(session));
+  return committedMutation(context, () => rpc.changeSitePolicy({ context, siteId: input.siteId, effect },
+    { headers: authHeaders(session) }), (response) => ({ siteId: response.siteId,
+    policyDigest: response.policyDigest, revision: response.revision.toString(), replayed: response.replayed,
+    receipt: receiptJson(response.receipt) }));
+}
+
+export async function materializeModelOptions(input: MaterializeModelOptionsInput) {
+  const session = await requireAuthoritySession(); const rpc = createClient(ModelControlService,
+    await adminControlPlaneTransport()); const context = commandContext(session, { kind: "global" });
+  const effect = create(MaterializeModelOptionsEffectSchema, { inventoryDigest: input.inventoryDigest,
+    options: input.options.map((item) => ({ optionKey: item.optionKey, surface: modelProduct(item.surface),
+      label: item.label, ...(item.description ? { description: item.description } : {}),
+      ...(item.tier ? { tier: item.tier } : {}), lifecycle: item.lifecycle === "active"
+        ? ControlModelOptionLifecycle.ACTIVE : ControlModelOptionLifecycle.DISABLED,
+      orchestration: { primaryModelKey: item.orchestration.primaryModelKey,
+        fallbackModelKeys: [...item.orchestration.fallbackModelKeys] },
+      generation: { primaryModelKey: item.generation.primaryModelKey,
+        fallbackModelKeys: [...item.generation.fallbackModelKeys] } })) });
+  context.command!.requestDigest = materializeModelOptionsRequestDigest(context, effect, verifiedAxes(session));
+  return committedMutation(context, () => rpc.materializeModelOptions({ context, effect }, { headers: authHeaders(session) }),
+    (response) => ({ inventoryDigest: response.inventoryDigest,
+      materializationDigest: response.materializationDigest, optionRevisionRefs: [...response.optionRevisionRefs],
+      replayed: response.replayed, receipt: receiptJson(response.receipt) }));
+}
+
+export async function publishModelSiteReleaseCatalog(input: PublishModelSiteReleaseCatalogInput) {
+  const session = await requireAuthoritySession(); const rpc = createClient(ModelControlService,
+    await adminControlPlaneTransport()); const context = commandContext(session, { kind: "site", siteId: input.siteId });
+  const effect = create(PublishSiteReleaseCatalogEffectSchema, { siteReleaseRef: input.siteReleaseRef,
+    inventoryDigest: input.inventoryDigest, surfaces: input.surfaces.map((item) => ({
+      surface: modelProduct(item.surface), allowedOptionRevisionRefs: [...item.allowedOptionRevisionRefs],
+      defaultOptionRevisionRef: item.defaultModelOptionRevisionRef })) });
+  context.command!.requestDigest = publishSiteReleaseCatalogRequestDigest(context, input.siteId, effect,
+    verifiedAxes(session));
+  return committedMutation(context, () => rpc.publishSiteReleaseCatalog({ context, siteId: input.siteId, effect },
+    { headers: authHeaders(session) }), (response) => ({ siteId: response.siteId,
+    siteReleaseRef: response.siteReleaseRef, modelOptionCatalogRef: response.modelOptionCatalogRef,
+    catalogDigest: response.catalogDigest, publishedAt: requiredInstant(response.publishedAt),
+    replayed: response.replayed, receipt: receiptJson(response.receipt) }));
+}
+
 export async function registerSite(input: RegisterSiteInput) {
   const session = await requireAuthoritySession();
   const rpc = createClient(SiteProvisioningService, await adminControlPlaneTransport());
@@ -298,6 +545,7 @@ async function queryCall(selection: ScopeSelection = { kind: "current" }) {
   const session = await requireAuthoritySession();
   const transport = await adminControlPlaneTransport();
   return { query: createClient(AdminQueryService, transport), commerce: createClient(AdminCommerceService, transport),
+    model: createClient(ModelControlService, transport),
     headers: authHeaders(session), context: queryContext(session, selection) };
 }
 
@@ -436,6 +684,24 @@ function assurance(value: AdminAuthoritySession["assuranceLevel"]): OperatorAssu
 function productKind(value: PublishOfferInput["productKind"]): ProductKind { return value === "credit_pack" ? ProductKind.CREDIT_PACK : value === "subscription" ? ProductKind.SUBSCRIPTION : ProductKind.BUNDLE; }
 function planTermAction(value: NonNullable<PublishOfferInput["plan"]>["termAction"]): PlanTermAction { return value === "none" ? PlanTermAction.NONE : value === "new_subscription" ? PlanTermAction.NEW_SUBSCRIPTION : value === "extend_from_max" ? PlanTermAction.EXTEND_FROM_MAX : PlanTermAction.REJECT_IF_ACTIVE; }
 function outputKind(value: PublishOfferInput["outputs"][number]["kind"]): FulfillmentOutputKind { return value === "subscription_term" ? FulfillmentOutputKind.SUBSCRIPTION_TERM : value === "entitlement_grant" ? FulfillmentOutputKind.ENTITLEMENT_GRANT : FulfillmentOutputKind.CREDIT_GRANT; }
+function modelProduct(value: ModelProductId): ControlModelProduct { return value === "chat"
+  ? ControlModelProduct.CHAT : value === "music" ? ControlModelProduct.MUSIC
+    : value === "image" ? ControlModelProduct.IMAGE : ControlModelProduct.VIDEO; }
+function modelRole(value: ModelRoleId): ControlModelRouteRole { return value === "main"
+  ? ControlModelRouteRole.MAIN : ControlModelRouteRole.GENERATION; }
+function providerAdapter(value: ImportModelInventoryInput["providers"][number]["adapterKind"]): ControlProviderAdapterKind {
+  return value === "litellm" ? ControlProviderAdapterKind.LITELLM : ControlProviderAdapterKind.DIRECT;
+}
+function providerStatus(value: ImportModelInventoryInput["providerAvailability"][number]["status"]): ControlProviderOperationalStatus {
+  return value === "active" ? ControlProviderOperationalStatus.ACTIVE : ControlProviderOperationalStatus.DISABLED;
+}
+function providerHealth(value: ImportModelInventoryInput["providerAvailability"][number]["health"]): ControlProviderHealth {
+  return value === "unknown" ? ControlProviderHealth.UNKNOWN : value === "healthy" ? ControlProviderHealth.HEALTHY
+    : value === "degraded" ? ControlProviderHealth.DEGRADED : ControlProviderHealth.DOWN;
+}
+function enumLabel(values: Record<number, string>, value: number): string {
+  return (values[value] ?? "UNSPECIFIED").toLowerCase();
+}
 function codeState(value: CodeBatchState): string { return CodeBatchState[value]?.toLowerCase() ?? "unknown"; }
 function approvalState(value: CodeBatchApprovalState): string { return CodeBatchApprovalState[value]?.toLowerCase() ?? "unknown"; }
 function siteJson(value: Readonly<{ siteRef: string; status: string; securityEpoch: bigint }>) {
