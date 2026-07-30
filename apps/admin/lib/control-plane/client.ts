@@ -305,101 +305,126 @@ export async function codeBatchAction(action: "approve" | "activate" | "suspend"
 }
 
 export async function listModelInventoryRevisions(pageToken?: string) {
-  const { model, headers, context } = await queryCall({ kind: "global" });
-  const response = await model.listInventoryRevisions({ context, page: { pageSize: 100,
-    ...(pageToken ? { pageToken } : {}) } }, { headers });
-  return { items: response.revisions.map((item) => ({ inventoryDigest: item.inventoryDigest,
-    sourceReference: item.sourceReference, counts: item.counts === undefined ? null : {
-      providers: item.counts.providers, models: item.counts.models, bindings: item.counts.bindings,
-      productRoutes: item.counts.productRoutes }, importedAt: requiredInstant(item.importedAt), active: item.active,
-    activePointerRevision: item.activePointerRevision?.toString() ?? null })),
-  nextPageToken: response.page?.nextPageToken ?? null, asOf: requiredInstant(response.page?.asOf) };
+  return modelQuery(async () => {
+    const { model, headers, context } = await queryCall({ kind: "global" });
+    const response = await model.listInventoryRevisions({ context, page: { pageSize: 100,
+      ...(pageToken ? { pageToken } : {}) } }, { headers });
+    return { items: response.revisions.map(modelInventoryRevisionJson),
+      nextPageToken: response.page?.nextPageToken ?? null, asOf: requiredInstant(response.page?.asOf) };
+  });
+}
+
+export async function getModelInventoryRevision(inventoryDigest: string) {
+  return modelQuery(async () => {
+    const { model, headers, context } = await queryCall({ kind: "global" });
+    const response = await model.getInventoryRevision({ context, inventoryDigest }, { headers });
+    if (response.revision === undefined || response.revision.inventoryDigest !== inventoryDigest) {
+      throw invalidResponse();
+    }
+    return { ...modelInventoryRevisionJson(response.revision), asOf: requiredInstant(response.asOf) };
+  });
 }
 
 export async function listModelInventoryProviders(inventoryDigest: string, pageToken?: string) {
-  const { model, headers, context } = await queryCall({ kind: "global" });
-  const response = await model.listInventoryProviders({ context, inventoryDigest,
-    page: { pageSize: 100, ...(pageToken ? { pageToken } : {}) } }, { headers });
-  return { items: response.providers.map((item) => ({ providerKey: item.providerKey, provider: item.provider,
-    accountKey: item.accountKey, adapterKind: enumLabel(ControlProviderAdapterKind, item.adapterKind),
-    priority: item.priority, secretReferencePresent: item.secretReferencePresent,
-    status: enumLabel(ControlProviderOperationalStatus, item.status),
-    health: enumLabel(ControlProviderHealth, item.health), availabilityEpoch: item.availabilityEpoch.toString(),
-    observedAt: item.observedAt ? requiredInstant(item.observedAt) : null })),
-  nextPageToken: response.page?.nextPageToken ?? null, asOf: requiredInstant(response.page?.asOf) };
+  return modelQuery(async () => {
+    const { model, headers, context } = await queryCall({ kind: "global" });
+    const response = await model.listInventoryProviders({ context, inventoryDigest,
+      page: { pageSize: 100, ...(pageToken ? { pageToken } : {}) } }, { headers });
+    return { items: response.providers.map((item) => ({ providerKey: item.providerKey, provider: item.provider,
+      accountKey: item.accountKey, adapterKind: enumLabel(ControlProviderAdapterKind, item.adapterKind),
+      priority: item.priority, secretReferencePresent: item.secretReferencePresent,
+      status: enumLabel(ControlProviderOperationalStatus, item.status),
+      health: enumLabel(ControlProviderHealth, item.health), availabilityEpoch: item.availabilityEpoch.toString(),
+      observedAt: item.observedAt ? requiredInstant(item.observedAt) : null })),
+    nextPageToken: response.page?.nextPageToken ?? null, asOf: requiredInstant(response.page?.asOf) };
+  });
 }
 
 export async function listModelInventoryDefinitions(inventoryDigest: string, pageToken?: string) {
-  const { model, headers, context } = await queryCall({ kind: "global" });
-  const response = await model.listInventoryModels({ context, inventoryDigest,
-    page: { pageSize: 100, ...(pageToken ? { pageToken } : {}) } }, { headers });
-  return { items: response.models.map((item) => ({ modelKey: item.modelKey, displayName: item.displayName,
-    inputModalities: [...item.inputModalities], outputModalities: [...item.outputModalities],
-    capabilities: [...item.capabilities], contextWindow: item.contextWindow ?? null, enabled: item.enabled })),
-  nextPageToken: response.page?.nextPageToken ?? null, asOf: requiredInstant(response.page?.asOf) };
+  return modelQuery(async () => {
+    const { model, headers, context } = await queryCall({ kind: "global" });
+    const response = await model.listInventoryModels({ context, inventoryDigest,
+      page: { pageSize: 100, ...(pageToken ? { pageToken } : {}) } }, { headers });
+    return { items: response.models.map((item) => ({ modelKey: item.modelKey, displayName: item.displayName,
+      inputModalities: [...item.inputModalities], outputModalities: [...item.outputModalities],
+      capabilities: [...item.capabilities], contextWindow: item.contextWindow ?? null, enabled: item.enabled })),
+    nextPageToken: response.page?.nextPageToken ?? null, asOf: requiredInstant(response.page?.asOf) };
+  });
 }
 
 export async function listModelInventoryBindings(inventoryDigest: string, pageToken?: string) {
-  const { model, headers, context } = await queryCall({ kind: "global" });
-  const response = await model.listInventoryBindings({ context, inventoryDigest,
-    page: { pageSize: 100, ...(pageToken ? { pageToken } : {}) } }, { headers });
-  return { items: response.bindings.map((item) => ({ bindingKey: item.bindingKey, modelKey: item.modelKey,
-    providerKey: item.providerKey, upstreamModel: item.upstreamModel, gatewayModelName: item.gatewayModelName,
-    priority: item.priority, enabled: item.enabled })), nextPageToken: response.page?.nextPageToken ?? null,
-  asOf: requiredInstant(response.page?.asOf) };
+  return modelQuery(async () => {
+    const { model, headers, context } = await queryCall({ kind: "global" });
+    const response = await model.listInventoryBindings({ context, inventoryDigest,
+      page: { pageSize: 100, ...(pageToken ? { pageToken } : {}) } }, { headers });
+    return { items: response.bindings.map((item) => ({ bindingKey: item.bindingKey, modelKey: item.modelKey,
+      providerKey: item.providerKey, upstreamModel: item.upstreamModel, gatewayModelName: item.gatewayModelName,
+      priority: item.priority, enabled: item.enabled })), nextPageToken: response.page?.nextPageToken ?? null,
+    asOf: requiredInstant(response.page?.asOf) };
+  });
 }
 
 export async function listModelInventoryRoutes(inventoryDigest: string, pageToken?: string) {
-  const { model, headers, context } = await queryCall({ kind: "global" });
-  const response = await model.listInventoryProductRoutes({ context, inventoryDigest,
-    page: { pageSize: 100, ...(pageToken ? { pageToken } : {}) } }, { headers });
-  return { items: response.routes.map((item) => ({ product: enumLabel(ControlModelProduct, item.product),
-    role: enumLabel(ControlModelRouteRole, item.role), modelKey: item.modelKey, position: item.position,
-    requiredCapabilities: [...item.requiredCapabilities] })), nextPageToken: response.page?.nextPageToken ?? null,
-  asOf: requiredInstant(response.page?.asOf) };
+  return modelQuery(async () => {
+    const { model, headers, context } = await queryCall({ kind: "global" });
+    const response = await model.listInventoryProductRoutes({ context, inventoryDigest,
+      page: { pageSize: 100, ...(pageToken ? { pageToken } : {}) } }, { headers });
+    return { items: response.routes.map((item) => ({ product: enumLabel(ControlModelProduct, item.product),
+      role: enumLabel(ControlModelRouteRole, item.role), modelKey: item.modelKey, position: item.position,
+      requiredCapabilities: [...item.requiredCapabilities] })), nextPageToken: response.page?.nextPageToken ?? null,
+    asOf: requiredInstant(response.page?.asOf) };
+  });
 }
 
 export async function listModelOptions(input: Readonly<{ inventoryDigest?: string; surface?: ModelProductId;
   pageToken?: string }>) {
-  const { model, headers, context } = await queryCall({ kind: "global" });
-  const response = await model.listModelOptions({ context,
-    ...(input.inventoryDigest ? { inventoryDigest: input.inventoryDigest } : {}),
-    ...(input.surface ? { surface: modelProduct(input.surface) } : {}),
-    page: { pageSize: 100, ...(input.pageToken ? { pageToken: input.pageToken } : {}) } }, { headers });
-  return { items: response.options.map((item) => ({ revisionRef: item.revisionRef,
-    inventoryDigest: item.inventoryDigest, optionKey: item.optionKey,
-    surface: enumLabel(ControlModelProduct, item.surface), label: item.label,
-    description: item.description ?? null, tier: item.tier ?? null,
-    lifecycle: enumLabel(ControlModelOptionLifecycle, item.lifecycle),
-    inputModalities: [...item.inputModalities], outputModalities: [...item.outputModalities],
-    supportedEfforts: [...item.supportedEfforts], badges: [...item.badges],
-    createdAt: requiredInstant(item.createdAt) })), nextPageToken: response.page?.nextPageToken ?? null,
-  asOf: requiredInstant(response.page?.asOf) };
+  return modelQuery(async () => {
+    const { model, headers, context } = await queryCall({ kind: "global" });
+    const response = await model.listModelOptions({ context,
+      ...(input.inventoryDigest ? { inventoryDigest: input.inventoryDigest } : {}),
+      ...(input.surface ? { surface: modelProduct(input.surface) } : {}),
+      page: { pageSize: 100, ...(input.pageToken ? { pageToken: input.pageToken } : {}) } }, { headers });
+    return { items: response.options.map((item) => ({ revisionRef: item.revisionRef,
+      inventoryDigest: item.inventoryDigest, optionKey: item.optionKey,
+      surface: enumLabel(ControlModelProduct, item.surface), label: item.label,
+      description: item.description ?? null, tier: item.tier ?? null,
+      lifecycle: enumLabel(ControlModelOptionLifecycle, item.lifecycle),
+      inputModalities: [...item.inputModalities], outputModalities: [...item.outputModalities],
+      supportedEfforts: [...item.supportedEfforts], badges: [...item.badges],
+      createdAt: requiredInstant(item.createdAt) })), nextPageToken: response.page?.nextPageToken ?? null,
+    asOf: requiredInstant(response.page?.asOf) };
+  });
 }
 
 export async function listModelSitePolicies(siteId: string, pageToken?: string) {
-  const { model, headers, context } = await queryCall({ kind: "site", siteId });
-  const response = await model.listSiteModelPolicies({ context, siteId,
-    page: { pageSize: 100, ...(pageToken ? { pageToken } : {}) } }, { headers });
-  return { items: response.policies.map((item) => ({ siteId: item.siteId,
-    product: enumLabel(ControlModelProduct, item.product), revision: item.revision.toString(),
-    policyDigest: item.policyDigest, enabled: item.enabled,
-    catalogMode: enumLabel(ControlSiteModelCatalogMode, item.catalogMode),
-    catalogDigest: item.catalogDigest ?? null,
-    assignmentMode: enumLabel(ControlSiteModelAssignmentMode, item.assignmentMode),
-    assignmentCount: item.assignmentCount, current: item.current, changedAt: requiredInstant(item.changedAt) })),
-  nextPageToken: response.page?.nextPageToken ?? null, asOf: requiredInstant(response.page?.asOf) };
+  return modelQuery(async () => {
+    const { model, headers, context } = await queryCall({ kind: "site", siteId });
+    const response = await model.listSiteModelPolicies({ context, siteId,
+      page: { pageSize: 100, ...(pageToken ? { pageToken } : {}) } }, { headers });
+    if (response.policies.some((item) => item.siteId !== siteId)) throw invalidResponse();
+    return { items: response.policies.map((item) => ({ siteId: item.siteId,
+      product: enumLabel(ControlModelProduct, item.product), revision: item.revision.toString(),
+      policyDigest: item.policyDigest, enabled: item.enabled,
+      catalogMode: enumLabel(ControlSiteModelCatalogMode, item.catalogMode),
+      catalogDigest: item.catalogDigest ?? null,
+      assignmentMode: enumLabel(ControlSiteModelAssignmentMode, item.assignmentMode),
+      assignmentCount: item.assignmentCount, current: item.current, changedAt: requiredInstant(item.changedAt) })),
+    nextPageToken: response.page?.nextPageToken ?? null, asOf: requiredInstant(response.page?.asOf) };
+  });
 }
 
 export async function listModelSiteReleaseCatalogs(siteId: string, pageToken?: string) {
-  const { model, headers, context } = await queryCall({ kind: "site", siteId });
-  const response = await model.listSiteReleaseCatalogs({ context, siteId,
-    page: { pageSize: 100, ...(pageToken ? { pageToken } : {}) } }, { headers });
-  return { items: response.catalogs.map((item) => ({ siteId: item.siteId,
-    siteReleaseRef: item.siteReleaseRef, modelOptionCatalogRef: item.modelOptionCatalogRef,
-    catalogDigest: item.catalogDigest, inventoryDigest: item.inventoryDigest,
-    surfaceCount: item.surfaceCount, publishedAt: requiredInstant(item.publishedAt) })),
-  nextPageToken: response.page?.nextPageToken ?? null, asOf: requiredInstant(response.page?.asOf) };
+  return modelQuery(async () => {
+    const { model, headers, context } = await queryCall({ kind: "site", siteId });
+    const response = await model.listSiteReleaseCatalogs({ context, siteId,
+      page: { pageSize: 100, ...(pageToken ? { pageToken } : {}) } }, { headers });
+    if (response.catalogs.some((item) => item.siteId !== siteId)) throw invalidResponse();
+    return { items: response.catalogs.map((item) => ({ siteId: item.siteId,
+      siteReleaseRef: item.siteReleaseRef, modelOptionCatalogRef: item.modelOptionCatalogRef,
+      catalogDigest: item.catalogDigest, inventoryDigest: item.inventoryDigest,
+      surfaceCount: item.surfaceCount, publishedAt: requiredInstant(item.publishedAt) })),
+    nextPageToken: response.page?.nextPageToken ?? null, asOf: requiredInstant(response.page?.asOf) };
+  });
 }
 
 export async function importModelInventory(input: ImportModelInventoryInput) {
@@ -447,9 +472,11 @@ export async function changeModelSitePolicy(input: ChangeModelSitePolicyInput) {
       requiredCapabilities: [...item.requiredCapabilities] })), expectedRevision: BigInt(input.expectedRevision) });
   context.command!.requestDigest = changeSitePolicyRequestDigest(context, input.siteId, effect, verifiedAxes(session));
   return committedMutation(context, () => rpc.changeSitePolicy({ context, siteId: input.siteId, effect },
-    { headers: authHeaders(session) }), (response) => ({ siteId: response.siteId,
-    policyDigest: response.policyDigest, revision: response.revision.toString(), replayed: response.replayed,
-    receipt: receiptJson(response.receipt) }));
+    { headers: authHeaders(session) }), (response) => {
+    if (response.siteId !== input.siteId) throw invalidResponse();
+    return { siteId: response.siteId, policyDigest: response.policyDigest,
+      revision: response.revision.toString(), replayed: response.replayed, receipt: receiptJson(response.receipt) };
+  });
 }
 
 export async function materializeModelOptions(input: MaterializeModelOptionsInput) {
@@ -481,10 +508,13 @@ export async function publishModelSiteReleaseCatalog(input: PublishModelSiteRele
   context.command!.requestDigest = publishSiteReleaseCatalogRequestDigest(context, input.siteId, effect,
     verifiedAxes(session));
   return committedMutation(context, () => rpc.publishSiteReleaseCatalog({ context, siteId: input.siteId, effect },
-    { headers: authHeaders(session) }), (response) => ({ siteId: response.siteId,
-    siteReleaseRef: response.siteReleaseRef, modelOptionCatalogRef: response.modelOptionCatalogRef,
-    catalogDigest: response.catalogDigest, publishedAt: requiredInstant(response.publishedAt),
-    replayed: response.replayed, receipt: receiptJson(response.receipt) }));
+    { headers: authHeaders(session) }), (response) => {
+    if (response.siteId !== input.siteId) throw invalidResponse();
+    return { siteId: response.siteId, siteReleaseRef: response.siteReleaseRef,
+      modelOptionCatalogRef: response.modelOptionCatalogRef, catalogDigest: response.catalogDigest,
+      publishedAt: requiredInstant(response.publishedAt), replayed: response.replayed,
+      receipt: receiptJson(response.receipt) };
+  });
 }
 
 export async function registerSite(input: RegisterSiteInput) {
@@ -662,10 +692,22 @@ function typed(reason: unknown): AdminControlPlaneError {
   return new AdminControlPlaneError(error.code, detail?.domainCode || "admin_control_plane.unavailable",
     detail?.receiptRef || null);
 }
+async function modelQuery<Result>(invoke: () => Promise<Result>): Promise<Result> {
+  try { return await invoke(); } catch (error) { throw typed(error); }
+}
 function invalidResponse() { return new AdminControlPlaneError(Code.Internal, "admin_control_plane.invalid_response"); }
 function requiredInstant(value: Readonly<{ seconds: bigint; nanos: number }> | undefined): string {
   if (value === undefined) throw invalidResponse();
   return new Date(Number(value.seconds) * 1000 + Math.floor(value.nanos / 1_000_000)).toISOString();
+}
+function modelInventoryRevisionJson(value: Readonly<{ inventoryDigest: string; sourceReference: string;
+  counts?: Readonly<{ providers: number; models: number; bindings: number; productRoutes: number }>;
+  importedAt?: Readonly<{ seconds: bigint; nanos: number }>; active: boolean; activePointerRevision?: bigint }>) {
+  if (value.counts === undefined) throw invalidResponse();
+  return { inventoryDigest: value.inventoryDigest, sourceReference: value.sourceReference,
+    counts: { providers: value.counts.providers, models: value.counts.models, bindings: value.counts.bindings,
+      productRoutes: value.counts.productRoutes }, importedAt: requiredInstant(value.importedAt), active: value.active,
+    activePointerRevision: value.activePointerRevision?.toString() ?? null };
 }
 function operatorJson(value: { operatorRef: string; operatorGeneration: bigint; state: OperatorState;
   effectivePermissions: string[]; effectiveSiteScopes: { siteId: string; environment: string; region: string;

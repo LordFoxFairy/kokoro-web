@@ -19,8 +19,8 @@ async function create(): Promise<Transport> {
     httpVersion: "2",
     useBinaryFormat: true,
     defaultTimeoutMs: 8_000,
-    readMaxBytes: 256 * 1024,
-    writeMaxBytes: 128 * 1024,
+    readMaxBytes: 8 * 1024 * 1024,
+    writeMaxBytes: 16 * 1024 * 1024,
     nodeOptions: {
       key: config.tls.key,
       cert: config.tls.cert,
