@@ -9,6 +9,7 @@ import { z } from "zod";
 import { useAdmin } from "@/components/shell/app-shell";
 import { apiGet, queryString } from "@/lib/api";
 import { LatestRequest } from "@/lib/cursor-window";
+import { canAccessAdminSurface } from "@/lib/admin-surface-permissions";
 
 const userIdentitySchema = z.object({
   siteId: z.string().min(1).max(128),
@@ -19,7 +20,12 @@ const userIdentitySchema = z.object({
 type UserIdentity = z.infer<typeof userIdentitySchema>;
 
 export default function UsersPage(): React.ReactElement {
-  const { siteId } = useAdmin();
+  const { me, siteId } = useAdmin();
+  if (!canAccessAdminSurface(me?.permissions ?? [], "users")) {
+    return <PageContainer header={{ title: "用户身份" }}>
+      <ProCard><Empty description="当前操作员无用户读取权限" /></ProCard>
+    </PageContainer>;
+  }
   return <SiteUserLookup key={siteId} siteId={siteId} />;
 }
 

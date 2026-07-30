@@ -19,7 +19,7 @@ describe("typed Admin user reader", () => {
     await expect(reader.getUserWithinSite("site-one", "user-one")).resolves.toEqual({
       siteId: "site-one", userRef: "user-one", status: "active", securityEpoch: "9007199254740993",
     });
-    expect(runtime).toHaveBeenCalledWith("site-one");
+    expect(runtime).toHaveBeenCalledWith("site-one", "users");
     expect(getUserWithinSite).toHaveBeenCalledWith({ context,
       siteId: "site-one", userRef: "user-one" }, { headers: expect.any(Headers) });
   });

@@ -22,25 +22,29 @@ import {
 } from "@/lib/credit-summary-request";
 import { formatCreditDecimal, type SiteCreditSummary } from "@/lib/credit-contract";
 import { useAdmin } from "@/components/shell/app-shell";
+import { adminNavigationAccess, canAccessAdminSurface } from "@/lib/admin-surface-permissions";
 
 const ENTRIES = [
-  { label: "用户", href: "/users", icon: <UserOutlined />, desc: "按站点查询用户身份" },
-  { label: "积分", href: "/credit", icon: <WalletOutlined />, desc: "账户 · 流水 · 定价" },
+  { label: "用户", href: "/users", icon: <UserOutlined />, desc: "按站点查询用户身份", signedSurface: "users" },
+  { label: "积分", href: "/credit", icon: <WalletOutlined />, desc: "账户 · 流水 · 定价", signedSurface: "credit" },
   { label: "站点", href: "/sites", icon: <GlobalOutlined />, desc: "站点 · 域名 · 策略" },
   { label: "模型", href: "/models", icon: <ApiOutlined />, desc: "目录 · 绑定" },
   { label: "审批", href: "/approvals", icon: <CheckCircleOutlined />, desc: "maker-checker 队列" },
   { label: "审计", href: "/audit", icon: <FileTextOutlined />, desc: "动作留痕" },
   { label: "操作员", href: "/operators", icon: <SafetyOutlined />, desc: "角色 · 作用域" },
-];
+] as const;
 
 const pendingSchema = z.array(z.object({ status: z.string() }).passthrough());
+const NO_PERMISSIONS: readonly string[] = Object.freeze([]);
 
 export default function Page(): React.ReactElement {
-  const { me, sites, siteId, can } = useAdmin();
+  const { me, sites, siteId } = useAdmin();
   const [pending, setPending] = useState<number | null>(null);
   const [settledCredit, setSettledCredit] = useState<SettledCreditSummary | null>(null);
-  const canReadCredit = can("credit.account.read");
-  const creditSiteId = creditSummaryRequestKey({ siteId, canRead: canReadCredit });
+  const permissions = me?.permissions ?? NO_PERMISSIONS;
+  const signedNavigation = adminNavigationAccess(permissions);
+  const canReadCreditSummary = canAccessAdminSurface(permissions, "creditSummary");
+  const creditSiteId = creditSummaryRequestKey({ siteId, permissions });
   const credit: SiteCreditSummary | null =
     creditSiteId !== null && settledCredit?.siteId === creditSiteId ? settledCredit.data : null;
 
@@ -56,8 +60,8 @@ export default function Page(): React.ReactElement {
   }, []);
 
   useEffect(
-    () => startCreditSummaryRequest({ siteId, canRead: canReadCredit }, setSettledCredit),
-    [siteId, canReadCredit],
+    () => startCreditSummaryRequest({ siteId, permissions }, setSettledCredit),
+    [siteId, permissions],
   );
 
   const available = credit?.balances.map((balance) =>
@@ -100,7 +104,7 @@ export default function Page(): React.ReactElement {
       </StatisticCard.Group>
 
       {/* Typed AdminCredit summary：所有金额保持 decimal string，不跨 unit 求和。 */}
-      <ProCard title="积分总览" variant="outlined" headerBordered style={{ marginBottom: 16 }}>
+      {canReadCreditSummary && <ProCard title="积分总览" variant="outlined" headerBordered style={{ marginBottom: 16 }}>
         <StatisticCard.Group direction="row">
           <StatisticCard
             statistic={{ title: "积分账户", value: credit ?
@@ -127,11 +131,11 @@ export default function Page(): React.ReactElement {
             }}
           />
         </StatisticCard.Group>
-      </ProCard>
+      </ProCard>}
 
       <ProCard title="快捷入口" variant="outlined" headerBordered>
         <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))" }}>
-          {ENTRIES.map((e) => (
+          {ENTRIES.filter((entry) => !("signedSurface" in entry) || signedNavigation[entry.signedSurface]).map((e) => (
             <Link key={e.href} href={e.href}>
               <ProCard hoverable variant="outlined" size="small" style={{ height: "100%" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 12 }}>

@@ -1,9 +1,10 @@
 import { apiGet, queryString } from "./api";
+import { canAccessAdminSurface } from "./admin-surface-permissions";
 import { siteCreditSummarySchema, type SiteCreditSummary } from "./credit-contract";
 
 export interface CreditSummaryAccess {
   readonly siteId: string;
-  readonly canRead: boolean;
+  readonly permissions: readonly string[];
 }
 
 export interface SettledCreditSummary {
@@ -15,7 +16,7 @@ export type CreditSummary = SiteCreditSummary;
 export type CreditSummaryFetcher = (path: string) => Promise<SiteCreditSummary>;
 
 export function creditSummaryRequestKey(access: CreditSummaryAccess): string | null {
-  return access.canRead && access.siteId.length > 0 ? access.siteId : null;
+  return canAccessAdminSurface(access.permissions, "creditSummary") && access.siteId.length > 0 ? access.siteId : null;
 }
 
 export function startCreditSummaryRequest(

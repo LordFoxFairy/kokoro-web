@@ -37,6 +37,14 @@ import { creditQuery, grantToHolds, holdToUsage, openUsageSourceTrace, sourceAll
   type CreditFilters, type CreditNavigation, type CreditView, type UsageSourceTrace } from "@/lib/credit-navigation";
 import { appendCursorPage, clearNextPageToken, CursorWindowError, LatestRequest, resetCursorWindow,
   type CursorWindow } from "@/lib/cursor-window";
+import {
+  accessForView,
+  authorizedCreditNavigation,
+  creditAccessPlan,
+  firstCreditView,
+  visibleCreditViews,
+  type CreditAccessPlan,
+} from "@/lib/admin-surface-permissions";
 
 const ENDPOINTS = {
   summary: "/api/control/credit/summary",
@@ -66,55 +74,66 @@ const ratedUsageSourceIdentity = (row: RatedUsageSourceAllocation) =>
   `${row.ratedUsageRef}:${row.allocationOrdinal}`;
 
 export function CreditConsole(): React.ReactElement {
-  const { siteId } = useAdmin();
-  return <CreditConsoleSite key={siteId} siteId={siteId} />;
+  const { me, siteId } = useAdmin();
+  const access = useMemo(() => creditAccessPlan(me?.permissions ?? []), [me?.permissions]);
+  const accessKey = Object.values(access).map((allowed) => allowed ? "1" : "0").join("");
+  return <CreditConsoleSite key={`${siteId}:${accessKey}`} siteId={siteId} access={access} />;
 }
 
-function CreditConsoleSite({ siteId }: Readonly<{ siteId: string }>): React.ReactElement {
-  const [view, setView] = useState<CreditView>("accounts");
+function CreditConsoleSite({ siteId, access }: Readonly<{ siteId: string; access: CreditAccessPlan }>): React.ReactElement {
+  const [view, setView] = useState<CreditView | null>(() => firstCreditView(access));
   const [filters, setFilters] = useState<CreditFilters>({});
   const [holdAllocations, setHoldAllocations] = useState<HoldAllocationDrawer | null>(null);
   const [journalEntries, setJournalEntries] = useState<string | null>(null);
   const [usageSources, setUsageSources] = useState<UsageSourceTrace | null>(null);
   const [accountDetail, setAccountDetail] = useState<string | null>(null);
-  const summary = useCreditSummary(siteId);
+  const summary = useCreditSummary(siteId, access.summary);
 
   const navigate = useCallback((next: CreditNavigation) => {
-    setView(next.view); setFilters(next.filters);
-  }, []);
+    const authorized = authorizedCreditNavigation(next, access);
+    if (authorized === null) return;
+    setView(authorized.view); setFilters(authorized.filters);
+  }, [access]);
   const changeView = useCallback((key: string) => {
-    setView(key as CreditView); setFilters({});
-  }, []);
+    const next = key as CreditView;
+    if (!accessForView(access, next)) return;
+    setView(next); setFilters({});
+  }, [access]);
+  const labels: Readonly<Record<CreditView, string>> = { accounts: "账户", grants: "Grant", holds: "Hold",
+    journal: "流水", usage: "Rated Usage" };
+  const tabItems = visibleCreditViews(access).map((key) => ({ key, label: labels[key] }));
+  const hasAnyAccess = access.summary || view !== null;
 
   return <PageContainer header={{ title: "积分事实追踪" }}
     content="只读查看 Site 的账户、Grant、Hold、复式流水与 RatedUsage；所有结果来自 typed AdminCredit 控制面。">
     <div className={styles.console}>
-      {!siteId ? <Empty className={styles.emptySite} description="请先在顶部选择 Site" /> : <>
-        <SummaryStrip state={summary} />
-        <Tabs activeKey={view} onChange={changeView} items={[
-          { key: "accounts", label: "账户" }, { key: "grants", label: "Grant" },
-          { key: "holds", label: "Hold" }, { key: "journal", label: "流水" },
-          { key: "usage", label: "Rated Usage" },
-        ]} />
-        <FilterBar view={view} value={filters} onApply={setFilters} onClear={() => setFilters({})} />
+      {!siteId ? <Empty className={styles.emptySite} description="请先在顶部选择 Site" /> : !hasAnyAccess ?
+        <Empty className={styles.emptySite} description="当前操作员无积分读取权限" /> : <>
+        {access.summary && <SummaryStrip state={summary} />}
+        {view !== null && <Tabs activeKey={view} onChange={changeView} items={tabItems} />}
+        {view !== null && <FilterBar view={view} value={filters} onApply={setFilters} onClear={() => setFilters({})} />}
         {view === "accounts" && <AccountsPanel siteId={siteId} filters={filters}
-          onDetail={setAccountDetail} onNavigate={navigate} />}
+          onDetail={setAccountDetail} onNavigate={navigate} access={access} />}
         {view === "grants" && <GrantsPanel siteId={siteId} filters={filters} onNavigate={navigate}
           onAllocations={(ref) => setHoldAllocations({ kind: "grant", ref })}
-          onEntries={setJournalEntries} />}
+          onEntries={setJournalEntries} access={access} />}
         {view === "holds" && <HoldsPanel siteId={siteId} filters={filters} onNavigate={navigate}
-          onAllocations={(ref) => setHoldAllocations({ kind: "hold", ref })} />}
+          onAllocations={(ref) => setHoldAllocations({ kind: "hold", ref })} access={access} />}
         {view === "journal" && <JournalPanel siteId={siteId} filters={filters} onEntries={setJournalEntries} />}
         {view === "usage" && <UsagePanel siteId={siteId} filters={filters} onNavigate={navigate}
-          onSources={setUsageSources} />}
+          onSources={setUsageSources} access={access} />}
       </>}
-      <AccountDrawer key={`${siteId}:${accountDetail ?? "closed"}`} siteId={siteId}
+      {access.accountDetail && <AccountDrawer key={`${siteId}:${accountDetail ?? "closed"}`} siteId={siteId}
         accountRef={accountDetail} onClose={() => setAccountDetail(null)} />
-      <HoldAllocationTraceDrawer siteId={siteId} trace={holdAllocations}
-        onClose={() => setHoldAllocations(null)} onNavigate={(next) => { setHoldAllocations(null); navigate(next); }} />
-      <JournalEntryDrawer siteId={siteId} transactionRef={journalEntries} onClose={() => setJournalEntries(null)} />
-      <UsageSourceTraceDrawer siteId={siteId} trace={usageSources} onClose={() => setUsageSources(null)}
-        onNavigate={(next) => { setUsageSources(null); navigate(next); }} />
+      }
+      {access.holdAllocations && <HoldAllocationTraceDrawer siteId={siteId} trace={holdAllocations}
+        canNavigateGrant={access.grants} onClose={() => setHoldAllocations(null)}
+        onNavigate={(next) => { setHoldAllocations(null); navigate(next); }} />}
+      {access.journalEntries && <JournalEntryDrawer siteId={siteId} transactionRef={journalEntries}
+        onClose={() => setJournalEntries(null)} />}
+      {access.ratedUsageSourceAllocations && <UsageSourceTraceDrawer siteId={siteId} trace={usageSources}
+        canNavigateGrant={access.grants} onClose={() => setUsageSources(null)}
+        onNavigate={(next) => { setUsageSources(null); navigate(next); }} />}
     </div>
   </PageContainer>;
 }
@@ -179,8 +198,9 @@ function FilterBar({ view, value, onApply, onClear }: Readonly<{ view: CreditVie
   </Card>;
 }
 
-function AccountsPanel({ siteId, filters, onDetail, onNavigate }: Readonly<{ siteId: string; filters: CreditFilters;
-  onDetail: (ref: string) => void; onNavigate: (next: CreditNavigation) => void }>) {
+function AccountsPanel({ siteId, filters, onDetail, onNavigate, access }: Readonly<{ siteId: string;
+  filters: CreditFilters; onDetail: (ref: string) => void; onNavigate: (next: CreditNavigation) => void;
+  access: CreditAccessPlan }>) {
   const columns: ProColumns<CreditAccount>[] = [
     { title: "Credit account", render: (_, row) => <RefText value={row.creditAccountRef} /> },
     { title: "Billing account", dataIndex: "billingAccountRef", ellipsis: true },
@@ -193,19 +213,19 @@ function AccountsPanel({ siteId, filters, onDetail, onNavigate }: Readonly<{ sit
     { title: "更新时间", render: (_, row) => displayTime(row.updatedAt), width: 180 },
     { title: "追踪", valueType: "option", fixed: "right", render: (_, row) => [
       <Button key="detail" type="link" onClick={() => onDetail(row.creditAccountRef)}>详情</Button>,
-      <Button key="grant" type="link" onClick={() => onNavigate({ view: "grants",
-        filters: { creditAccountRef: row.creditAccountRef } })}>Grant</Button>,
-      <Button key="hold" type="link" onClick={() => onNavigate({ view: "holds",
-        filters: { creditAccountRef: row.creditAccountRef } })}>Hold</Button>,
+      access.grants ? <Button key="grant" type="link" onClick={() => onNavigate({ view: "grants",
+        filters: { creditAccountRef: row.creditAccountRef } })}>Grant</Button> : null,
+      access.holds ? <Button key="hold" type="link" onClick={() => onNavigate({ view: "holds",
+        filters: { creditAccountRef: row.creditAccountRef } })}>Hold</Button> : null,
     ] },
   ];
   return <CreditTable siteId={siteId} endpoint={ENDPOINTS.accounts} schema={creditAccountListSchema}
     identity={accountIdentity} columns={columns} filters={filters} />;
 }
 
-function GrantsPanel({ siteId, filters, onNavigate, onAllocations, onEntries }: Readonly<{ siteId: string;
+function GrantsPanel({ siteId, filters, onNavigate, onAllocations, onEntries, access }: Readonly<{ siteId: string;
   filters: CreditFilters; onNavigate: (next: CreditNavigation) => void; onAllocations: (ref: string) => void;
-  onEntries: (ref: string) => void }>) {
+  onEntries: (ref: string) => void; access: CreditAccessPlan }>) {
   const columns: ProColumns<CreditGrant>[] = [
     { title: "Grant", render: (_, row) => <RefText value={row.creditGrantId} /> },
     { title: "来源", render: (_, row) => <Space direction="vertical" size={0}><StateTag value={row.sourceType} />
@@ -216,17 +236,21 @@ function GrantsPanel({ siteId, filters, onNavigate, onAllocations, onEntries }: 
     { title: "生效", render: (_, row) => displayTime(row.effectiveAt), width: 180 },
     { title: "到期", render: (_, row) => row.expiresAt ? displayTime(row.expiresAt) : "永久", width: 180 },
     { title: "追踪", valueType: "option", fixed: "right", render: (_, row) => [
-      <Button key="holds" type="link" onClick={() => onNavigate(grantToHolds(row.creditGrantId))}>关联 Hold</Button>,
-      <Button key="alloc" type="link" onClick={() => onAllocations(row.creditGrantId)}>分摊</Button>,
-      <Button key="journal" type="link" onClick={() => onEntries(row.issuanceJournalTransactionRef)}>入账分录</Button>,
+      access.holds ? <Button key="holds" type="link"
+        onClick={() => onNavigate(grantToHolds(row.creditGrantId))}>关联 Hold</Button> : null,
+      access.holdAllocations ? <Button key="alloc" type="link"
+        onClick={() => onAllocations(row.creditGrantId)}>分摊</Button> : null,
+      access.journalEntries ? <Button key="journal" type="link"
+        onClick={() => onEntries(row.issuanceJournalTransactionRef)}>入账分录</Button> : null,
     ] },
   ];
   return <CreditTable siteId={siteId} endpoint={ENDPOINTS.grants} schema={creditGrantListSchema}
     identity={grantIdentity} columns={columns} filters={filters} />;
 }
 
-function HoldsPanel({ siteId, filters, onNavigate, onAllocations }: Readonly<{ siteId: string;
-  filters: CreditFilters; onNavigate: (next: CreditNavigation) => void; onAllocations: (ref: string) => void }>) {
+function HoldsPanel({ siteId, filters, onNavigate, onAllocations, access }: Readonly<{ siteId: string;
+  filters: CreditFilters; onNavigate: (next: CreditNavigation) => void; onAllocations: (ref: string) => void;
+  access: CreditAccessPlan }>) {
   const columns: ProColumns<CreditHold>[] = [
     { title: "Hold", render: (_, row) => <RefText value={row.creditHoldRef} /> },
     { title: "执行", render: (_, row) => <RefText value={row.executionRootRef} /> },
@@ -238,9 +262,10 @@ function HoldsPanel({ siteId, filters, onNavigate, onAllocations }: Readonly<{ s
     { title: "更新时间", render: (_, row) => displayTime(row.updatedAt), width: 180 },
     { title: "追踪", valueType: "option", fixed: "right", render: (_, row) => [
       <Button key="alloc" type="link" onClick={() => onAllocations(row.creditHoldRef)}>Grant 分摊</Button>,
-      <Button key="usage" type="link" onClick={() => onNavigate(holdToUsage(row.creditHoldRef))}>Rated Usage</Button>,
-      <Button key="journal" type="link" onClick={() => onNavigate({ view: "journal",
-        filters: { creditHoldRef: row.creditHoldRef } })}>流水</Button>,
+      access.ratedUsage ? <Button key="usage" type="link"
+        onClick={() => onNavigate(holdToUsage(row.creditHoldRef))}>Rated Usage</Button> : null,
+      access.journalTransactions ? <Button key="journal" type="link" onClick={() => onNavigate({ view: "journal",
+        filters: { creditHoldRef: row.creditHoldRef } })}>流水</Button> : null,
     ] },
   ];
   return <CreditTable siteId={siteId} endpoint={ENDPOINTS.holds} schema={creditHoldListSchema}
@@ -263,8 +288,9 @@ function JournalPanel({ siteId, filters, onEntries }: Readonly<{ siteId: string;
     columns={columns} filters={filters} />;
 }
 
-function UsagePanel({ siteId, filters, onNavigate, onSources }: Readonly<{ siteId: string; filters: CreditFilters;
-  onNavigate: (next: CreditNavigation) => void; onSources: (trace: UsageSourceTrace) => void }>) {
+function UsagePanel({ siteId, filters, onNavigate, onSources, access }: Readonly<{ siteId: string;
+  filters: CreditFilters; onNavigate: (next: CreditNavigation) => void;
+  onSources: (trace: UsageSourceTrace) => void; access: CreditAccessPlan }>) {
   const columns: ProColumns<RatedUsage>[] = [
     { title: "Rated Usage", render: (_, row) => <RefText value={row.ratedUsageRef} /> },
     { title: "Settlement", render: (_, row) => <Button type="link"
@@ -278,8 +304,8 @@ function UsagePanel({ siteId, filters, onNavigate, onSources }: Readonly<{ siteI
     { title: "追踪", valueType: "option", fixed: "right", render: (_, row) => [
       <Button key="sources" type="link"
         onClick={() => onSources(openUsageSourceTrace("usage", row.ratedUsageRef))}>来源 Grant</Button>,
-      <Button key="journal" type="link" onClick={() => onNavigate({ view: "journal",
-        filters: { creditHoldRef: row.creditHoldRef } })}>该 Hold 的全部流水</Button>,
+      access.journalTransactions ? <Button key="journal" type="link" onClick={() => onNavigate({ view: "journal",
+        filters: { creditHoldRef: row.creditHoldRef } })}>该 Hold 的全部流水</Button> : null,
     ] },
   ];
   return <CreditTable siteId={siteId} endpoint={ENDPOINTS.ratedUsage} schema={ratedUsageListSchema}
@@ -376,15 +402,17 @@ function AccountDrawer({ siteId, accountRef, onClose }: Readonly<{ siteId: strin
   </Drawer>;
 }
 
-function HoldAllocationTraceDrawer({ siteId, trace, onClose, onNavigate }: Readonly<{ siteId: string;
-  trace: HoldAllocationDrawer | null; onClose: () => void; onNavigate: (next: CreditNavigation) => void }>) {
+function HoldAllocationTraceDrawer({ siteId, trace, onClose, onNavigate, canNavigateGrant }: Readonly<{ siteId: string;
+  trace: HoldAllocationDrawer | null; onClose: () => void; onNavigate: (next: CreditNavigation) => void;
+  canNavigateGrant: boolean }>) {
   const filters = useMemo<CreditFilters>(() => trace
     ? { [trace.kind === "grant" ? "creditGrantId" : "creditHoldRef"]: trace.ref }
     : {}, [trace]);
   const columns: ProColumns<CreditHoldAllocation>[] = [
     { title: "Hold", render: (_, row) => <RefText value={row.creditHoldRef} /> },
-    { title: "Grant", render: (_, row) => <Button type="link"
-      onClick={() => onNavigate(sourceAllocationToGrant(row.creditGrantId))}>{row.creditGrantId}</Button> },
+    { title: "Grant", render: (_, row) => canNavigateGrant ? <Button type="link"
+      onClick={() => onNavigate(sourceAllocationToGrant(row.creditGrantId))}>{row.creditGrantId}</Button> :
+      <RefText value={row.creditGrantId} /> },
     { title: "金额", align: "right", render: (_, row) => <Amount value={row.allocatedAmount} unit={row.unit} /> },
     { title: "序号", dataIndex: "allocationOrdinal", align: "right" },
     { title: "创建时间", render: (_, row) => displayTime(row.createdAt) },
@@ -417,16 +445,18 @@ function JournalEntryDrawer({ siteId, transactionRef, onClose }: Readonly<{ site
   </Drawer>;
 }
 
-function UsageSourceTraceDrawer({ siteId, trace, onClose, onNavigate }: Readonly<{ siteId: string;
-  trace: UsageSourceTrace | null; onClose: () => void; onNavigate: (next: CreditNavigation) => void }>) {
+function UsageSourceTraceDrawer({ siteId, trace, onClose, onNavigate, canNavigateGrant }: Readonly<{ siteId: string;
+  trace: UsageSourceTrace | null; onClose: () => void; onNavigate: (next: CreditNavigation) => void;
+  canNavigateGrant: boolean }>) {
   const filters = useMemo<CreditFilters>(() => trace
     ? { [trace.kind === "usage" ? "ratedUsageRef" : "settlementRef"]: trace.ref }
     : {}, [trace]);
   const columns: ProColumns<RatedUsageSourceAllocation>[] = [
     { title: "Rated Usage", render: (_, row) => <RefText value={row.ratedUsageRef} /> },
     { title: "Settlement", render: (_, row) => <RefText value={row.settlementRef} /> },
-    { title: "Grant", render: (_, row) => <Button type="link"
-      onClick={() => onNavigate(sourceAllocationToGrant(row.creditGrantId))}>{row.creditGrantId}</Button> },
+    { title: "Grant", render: (_, row) => canNavigateGrant ? <Button type="link"
+      onClick={() => onNavigate(sourceAllocationToGrant(row.creditGrantId))}>{row.creditGrantId}</Button> :
+      <RefText value={row.creditGrantId} /> },
     { title: "方向", render: (_, row) => <StateTag value={row.direction} /> },
     { title: "金额", align: "right", render: (_, row) => <Amount value={row.amount} /> },
     { title: "序号", dataIndex: "allocationOrdinal", align: "right" },
@@ -438,13 +468,13 @@ function UsageSourceTraceDrawer({ siteId, trace, onClose, onNavigate }: Readonly
   </Drawer>;
 }
 
-function useCreditSummary(siteId: string) {
+function useCreditSummary(siteId: string, enabled: boolean) {
   const [value, setValue] = useState<SiteCreditSummary | null>(null);
-  const [loading, setLoading] = useState(Boolean(siteId));
+  const [loading, setLoading] = useState(Boolean(enabled && siteId));
   const [error, setError] = useState<string | null>(null); const requests = useRef(new LatestRequest());
   useEffect(() => {
     const gate = requests.current;
-    if (!siteId) return () => gate.invalidate();
+    if (!enabled || !siteId) return () => gate.invalidate();
     const generation = gate.begin();
     void apiGet(`${ENDPOINTS.summary}?${creditQuery(siteId)}`, siteCreditSummarySchema)
       .then((loaded) => { if (gate.isCurrent(generation)) { setValue(loaded); setError(null); } })
@@ -452,7 +482,7 @@ function useCreditSummary(siteId: string) {
         setError(reason instanceof Error ? reason.message : "admin_credit.unavailable");
       } }).finally(() => { if (gate.isCurrent(generation)) setLoading(false); });
     return () => gate.invalidate();
-  }, [siteId]);
+  }, [enabled, siteId]);
   return { value, loading, error };
 }
 
