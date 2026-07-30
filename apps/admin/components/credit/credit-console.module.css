@@ -1,0 +1,91 @@
+.console {
+  --trace: var(--primary);
+  --trace-soft: var(--accent);
+}
+
+.summaryGrid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(150px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.summaryCard {
+  position: relative;
+  overflow: hidden;
+  border-color: color-mix(in oklab, var(--trace) 20%, var(--border));
+}
+
+.summaryCard::before {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  content: "";
+  background: var(--trace);
+}
+
+.balanceLabel,
+.watermark {
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+
+.amount {
+  white-space: nowrap;
+  color: var(--foreground);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+  font-weight: 600;
+}
+
+.amount small {
+  margin-left: 4px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.filters {
+  margin-bottom: 12px;
+  border-color: color-mix(in oklab, var(--trace) 18%, var(--border));
+  background: linear-gradient(90deg, color-mix(in oklab, var(--trace-soft) 55%, transparent), transparent 44%);
+}
+
+.filterForm :global(.ant-form-item) {
+  margin-bottom: 8px;
+}
+
+.observation {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.emptySite {
+  padding: 48px 16px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--card);
+}
+
+@media (max-width: 1100px) {
+  .summaryGrid {
+    grid-template-columns: repeat(2, minmax(160px, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .summaryGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .filterForm :global(.ant-form-item) {
+    width: 100%;
+  }
+
+  .filterForm :global(.ant-input),
+  .filterForm :global(.ant-select) {
+    width: 100% !important;
+  }
+}
