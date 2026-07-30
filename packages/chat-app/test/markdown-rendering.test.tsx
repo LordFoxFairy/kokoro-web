@@ -17,6 +17,16 @@ describe("Chat Markdown rendering", () => {
     expect(html).toContain(">Copy<")
   })
 
+  it("does not auto-load remote Markdown images in the browser", () => {
+    const html = renderToStaticMarkup(
+      <MarkdownText text="![tracking pixel](https://media.example/pixel.png)" />,
+    )
+
+    expect(html).not.toContain("<img")
+    expect(html).toContain("href=\"https://media.example/pixel.png\"")
+    expect(html).toContain("tracking pixel")
+  })
+
   it("renders a safe recovery control instead of an internal action token", () => {
     const projection: ChatProjection = {
       ...createChatProjection(),
@@ -37,6 +47,7 @@ describe("Chat Markdown rendering", () => {
       chatCatalog: null,
       selectedModelOptionRevisionRef: null,
       selectedEffort: null,
+      appliedDraft: null,
       hitlDecisionSupported: true,
     }
     const unavailable = async (..._args: readonly unknown[]): Promise<never> => {
@@ -62,7 +73,7 @@ describe("Chat Markdown rendering", () => {
     } satisfies ChatController
 
     const html = renderToStaticMarkup(
-      <ChatView brandName="Kokoro" controller={controller} state={state} copy={DEFAULT_CHAT_COPY} />,
+      <ChatView brandName="Kokoro" controller={controller} state={state} copy={DEFAULT_CHAT_COPY} sessionId="session-12345678" />,
     )
 
     expect(html).toContain(">Refresh conversation<")

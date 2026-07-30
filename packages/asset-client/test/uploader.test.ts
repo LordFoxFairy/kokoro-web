@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 
 import { createAssetUploader, createLocalAssetRecoveryStore, type AssetRecoveryRecord, type AssetRecoveryStore } from "../src/index.js"
 
@@ -30,6 +30,42 @@ function receipt(operation: "initiate" | "put_part" | "complete") {
 }
 
 describe("capability-scoped Asset uploader", () => {
+  it("bounds concurrent hashing and authorization work for a multi-file composer selection", async () => {
+    const { store } = memoryStore()
+    let releaseFirst!: () => void
+    const firstResponse = new Promise<void>((resolve) => { releaseFirst = resolve })
+    let requests = 0
+    const fetcher: typeof fetch = async () => {
+      requests += 1
+      if (requests === 1) await firstResponse
+      return Response.json({
+        capability: { credential: "c".repeat(64), expiresAt: instant, minimumPartBytes: "1", maximumPartBytes: "16",
+          protocolRevision: "s3-multipart-v1", uploadEndpoint: "https://uploads.example" },
+        upload: owner("ready"),
+      }, { status: 201 })
+    }
+    const progress: string[] = []
+    const uploader = createAssetUploader({
+      csrfToken: "browser-csrf",
+      store,
+      fetch: fetcher,
+      maximumConcurrentUploads: 1,
+    })
+
+    const first = uploader.upload(new File(["one"], "one.txt", { type: "text/plain" }), {
+      onProgress: ({ phase }) => progress.push(`one:${phase}`),
+    })
+    const second = uploader.upload(new File(["two"], "two.txt", { type: "text/plain" }), {
+      onProgress: ({ phase }) => progress.push(`two:${phase}`),
+    })
+    await vi.waitFor(() => expect(progress).toContain("one:authorizing"))
+    expect(progress).not.toContain("two:hashing")
+
+    releaseFirst()
+    await Promise.all([first, second])
+    expect(progress).toContain("two:hashing")
+  })
+
   it("prunes recovery identities from a previous account scope without touching unrelated storage", () => {
     const values = new Map<string, string>([
       ["kokoro.asset-upload.v1.old-project.fingerprint", "{}"],

@@ -63,6 +63,7 @@ function branchActivated(branchId: string): SessionEvent {
 function clientFixture(input: Readonly<{
   initial: SessionSnapshot
   fetchSnapshot: SessionClient["fetchSnapshot"]
+  hydrate?: SessionClient["hydrate"]
   getCommandReceipt?: SessionClient["getCommandReceipt"]
   submitMessage?: SessionClient["submitMessage"]
 }>) {
@@ -72,7 +73,7 @@ function clientFixture(input: Readonly<{
   }
   const client = {
     fetchSnapshot: input.fetchSnapshot,
-    hydrate: vi.fn(async (): Promise<SessionHydration> => ({
+    hydrate: input.hydrate ?? vi.fn(async (): Promise<SessionHydration> => ({
       kind: "ready",
       snapshot: input.initial,
       watermark: input.initial.snapshot_watermark,
@@ -107,6 +108,98 @@ function clientFixture(input: Readonly<{
 }
 
 describe("Chat recovery controller", () => {
+  it("does not carry one conversation's model draft selection into another conversation", async () => {
+    const first = snapshot("branch-first-12345678", "signed.cursor.1", "1")
+    const second: SessionSnapshot = {
+      ...snapshot("branch-second-12345678", "signed.cursor.2", "2"),
+      session: {
+        ...snapshot("branch-second-12345678", "signed.cursor.2", "2").session,
+        session_id: "session-second-12345678",
+      },
+      model_history: [{ model_option_revision_ref: "model-option-second-12345678", label: "Second" }],
+    }
+    const hydrate = vi.fn<SessionClient["hydrate"]>(async (sessionId) => {
+      const selected = sessionId === "session-second-12345678" ? second : first
+      return {
+        kind: "ready",
+        snapshot: selected,
+        watermark: selected.snapshot_watermark,
+        cursor: selected.snapshot_watermark.cursor as SessionCursor,
+      }
+    })
+    const { client } = clientFixture({ initial: first, fetchSnapshot: vi.fn(async () => first), hydrate })
+    const controller = createChatController({
+      client,
+      trustedLocale: "en-US",
+      chatCatalog: {
+        surfaceId: "chat",
+        catalogRevisionRef: "catalog-12345678",
+        defaultModelOptionRevisionRef: "model-option-first-12345678",
+        publishedAt: NOW,
+        options: [
+          { modelOptionRevisionRef: "model-option-first-12345678", optionKey: "first", label: "First", inputModalities: ["text"], outputModalities: ["text"], supportedEfforts: [], badges: [], availability: "available" },
+          { modelOptionRevisionRef: "model-option-second-12345678", optionKey: "second", label: "Second", inputModalities: ["text"], outputModalities: ["text"], supportedEfforts: [], badges: [], availability: "available" },
+        ],
+      },
+      defaultProjectRef: "project-12345678",
+    })
+
+    await controller.open("session-12345678")
+    expect(controller.getSnapshot().selectedModelOptionRevisionRef).toBe("model-option-first-12345678")
+    await controller.open("session-second-12345678")
+    expect(controller.getSnapshot().selectedModelOptionRevisionRef).toBe("model-option-second-12345678")
+    controller.close()
+  })
+
+  it("repairs a conflicting Run projection version instead of regressing visible state", async () => {
+    const base = snapshot("branch-original-12345678", "signed.cursor.1", "1")
+    const initial: SessionSnapshot = {
+      ...base,
+      runs: [{
+        run_id: "run-12345678",
+        launch_id: "launch-12345678",
+        branch_id: "branch-original-12345678",
+        assistant_message_id: "message-assistant-12345678",
+        execution_status: "running",
+        cost_status: "committed",
+        last_durable_cursor: "signed.cursor.1",
+        projection_version: 2,
+      }],
+    }
+    const repaired: SessionSnapshot = {
+      ...initial,
+      runs: [{ ...initial.runs[0]!, execution_status: "completed", projection_version: 3 }],
+      snapshot_watermark: { ...initial.snapshot_watermark, cursor: "signed.cursor.2", durable_seq: "2" },
+    }
+    const fetchSnapshot = vi.fn(async () => repaired)
+    const { client, streams } = clientFixture({ initial, fetchSnapshot })
+    const controller = createChatController({
+      client,
+      trustedLocale: "en-US",
+      chatCatalog: null,
+      defaultProjectRef: "project-12345678",
+    })
+
+    await controller.open("session-12345678")
+    streams[0]?.onEvent({
+      kind: "run.view.updated",
+      event_id: "event-conflict-12345678",
+      cursor: "signed.cursor.2",
+      session_id: "session-12345678",
+      stream_epoch: "epoch-12345678",
+      durable_seq: "2",
+      projection_version: 2,
+      schema_revision: 3,
+      recorded_at: NOW,
+      payload: { run: { ...initial.runs[0]!, execution_status: "failed" } },
+    }, "signed.cursor.2" as SessionCursor)
+
+    await vi.waitFor(() => expect(fetchSnapshot).toHaveBeenCalledOnce())
+    await vi.waitFor(() => expect(controller.getSnapshot().snapshot).toBe(repaired))
+    expect(controller.getSnapshot().projection.activeRunId).toBeNull()
+    controller.close()
+  })
+
   it("repairs a projection-invalidating event from a fresh authoritative snapshot", async () => {
     const initial = snapshot("branch-original-12345678", "signed.cursor.1", "1")
     const repaired = snapshot("branch-repaired-12345678", "signed.cursor.2", "2")
@@ -173,6 +266,7 @@ describe("Chat recovery controller", () => {
         request_digest: "a".repeat(64),
       },
       sessionId: "session-12345678",
+      clientDraftRevision: "draft-revision-12345678",
       createdAt: 1_000,
     }
     const clear = vi.fn()
@@ -226,6 +320,10 @@ describe("Chat recovery controller", () => {
     })
     expect(clear).toHaveBeenCalledWith(record.command.command_id)
     expect(controller.getSnapshot().snapshot).toBe(refreshed)
+    expect(controller.getSnapshot().appliedDraft).toEqual({
+      sessionId: "session-12345678",
+      revision: "draft-revision-12345678",
+    })
     controller.close()
   })
 

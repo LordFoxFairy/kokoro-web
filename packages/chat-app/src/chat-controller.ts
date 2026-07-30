@@ -73,6 +73,7 @@ export type ChatState = Readonly<{
   chatCatalog: ModelOptionCatalog | null
   selectedModelOptionRevisionRef: string | null
   selectedEffort: string | null
+  appliedDraft: Readonly<{ sessionId: string; revision: string }> | null
   hitlDecisionSupported: true
 }>
 
@@ -88,6 +89,8 @@ const FAILURE_COPY: Partial<Record<StableCode, string>> = {
   SESSION_ACCESS_GRANT_EXPIRED: "Your session access expired. Sign in again to continue.",
   SESSION_ACCESS_GRANT_REVOKED: "Your session access was revoked.",
   MODEL_OPTION_UNAVAILABLE: "No published model option is available for this session.",
+  ACTIVE_RUN_EXISTS: "The current response is still running. Your draft was kept for the next turn.",
+  ATTACHMENT_NOT_READY: "One or more attachments are not ready. Your draft was kept.",
   ADMISSION_DENIED: "This run was not admitted.",
   ADMISSION_OUTCOME_UNKNOWN: "Run admission is still being reconciled.",
   RUN_OUTCOME_UNKNOWN: "The run outcome is still being reconciled.",
@@ -207,7 +210,11 @@ export type ChatController = Readonly<{
   subscribe(listener: () => void): () => void
   create(): Promise<string | null>
   open(sessionId: string): Promise<void>
-  submit(content: string, attachments?: readonly AttachmentIntent[]): Promise<boolean>
+  submit(
+    content: string,
+    attachments?: readonly AttachmentIntent[],
+    clientDraftRevision?: string,
+  ): Promise<boolean>
   editMessage(messageId: string, content: string): Promise<boolean>
   regenerateMessage(messageId: string): Promise<boolean>
   forkBranch(branchId: string): Promise<boolean>
@@ -246,13 +253,18 @@ export function createChatController(options: {
     chatCatalog: options.chatCatalog,
     selectedModelOptionRevisionRef: null,
     selectedEffort: null,
+    appliedDraft: null,
     hitlDecisionSupported: true,
   }
   let stream: EventStreamHandle | null = null
-  let repairTask: Promise<boolean> | null = null
+  let repairTask: Readonly<{ generation: number; task: Promise<boolean> }> | null = null
   let pendingCommand = options.commandRecoveryStore?.load() ?? null
   let generation = 0
+  let selectionSessionId: string | null = null
   const runProjectionVersions = new Map<string, number>()
+  const runProjectionFingerprints = new Map<string, string>()
+  const launchVersions = new Map<string, number>()
+  const launchFingerprints = new Map<string, string>()
   const listeners = new Set<() => void>()
 
   const publish = (next: ChatState): void => {
@@ -272,7 +284,7 @@ export function createChatController(options: {
   }
 
   const repairFromSnapshot = (expectedGeneration: number): Promise<boolean> => {
-    if (repairTask !== null) return repairTask
+    if (repairTask?.generation === expectedGeneration) return repairTask.task
     const sessionId = state.sessionId
     if (sessionId === null) return Promise.resolve(false)
 
@@ -296,16 +308,27 @@ export function createChatController(options: {
         return false
       }
     })()
-    repairTask = task
+    const tracked = Object.freeze({ generation: expectedGeneration, task })
+    repairTask = tracked
     void task.finally(() => {
-      if (repairTask === task) repairTask = null
+      if (repairTask === tracked) repairTask = null
     })
     return task
   }
 
   const attach = (sessionId: string, snapshot: SessionSnapshot, currentGeneration: number): void => {
     runProjectionVersions.clear()
-    for (const run of snapshot.runs) runProjectionVersions.set(run.run_id, run.projection_version)
+    runProjectionFingerprints.clear()
+    launchVersions.clear()
+    launchFingerprints.clear()
+    for (const run of snapshot.runs) {
+      runProjectionVersions.set(run.run_id, run.projection_version)
+      runProjectionFingerprints.set(run.run_id, JSON.stringify(run))
+    }
+    for (const launch of snapshot.run_launches) {
+      launchVersions.set(launch.launch_id, launch.version)
+      launchFingerprints.set(launch.launch_id, JSON.stringify(launch))
+    }
     const availableOptions = new Set(
       options.chatCatalog?.options
         .filter(({ availability }) => availability === "available")
@@ -313,7 +336,9 @@ export function createChatController(options: {
     )
     const persistedOption = snapshot.model_history.at(-1)?.model_option_revision_ref
     const selectedModelOptionRevisionRef =
-      state.selectedModelOptionRevisionRef !== null && availableOptions.has(state.selectedModelOptionRevisionRef)
+      selectionSessionId === sessionId &&
+      state.selectedModelOptionRevisionRef !== null &&
+      availableOptions.has(state.selectedModelOptionRevisionRef)
         ? state.selectedModelOptionRevisionRef
         : persistedOption !== undefined && availableOptions.has(persistedOption)
           ? persistedOption
@@ -326,13 +351,16 @@ export function createChatController(options: {
     const persistedEffort = snapshot.model_history.at(-1)?.effort
     const selectedEffort = selectedOption === undefined || selectedOption.supportedEfforts.length === 0
       ? null
-      : state.selectedEffort !== null && selectedOption.supportedEfforts.includes(state.selectedEffort)
+      : selectionSessionId === sessionId &&
+        state.selectedEffort !== null &&
+        selectedOption.supportedEfforts.includes(state.selectedEffort)
         ? state.selectedEffort
         : persistedEffort !== undefined && selectedOption.supportedEfforts.includes(persistedEffort)
           ? persistedEffort
           : selectedOption.supportedEfforts.includes("medium")
             ? "medium"
             : selectedOption.supportedEfforts[0] ?? null
+    selectionSessionId = sessionId
     publish({
       ...state,
       phase: "ready",
@@ -343,20 +371,61 @@ export function createChatController(options: {
       selectedEffort,
       projection: reduceChatProjection(state.projection, { type: "snapshot", snapshot }),
     })
-    stream?.close()
-    stream = options.client.openEvents({
+    const previousStream = stream
+    stream = null
+    previousStream?.close()
+    let nextStream: EventStreamHandle | null = null
+    const isCurrentStream = (): boolean =>
+      currentGeneration === generation && (nextStream === null ? stream === null : stream === nextStream)
+    nextStream = options.client.openEvents({
       sessionId,
       watermark: snapshot.snapshot_watermark,
       onEvent(event: SessionEvent) {
-        if (currentGeneration !== generation) return
+        if (!isCurrentStream()) return
         if (event.kind === "run.view.updated") {
+          const fingerprint = JSON.stringify(event.payload.run)
+          const currentVersion = runProjectionVersions.get(event.payload.run.run_id)
+          const currentFingerprint = runProjectionFingerprints.get(event.payload.run.run_id)
+          const versionConflict = currentVersion === undefined
+            ? event.payload.run.projection_version !== 1
+            : (
+              event.payload.run.projection_version < currentVersion ||
+              event.payload.run.projection_version === currentVersion && fingerprint !== currentFingerprint ||
+              event.payload.run.projection_version > currentVersion + 1
+            )
+          if (versionConflict) {
+            project({ type: "repair", reason: "run_projection_version_conflict" })
+            void repairFromSnapshot(currentGeneration)
+            return
+          }
+          if (event.payload.run.projection_version === currentVersion && fingerprint === currentFingerprint) return
           runProjectionVersions.set(event.payload.run.run_id, event.payload.run.projection_version)
+          runProjectionFingerprints.set(event.payload.run.run_id, fingerprint)
+        } else if (event.kind === "run.launch.updated") {
+          const fingerprint = JSON.stringify(event.payload.launch)
+          const currentVersion = launchVersions.get(event.payload.launch.launch_id)
+          const currentFingerprint = launchFingerprints.get(event.payload.launch.launch_id)
+          const versionConflict = currentVersion === undefined
+            ? event.payload.launch.version !== 1
+            : (
+              event.payload.launch.version < currentVersion ||
+              event.payload.launch.version === currentVersion && fingerprint !== currentFingerprint ||
+              event.payload.launch.version > currentVersion + 1
+            )
+          if (versionConflict) {
+            project({ type: "repair", reason: "run_launch_version_conflict" })
+            void repairFromSnapshot(currentGeneration)
+            return
+          }
+          if (event.payload.launch.version === currentVersion && fingerprint === currentFingerprint) return
+          launchVersions.set(event.payload.launch.launch_id, event.payload.launch.version)
+          launchFingerprints.set(event.payload.launch.launch_id, fingerprint)
         }
         project({ type: "event", event })
         if (state.projection.repair.required) void repairFromSnapshot(currentGeneration)
       },
       onConnection(connection) {
-        if (currentGeneration !== generation) return
+        if (!isCurrentStream()) return
         project({ type: "connection", connection })
         if (connection.kind === "repair_required" || connection.kind === "auth_required") {
           void repairFromSnapshot(currentGeneration)
@@ -369,10 +438,14 @@ export function createChatController(options: {
         }
       },
     })
-    void stream.ready.then(() => {
-      if (currentGeneration === generation) project({ type: "connection", connection: { kind: "live" } })
+    stream = nextStream
+    const attachedStream = nextStream
+    void attachedStream.ready.then(() => {
+      if (currentGeneration === generation && stream === attachedStream) {
+        project({ type: "connection", connection: { kind: "live" } })
+      }
     }).catch((error: unknown) => {
-      if (currentGeneration === generation) fail(failureFromError(error))
+      if (currentGeneration === generation && stream === attachedStream) fail(failureFromError(error))
     })
   }
 
@@ -418,12 +491,15 @@ export function createChatController(options: {
     }
   }
 
-  const refresh = async (): Promise<boolean> => {
-    const sessionId = state.sessionId
-    if (sessionId === null) return false
+  const refresh = async (sessionId: string, expectedGeneration: number): Promise<boolean> => {
+    if (state.sessionId !== sessionId || generation !== expectedGeneration) return false
     const snapshot = await options.client.fetchSnapshot(sessionId)
-    if (snapshot === null) return false
-    attach(sessionId, snapshot, generation)
+    if (
+      snapshot === null ||
+      generation !== expectedGeneration ||
+      state.sessionId !== sessionId
+    ) return false
+    attach(sessionId, snapshot, expectedGeneration)
     return true
   }
 
@@ -459,12 +535,14 @@ export function createChatController(options: {
     operation: ReceiptOperation,
     targets: Readonly<Record<string, string>>,
     command: CommandIdentity,
+    clientDraftRevision?: string,
   ): void => {
     const record: SessionCommandRecoveryRecord = Object.freeze({
       schemaVersion: 1,
       operation,
       command,
       ...(targets.session_id === undefined ? {} : { sessionId: targets.session_id }),
+      ...(clientDraftRevision === undefined ? {} : { clientDraftRevision }),
       createdAt: Date.now(),
     })
     pendingCommand = record
@@ -482,9 +560,14 @@ export function createChatController(options: {
     effect: Readonly<Record<string, unknown>>,
     pendingCode: StableCode,
     sender: (command: CommandIdentity) => Promise<SessionCommandResponse>,
+    clientDraftRevision?: string,
   ): Promise<SessionCommandResponse | null> => {
+    const commandGeneration = generation
+    const failIfCurrent = (failure: ChatFailure): void => {
+      if (commandGeneration === generation) fail(failure)
+    }
     if (pendingCommand !== null) {
-      fail(describeSessionFailure({
+      failIfCurrent(describeSessionFailure({
         stableCode: "RUN_OUTCOME_UNKNOWN",
         action: "reconcile_receipt",
         retryClass: "reconcile_receipt",
@@ -492,7 +575,8 @@ export function createChatController(options: {
       return null
     }
     const command = await commandIdentity({ operation, targets, effect })
-    rememberCommand(operation, targets, command)
+    if (commandGeneration !== generation) return null
+    rememberCommand(operation, targets, command, clientDraftRevision)
     let response: SessionCommandResponse
     try {
       response = await sender(command)
@@ -507,7 +591,7 @@ export function createChatController(options: {
           request_digest: command.request_digest,
         })
       } catch {
-        fail(describeSessionFailure({
+        failIfCurrent(describeSessionFailure({
           stableCode: pendingCode,
           action: "reconcile_receipt",
           retryClass: "reconcile_receipt",
@@ -519,7 +603,7 @@ export function createChatController(options: {
     try {
       reconciled = await reconcileReceipt(response, command, operation)
     } catch {
-      fail(describeSessionFailure({
+      failIfCurrent(describeSessionFailure({
         stableCode: pendingCode,
         action: "reconcile_receipt",
         retryClass: "reconcile_receipt",
@@ -529,7 +613,7 @@ export function createChatController(options: {
     const failure = pendingFailure(reconciled, pendingCode)
     if (failure !== null) {
       if (reconciled.command_receipt.status === "denied") forgetCommand(command.command_id)
-      fail(failure)
+      failIfCurrent(failure)
       return null
     }
     forgetCommand(command.command_id)
@@ -573,6 +657,9 @@ export function createChatController(options: {
     }
     forgetCommand(pending.command.command_id)
     const effect = response.command_receipt.payload
+    const appliedDraftRevision = pending.operation === "submit_message"
+      ? pending.clientDraftRevision ?? null
+      : null
     if (effect.kind === "session-created") {
       await open(effect.payload.session_id)
       return state.phase === "ready" && state.sessionId === effect.payload.session_id
@@ -584,9 +671,19 @@ export function createChatController(options: {
     }
     if (state.sessionId !== sessionId) {
       await open(sessionId)
-      return state.phase === "ready" && state.sessionId === sessionId
+      const ready = state.phase === "ready" && state.sessionId === sessionId
+      if (ready) {
+        publish({
+          ...state,
+          appliedDraft: appliedDraftRevision === null
+            ? state.appliedDraft
+            : { sessionId, revision: appliedDraftRevision },
+          projection: reduceChatProjection(state.projection, { type: "command", state: "idle" }),
+        })
+      }
+      return ready
     }
-    return finishMutation()
+    return finishMutation(sessionId, generation, appliedDraftRevision)
   }
 
   const selectedExecutionInput = (): Readonly<{
@@ -626,21 +723,33 @@ export function createChatController(options: {
     })) ?? []
   }
 
-  const finishMutation = async (): Promise<boolean> => {
+  const finishMutation = async (
+    sessionId: string,
+    expectedGeneration: number,
+    appliedDraftRevision: string | null = null,
+  ): Promise<boolean> => {
     try {
-      if (await refresh()) {
-        project({ type: "command", state: "idle" })
+      if (await refresh(sessionId, expectedGeneration)) {
+        publish({
+          ...state,
+          appliedDraft: appliedDraftRevision === null
+            ? state.appliedDraft
+            : { sessionId, revision: appliedDraftRevision },
+          projection: reduceChatProjection(state.projection, { type: "command", state: "idle" }),
+        })
         return true
       }
     } catch {
       // The effect is terminal in its owner, but the browser has not observed the fresh
       // authority snapshot. Keep the command non-idle so the UI cannot imply convergence.
     }
-    fail(describeSessionFailure({
-      stableCode: "SNAPSHOT_REQUIRED",
-      action: "refetch_snapshot",
-      retryClass: "immediate",
-    }))
+    if (generation === expectedGeneration && state.sessionId === sessionId) {
+      fail(describeSessionFailure({
+        stableCode: "SNAPSHOT_REQUIRED",
+        action: "refetch_snapshot",
+        retryClass: "immediate",
+      }))
+    }
     return false
   }
 
@@ -673,11 +782,24 @@ export function createChatController(options: {
     }
   }
 
-  const submit = async (content: string, attachments: readonly AttachmentIntent[] = []): Promise<boolean> => {
+  const submit = async (
+    content: string,
+    attachments: readonly AttachmentIntent[] = [],
+    clientDraftRevision?: string,
+  ): Promise<boolean> => {
     const snapshot = state.snapshot
     const sessionId = state.sessionId
     const text = content.trim()
     if (snapshot === null || sessionId === null || text.length === 0 || attachments.length > 64) return false
+    if (state.projection.activeRunId !== null) {
+      fail(describeSessionFailure({
+        stableCode: "ACTIVE_RUN_EXISTS",
+        action: "wait_or_cancel",
+        retryClass: "after_user_action",
+      }))
+      return false
+    }
+    const commandGeneration = generation
     const execution = selectedExecutionInput()
     if (execution === null) return false
     const effect = {
@@ -697,8 +819,10 @@ export function createChatController(options: {
     project({ type: "command", state: "pending" })
     try {
       const response = await sendCommand("submit_message", { session_id: sessionId }, effect, "LAUNCH_OUTCOME_UNKNOWN", (command) =>
-        options.client.submitMessage(sessionId, { command, ...effect }))
-      return response === null ? false : await finishMutation()
+        options.client.submitMessage(sessionId, { command, ...effect }), clientDraftRevision)
+      return response === null
+        ? false
+        : await finishMutation(sessionId, commandGeneration, clientDraftRevision ?? null)
     } catch (error) {
       fail(failureFromError(error))
       return false
@@ -716,6 +840,7 @@ export function createChatController(options: {
       snapshot === null || sessionId === null || source?.role !== "user" || branch === undefined ||
       text.length === 0 || execution === null || state.projection.activeRunId !== null
     ) return false
+    const commandGeneration = generation
     const effect = {
       expected_session_version: snapshot.session.version,
       expected_branch_version: branch.version,
@@ -732,7 +857,7 @@ export function createChatController(options: {
     try {
       const response = await sendCommand("edit_message", { session_id: sessionId, message_id: source.message_id }, effect, "LAUNCH_OUTCOME_UNKNOWN", (command) =>
         options.client.editMessage(sessionId, source.message_id, { command, ...effect }))
-      return response === null ? false : await finishMutation()
+      return response === null ? false : await finishMutation(sessionId, commandGeneration)
     } catch (error) {
       fail(failureFromError(error))
       return false
@@ -751,6 +876,7 @@ export function createChatController(options: {
       snapshot === null || sessionId === null || source?.role !== "assistant" || trigger?.role !== "user" ||
       branch === undefined || parts === null || execution === null || state.projection.activeRunId !== null
     ) return false
+    const commandGeneration = generation
     const effect = {
       expected_session_version: snapshot.session.version,
       expected_branch_version: branch.version,
@@ -768,7 +894,7 @@ export function createChatController(options: {
     try {
       const response = await sendCommand("regenerate_message", { session_id: sessionId, message_id: source.message_id }, effect, "LAUNCH_OUTCOME_UNKNOWN", (command) =>
         options.client.regenerateMessage(sessionId, source.message_id, { command, ...effect }))
-      return response === null ? false : await finishMutation()
+      return response === null ? false : await finishMutation(sessionId, commandGeneration)
     } catch (error) {
       fail(failureFromError(error))
       return false
@@ -783,6 +909,7 @@ export function createChatController(options: {
     const sessionId = state.sessionId
     const branch = snapshot?.branches.find((candidate) => candidate.branch_id === branchId)
     if (snapshot === null || sessionId === null || branch === undefined || state.projection.activeRunId !== null) return false
+    const commandGeneration = generation
     const effect = {
       expected_session_version: snapshot.session.version,
       expected_branch_version: branch.version,
@@ -793,7 +920,7 @@ export function createChatController(options: {
         operation === "fork_branch"
           ? options.client.forkBranch(sessionId, branchId, { command, ...effect })
           : options.client.activateBranch(sessionId, branchId, { command, ...effect }))
-      return response === null ? false : await finishMutation()
+      return response === null ? false : await finishMutation(sessionId, commandGeneration)
     } catch (error) {
       fail(failureFromError(error))
       return false
@@ -814,11 +941,12 @@ export function createChatController(options: {
       return
     }
     const effect = { expected_run_projection_version: version, reason_code: "user_requested" }
+    const commandGeneration = generation
     project({ type: "command", state: "pending" })
     try {
       const response = await sendCommand("cancel_run", { session_id: sessionId, run_id: runId }, effect, "RUN_CANCELLATION_PENDING", (command) =>
         options.client.cancelRun(sessionId, runId, { command, ...effect }))
-      if (response !== null) await finishMutation()
+      if (response !== null) await finishMutation(sessionId, commandGeneration)
     } catch (error) {
       fail(failureFromError(error))
     }
@@ -845,11 +973,12 @@ export function createChatController(options: {
       expected_owner_version: part.expectedVersion,
       decision,
     }
+    const commandGeneration = generation
     project({ type: "command", state: "pending" })
     try {
       const response = await sendCommand("decide_action", { session_id: sessionId, run_id: runId }, effect, "ACTION_DECISION_PENDING", (command) =>
         options.client.decideAction(sessionId, runId, { command, ...effect }))
-      if (response !== null) await finishMutation()
+      if (response !== null) await finishMutation(sessionId, commandGeneration)
     } catch (error) {
       fail(failureFromError(error))
     }
@@ -874,11 +1003,12 @@ export function createChatController(options: {
       expected_plan_version: part.planVersion,
       decision,
     }
+    const commandGeneration = generation
     project({ type: "command", state: "pending" })
     try {
       const response = await sendCommand("decide_plan", { session_id: sessionId, run_id: runId }, effect, "PLAN_DECISION_PENDING", (command) =>
         options.client.decidePlan(sessionId, runId, { command, ...effect }))
-      if (response !== null) await finishMutation()
+      if (response !== null) await finishMutation(sessionId, commandGeneration)
     } catch (error) {
       fail(failureFromError(error))
     }
@@ -915,6 +1045,7 @@ export function createChatController(options: {
         fail(describeSessionFailure({ stableCode: "MODEL_OPTION_UNAVAILABLE", action: "choose_model", retryClass: "after_user_action" }))
         return
       }
+      selectionSessionId = state.sessionId
       const selected = options.chatCatalog?.options.find(
         (option) => option.modelOptionRevisionRef === modelOptionRevisionRef,
       )
@@ -935,6 +1066,7 @@ export function createChatController(options: {
         fail(describeSessionFailure({ stableCode: "REQUEST_INVALID", action: "choose_model", retryClass: "after_user_action" }))
         return
       }
+      selectionSessionId = state.sessionId
       publish({ ...state, selectedEffort: effort, failure: null })
     },
     decideAction,

@@ -19,6 +19,7 @@ import {
   type ReactNode,
   useEffect,
   useMemo,
+  useRef,
   useState,
   useSyncExternalStore,
 } from "react"
@@ -31,6 +32,11 @@ import {
   type ModelOptionCatalog,
 } from "./chat-controller"
 import { createSessionCommandRecoveryStore } from "./command-recovery"
+import {
+  createComposerDraftStore,
+  type ComposerDraft,
+  type ComposerDraftStore,
+} from "./composer-draft"
 import { resolveChatCopy, type ChatProductCopy } from "./chat-copy"
 import { createSessionOrganizer } from "./session-organizer"
 import { SessionRail } from "./session-rail"
@@ -101,7 +107,11 @@ function safeInteractionSchema(value: Readonly<Record<string, unknown>> | undefi
   const fields: SafeFormField[] = []
   for (const [name, rawField] of Object.entries(properties)) {
     const field = record(rawField)
-    if (field === null || fields.length >= 64 || name.length > 128) return null
+    if (
+      field === null ||
+      fields.length >= 64 ||
+      !/^[A-Za-z][A-Za-z0-9_.-]{0,127}$/u.test(name)
+    ) return null
     const label = typeof field.title === "string" && field.title.length > 0 && field.title.length <= 256 ? field.title : name
     const options = safeOptions(field.options ?? field.enum) ?? []
     const fieldType = options.length > 0
@@ -172,6 +182,12 @@ export function MarkdownText(props: Readonly<{ text: string }>) {
           a: ({ href, children }) => {
             const safe = safeHref(href)
             return safe === null ? <span>{children}</span> : <a href={safe} rel="noreferrer noopener" target="_blank">{children}</a>
+          },
+          img: ({ src, alt }) => {
+            const safe = safeHref(src)
+            return safe === null
+              ? <span>{alt ?? ""}</span>
+              : <a href={safe} rel="noreferrer noopener" target="_blank">{alt?.trim() || safe}</a>
           },
           pre: ({ children }) => <CodeBlock>{children}</CodeBlock>,
         }}
@@ -379,9 +395,13 @@ function MessageActions(props: Readonly<{
   const copyText = async (): Promise<void> => {
     const text = messageText(props.message)
     if (!text) return
-    await navigator.clipboard.writeText(text)
-    setCopied(true)
-    window.setTimeout(() => setCopied(false), 1_500)
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1_500)
+    } catch {
+      setCopied(false)
+    }
   }
   if (editing) return <div className={styles.inlineEditor}><textarea aria-label="Edit message" maxLength={1_048_576} onChange={(event) => setValue(event.target.value)} rows={4} value={value} /><div className={styles.actions}><button type="button" disabled={props.disabled || value.trim().length === 0} onClick={() => void props.controller.editMessage(props.message.id, value).then((applied) => { if (applied) setEditing(false) })}>{props.copy.saveEdit}</button><button type="button" onClick={() => setEditing(false)}>{props.copy.cancelEdit}</button></div></div>
   return <div className={styles.messageActions}>{messageText(props.message) ? <button type="button" onClick={() => void copyText()}>{copied ? props.copy.copied : props.copy.copy}</button> : null}{props.message.role === "user" ? <button type="button" disabled={props.disabled} onClick={() => setEditing(true)}>{props.copy.edit}</button> : <button type="button" disabled={props.disabled} onClick={() => void props.controller.regenerateMessage(props.message.id)}>{props.copy.regenerate}</button>}</div>
@@ -392,9 +412,46 @@ export function ChatView(props: {
   readonly controller: ChatController
   readonly state: ChatState
   readonly copy: ChatProductCopy
+  readonly sessionId: string
+  readonly draftStore?: ComposerDraftStore
   readonly assetUploader?: ReturnType<typeof createAssetUploader> | null
 }) {
-  const [draft, setDraft] = useState("")
+  const [composer, setComposerState] = useState<ComposerDraft>(() => props.draftStore?.load(props.sessionId) ?? {
+    schemaVersion: 1 as const,
+    sessionId: props.sessionId,
+    revision: globalThis.crypto.randomUUID().replaceAll("-", ""),
+    text: "",
+    ...(props.state.selectedModelOptionRevisionRef === null
+      ? {}
+      : { modelOptionRevisionRef: props.state.selectedModelOptionRevisionRef }),
+    ...(props.state.selectedEffort === null ? {} : { effort: props.state.selectedEffort }),
+    updatedAt: Date.now(),
+  })
+  const composerRef = useRef(composer)
+  const setComposer = (update: (current: ComposerDraft) => ComposerDraft): void => {
+    const next = update(composerRef.current)
+    composerRef.current = next
+    setComposerState(next)
+  }
+  const reviseComposer = (input: Readonly<{
+    text?: string
+    modelOptionRevisionRef?: string
+    effort?: string | null
+  }> = {}): void => {
+    setComposer((current) => {
+      const modelOptionRevisionRef = input.modelOptionRevisionRef ?? current.modelOptionRevisionRef
+      const effort = input.effort === undefined ? current.effort : input.effort
+      return {
+        schemaVersion: 1,
+        sessionId: props.sessionId,
+        revision: globalThis.crypto.randomUUID().replaceAll("-", ""),
+        text: input.text ?? current.text,
+        ...(modelOptionRevisionRef === undefined ? {} : { modelOptionRevisionRef }),
+        ...(effort === null || effort === undefined ? {} : { effort }),
+        updatedAt: Date.now(),
+      }
+    })
+  }
   const [composing, setComposing] = useState(false)
   const [attachments, setAttachments] = useState<readonly Readonly<{
     id: string
@@ -408,9 +465,41 @@ export function ChatView(props: {
   const connected = props.state.projection.connection.kind === "live"
   const activeRun = props.state.projection.activeRunId !== null
   const attachmentPending = attachments.some(({ status }) => status !== "ready")
-  const sendDisabled = !hasModel || !connected || activeRun || commandPending || attachmentPending || draft.trim().length === 0
+  const sendDisabled = !hasModel || !connected || activeRun || commandPending || attachmentPending || composer.text.trim().length === 0
   const branch = props.state.snapshot?.branches.find(({ branch_id }) => branch_id === props.state.projection.activeBranchId)
   const currentOption = props.state.chatCatalog?.options.find(({ modelOptionRevisionRef }) => modelOptionRevisionRef === props.state.selectedModelOptionRevisionRef)
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => props.draftStore?.save(composer), 200)
+    return () => window.clearTimeout(timer)
+  }, [composer, props.draftStore])
+  useEffect(() => () => {
+    props.draftStore?.save(composerRef.current)
+  }, [props.draftStore])
+  useEffect(() => {
+    const applied = props.state.appliedDraft
+    if (applied?.sessionId !== props.sessionId || applied.revision !== composerRef.current.revision) return
+    props.draftStore?.clear(props.sessionId, applied.revision)
+    setComposer((current) => current.revision === applied.revision ? {
+      schemaVersion: 1,
+      sessionId: props.sessionId,
+      revision: globalThis.crypto.randomUUID().replaceAll("-", ""),
+      text: "",
+      updatedAt: Date.now(),
+    } : current)
+  }, [props.draftStore, props.sessionId, props.state.appliedDraft])
+  useEffect(() => {
+    const selectedRef = composer.modelOptionRevisionRef
+    if (selectedRef === undefined) return
+    const selected = props.state.chatCatalog?.options.find(
+      (option) => option.modelOptionRevisionRef === selectedRef && option.availability === "available",
+    )
+    if (selected === undefined) return
+    props.controller.selectModelOption(selectedRef)
+    if (composer.effort !== undefined && selected.supportedEfforts.includes(composer.effort)) {
+      props.controller.selectEffort(composer.effort)
+    }
+  }, [composer.effort, composer.modelOptionRevisionRef, props.controller, props.state.chatCatalog])
 
   const beginUpload = (entry: Readonly<{ id: string; file: File }>): void => {
     const uploader = props.assetUploader ?? null
@@ -422,11 +511,17 @@ export function ChatView(props: {
       onProgress: (progress) => setAttachments((current) => current.map((candidate) => candidate.id === entry.id
         ? { ...candidate, progress }
         : candidate)),
-    }).then((attachment) => setAttachments((current) => current.map((candidate) => candidate.id === entry.id
-      ? { ...candidate, status: "ready", attachment }
-      : candidate))).catch(() => setAttachments((current) => current.map((candidate) => candidate.id === entry.id
+    }).then((attachment) => {
+      setAttachments((current) => current.map((candidate) => candidate.id === entry.id
+        ? { ...candidate, status: "ready", attachment }
+        : candidate))
+      reviseComposer()
+    }).catch(() => {
+      setAttachments((current) => current.map((candidate) => candidate.id === entry.id
         ? { ...candidate, status: "failed", attachment: null }
-        : candidate)))
+        : candidate))
+      reviseComposer()
+    })
   }
   const attach = (event: ChangeEvent<HTMLInputElement>): void => {
     const remaining = Math.max(0, 8 - attachments.length)
@@ -436,17 +531,26 @@ export function ChatView(props: {
     event.target.value = ""
     if (additions.length === 0) return
     setAttachments((current) => [...current, ...additions])
+    reviseComposer()
     for (const addition of additions) beginUpload(addition)
   }
 
   const submitDraft = (): void => {
     if (sendDisabled) return
-    const content = draft
+    const submitted = composerRef.current
+    const content = submitted.text
     const ready = attachments.filter((entry): entry is typeof entry & { attachment: AssetAttachmentRef } => entry.attachment !== null)
     const sentAttachmentIds = new Set(ready.map(({ id }) => id))
-    void props.controller.submit(content, ready.map(({ attachment }) => attachment)).then((applied) => {
+    void props.controller.submit(content, ready.map(({ attachment }) => attachment), submitted.revision).then((applied) => {
       if (applied) {
-        setDraft((current) => current === content ? "" : current)
+        props.draftStore?.clear(props.sessionId, submitted.revision)
+        setComposer((current) => current.revision === submitted.revision ? {
+          schemaVersion: 1,
+          sessionId: props.sessionId,
+          revision: globalThis.crypto.randomUUID().replaceAll("-", ""),
+          text: "",
+          updatedAt: Date.now(),
+        } : current)
         setAttachments((current) => current.filter(({ id }) => !sentAttachmentIds.has(id)))
       }
     })
@@ -473,13 +577,27 @@ export function ChatView(props: {
       {props.state.projection.messages.length === 0 && props.state.phase === "ready" ? <div className={styles.emptyState}><span aria-hidden>✦</span><h2>{props.copy.emptyTitle}</h2><p>{props.copy.emptyDescription}</p></div> : null}
       {props.state.projection.messages.map((message) => <article className={styles.message} data-role={message.role} data-status={message.status} key={message.id}><div className={styles.messageMeta}><strong>{message.role === "user" ? props.copy.you : props.copy.assistant}</strong><span>{message.status}</span></div>{message.parts.map((part) => <Part controller={props.controller} copy={props.copy} disabled={commandPending} key={part.id} part={part} runId={message.runId} />)}<MessageActions controller={props.controller} copy={props.copy} disabled={mutationDisabled} message={message} /></article>)}
     </section>
-    <form className={styles.composer} onSubmit={submit}>
-      <div className={styles.composerControls}>{props.state.chatCatalog ? <ModelOptionSelector catalog={props.state.chatCatalog} copy={props.copy} disabled={activeRun || commandPending} onChange={(value) => props.controller.selectModelOption(value)} value={props.state.selectedModelOptionRevisionRef} /> : null}{currentOption && currentOption.supportedEfforts.length > 0 ? <label className={styles.compactSelector}><span>{props.copy.effort}</span><select disabled={activeRun || commandPending} onChange={(event) => props.controller.selectEffort(event.target.value)} value={props.state.selectedEffort ?? ""}>{currentOption.supportedEfforts.map((effort) => <option key={effort} value={effort}>{effort}</option>)}</select></label> : null}</div>
+    {props.state.phase === "ready" ? <form className={styles.composer} onSubmit={submit}>
+      <div className={styles.composerControls}>{props.state.chatCatalog ? <ModelOptionSelector catalog={props.state.chatCatalog} copy={props.copy} disabled={false} onChange={(value) => {
+        props.controller.selectModelOption(value)
+        const selected = props.state.chatCatalog?.options.find((option) => option.modelOptionRevisionRef === value)
+        const effort = selected === undefined || selected.supportedEfforts.length === 0
+          ? null
+          : props.state.selectedEffort !== null && selected.supportedEfforts.includes(props.state.selectedEffort)
+            ? props.state.selectedEffort
+            : selected.supportedEfforts.includes("medium")
+              ? "medium"
+              : selected.supportedEfforts[0] ?? null
+        reviseComposer({ modelOptionRevisionRef: value, effort })
+      }} value={props.state.selectedModelOptionRevisionRef} /> : null}{currentOption && currentOption.supportedEfforts.length > 0 ? <label className={styles.compactSelector}><span>{props.copy.effort}</span><select onChange={(event) => {
+        props.controller.selectEffort(event.target.value)
+        reviseComposer({ effort: event.target.value })
+      }} value={props.state.selectedEffort ?? ""}>{currentOption.supportedEfforts.map((effort) => <option key={effort} value={effort}>{effort}</option>)}</select></label> : null}</div>
       {!hasModel && props.state.phase === "ready" ? <p className={styles.modelNotice}>{props.copy.modelRequired}</p> : null}
-      {attachments.length > 0 ? <ul className={styles.attachments} aria-live="polite">{attachments.map((entry) => <li key={entry.id} data-status={entry.status}><span aria-hidden>◆</span><div><strong>{entry.file.name}</strong><small>{entry.status === "uploading" ? `${props.copy.uploadingFile} ${entry.progress === null ? "" : `${Math.round(entry.progress.uploadedBytes / entry.progress.totalBytes * 100)}%`}` : entry.status === "ready" ? props.copy.attachmentReady : props.copy.attachmentFailed}</small></div>{entry.status === "failed" ? <button type="button" disabled={mutationDisabled} onClick={() => beginUpload(entry)}>{props.copy.retryUpload}</button> : null}<button type="button" disabled={entry.status === "uploading" || commandPending} onClick={() => setAttachments((current) => current.filter(({ id }) => id !== entry.id))}>{props.copy.removeAttachment}</button></li>)}</ul> : null}
-      <div className={styles.composerBox}><textarea aria-label={props.copy.messageLabel} maxLength={1_048_576} onChange={(event) => setDraft(event.target.value)} onCompositionEnd={() => setComposing(false)} onCompositionStart={() => setComposing(true)} onKeyDown={onComposerKeyDown} placeholder={activeRun ? props.copy.activeRunPlaceholder : props.copy.messagePlaceholder} rows={3} value={draft} /><button type="submit" disabled={sendDisabled}>{commandPending ? props.copy.sending : props.copy.send}<span aria-hidden>↗</span></button></div><p className={styles.composerHint}>Enter to send · Shift + Enter for a new line</p>
-      {props.assetUploader !== null && props.assetUploader !== undefined ? <label className={styles.attachButton} data-disabled={mutationDisabled || attachments.length >= 8}><input type="file" multiple disabled={mutationDisabled || attachments.length >= 8} onChange={attach} /><span aria-hidden>＋</span>{props.copy.attachFiles}</label> : null}
-    </form>
+      {attachments.length > 0 ? <ul className={styles.attachments} aria-live="polite">{attachments.map((entry) => <li key={entry.id} data-status={entry.status}><span aria-hidden>◆</span><div><strong>{entry.file.name}</strong><small>{entry.status === "uploading" ? `${props.copy.uploadingFile} ${entry.progress === null ? "" : `${Math.round(entry.progress.uploadedBytes / entry.progress.totalBytes * 100)}%`}` : entry.status === "ready" ? props.copy.attachmentReady : props.copy.attachmentFailed}</small></div>{entry.status === "failed" ? <button type="button" onClick={() => beginUpload(entry)}>{props.copy.retryUpload}</button> : null}<button type="button" disabled={entry.status === "uploading"} onClick={() => { setAttachments((current) => current.filter(({ id }) => id !== entry.id)); reviseComposer() }}>{props.copy.removeAttachment}</button></li>)}</ul> : null}
+      <div className={styles.composerBox}><textarea aria-describedby={activeRun ? "kokoro-active-run-draft" : undefined} aria-label={props.copy.messageLabel} maxLength={1_048_576} onChange={(event) => reviseComposer({ text: event.target.value })} onCompositionEnd={() => setComposing(false)} onCompositionStart={() => setComposing(true)} onKeyDown={onComposerKeyDown} placeholder={activeRun ? props.copy.activeRunPlaceholder : props.copy.messagePlaceholder} rows={3} value={composer.text} /><button type="submit" disabled={sendDisabled}>{commandPending ? props.copy.sending : props.copy.send}<span aria-hidden>↗</span></button></div>{activeRun ? <p className={styles.composerHint} id="kokoro-active-run-draft" role="status">{props.copy.draftWhileRunning}</p> : <p className={styles.composerHint}>Enter to send · Shift + Enter for a new line</p>}
+      {props.assetUploader !== null && props.assetUploader !== undefined ? <label className={styles.attachButton} data-disabled={attachments.length >= 8}><input type="file" multiple disabled={attachments.length >= 8} onChange={attach} /><span aria-hidden>＋</span>{props.copy.attachFiles}</label> : null}
+    </form> : null}
   </main>
 }
 
@@ -500,6 +618,18 @@ export function ChatProduct(props: ChatProductProps) {
     if (typeof window === "undefined") return undefined
     try {
       return createSessionCommandRecoveryStore({
+        storage: window.sessionStorage,
+        scope: props.browserRuntimeScope,
+        pruneOtherScopes: true,
+      })
+    } catch {
+      return undefined
+    }
+  }, [props.browserRuntimeScope])
+  const draftStore = useMemo(() => {
+    if (typeof window === "undefined") return undefined
+    try {
+      return createComposerDraftStore({
         storage: window.sessionStorage,
         scope: props.browserRuntimeScope,
         pruneOtherScopes: true,
@@ -575,7 +705,7 @@ export function ChatProduct(props: ChatProductProps) {
   const rail = <SessionRail activeSessionId={state.sessionId} available={productAvailable && state.projection.command.state !== "pending"} brandName={props.brandName} controller={organizer} copy={copy} onNew={createSession} onOpen={openSession} state={organizerState} />
 
   if (state.phase === "idle") return <div className={styles.appShell}>{rail}<main className={styles.startShell}><span className={styles.startMark} aria-hidden>✦</span><span className={styles.eyebrow}>{props.brandName}</span><h1>{copy.startTitle}</h1><p>{copy.startDescription}</p><button type="button" disabled={!productAvailable || state.projection.command.state === "pending"} onClick={createSession}>{state.projection.command.state === "pending" ? copy.creatingChat : copy.newChat}</button>{!productAvailable ? <p className={styles.failure} role="status">{copy.unavailable}</p> : null}{state.failure ? <p className={styles.failure} role="alert">{state.failure.message}</p> : null}</main></div>
-  return <div className={styles.appShell}>{rail}<ChatView key={props.browserRuntimeScope} assetUploader={assetUploader} brandName={props.brandName} controller={controller} copy={copy} state={state} /></div>
+  return <div className={styles.appShell}>{rail}<ChatView key={`${props.browserRuntimeScope}:${state.sessionId ?? "unavailable"}`} assetUploader={assetUploader} brandName={props.brandName} controller={controller} copy={copy} draftStore={draftStore} sessionId={state.sessionId ?? "unavailable"} state={state} /></div>
 }
 
 function ModelOptionSelector(props: {

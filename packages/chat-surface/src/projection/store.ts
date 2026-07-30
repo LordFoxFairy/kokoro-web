@@ -115,6 +115,7 @@ export type ChatProjectionAction =
       readonly state: ChatProjection["command"]["state"]
       readonly detail?: string
     }
+  | { readonly type: "repair"; readonly reason: string }
   | { readonly type: "unsupported"; readonly runId: string; readonly originalKind: string }
 
 const ACTIVE_RUN_STATUSES = new Set([
@@ -464,6 +465,8 @@ export function reduceChatProjection(state: ChatProjection, action: ChatProjecti
       return { ...state, connection: action.connection }
     case "command":
       return { ...state, command: { state: action.state, ...(action.detail ? { detail: action.detail } : {}) } }
+    case "repair":
+      return { ...state, repair: { required: true, reason: action.reason } }
     case "unsupported": {
       const existing = state.messages.find((message) => message.role === "assistant" && message.runId === action.runId)
       const message = existing ?? {

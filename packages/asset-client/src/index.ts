@@ -7,6 +7,7 @@ import {
 } from "@kokoro/site-client/asset-data-plane"
 
 export const DEFAULT_MAXIMUM_BROWSER_ASSET_BYTES = 32 * 1024 * 1024
+const MAXIMUM_ASSET_JSON_BYTES = 512 * 1024
 
 export type AssetAttachmentRef = Readonly<{
   asset_ref: string
@@ -133,9 +134,39 @@ function fixedEndpoint(value: string): string {
 }
 
 async function json(response: Response): Promise<unknown> {
+  const declared = response.headers.get("content-length")
+  if (declared !== null) {
+    const length = Number(declared)
+    if (!Number.isSafeInteger(length) || length < 0 || length > MAXIMUM_ASSET_JSON_BYTES) {
+      throw new AssetUploadError("UPLOAD_UNAVAILABLE", "Upload service response exceeded the browser limit")
+    }
+  }
+  if (response.body === null) {
+    throw new AssetUploadError("UPLOAD_UNAVAILABLE", "Upload service returned an empty response")
+  }
+  const reader = response.body.getReader()
+  const chunks: Uint8Array[] = []
+  let size = 0
   try {
-    return await response.json()
-  } catch {
+    for (;;) {
+      const result = await reader.read()
+      if (result.done) break
+      size += result.value.byteLength
+      if (size > MAXIMUM_ASSET_JSON_BYTES) {
+        void reader.cancel("Asset JSON response exceeded the browser limit").catch(() => undefined)
+        throw new AssetUploadError("UPLOAD_UNAVAILABLE", "Upload service response exceeded the browser limit")
+      }
+      chunks.push(result.value)
+    }
+    const bytes = new Uint8Array(size)
+    let offset = 0
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset)
+      offset += chunk.byteLength
+    }
+    return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)) as unknown
+  } catch (error) {
+    if (error instanceof AssetUploadError) throw error
     throw new AssetUploadError("UPLOAD_UNAVAILABLE", "Upload service returned an invalid response")
   }
 }
@@ -214,6 +245,7 @@ export function createAssetUploader(options: Readonly<{
   store?: AssetRecoveryStore
   fetch?: typeof globalThis.fetch
   maximumBytes?: number
+  maximumConcurrentUploads?: number
   poll?: Readonly<{ attempts?: number; wait?: (milliseconds: number) => Promise<void> }>
 }>) {
   const fetcher = options.fetch ?? globalThis.fetch
@@ -222,6 +254,31 @@ export function createAssetUploader(options: Readonly<{
   const wait = options.poll?.wait ?? ((milliseconds: number) => new Promise<void>((resolve) => setTimeout(resolve, milliseconds)))
   const pollAttempts = options.poll?.attempts ?? 90
   const lifetime = new AbortController()
+  const maximumConcurrentUploads = options.maximumConcurrentUploads ?? 2
+  if (!Number.isSafeInteger(maximumConcurrentUploads) || maximumConcurrentUploads < 1 || maximumConcurrentUploads > 4) {
+    throw new TypeError("maximumConcurrentUploads must be an integer between 1 and 4")
+  }
+  let activeUploads = 0
+  const uploadWaiters: Array<() => void> = []
+
+  const releaseUploadSlot = (): void => {
+    const next = uploadWaiters.shift()
+    if (next === undefined) activeUploads -= 1
+    else next()
+  }
+
+  const acquireUploadSlot = async (): Promise<void> => {
+    if (lifetime.signal.aborted) throw new AssetUploadError("UPLOAD_UNAVAILABLE", "Asset uploader scope changed")
+    if (activeUploads < maximumConcurrentUploads) {
+      activeUploads += 1
+      return
+    }
+    await new Promise<void>((resolve) => uploadWaiters.push(resolve))
+    if (lifetime.signal.aborted) {
+      releaseUploadSlot()
+      throw new AssetUploadError("UPLOAD_UNAVAILABLE", "Asset uploader scope changed")
+    }
+  }
 
   async function control(path: string, init?: Readonly<{ method: "POST"; body: unknown }>): Promise<unknown> {
     const response = await fetcher(`/api/assets${path}`, init === undefined ? {
@@ -288,7 +345,7 @@ export function createAssetUploader(options: Readonly<{
     path: `/v1/multipart-uploads/${encodeURIComponent(uploadRef)}`,
   })
 
-  async function upload(file: File, input: Readonly<{
+  async function uploadOne(file: File, input: Readonly<{
     purpose?: string
     onProgress?: (progress: AssetUploadProgress) => void
   }> = {}): Promise<AssetAttachmentRef> {
@@ -475,6 +532,18 @@ export function createAssetUploader(options: Readonly<{
       owner = ((await control(`/${encodeURIComponent(record.owner.intentRef)}`)) as { upload: OwnerUpload }).upload
     }
     throw new AssetUploadError("PROCESSING_TIMEOUT", "Asset processing is still in progress; retry status later")
+  }
+
+  async function upload(file: File, input: Readonly<{
+    purpose?: string
+    onProgress?: (progress: AssetUploadProgress) => void
+  }> = {}): Promise<AssetAttachmentRef> {
+    await acquireUploadSlot()
+    try {
+      return await uploadOne(file, input)
+    } finally {
+      releaseUploadSlot()
+    }
   }
 
   return Object.freeze({

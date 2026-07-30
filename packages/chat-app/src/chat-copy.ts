@@ -20,6 +20,7 @@ export type ChatProductCopy = Readonly<{
   messageLabel: string
   messagePlaceholder: string
   activeRunPlaceholder: string
+  draftWhileRunning: string
   send: string
   sending: string
   attachFiles: string
@@ -111,7 +112,8 @@ export const DEFAULT_CHAT_COPY: ChatProductCopy = Object.freeze({
   modelRequired: "Choose an available model before sending.",
   messageLabel: "Message",
   messagePlaceholder: "Ask anything…",
-  activeRunPlaceholder: "The current response is still running",
+  activeRunPlaceholder: "Draft your next message while this response finishes…",
+  draftWhileRunning: "Saved as a draft for the next turn. This will not interrupt the current response.",
   send: "Send",
   sending: "Sending…",
   attachFiles: "Attach files",

@@ -13,6 +13,12 @@ export type { ChatProductProps } from "./chat-product"
 export { DEFAULT_CHAT_COPY, resolveChatCopy } from "./chat-copy"
 export type { ChatProductCopy } from "./chat-copy"
 export { createCommandIdentity, reconcileCommandReceipt } from "./command"
+export { createComposerDraftStore } from "./composer-draft"
+export type {
+  ComposerDraft,
+  ComposerDraftStorage,
+  ComposerDraftStore,
+} from "./composer-draft"
 export { createSessionCommandRecoveryStore } from "./command-recovery"
 export type {
   SessionCommandRecoveryRecord,

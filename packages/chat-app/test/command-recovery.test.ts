@@ -35,6 +35,7 @@ function record(createdAt = 1_000): SessionCommandRecoveryRecord {
     operation: "submit_message",
     command,
     sessionId: "session-12345678",
+    clientDraftRevision: "draft-revision-12345678",
     createdAt,
   }
 }
@@ -54,6 +55,7 @@ describe("Session command recovery store", () => {
     ["expired", { ...record(1_000), createdAt: 1_000 }],
     ["unknown operation", { ...record(), operation: "run_execute" }],
     ["unknown field", { ...record(), authority: "browser" }],
+    ["draft revision on another operation", { ...record(), operation: "cancel_run" }],
     ["invalid command", { ...record(), command: { ...command, request_digest: "not-a-digest" } }],
   ])("fails closed and removes %s browser state", (_label, value) => {
     const storage = storageFixture()

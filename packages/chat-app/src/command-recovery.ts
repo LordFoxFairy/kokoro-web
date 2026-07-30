@@ -11,6 +11,7 @@ const STORAGE_ROOT = "kokoro.chat.pending-command.v1."
 const MAXIMUM_AGE_MS = 24 * 60 * 60 * 1_000
 const MAXIMUM_FUTURE_SKEW_MS = 5 * 60 * 1_000
 const SCOPE_PATTERN = /^[A-Za-z0-9._:-]{8,128}$/u
+const DRAFT_REVISION_PATTERN = /^[A-Za-z0-9._:-]{8,128}$/u
 
 export type SessionCommandStorage = Readonly<{
   getItem(key: string): string | null
@@ -25,6 +26,7 @@ export type SessionCommandRecoveryRecord = Readonly<{
   operation: BrowserCommandOperation
   command: CommandIdentity
   sessionId?: string
+  clientDraftRevision?: string
   createdAt: number
 }>
 
@@ -41,9 +43,14 @@ function plainRecord(value: unknown): value is Readonly<Record<string, unknown>>
 function parseRecord(value: unknown, now: number): SessionCommandRecoveryRecord | null {
   if (!plainRecord(value)) return null
   const keys = Object.keys(value).sort()
-  const expectedKeys = value.sessionId === undefined
-    ? ["command", "createdAt", "operation", "schemaVersion"]
-    : ["command", "createdAt", "operation", "schemaVersion", "sessionId"]
+  const expectedKeys = [
+    ...(value.clientDraftRevision === undefined ? [] : ["clientDraftRevision"]),
+    "command",
+    "createdAt",
+    "operation",
+    "schemaVersion",
+    ...(value.sessionId === undefined ? [] : ["sessionId"]),
+  ]
   if (keys.length !== expectedKeys.length || keys.some((key, index) => key !== expectedKeys[index])) return null
   if (
     value.schemaVersion !== 1 ||
@@ -55,7 +62,11 @@ function parseRecord(value: unknown, now: number): SessionCommandRecoveryRecord 
     value.createdAt > now + MAXIMUM_FUTURE_SKEW_MS ||
     now - value.createdAt > MAXIMUM_AGE_MS ||
     (value.sessionId !== undefined &&
-      (typeof value.sessionId !== "string" || value.sessionId.length < 1 || value.sessionId.length > 128))
+      (typeof value.sessionId !== "string" || value.sessionId.length < 1 || value.sessionId.length > 128)) ||
+    (value.clientDraftRevision !== undefined &&
+      (value.operation !== "submit_message" ||
+        typeof value.clientDraftRevision !== "string" ||
+        !DRAFT_REVISION_PATTERN.test(value.clientDraftRevision)))
   ) return null
   const parsedCommand = commandIdentitySchema.safeParse(value.command)
   if (!parsedCommand.success) return null
@@ -64,6 +75,7 @@ function parseRecord(value: unknown, now: number): SessionCommandRecoveryRecord 
     operation: value.operation as BrowserCommandOperation,
     command: Object.freeze(parsedCommand.data),
     ...(value.sessionId === undefined ? {} : { sessionId: value.sessionId as string }),
+    ...(value.clientDraftRevision === undefined ? {} : { clientDraftRevision: value.clientDraftRevision as string }),
     createdAt: value.createdAt,
   })
 }
