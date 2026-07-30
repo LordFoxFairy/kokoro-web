@@ -34,9 +34,14 @@ test("deployable apps pin the reviewed security patch line", () => {
     assert.equal(app.devDependencies.eslint, "9.39.5");
     assert.equal(app.devDependencies.vitest, "4.1.10");
   }
-  assert.equal(adminPackage.dependencies["next-auth"], "5.0.0-beta.32");
+  assert.equal(adminPackage.dependencies["next-auth"], undefined);
+  assert.equal(adminPackage.dependencies.nodemailer, undefined);
+  assert.equal(adminPackage.dependencies.jose, "6.1.3");
+  assert.equal(adminPackage.dependencies["@bufbuild/protobuf"], "2.13.0");
+  assert.equal(adminPackage.dependencies["@connectrpc/connect"], "2.1.2");
+  assert.equal(adminPackage.dependencies["@connectrpc/connect-node"], "2.1.2");
+  assert.equal(adminPackage.dependencies["server-only"], "0.0.1");
   assert.equal(adminPackage.dependencies["@ant-design/pro-components"], "3.1.14-5");
-  assert.equal(adminPackage.dependencies.nodemailer, "9.0.3");
 });
 
 test("workspace overrides close transitive production advisories", () => {

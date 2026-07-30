@@ -18,7 +18,7 @@ test("route inventory recognizes every Next.js source extension", () => {
   assert.equal(isNextRouteSource("/app/api/example/helper.ts"), false);
 });
 
-test("production sources expose no Web acquisition channel or Admin payment control surface", async () => {
+test("production sources expose no acquisition bypass and only reviewed typed Admin control routes", async () => {
   const violations = [
     ...(await acquisitionShutdownViolations(root, [
       "package.json",
@@ -67,6 +67,7 @@ for (const [fixture, expectedRule] of [
   ["admin-computed-rewrite", "admin-rewrite-allowlist"],
   ["admin-generic-proxy", "admin-proxy-egress"],
   ["admin-import-bypass", "admin-filtered-route-import-graph"],
+  ["admin-control-bypass", "admin-control-route-import-graph"],
   ["payment-base-concatenation", "payment-base-url-boundary"],
 ]) {
   test(`topology gate rejects ${fixture} independently`, async () => {

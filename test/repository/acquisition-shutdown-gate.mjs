@@ -37,20 +37,59 @@ const ADMIN_FILTERED_ROUTES = new Map([
   ["apps/admin/app/api/resource/route.ts", { method: "GET", handler: "getFilteredResource" }],
   ["apps/admin/app/api/action/route.ts", { method: "POST", handler: "postFilteredAction" }],
 ]);
+const ADMIN_CONTROL_ROUTES = new Map([
+  ["apps/admin/app/api/control/approvals/route.ts", {
+    methods: ["GET"],
+    imports: ["@/lib/control-plane/client", "@/lib/control-plane/config", "@/lib/control-plane/http"],
+  }],
+  ["apps/admin/app/api/control/auth/callback/route.ts", {
+    methods: ["GET"],
+    imports: ["@/lib/control-plane/authority-session", "@/lib/control-plane/identity-client"],
+  }],
+  ["apps/admin/app/api/control/auth/login/route.ts", {
+    methods: ["GET"],
+    imports: ["@/lib/control-plane/authority-session", "@/lib/control-plane/identity-client"],
+  }],
+  ["apps/admin/app/api/control/auth/logout/route.ts", {
+    methods: ["POST"],
+    imports: ["@/lib/control-plane/authority-session", "@/lib/control-plane/identity-client"],
+  }],
+  ["apps/admin/app/api/control/auth/step-up/callback/route.ts", {
+    methods: ["GET"],
+    imports: ["@/lib/control-plane/authority-session", "@/lib/control-plane/identity-client"],
+  }],
+  ["apps/admin/app/api/control/auth/step-up/route.ts", {
+    methods: ["GET"],
+    imports: ["@/lib/control-plane/authority-session", "@/lib/control-plane/identity-client"],
+  }],
+  ["apps/admin/app/api/control/code-batches/[batchRef]/[action]/route.ts", {
+    methods: ["POST"],
+    imports: ["@/lib/control-plane/client", "@/lib/control-plane/config", "@/lib/control-plane/http"],
+  }],
+  ["apps/admin/app/api/control/code-batches/route.ts", {
+    methods: ["GET", "POST"],
+    imports: ["@/lib/control-plane/client", "@/lib/control-plane/config", "@/lib/control-plane/http"],
+  }],
+  ["apps/admin/app/api/control/offers/route.ts", {
+    methods: ["GET", "POST"],
+    imports: ["@/lib/control-plane/client", "@/lib/control-plane/config", "@/lib/control-plane/http"],
+  }],
+  ["apps/admin/app/api/control/operator/route.ts", {
+    methods: ["GET"],
+    imports: ["@/lib/control-plane/client", "@/lib/control-plane/http"],
+  }],
+  ["apps/admin/app/api/control/operators/route.ts", {
+    methods: ["GET"],
+    imports: ["@/lib/control-plane/client", "@/lib/control-plane/http"],
+  }],
+  ["apps/admin/app/api/control/redemption-programs/route.ts", {
+    methods: ["GET", "POST"],
+    imports: ["@/lib/control-plane/client", "@/lib/control-plane/config", "@/lib/control-plane/http"],
+  }],
+]);
 const ADMIN_API_ROUTES = new Set([
   ...ADMIN_FILTERED_ROUTES.keys(),
-  "apps/admin/app/api/auth/[...nextauth]/route.ts",
-]);
-const ADMIN_GATEWAY_REWRITE_PATHS = new Set([
-  "/api/me",
-  "/api/operators",
-  "/api/operators/:id/status",
-  "/api/roles",
-  "/api/sites",
-  "/api/approvals",
-  "/api/approvals/:id/approve",
-  "/api/approvals/:id/reject",
-  "/api/audit",
+  ...ADMIN_CONTROL_ROUTES.keys(),
 ]);
 
 function foldStaticStringConcatenations(source) {
@@ -350,6 +389,35 @@ export async function acquisitionShutdownTopologyViolations(
     }
   }
 
+  for (const [path, expected] of ADMIN_CONTROL_ROUTES) {
+    let source = "";
+    try {
+      source = await readFile(resolve(root, path), "utf8");
+    } catch {
+      violations.push({ rule: "admin-control-route-missing", path });
+      continue;
+    }
+    const exportedMethods = new Set(
+      [...source.matchAll(/export\s+async\s+function\s+(GET|POST|PUT|PATCH|DELETE|OPTIONS)\b/gu)]
+        .map((match) => match[1]),
+    );
+    if (
+      !sameSet(exportedMethods, new Set(expected.methods)) ||
+      !/export\s+const\s+runtime\s*=\s*["']nodejs["']/u.test(source) ||
+      /\bfetch\s*\(|\bprocess\.env\b|export\s*\*/u.test(source)
+    ) {
+      violations.push({ rule: "admin-control-route-shape", path });
+    }
+    const internalImports = new Set(
+      [...source.matchAll(/^\s*(?:import|export)\b[^"']*\bfrom\s*["']([^"']+)["']/gmu)]
+        .map((match) => match[1])
+        .filter((specifier) => specifier.startsWith("@/")),
+    );
+    if (!sameSet(internalImports, new Set(expected.imports))) {
+      violations.push({ rule: "admin-control-route-import-graph", path });
+    }
+  }
+
   let adminNextConfig = "";
   try {
     adminNextConfig = foldStaticStringConcatenations(
@@ -358,17 +426,9 @@ export async function acquisitionShutdownTopologyViolations(
   } catch {
     // Missing configuration is an invalid closed topology too.
   }
-  const rewriteBlock = adminNextConfig.match(/const\s+GATEWAY_PROXY_PATHS\s*=\s*\[([\s\S]*?)\]\s*as\s+const/u)?.[1] ?? "";
-  const declaredRewrites = new Set(
-    [...rewriteBlock.matchAll(/["'](\/api\/[^"']+)["']/gu)].map((match) => match[1]),
-  );
-  const allAdminApiLiterals = new Set(
-    [...adminNextConfig.matchAll(/["'](\/api\/[^"']+)["']/gu)].map((match) => match[1]),
-  );
   if (
-    !sameSet(declaredRewrites, ADMIN_GATEWAY_REWRITE_PATHS) ||
-    !sameSet(allAdminApiLiterals, ADMIN_GATEWAY_REWRITE_PATHS) ||
-    !/GATEWAY_PROXY_PATHS\.map\s*\(\s*\(source\)\s*=>\s*\(\{\s*source\s*,\s*destination\s*:/u.test(adminNextConfig)
+    !/async\s+rewrites\s*\(\s*\)\s*\{\s*return\s*\{\s*beforeFiles\s*:\s*\[\s*\]\s*,\s*afterFiles\s*:\s*\[\s*\]\s*,\s*fallback\s*:\s*\[\s*\]\s*\}\s*;?\s*\}/u.test(adminNextConfig) ||
+    /\bdestination\s*:|GATEWAY_PROXY_PATHS|["'`]\/api\//u.test(adminNextConfig)
   ) {
     violations.push({ rule: "admin-rewrite-allowlist", path: "apps/admin/next.config.ts" });
   }
