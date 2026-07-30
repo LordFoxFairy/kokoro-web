@@ -27,6 +27,23 @@ export interface ModelRecoveryStorageEvent {
   readonly storageArea: unknown;
 }
 
+export interface ModelRecoveryStateAuthority {
+  readonly corruptObserved: boolean;
+  observe(state: ModelRecoveryState): ModelRecoveryState;
+}
+
+export function createModelRecoveryStateAuthority(): ModelRecoveryStateAuthority {
+  let corruptObserved = false;
+  return {
+    get corruptObserved() { return corruptObserved; },
+    observe(state) {
+      if (corruptObserved) return { kind: "corrupt" };
+      if (state.kind === "corrupt") corruptObserved = true;
+      return state;
+    },
+  };
+}
+
 export type ModelRecoveryOperationResult<T> =
   | Readonly<{ kind: "completed"; value: T }>
   | Readonly<{ kind: "blocked"; state: ModelRecoveryState }>
@@ -56,10 +73,11 @@ export function modelRecoveryStateFromStorageEvent(
   event: ModelRecoveryStorageEvent,
   storage: ModelRecoveryStorage,
   locks: ModelRecoveryLockManager | null,
+  authority: ModelRecoveryStateAuthority,
 ): ModelRecoveryState | null {
   if (event.storageArea !== storage
     || (event.key !== MODEL_RECOVERY_STORAGE_KEY && event.key !== null)) return null;
-  return readAvailableModelRecoveryState(storage, locks);
+  return authority.observe(readAvailableModelRecoveryState(storage, locks));
 }
 
 export function compareAndRemoveModelRecovery(
@@ -79,10 +97,15 @@ export async function runModelMutationUnderLock<T>(options: Readonly<{
   prepare: () => Promise<Readonly<{ recoveryRef: string }>>;
   execute: (recoveryRef: string) => Promise<T>;
   onState: (state: ModelRecoveryState) => void;
+  authority: ModelRecoveryStateAuthority;
 }>): Promise<ModelRecoveryOperationResult<T>> {
+  const publish = (state: ModelRecoveryState) => {
+    const authorized = options.authority.observe(state);
+    options.onState(authorized);
+    return authorized;
+  };
   if (options.locks === null) {
-    const state: ModelRecoveryState = { kind: "unavailable", reason: "locks" };
-    options.onState(state);
+    const state = publish({ kind: "unavailable", reason: "locks" });
     return { kind: "blocked", state };
   }
 
@@ -90,26 +113,22 @@ export async function runModelMutationUnderLock<T>(options: Readonly<{
   try {
     return await options.locks.request(MODEL_RECOVERY_LOCK_NAME, { mode: "exclusive" }, async () => {
       entered = true;
-      const current = readAvailableModelRecoveryState(options.storage, options.locks);
-      options.onState(current);
+      const current = publish(readAvailableModelRecoveryState(options.storage, options.locks));
       if (current.kind !== "clear") return { kind: "blocked", state: current };
 
       const prepared = await options.prepare();
       if (!MODEL_RECOVERY_REF.test(prepared.recoveryRef)) {
-        const state: ModelRecoveryState = { kind: "unavailable", reason: "invalid_prepared_ref" };
-        options.onState(state);
+        const state = publish({ kind: "unavailable", reason: "invalid_prepared_ref" });
         return { kind: "blocked", state };
       }
 
       try {
         options.storage.setItem(MODEL_RECOVERY_STORAGE_KEY, prepared.recoveryRef);
       } catch {
-        const state: ModelRecoveryState = { kind: "unavailable", reason: "storage" };
-        options.onState(state);
+        const state = publish({ kind: "unavailable", reason: "storage" });
         return { kind: "blocked", state };
       }
-      const persisted = readAvailableModelRecoveryState(options.storage, options.locks);
-      options.onState(persisted);
+      const persisted = publish(readAvailableModelRecoveryState(options.storage, options.locks));
       if (persisted.kind !== "pending" || persisted.recoveryRef !== prepared.recoveryRef) {
         return { kind: "ownership_lost", state: persisted };
       }
@@ -118,7 +137,7 @@ export async function runModelMutationUnderLock<T>(options: Readonly<{
       try {
         value = await options.execute(prepared.recoveryRef);
       } catch (error) {
-        options.onState(readAvailableModelRecoveryState(options.storage, options.locks));
+        publish(readAvailableModelRecoveryState(options.storage, options.locks));
         throw error;
       }
 
@@ -128,14 +147,13 @@ export async function runModelMutationUnderLock<T>(options: Readonly<{
       } catch {
         cleared = { kind: "unavailable", reason: "storage" };
       }
-      options.onState(cleared);
+      cleared = publish(cleared);
       if (cleared.kind !== "clear") return { kind: "ownership_lost", state: cleared };
       return { kind: "completed", value };
     });
   } catch (error) {
     if (entered) throw error;
-    const state: ModelRecoveryState = { kind: "unavailable", reason: "locks" };
-    options.onState(state);
+    const state = publish({ kind: "unavailable", reason: "locks" });
     return { kind: "blocked", state };
   }
 }
@@ -146,10 +164,15 @@ export async function reconcileModelRecoveryUnderLock<T>(options: Readonly<{
   recoveryRef: string;
   reconcile: () => Promise<T>;
   onState: (state: ModelRecoveryState) => void;
+  authority: ModelRecoveryStateAuthority;
 }>): Promise<ModelRecoveryOperationResult<T>> {
+  const publish = (state: ModelRecoveryState) => {
+    const authorized = options.authority.observe(state);
+    options.onState(authorized);
+    return authorized;
+  };
   if (options.locks === null) {
-    const state: ModelRecoveryState = { kind: "unavailable", reason: "locks" };
-    options.onState(state);
+    const state = publish({ kind: "unavailable", reason: "locks" });
     return { kind: "blocked", state };
   }
 
@@ -157,8 +180,7 @@ export async function reconcileModelRecoveryUnderLock<T>(options: Readonly<{
   try {
     return await options.locks.request(MODEL_RECOVERY_LOCK_NAME, { mode: "exclusive" }, async () => {
       entered = true;
-      const current = readAvailableModelRecoveryState(options.storage, options.locks);
-      options.onState(current);
+      const current = publish(readAvailableModelRecoveryState(options.storage, options.locks));
       if (current.kind !== "pending" || current.recoveryRef !== options.recoveryRef) {
         return { kind: "blocked", state: current };
       }
@@ -170,14 +192,13 @@ export async function reconcileModelRecoveryUnderLock<T>(options: Readonly<{
       } catch {
         cleared = { kind: "unavailable", reason: "storage" };
       }
-      options.onState(cleared);
+      cleared = publish(cleared);
       if (cleared.kind !== "clear") return { kind: "ownership_lost", state: cleared };
       return { kind: "completed", value };
     });
   } catch (error) {
     if (entered) throw error;
-    const state: ModelRecoveryState = { kind: "unavailable", reason: "locks" };
-    options.onState(state);
+    const state = publish({ kind: "unavailable", reason: "locks" });
     return { kind: "blocked", state };
   }
 }

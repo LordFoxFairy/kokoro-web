@@ -3,6 +3,7 @@ import {
   INITIAL_MODEL_RECOVERY_STATE,
   MODEL_RECOVERY_STORAGE_KEY,
   compareAndRemoveModelRecovery,
+  createModelRecoveryStateAuthority,
   modelRecoveryStateFromStorageEvent,
   readAvailableModelRecoveryState,
   readModelRecoveryState,
@@ -51,6 +52,7 @@ describe("model recovery coordinator", () => {
     expect(JSON.stringify(state)).not.toContain(corrupt);
     await expect(runModelMutationUnderLock({
       storage, locks: new SerialLocks(), prepare, execute: vi.fn(), onState: vi.fn(),
+      authority: createModelRecoveryStateAuthority(),
     })).resolves.toEqual({ kind: "blocked", state: { kind: "corrupt" } });
     expect(prepare).not.toHaveBeenCalled();
     expect(storage.getItem(MODEL_RECOVERY_STORAGE_KEY)).toBe(corrupt);
@@ -62,6 +64,7 @@ describe("model recovery coordinator", () => {
 
     const result = await runModelMutationUnderLock({
       storage, locks: null, prepare, execute: vi.fn(), onState: vi.fn(),
+      authority: createModelRecoveryStateAuthority(),
     });
 
     expect(result).toEqual({ kind: "blocked", state: { kind: "unavailable", reason: "locks" } });
@@ -78,10 +81,12 @@ describe("model recovery coordinator", () => {
 
     const first = runModelMutationUnderLock({
       storage, locks, prepare: firstPrepare, execute: () => firstEffect.promise, onState: vi.fn(),
+      authority: createModelRecoveryStateAuthority(),
     });
     await vi.waitFor(() => expect(storage.getItem(MODEL_RECOVERY_STORAGE_KEY)).toBe("tab_one"));
     const second = runModelMutationUnderLock({
       storage, locks, prepare: secondPrepare, execute: vi.fn(), onState: vi.fn(),
+      authority: createModelRecoveryStateAuthority(),
     });
     firstEffect.reject(new Error("outcome_unknown"));
 
@@ -111,10 +116,49 @@ describe("model recovery coordinator", () => {
 
     expect(modelRecoveryStateFromStorageEvent({
       key: MODEL_RECOVERY_STORAGE_KEY, storageArea: storage,
-    }, storage, locks)).toEqual({ kind: "pending", recoveryRef: "authoritative_ref" });
+    }, storage, locks, createModelRecoveryStateAuthority())).toEqual({
+      kind: "pending", recoveryRef: "authoritative_ref",
+    });
     expect(modelRecoveryStateFromStorageEvent({
       key: "unrelated", storageArea: storage,
-    }, storage, locks)).toBeNull();
+    }, storage, locks, createModelRecoveryStateAuthority())).toBeNull();
+  });
+
+  it("keeps observed corruption sticky when another tab clears storage", async () => {
+    const storage = new MemoryStorage();
+    const locks = new SerialLocks();
+    const authority = createModelRecoveryStateAuthority();
+    const corrupt = "broken:" + "x".repeat(2_048);
+    storage.setItem(MODEL_RECOVERY_STORAGE_KEY, corrupt);
+    const observed = authority.observe(readModelRecoveryState(storage));
+    expect(observed).toEqual({ kind: "corrupt" });
+
+    storage.removeItem(MODEL_RECOVERY_STORAGE_KEY);
+    const afterClearEvent = modelRecoveryStateFromStorageEvent({
+      key: null, storageArea: storage,
+    }, storage, locks, authority);
+
+    expect(afterClearEvent).toEqual({ kind: "corrupt" });
+    storage.setItem(MODEL_RECOVERY_STORAGE_KEY, "plausible_ref");
+    expect(modelRecoveryStateFromStorageEvent({
+      key: MODEL_RECOVERY_STORAGE_KEY, storageArea: storage,
+    }, storage, locks, authority)).toEqual({ kind: "corrupt" });
+    storage.removeItem(MODEL_RECOVERY_STORAGE_KEY);
+    expect(modelRecoveryStateFromStorageEvent({
+      key: null, storageArea: storage,
+    }, storage, locks, authority)).toEqual({ kind: "corrupt" });
+
+    const prepare = vi.fn(async () => ({ recoveryRef: "must_not_prepare" }));
+    await runModelMutationUnderLock({
+      storage, locks, prepare, execute: vi.fn(), onState: vi.fn(), authority,
+    });
+    expect(prepare).not.toHaveBeenCalled();
+
+    const reconcile = vi.fn();
+    await reconcileModelRecoveryUnderLock({
+      storage, locks, recoveryRef: "plausible_ref", reconcile, onState: vi.fn(), authority,
+    });
+    expect(reconcile).not.toHaveBeenCalled();
   });
 
   it("does not clear a replacement ref after a successful effect", async () => {
@@ -125,6 +169,7 @@ describe("model recovery coordinator", () => {
       prepare: async () => ({ recoveryRef: "this_tab" }),
       execute: async () => { storage.setItem(MODEL_RECOVERY_STORAGE_KEY, "other_tab"); return "committed"; },
       onState: vi.fn(),
+      authority: createModelRecoveryStateAuthority(),
     });
 
     expect(result).toEqual({ kind: "ownership_lost", state: { kind: "pending", recoveryRef: "other_tab" } });
@@ -138,6 +183,7 @@ describe("model recovery coordinator", () => {
 
     const result = await reconcileModelRecoveryUnderLock({
       storage, locks: new SerialLocks(), recoveryRef: "older_tab", reconcile, onState: vi.fn(),
+      authority: createModelRecoveryStateAuthority(),
     });
 
     expect(result).toEqual({ kind: "blocked", state: { kind: "pending", recoveryRef: "newer_tab" } });

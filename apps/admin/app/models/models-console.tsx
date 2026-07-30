@@ -11,6 +11,7 @@ import { apiGet, apiPost } from "@/lib/api";
 import { collectCursorPages } from "@/lib/cursor-pagination";
 import {
   INITIAL_MODEL_RECOVERY_STATE,
+  createModelRecoveryStateAuthority,
   modelRecoveryStateFromStorageEvent,
   readAvailableModelRecoveryState,
   reconcileModelRecoveryUnderLock,
@@ -76,25 +77,27 @@ export function ModelsConsole(): React.ReactElement {
   const [mutationBusy, setMutationBusy] = useState(false);
   const [reconciling, setReconciling] = useState(false);
   const mutationActive = useRef(false);
+  const [recoveryAuthority] = useState(createModelRecoveryStateAuthority);
   const pendingRecoveryRef = recoveryState.kind === "pending" ? recoveryState.recoveryRef : null;
   const writesBlocked = recoveryState.kind !== "clear" || mutationBusy;
   useEffect(() => {
     let active = true;
     const synchronize = () => {
-      if (active) setRecoveryState(readAvailableModelRecoveryState(
+      const state = recoveryAuthority.observe(readAvailableModelRecoveryState(
         window.localStorage, browserModelRecoveryLocks(),
       ));
+      if (active) setRecoveryState(state);
     };
     const onStorage = (event: StorageEvent) => {
       const state = modelRecoveryStateFromStorageEvent(
-        event, window.localStorage, browserModelRecoveryLocks(),
+        event, window.localStorage, browserModelRecoveryLocks(), recoveryAuthority,
       );
       if (active && state !== null) setRecoveryState(state);
     };
     window.addEventListener("storage", onStorage);
     queueMicrotask(synchronize);
     return () => { active = false; window.removeEventListener("storage", onStorage); };
-  }, []);
+  }, [recoveryAuthority]);
   useEffect(() => { let active = true; collectCursorPages<Inventory>((token, signal) => apiGet(
     `/api/control/models?view=inventories${token ? `&pageToken=${encodeURIComponent(token)}` : ""}`,
     page(inventory), { signal }), { identity: (item) => item.inventoryDigest, maxItems: 1000,
@@ -145,6 +148,7 @@ export function ModelsConsole(): React.ReactElement {
           recoveredMutation,
         ),
         onState: setRecoveryState,
+        authority: recoveryAuthority,
       });
       if (result.kind === "completed") {
         message.success("已确认上一条模型命令提交成功"); reload();
@@ -168,6 +172,7 @@ export function ModelsConsole(): React.ReactElement {
           "/api/control/models", { phase: "execute", recoveryRef, command: body }, mutation,
         ),
         onState: setRecoveryState,
+        authority: recoveryAuthority,
       });
       if (result.kind !== "completed") {
         message.warning(result.state.kind === "pending"
@@ -177,7 +182,9 @@ export function ModelsConsole(): React.ReactElement {
       }
       message.success(success); reload(); return true;
     } catch (error) {
-      const current = readAvailableModelRecoveryState(window.localStorage, browserModelRecoveryLocks());
+      const current = recoveryAuthority.observe(readAvailableModelRecoveryState(
+        window.localStorage, browserModelRecoveryLocks(),
+      ));
       setRecoveryState(current);
       if (current.kind === "pending") {
         message.warning("写入结果暂不明确，已保存恢复引用；完成对账前不会发起新写入");
@@ -207,8 +214,8 @@ export function ModelsConsole(): React.ReactElement {
     {recoveryState.kind === "initializing" ? <Alert type="info" showIcon style={{ marginBottom: 16 }}
       message="正在确认本地恢复状态" description="确认完成前，所有模型写入保持关闭。" /> : null}
     {recoveryState.kind === "corrupt" ? <Alert type="error" showIcon style={{ marginBottom: 16 }}
-      message="本地恢复状态损坏，模型写入已永久关闭"
-      description="原始恢复数据已原样保留且不会显示。必须由系统所有者提供明确处置后，未来版本才能解除；当前页面不会删除、覆盖或绕过该状态。" /> : null}
+      message="本地恢复状态损坏，当前页面已锁定模型写入"
+      description="原始恢复数据已原样保留且不会显示。本页面生命周期内，任何本地删除、清空或替换都不能解除；跨刷新安全解除需要未来由服务端签发并绑定损坏指纹的所有者处置凭证。" /> : null}
     {recoveryState.kind === "unavailable" ? <Alert type="error" showIcon style={{ marginBottom: 16 }}
       message="无法建立安全的模型写入所有权"
       description={recoveryUnavailableDescription(recoveryState.reason)} /> : null}
