@@ -68,8 +68,9 @@ async function request(path: string, init?: RequestInit): Promise<unknown> {
   return envelope.success ? envelope.data.data : undefined;
 }
 
-export async function apiGet<T>(path: string, schema: z.ZodType<T>): Promise<T> {
-  return schema.parse(await request(path));
+export async function apiGet<T>(path: string, schema: z.ZodType<T>,
+  options: Readonly<{ signal?: AbortSignal }> = {}): Promise<T> {
+  return schema.parse(await request(path, options.signal ? { signal: options.signal } : undefined));
 }
 
 export async function apiPost<T>(path: string, body: unknown, schema: z.ZodType<T>): Promise<T> {

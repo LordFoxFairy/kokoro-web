@@ -194,7 +194,7 @@ export async function issueCodeBatch(input: Readonly<{ siteId: string; batchRef:
     redemptionProgramRevisionRef: input.redemptionProgramRevisionRef, count: input.count,
     ...(input.startsAt ? { startsAt: timestampFromDate(new Date(input.startsAt)) } : {}),
     ...(input.endsAt ? { endsAt: timestampFromDate(new Date(input.endsAt)) } : {}) });
-  const context = commandContext(session, { kind: "site", siteId: input.siteId });
+  const context = commandContext(session);
   const identity = context.command!;
   identity.requestDigest = issueCodeBatchRequestDigest(context, input.siteId, effect, verifiedAxes(session));
   try {
@@ -309,7 +309,7 @@ async function mutation<Effect extends PublishOfferEffect | PublishRedemptionPro
   map: (response: CommerceMutationResponse) => Result): Promise<Result> {
   const session = await requireAuthoritySession();
   const rpc = createClient(AdminCommerceService, await adminControlPlaneTransport());
-  const context = commandContext(session, { kind: "site", siteId });
+  const context = commandContext(session);
   context.command!.requestDigest = digest(context, siteId, effect, verifiedAxes(session));
   const request = { context, siteId, effect };
   try {

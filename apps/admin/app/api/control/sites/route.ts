@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { boundedJson, controlError, controlJson } from "@/lib/control-plane/http";
 import { listSites, registerSite } from "@/lib/control-plane/client";
+import { strictQuery } from "@/lib/control-plane/strict-query";
 
 export const runtime = "nodejs";
 
@@ -18,8 +19,8 @@ const registerSiteInput = z.object({
 
 export async function GET(request: NextRequest | Request) {
   try {
-    const pageToken = z.string().min(1).max(256).optional().parse(new URL(request.url).searchParams.get("pageToken") ?? undefined);
-    return controlJson(await listSites(pageToken));
+    const query = strictQuery(request, { pageToken: z.string().min(1).max(256).optional() });
+    return controlJson(await listSites(query.pageToken));
   } catch (error) { return controlError(error); }
 }
 
