@@ -218,8 +218,8 @@ describe("Chat projection", () => {
             version: 2,
             schema_version: 1,
             lifecycle: "streaming",
-            kind: "reasoning",
-            payload: { safe_summary: "drifted identity" },
+            kind: "reasoning-summary",
+            payload: { part_ref: "reasoning-drift", safe_summary: "drifted identity" },
           },
         },
       }),
@@ -301,7 +301,7 @@ describe("Chat projection", () => {
     })
   })
 
-  it("preserves and renders every authoritative v3 card payload including HITL routing identity", () => {
+  it("projects every authoritative typed part and preserves HITL routing identity", () => {
     const base = snapshot()
     const assistant = base.messages[1]
     if (assistant === undefined) throw new Error("assistant fixture missing")
@@ -314,11 +314,16 @@ describe("Chat projection", () => {
           { part_id: "approval-1", message_id: assistant.message_id, ordinal: 1, version: 3, schema_version: 1, lifecycle: "streaming", kind: "approval", payload: { owner_ref: "owner-approval", expected_version: 7, decision_group_ref: "decision-group-1", required_owner_refs: ["owner-approval"], title: "Approve effect", description: "Allow the effect", deadline: NOW, allowed_actions: ["approve", "reject"], receipt_ref: "receipt-1", status: "pending" } },
           { part_id: "interaction-1", message_id: assistant.message_id, ordinal: 2, version: 2, schema_version: 1, lifecycle: "streaming", kind: "interaction", payload: { owner_ref: "owner-interaction", expected_version: 4, decision_group_ref: "decision-group-2", required_owner_refs: ["owner-interaction"], title: "Input", description: "Provide input", allowed_actions: ["respond"], status: "pending" } },
           { part_id: "plan-1", message_id: assistant.message_id, ordinal: 3, version: 1, schema_version: 1, lifecycle: "completed", kind: "plan", payload: { plan_proposal_ref: "plan-ref", plan_version: 1, summary: "Inspect first", steps: [{ step_ref: "step-1", label: "Inspect", status: "done" }], allowed_actions: ["accept", "reject"], status: "pending" } },
-          { part_id: "job-1", message_id: assistant.message_id, ordinal: 4, version: 1, schema_version: 1, lifecycle: "streaming", kind: "job", payload: { owner_ref: "job-owner", status: "running", safe_metadata: { label: "Render" } } },
-          { part_id: "artifact-1", message_id: assistant.message_id, ordinal: 5, version: 1, schema_version: 1, lifecycle: "completed", kind: "artifact", payload: { owner_ref: "artifact-owner", status: "ready", safe_metadata: { media_type: "image/png" } } },
-          { part_id: "cost-1", message_id: assistant.message_id, ordinal: 6, version: 1, schema_version: 1, lifecycle: "completed", kind: "cost", payload: { cost_projection_ref: "cost-ref", status: "settled", amount: "1.25", currency_or_credit_unit: "credits", freshness: NOW } },
-          { part_id: "notice-1", message_id: assistant.message_id, ordinal: 7, version: 1, schema_version: 1, lifecycle: "completed", kind: "notice", payload: { code: "WAIT", message: "Still working", retry_class: "after_delay", support_correlation_ref: "support-1" } },
-          { part_id: "error-1", message_id: assistant.message_id, ordinal: 8, version: 1, schema_version: 1, lifecycle: "failed", kind: "error", payload: { code: "FAILED", message: "Stopped", retry_class: "never" } },
+          { part_id: "reasoning-1", message_id: assistant.message_id, ordinal: 4, version: 1, schema_version: 1, lifecycle: "completed", kind: "reasoning-summary", payload: { part_ref: "reasoning-ref", safe_summary: "Compared safe alternatives" } },
+          { part_id: "tool-1", message_id: assistant.message_id, ordinal: 5, version: 1, schema_version: 1, lifecycle: "streaming", kind: "tool-call", payload: { tool_call_id: "Tool/Call:Exact-01", tool_label: "Search", status: "started" } },
+          { part_id: "plan-progress-1", message_id: assistant.message_id, ordinal: 6, version: 1, schema_version: 1, lifecycle: "streaming", kind: "plan-progress", payload: { plan_ref: "plan-progress-ref", safe_summary: "Building the result", steps: [{ step_ref: "step-progress-1", label: "Render", status: "in_progress" }] } },
+          { part_id: "subagent-1", message_id: assistant.message_id, ordinal: 7, version: 1, schema_version: 1, lifecycle: "streaming", kind: "subagent", payload: { subagent_ref: "subagent-ref", status: "running", safe_summary: "Checking references" } },
+          { part_id: "media-1", message_id: assistant.message_id, ordinal: 8, version: 1, schema_version: 1, lifecycle: "streaming", kind: "media-operation", payload: { media_operation_ref: "media-ref", capability: "image.generate", status: "running", safe_metadata: { title: "Poster" }, progress_bps: 3750 } },
+          { part_id: "artifact-1", message_id: assistant.message_id, ordinal: 9, version: 1, schema_version: 1, lifecycle: "completed", kind: "artifact", payload: { artifact_ref: "artifact-ref", version_ref: "artifact-v1", content_type: "image/png", safe_metadata: { title: "Poster" } } },
+          { part_id: "cost-1", message_id: assistant.message_id, ordinal: 10, version: 1, schema_version: 1, lifecycle: "completed", kind: "cost", payload: { cost_projection_ref: "cost-ref", status: "settled", amount: "1.25", currency_or_credit_unit: "credits", freshness: NOW } },
+          { part_id: "notice-1", message_id: assistant.message_id, ordinal: 11, version: 1, schema_version: 1, lifecycle: "completed", kind: "notice", payload: { notice_ref: "notice-ref", code: "WAIT", message: "Still working", severity: "warning", support_correlation_ref: "support-1" } },
+          { part_id: "error-1", message_id: assistant.message_id, ordinal: 12, version: 1, schema_version: 1, lifecycle: "failed", kind: "error", payload: { error_ref: "error-ref", code: "FAILED", message: "Stopped", retry_class: "never" } },
+          { part_id: "unsupported-1", message_id: assistant.message_id, ordinal: 13, version: 1, schema_version: 1, lifecycle: "unsupported", kind: "unsupported", payload: { original_kind: "future-visual", original_schema_version: 2, safe_fallback: "A newer client can render this content." } },
         ],
       }],
     }
@@ -332,11 +337,16 @@ describe("Chat projection", () => {
       expect.objectContaining({ kind: "approval", ownerRef: "owner-approval", expectedVersion: 7, allowedActions: ["approve", "reject"], receiptRef: "receipt-1", version: 3, ordinal: 1 }),
       expect.objectContaining({ kind: "interaction", ownerRef: "owner-interaction", expectedVersion: 4, allowedActions: ["respond"] }),
       expect.objectContaining({ kind: "plan", planProposalRef: "plan-ref" }),
-      expect.objectContaining({ kind: "job", ownerRef: "job-owner", safeMetadata: { label: "Render" } }),
-      expect.objectContaining({ kind: "artifact", ownerRef: "artifact-owner" }),
+      expect.objectContaining({ kind: "reasoning-summary", partRef: "reasoning-ref", text: "Compared safe alternatives" }),
+      expect.objectContaining({ kind: "tool", toolCallId: "Tool/Call:Exact-01", args: {} }),
+      expect.objectContaining({ kind: "plan-progress", planRef: "plan-progress-ref", summary: "Building the result" }),
+      expect.objectContaining({ kind: "subagent", subagentRef: "subagent-ref", status: "running" }),
+      expect.objectContaining({ kind: "media-operation", mediaOperationRef: "media-ref", capability: "image.generate", progressBps: 3750, safeMetadata: { title: "Poster" } }),
+      expect.objectContaining({ kind: "artifact", artifactRef: "artifact-ref", versionRef: "artifact-v1", contentType: "image/png" }),
       expect.objectContaining({ kind: "cost", costProjectionRef: "cost-ref", amount: "1.25" }),
-      expect.objectContaining({ kind: "notice", code: "WAIT", retryClass: "after_delay" }),
-      expect.objectContaining({ kind: "error", code: "FAILED", retryClass: "never" }),
+      expect.objectContaining({ kind: "notice", noticeRef: "notice-ref", code: "WAIT", severity: "warning" }),
+      expect.objectContaining({ kind: "error", errorRef: "error-ref", code: "FAILED", retryClass: "never" }),
+      expect.objectContaining({ kind: "unsupported", originalKind: "future-visual", safeFallback: "A newer client can render this content." }),
     ]))
 
     const adapter = createKokoroExternalStoreAdapter(store.getSnapshot(), { submit: async () => undefined })
@@ -344,8 +354,64 @@ describe("Chat projection", () => {
     expect(rendered.content).toEqual(expect.arrayContaining([
       expect.objectContaining({ type: "data", name: "kokoro:approval", data: expect.objectContaining({ ownerRef: "owner-approval", expectedVersion: 7 }) }),
       expect.objectContaining({ type: "data", name: "kokoro:citation", data: expect.objectContaining({ sourceRef: "source-1" }) }),
+      expect.objectContaining({ type: "tool-call", toolCallId: "Tool/Call:Exact-01", args: {} }),
+      expect.objectContaining({ type: "data", name: "kokoro:plan-progress", data: expect.objectContaining({ planRef: "plan-progress-ref" }) }),
+      expect.objectContaining({ type: "data", name: "kokoro:subagent", data: expect.objectContaining({ subagentRef: "subagent-ref" }) }),
+      expect.objectContaining({ type: "data", name: "kokoro:media-operation", data: expect.objectContaining({ mediaOperationRef: "media-ref", progressBps: 3750 }) }),
+      expect.objectContaining({ type: "data", name: "kokoro:artifact", data: expect.objectContaining({ artifactRef: "artifact-ref", versionRef: "artifact-v1" }) }),
       expect.objectContaining({ type: "data", name: "kokoro:cost", data: expect.objectContaining({ costProjectionRef: "cost-ref" }) }),
+      expect.objectContaining({ type: "data", name: "kokoro:unsupported", data: expect.objectContaining({ originalKind: "future-visual" }) }),
     ]))
+    expect(assistantProjection.parts).toHaveLength(14)
+  })
+
+  it("converges snapshot and SSE media-operation updates through the same versioned reducer", () => {
+    const base = snapshot()
+    const assistant = base.messages[1]
+    if (assistant === undefined) throw new Error("assistant fixture missing")
+    const first = {
+      part_id: "media-1",
+      message_id: assistant.message_id,
+      ordinal: 0,
+      version: 1,
+      schema_version: 1 as const,
+      lifecycle: "streaming" as const,
+      kind: "media-operation" as const,
+      payload: {
+        media_operation_ref: "media-ref",
+        capability: "image.generate",
+        status: "running",
+        safe_metadata: { title: "Poster" },
+        progress_bps: 2500,
+      },
+    }
+    const second = {
+      ...first,
+      version: 2,
+      payload: { ...first.payload, status: "completed", progress_bps: 10000, artifact_ref: "artifact-ref" },
+      lifecycle: "completed" as const,
+    }
+    const withPart = (part: typeof first | typeof second): SessionSnapshot => ({
+      ...base,
+      messages: [base.messages[0] as SessionSnapshot["messages"][number], { ...assistant, parts: [part] }],
+    })
+
+    const streamed = createChatProjectionStore()
+    streamed.dispatch({ type: "snapshot", snapshot: withPart(first) })
+    streamed.dispatch({ type: "event", event: event({
+      kind: "message.part.updated",
+      payload: { part: second },
+    }) })
+    const hydrated = createChatProjectionStore()
+    hydrated.dispatch({ type: "snapshot", snapshot: withPart(second) })
+
+    expect(streamed.getSnapshot().messages[1]?.parts).toEqual(hydrated.getSnapshot().messages[1]?.parts)
+    expect(streamed.getSnapshot().messages[1]?.parts[0]).toMatchObject({
+      kind: "media-operation",
+      version: 2,
+      progressBps: 10000,
+      artifactRef: "artifact-ref",
+    })
   })
 
   it("rejects part version regression without mutating the current projection", () => {

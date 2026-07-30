@@ -6,7 +6,7 @@ import { z } from "zod"
 export const sessionHttpContractMetadata = Object.freeze({
   schemaId: "kokoro.session.browser.v3",
   schemaVersion: 3,
-  sourceDigestSha256: "f58d3de5a0bfba3d2a3b9edb86792b575e6be3d5a1a21873f9a3632b9e1a5cec",
+  sourceDigestSha256: "5e550086f0a7478ff839ffee87f377a64a12077e9fc8b8e5df6f512385f1f687",
 })
 
 export const commandIdentitySchema = z
@@ -342,6 +342,7 @@ export type TextSpan = z.infer<typeof textSpanSchema>
 
 export const textPartPayloadSchema = z
   .object({
+    part_ref: z.string().min(1).max(256).optional(),
     spans: z.array(textSpanSchema),
   })
   .strict()
@@ -349,6 +350,7 @@ export type TextPartPayload = z.infer<typeof textPartPayloadSchema>
 
 export const reasoningPartPayloadSchema = z
   .object({
+    part_ref: z.string().min(1).max(256),
     safe_summary: z.string(),
   })
   .strict()
@@ -366,9 +368,13 @@ export type CitationPartPayload = z.infer<typeof citationPartPayloadSchema>
 
 export const toolCallPartPayloadSchema = z
   .object({
+    tool_call_id: z.string().min(1),
     tool_label: z.string().min(1),
-    input_summary: z.record(z.string(), z.unknown()),
+    input_summary: z.record(z.string(), z.unknown()).optional(),
     status: z.string().min(1),
+    safe_result_preview: z.string().max(16384).optional(),
+    is_error: z.boolean().optional(),
+    truncated: z.boolean().optional(),
     effect_ref: z.string().min(1).optional(),
     receipt_ref: z.string().min(1).optional(),
   })
@@ -418,14 +424,45 @@ export const planPartPayloadSchema = z
   .strict()
 export type PlanPartPayload = z.infer<typeof planPartPayloadSchema>
 
-export const ownerProjectionPartPayloadSchema = z
+export const planProgressPartPayloadSchema = z
   .object({
-    owner_ref: z.string().min(1),
-    status: z.string().min(1),
-    safe_metadata: z.record(z.string(), z.unknown()),
+    plan_ref: z.string().min(1).max(256),
+    safe_summary: z.string().min(1),
+    steps: z.array(planStepSchema),
   })
   .strict()
-export type OwnerProjectionPartPayload = z.infer<typeof ownerProjectionPartPayloadSchema>
+export type PlanProgressPartPayload = z.infer<typeof planProgressPartPayloadSchema>
+
+export const subagentPartPayloadSchema = z
+  .object({
+    subagent_ref: z.string().min(1).max(256),
+    status: z.enum(["pending", "running", "completed", "failed", "canceled"]),
+    safe_summary: z.string().optional(),
+  })
+  .strict()
+export type SubagentPartPayload = z.infer<typeof subagentPartPayloadSchema>
+
+export const mediaOperationPartPayloadSchema = z
+  .object({
+    media_operation_ref: z.string().min(1).max(256),
+    capability: z.string().min(1),
+    status: z.string().min(1),
+    safe_metadata: z.record(z.string(), z.unknown()),
+    progress_bps: z.number().int().min(0).max(10000).optional(),
+    artifact_ref: z.string().min(1).max(256).optional(),
+  })
+  .strict()
+export type MediaOperationPartPayload = z.infer<typeof mediaOperationPartPayloadSchema>
+
+export const artifactPartPayloadSchema = z
+  .object({
+    artifact_ref: z.string().min(1).max(256),
+    version_ref: z.string().min(1).max(256),
+    content_type: z.string().min(1).optional(),
+    safe_metadata: z.record(z.string(), z.unknown()).optional(),
+  })
+  .strict()
+export type ArtifactPartPayload = z.infer<typeof artifactPartPayloadSchema>
 
 export const costPartPayloadSchema = z
   .object({
@@ -440,13 +477,26 @@ export type CostPartPayload = z.infer<typeof costPartPayloadSchema>
 
 export const noticePartPayloadSchema = z
   .object({
+    notice_ref: z.string().min(1).max(256),
     code: z.string().min(1),
-    message: z.string().min(1),
-    retry_class: z.enum(["never", "immediate", "after_delay", "after_user_action", "reconcile_receipt"]),
+    message: z.string(),
+    severity: z.enum(["info", "warning"]),
+    retry_class: z.enum(["never", "immediate", "after_delay", "after_user_action", "reconcile_receipt"]).optional(),
     support_correlation_ref: z.string().min(1).optional(),
   })
   .strict()
 export type NoticePartPayload = z.infer<typeof noticePartPayloadSchema>
+
+export const errorPartPayloadSchema = z
+  .object({
+    error_ref: z.string().min(1).max(256),
+    code: z.string().min(1),
+    message: z.string(),
+    retry_class: z.enum(["never", "immediate", "after_delay", "after_user_action", "reconcile_receipt"]),
+    support_correlation_ref: z.string().min(1).optional(),
+  })
+  .strict()
+export type ErrorPartPayload = z.infer<typeof errorPartPayloadSchema>
 
 export const unsupportedPartPayloadSchema = z
   .object({
@@ -470,7 +520,7 @@ const messagePartEnvelopeTextSchema = z
   })
   .strict()
 
-const messagePartEnvelopeReasoningSchema = z
+const messagePartEnvelopeReasoningSummarySchema = z
   .object({
     part_id: z.string().min(1),
     message_id: z.string().min(1),
@@ -478,7 +528,7 @@ const messagePartEnvelopeReasoningSchema = z
     version: z.number().int().positive(),
     schema_version: z.literal(1),
     lifecycle: z.enum(["created", "streaming", "completed", "partial", "failed", "canceled"]),
-    kind: z.literal("reasoning"),
+    kind: z.literal("reasoning-summary"),
     payload: reasoningPartPayloadSchema,
   })
   .strict()
@@ -548,7 +598,7 @@ const messagePartEnvelopePlanSchema = z
   })
   .strict()
 
-const messagePartEnvelopeJobSchema = z
+const messagePartEnvelopePlanProgressSchema = z
   .object({
     part_id: z.string().min(1),
     message_id: z.string().min(1),
@@ -556,8 +606,34 @@ const messagePartEnvelopeJobSchema = z
     version: z.number().int().positive(),
     schema_version: z.literal(1),
     lifecycle: z.enum(["created", "streaming", "completed", "partial", "failed", "canceled"]),
-    kind: z.literal("job"),
-    payload: ownerProjectionPartPayloadSchema,
+    kind: z.literal("plan-progress"),
+    payload: planProgressPartPayloadSchema,
+  })
+  .strict()
+
+const messagePartEnvelopeSubagentSchema = z
+  .object({
+    part_id: z.string().min(1),
+    message_id: z.string().min(1),
+    ordinal: z.number().int().nonnegative(),
+    version: z.number().int().positive(),
+    schema_version: z.literal(1),
+    lifecycle: z.enum(["created", "streaming", "completed", "partial", "failed", "canceled"]),
+    kind: z.literal("subagent"),
+    payload: subagentPartPayloadSchema,
+  })
+  .strict()
+
+const messagePartEnvelopeMediaOperationSchema = z
+  .object({
+    part_id: z.string().min(1),
+    message_id: z.string().min(1),
+    ordinal: z.number().int().nonnegative(),
+    version: z.number().int().positive(),
+    schema_version: z.literal(1),
+    lifecycle: z.enum(["created", "streaming", "completed", "partial", "failed", "canceled"]),
+    kind: z.literal("media-operation"),
+    payload: mediaOperationPartPayloadSchema,
   })
   .strict()
 
@@ -570,7 +646,7 @@ const messagePartEnvelopeArtifactSchema = z
     schema_version: z.literal(1),
     lifecycle: z.enum(["created", "streaming", "completed", "partial", "failed", "canceled"]),
     kind: z.literal("artifact"),
-    payload: ownerProjectionPartPayloadSchema,
+    payload: artifactPartPayloadSchema,
   })
   .strict()
 
@@ -609,7 +685,7 @@ const messagePartEnvelopeErrorSchema = z
     schema_version: z.literal(1),
     lifecycle: z.enum(["created", "streaming", "completed", "partial", "failed", "canceled"]),
     kind: z.literal("error"),
-    payload: noticePartPayloadSchema,
+    payload: errorPartPayloadSchema,
   })
   .strict()
 
@@ -628,13 +704,15 @@ const messagePartEnvelopeUnsupportedSchema = z
 
 export const messagePartEnvelopeSchema = z.discriminatedUnion("kind", [
   messagePartEnvelopeTextSchema,
-  messagePartEnvelopeReasoningSchema,
+  messagePartEnvelopeReasoningSummarySchema,
   messagePartEnvelopeCitationSchema,
   messagePartEnvelopeToolCallSchema,
   messagePartEnvelopeApprovalSchema,
   messagePartEnvelopeInteractionSchema,
   messagePartEnvelopePlanSchema,
-  messagePartEnvelopeJobSchema,
+  messagePartEnvelopePlanProgressSchema,
+  messagePartEnvelopeSubagentSchema,
+  messagePartEnvelopeMediaOperationSchema,
   messagePartEnvelopeArtifactSchema,
   messagePartEnvelopeCostSchema,
   messagePartEnvelopeNoticeSchema,

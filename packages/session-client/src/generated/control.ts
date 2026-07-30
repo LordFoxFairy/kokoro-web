@@ -15,6 +15,7 @@ export const modelConfigSchema = z
   .object({
     provider: z.string().min(1),
     name: z.string().min(1),
+    authorization_handle: z.string().min(1).max(256).refine((value) => value.trim() === value),
     effort: z.string().min(1).optional(),
     thinking: z.boolean().optional(),
   })
@@ -23,6 +24,7 @@ export type ModelConfig = z.infer<typeof modelConfigSchema>
 
 export const skillGrantSchema = z
   .object({
+    option_ref: z.string().min(1).max(256).refine((value) => value.trim() === value),
     name: z.string().min(1),
     content_hash: z.string().min(1),
     description: z.string().min(1),
@@ -33,6 +35,7 @@ export type SkillGrant = z.infer<typeof skillGrantSchema>
 
 export const mcpGrantSchema = z
   .object({
+    option_ref: z.string().min(1).max(256).refine((value) => value.trim() === value),
     scope: z.string().min(1),
     name: z.string().min(1),
     revision: z.number().int(),
@@ -53,6 +56,7 @@ export type Permissions = z.infer<typeof permissionsSchema>
 
 export const runtimeConfigSchema = z
   .object({
+    agent_catalog_ref: z.string().min(1).max(256).refine((value) => value.trim() === value),
     agent_type: z.enum(["general"]),
     agent: z.string().min(1).optional(),
     model: modelConfigSchema,

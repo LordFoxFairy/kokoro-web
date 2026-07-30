@@ -49,8 +49,15 @@ export type ChatProductCopy = Readonly<{
   submitEdit: string
   unsupportedInteraction: string
   invalidNumber: string
-  backgroundTask: string
-  generatedResult: string
+  planProgress: string
+  subagent: string
+  mediaOperation: string
+  mediaProgress: string
+  capability: string
+  finalArtifact: string
+  artifact: string
+  artifactVersion: string
+  contentType: string
   cost: string
   pending: string
   lastUpdated: string
@@ -142,8 +149,15 @@ export const DEFAULT_CHAT_COPY: ChatProductCopy = Object.freeze({
   submitEdit: "Submit edit",
   unsupportedInteraction: "This request needs a newer client before it can be answered safely.",
   invalidNumber: "Enter a valid number before responding.",
-  backgroundTask: "Background task",
-  generatedResult: "Generated result",
+  planProgress: "Plan progress",
+  subagent: "Subagent",
+  mediaOperation: "Media operation",
+  mediaProgress: "Media operation progress",
+  capability: "Capability",
+  finalArtifact: "Final artifact",
+  artifact: "Artifact",
+  artifactVersion: "Version",
+  contentType: "Content type",
   cost: "Cost",
   pending: "Pending",
   lastUpdated: "Updated",

@@ -19,6 +19,12 @@ message edit/regenerate, and explicit branch fork/activation. Every mutation use
 command-digest preimage, a stable command identity, exact receipt reconciliation after an ambiguous
 transport outcome, and a fresh authoritative snapshot before the UI returns to idle.
 
+Durable output is rendered by kind: reasoning summaries, plan progress, subagent state, media operations,
+versioned artifacts, notices, and errors have separate product views. Media operations display their
+capability, contract status, basis-point progress, safe metadata, and final artifact reference; they are not
+treated as agent orchestration. Artifact views display their exact artifact/version references and content type.
+Unknown generated kinds remain visible through the unsupported safe fallback instead of dropping the message.
+
 Transport reconnect is effect-free and resumes the opaque Session cursor with bounded jitter. Any cursor,
 branch, part-version, or authorization projection repair closes the stale stream and single-flights a fresh
 complete snapshot before attaching again. A failed repair remains an explicit user-retryable state; the UI

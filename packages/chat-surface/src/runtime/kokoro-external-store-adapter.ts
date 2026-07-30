@@ -37,7 +37,7 @@ function unreachablePart(part: never): never {
   throw new Error(`Unsupported projected part: ${JSON.stringify(part)}`)
 }
 
-function dataPart(part: Exclude<ChatPart, { kind: "text" | "reasoning" | "tool" | "unsupported" }>) {
+function dataPart(part: Exclude<ChatPart, { kind: "text" | "reasoning-summary" | "tool" | "unsupported" }>) {
   const common = { ordinal: part.ordinal, version: part.version, lifecycle: part.lifecycle }
   switch (part.kind) {
     case "citation":
@@ -65,12 +65,36 @@ function dataPart(part: Exclude<ChatPart, { kind: "text" | "reasoning" | "tool" 
         planProposalRef: part.planProposalRef,
         steps: part.steps.map((step) => ({ ...step })),
       } }
-    case "job":
-    case "artifact":
-      return { type: "data" as const, name: `kokoro:${part.kind}`, data: {
+    case "plan-progress":
+      return { type: "data" as const, name: "kokoro:plan-progress", data: {
         ...common,
-        ownerRef: part.ownerRef,
+        planRef: part.planRef,
+        summary: part.summary,
+        steps: part.steps.map((step) => ({ ...step })),
+      } }
+    case "subagent":
+      return { type: "data" as const, name: "kokoro:subagent", data: {
+        ...common,
+        subagentRef: part.subagentRef,
         status: part.status,
+        ...(part.summary === undefined ? {} : { summary: part.summary }),
+      } }
+    case "media-operation":
+      return { type: "data" as const, name: "kokoro:media-operation", data: {
+        ...common,
+        mediaOperationRef: part.mediaOperationRef,
+        capability: part.capability,
+        status: part.status,
+        safeMetadata: jsonObject({ ...part.safeMetadata }),
+        ...(part.progressBps === undefined ? {} : { progressBps: part.progressBps }),
+        ...(part.artifactRef === undefined ? {} : { artifactRef: part.artifactRef }),
+      } }
+    case "artifact":
+      return { type: "data" as const, name: "kokoro:artifact", data: {
+        ...common,
+        artifactRef: part.artifactRef,
+        versionRef: part.versionRef,
+        ...(part.contentType === undefined ? {} : { contentType: part.contentType }),
         safeMetadata: jsonObject({ ...part.safeMetadata }),
       } }
     case "cost":
@@ -83,9 +107,19 @@ function dataPart(part: Exclude<ChatPart, { kind: "text" | "reasoning" | "tool" 
         ...(part.currencyOrCreditUnit === undefined ? {} : { currencyOrCreditUnit: part.currencyOrCreditUnit }),
       } }
     case "notice":
-    case "error":
-      return { type: "data" as const, name: `kokoro:${part.kind}`, data: {
+      return { type: "data" as const, name: "kokoro:notice", data: {
         ...common,
+        noticeRef: part.noticeRef,
+        code: part.code,
+        message: part.message,
+        severity: part.severity,
+        ...(part.retryClass === undefined ? {} : { retryClass: part.retryClass }),
+        ...(part.supportCorrelationRef === undefined ? {} : { supportCorrelationRef: part.supportCorrelationRef }),
+      } }
+    case "error":
+      return { type: "data" as const, name: "kokoro:error", data: {
+        ...common,
+        errorRef: part.errorRef,
         code: part.code,
         message: part.message,
         retryClass: part.retryClass,
@@ -99,15 +133,15 @@ function dataPart(part: Exclude<ChatPart, { kind: "text" | "reasoning" | "tool" 
 function convertMessage(message: ChatProjectionMessage): ThreadMessageLike {
   const content = message.parts.map((part) => {
     if (part.kind === "text") return { type: "text" as const, text: part.text }
-    if (part.kind === "reasoning") return { type: "reasoning" as const, text: part.text }
+    if (part.kind === "reasoning-summary") return { type: "reasoning" as const, text: part.text }
     if (part.kind === "tool") return {
       type: "tool-call" as const,
-      toolCallId: part.id,
+      toolCallId: part.toolCallId,
       toolName: part.name,
       args: jsonObject(part.args),
       argsText: JSON.stringify(part.args),
       ...(part.result === undefined ? {} : { result: part.result }),
-      ...(part.status === "error" ? { isError: true } : {}),
+      ...(part.isError === true || part.status === "error" ? { isError: true } : {}),
       ...(part.status === "awaiting" ? { interrupt: { type: "human" as const, payload: {
         effectRef: part.effectRef,
         receiptRef: part.receiptRef,
@@ -118,6 +152,8 @@ function convertMessage(message: ChatProjectionMessage): ThreadMessageLike {
       name: "kokoro:unsupported",
       data: {
         originalKind: part.originalKind,
+        originalSchemaVersion: part.originalSchemaVersion,
+        safeFallback: part.safeFallback,
         ordinal: part.ordinal,
         version: part.version,
         lifecycle: part.lifecycle,

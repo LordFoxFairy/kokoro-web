@@ -214,22 +214,18 @@ function scalarSummary(metadata: Readonly<Record<string, unknown>>): readonly Re
   })
 }
 
-function progressValue(metadata: Readonly<Record<string, unknown>>): number | null {
-  const candidate = metadata.progress ?? metadata.progress_percent
-  if (typeof candidate !== "number" || !Number.isFinite(candidate)) return null
-  return Math.max(0, Math.min(100, candidate <= 1 ? candidate * 100 : candidate))
-}
-
 function SafeSummary(props: Readonly<{ metadata: Readonly<Record<string, unknown>> }>) {
   const rows = scalarSummary(props.metadata)
   if (rows.length === 0) return null
   return <dl className={styles.summaryList}>{rows.map(({ label, value }) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
 }
 
+type ChatDecisionPort = Pick<ChatController, "decideAction" | "decidePlan">
+
 function ActionPartCard(props: {
   readonly part: Extract<ChatPart, { kind: "approval" | "interaction" }>
   readonly runId: string | null
-  readonly controller: ChatController
+  readonly controller: ChatDecisionPort
   readonly disabled: boolean
   readonly copy: ChatProductCopy
 }) {
@@ -315,7 +311,7 @@ function ActionPartCard(props: {
 function PlanPartCard(props: {
   readonly part: Extract<ChatPart, { kind: "plan" }>
   readonly runId: string | null
-  readonly controller: ChatController
+  readonly controller: ChatDecisionPort
   readonly disabled: boolean
   readonly copy: ChatProductCopy
 }) {
@@ -323,17 +319,39 @@ function PlanPartCard(props: {
   return <aside className={styles.controlCard}><div className={styles.cardHeading}><span className={styles.controlDot} aria-hidden /><strong>{props.copy.plan}</strong><span>{props.part.status}</span></div><p>{props.part.summary}</p><ol className={styles.planSteps}>{props.part.steps.map((step) => <li data-status={step.status} key={step.stepRef}><span>{step.label}</span><small>{step.status}</small></li>)}</ol><div className={styles.actions}>{props.part.allowedActions.includes("accept") ? <button type="button" disabled={!canDecide} onClick={() => props.runId === null ? undefined : void props.controller.decidePlan({ runId: props.runId, part: props.part, decision: { kind: "accept", payload: {} } })}>{props.copy.approve}</button> : null}{props.part.allowedActions.includes("reject") ? <button type="button" disabled={!canDecide} onClick={() => props.runId === null ? undefined : void props.controller.decidePlan({ runId: props.runId, part: props.part, decision: { kind: "reject", payload: { reason_code: "user_rejected" } } })}>{props.copy.reject}</button> : null}</div></aside>
 }
 
-function Part(props: {
+function PlanProgressCard(props: Readonly<{
+  part: Extract<ChatPart, { kind: "plan-progress" }>
+  copy: ChatProductCopy
+}>) {
+  return <aside className={styles.productCard} data-kind="plan-progress"><div className={styles.cardHeading}><strong>{props.copy.planProgress}</strong><span>{props.part.lifecycle}</span></div><p>{props.part.summary}</p><ol className={styles.planSteps}>{props.part.steps.map((step) => <li data-status={step.status} key={step.stepRef}><span>{step.label}</span><small>{step.status}</small></li>)}</ol></aside>
+}
+
+function MediaOperationCard(props: Readonly<{
+  part: Extract<ChatPart, { kind: "media-operation" }>
+  copy: ChatProductCopy
+}>) {
+  const percent = props.part.progressBps === undefined ? null : props.part.progressBps / 100
+  return <aside className={styles.productCard} data-kind="media-operation"><div className={styles.cardHeading}><strong>{props.copy.mediaOperation}</strong><span>{props.part.status}</span></div><dl className={styles.summaryList}><div><dt>{props.copy.capability}</dt><dd>{props.part.capability}</dd></div>{props.part.artifactRef === undefined ? null : <div><dt>{props.copy.finalArtifact}</dt><dd>{props.part.artifactRef}</dd></div>}</dl><SafeSummary metadata={props.part.safeMetadata} />{percent === null ? null : <div aria-label={props.copy.mediaProgress} aria-valuemax={100} aria-valuemin={0} aria-valuenow={percent} className={styles.progress} role="progressbar"><span style={{ width: `${percent}%` }} /><small>{percent}%</small></div>}</aside>
+}
+
+function ArtifactCard(props: Readonly<{
+  part: Extract<ChatPart, { kind: "artifact" }>
+  copy: ChatProductCopy
+}>) {
+  return <aside className={styles.productCard} data-kind="artifact"><div className={styles.cardHeading}><strong>{props.copy.artifact}</strong><span>{props.part.lifecycle}</span></div><dl className={styles.summaryList}><div><dt>{props.copy.finalArtifact}</dt><dd>{props.part.artifactRef}</dd></div><div><dt>{props.copy.artifactVersion}</dt><dd>{props.part.versionRef}</dd></div>{props.part.contentType === undefined ? null : <div><dt>{props.copy.contentType}</dt><dd>{props.part.contentType}</dd></div>}</dl><SafeSummary metadata={props.part.safeMetadata} /></aside>
+}
+
+export function ChatPartView(props: {
   readonly part: ChatPart
   readonly runId: string | null
-  readonly controller: ChatController
+  readonly controller: ChatDecisionPort
   readonly disabled: boolean
   readonly copy: ChatProductCopy
 }) {
   const { part } = props
   switch (part.kind) {
     case "text": return <MarkdownText text={part.text} />
-    case "reasoning": return <details className={styles.reasoning}><summary>{props.copy.reasoning}</summary><MarkdownText text={part.text} /></details>
+    case "reasoning-summary": return <details className={styles.reasoning}><summary>{props.copy.reasoning}</summary><MarkdownText text={part.text} /></details>
     case "citation": {
       const href = safeHref(part.locator)
       return <aside className={styles.citation}><span aria-hidden>↗</span><div><strong>{href === null ? part.title : <a href={href} rel="noreferrer noopener" target="_blank">{part.title}</a>}</strong>{part.attribution ? <p>{part.attribution}</p> : null}</div></aside>
@@ -342,15 +360,14 @@ function Part(props: {
     case "approval":
     case "interaction": return <ActionPartCard {...props} part={part} />
     case "plan": return <PlanPartCard {...props} part={part} />
-    case "job":
-    case "artifact": {
-      const progress = progressValue(part.safeMetadata)
-      return <aside className={styles.productCard}><div className={styles.cardHeading}><strong>{part.kind === "job" ? props.copy.backgroundTask : props.copy.generatedResult}</strong><span>{part.status}</span></div><SafeSummary metadata={part.safeMetadata} />{progress === null ? null : <div className={styles.progress}><span style={{ width: `${progress}%` }} /><small>{Math.round(progress)}%</small></div>}</aside>
-    }
+    case "plan-progress": return <PlanProgressCard copy={props.copy} part={part} />
+    case "subagent": return <aside className={styles.partCard} data-kind="subagent"><div className={styles.cardHeading}><strong>{props.copy.subagent}</strong><span>{part.status}</span></div>{part.summary === undefined ? null : <p>{part.summary}</p>}</aside>
+    case "media-operation": return <MediaOperationCard copy={props.copy} part={part} />
+    case "artifact": return <ArtifactCard copy={props.copy} part={part} />
     case "cost": return <aside className={styles.partCard}><div className={styles.cardHeading}><strong>{props.copy.cost}</strong><span>{part.status}</span></div><p className={styles.costAmount}>{part.amount ?? props.copy.pending} {part.currencyOrCreditUnit ?? ""}</p><p className={styles.quiet}>{props.copy.lastUpdated} {new Date(part.freshness).toLocaleString()}</p></aside>
-    case "notice":
-    case "error": return <aside className={part.kind === "error" ? styles.errorCard : styles.partCard}><strong>{part.message}</strong><p className={styles.quiet}>{part.retryClass}</p></aside>
-    case "unsupported": return <aside className={styles.errorCard}><strong>{props.copy.unsupportedPart}</strong></aside>
+    case "notice": return <aside className={styles.partCard} data-severity={part.severity}><div className={styles.cardHeading}><strong>{part.code}</strong><span>{part.severity}</span></div><p>{part.message}</p>{part.retryClass === undefined ? null : <p className={styles.quiet}>{part.retryClass}</p>}</aside>
+    case "error": return <aside className={styles.errorCard}><div className={styles.cardHeading}><strong>{part.code}</strong><span>{part.retryClass}</span></div><p>{part.message}</p></aside>
+    case "unsupported": return <aside className={styles.errorCard}><strong>{props.copy.unsupportedPart}</strong><p>{part.safeFallback}</p></aside>
     default: return neverPart(part)
   }
 }
@@ -577,7 +594,7 @@ export function ChatView(props: {
       {props.state.phase === "loading" ? <p className={styles.empty}>{props.copy.loading}</p> : null}
       {props.state.phase === "not_found" ? <p className={styles.empty}>{props.copy.notFound}</p> : null}
       {props.state.projection.messages.length === 0 && props.state.phase === "ready" ? <div className={styles.emptyState}><span aria-hidden>✦</span><h2>{props.copy.emptyTitle}</h2><p>{props.copy.emptyDescription}</p></div> : null}
-      {props.state.projection.messages.map((message) => <article className={styles.message} data-role={message.role} data-status={message.status} key={message.id}><div className={styles.messageMeta}><strong>{message.role === "user" ? props.copy.you : props.copy.assistant}</strong><span>{message.status}</span></div>{message.parts.map((part) => <Part controller={props.controller} copy={props.copy} disabled={commandPending} key={part.id} part={part} runId={message.runId} />)}<MessageActions controller={props.controller} copy={props.copy} disabled={mutationDisabled} message={message} /></article>)}
+      {props.state.projection.messages.map((message) => <article className={styles.message} data-role={message.role} data-status={message.status} key={message.id}><div className={styles.messageMeta}><strong>{message.role === "user" ? props.copy.you : props.copy.assistant}</strong><span>{message.status}</span></div>{message.parts.map((part) => <ChatPartView controller={props.controller} copy={props.copy} disabled={commandPending} key={part.id} part={part} runId={message.runId} />)}<MessageActions controller={props.controller} copy={props.copy} disabled={mutationDisabled} message={message} /></article>)}
     </section>
     {props.state.phase === "ready" ? <form className={styles.composer} onSubmit={submit}>
       <div className={styles.composerControls}>{props.state.chatCatalog ? <ModelOptionSelector catalog={props.state.chatCatalog} copy={props.copy} disabled={false} onChange={(value) => {

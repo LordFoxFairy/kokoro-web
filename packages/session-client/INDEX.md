@@ -9,6 +9,9 @@ owners: ["@LordFoxFairy"]
 Brand-neutral client over Root-generated Session HTTP/SSE schemas. Callers inject a path-only transport; this package accepts no raw Session URL, Site identity, namespace, bearer token, or credential resolver.
 
 The Root-generated Session browser v3 mirror is live. The client exposes the complete browser command surface, including typed action/plan decisions and receipt reconciliation, validates the full projection snapshot, and hydrates only from its opaque snapshot watermark.
+The generated HTTP mirror carries the full durable part union, including reasoning summaries, plan progress,
+subagent state, media operations, versioned artifacts, typed notices/errors, and the unsupported compatibility
+fallback. Generated control and HTTP sources remain Root-owned artifacts and are never hand-maintained here.
 Submit keeps renderable `parts` and Asset-owned `attachment_refs` separate. Its generated cross-field constraint
 accepts either source while rejecting a truly empty command; any text part that is present remains non-empty.
 

@@ -15,7 +15,7 @@ type ChatPartBase = {
 
 export type ChatPart = ChatPartBase & (
   | { readonly kind: "text"; readonly text: string }
-  | { readonly kind: "reasoning"; readonly text: string }
+  | { readonly kind: "reasoning-summary"; readonly partRef: string; readonly text: string }
   | {
       readonly kind: "citation"
       readonly sourceRef: string
@@ -25,10 +25,13 @@ export type ChatPart = ChatPartBase & (
     }
   | {
       readonly kind: "tool"
+      readonly toolCallId: string
       readonly name: string
       readonly args: Record<string, unknown>
       readonly result?: string
       readonly status: "running" | "awaiting" | "complete" | "error" | "incomplete"
+      readonly isError?: boolean
+      readonly truncated?: boolean
       readonly effectRef?: string
       readonly receiptRef?: string
     }
@@ -61,9 +64,31 @@ export type ChatPart = ChatPartBase & (
       readonly status: string
     }
   | {
-      readonly kind: "job" | "artifact"
-      readonly ownerRef: string
+      readonly kind: "plan-progress"
+      readonly planRef: string
+      readonly summary: string
+      readonly steps: readonly { readonly stepRef: string; readonly label: string; readonly status: string }[]
+    }
+  | {
+      readonly kind: "subagent"
+      readonly subagentRef: string
       readonly status: string
+      readonly summary?: string
+    }
+  | {
+      readonly kind: "media-operation"
+      readonly mediaOperationRef: string
+      readonly capability: string
+      readonly status: string
+      readonly safeMetadata: Readonly<Record<string, unknown>>
+      readonly progressBps?: number
+      readonly artifactRef?: string
+    }
+  | {
+      readonly kind: "artifact"
+      readonly artifactRef: string
+      readonly versionRef: string
+      readonly contentType?: string
       readonly safeMetadata: Readonly<Record<string, unknown>>
     }
   | {
@@ -75,13 +100,28 @@ export type ChatPart = ChatPartBase & (
       readonly freshness: string
     }
   | {
-      readonly kind: "notice" | "error"
+      readonly kind: "notice"
+      readonly noticeRef: string
+      readonly code: string
+      readonly message: string
+      readonly severity: "info" | "warning"
+      readonly retryClass?: string
+      readonly supportCorrelationRef?: string
+    }
+  | {
+      readonly kind: "error"
+      readonly errorRef: string
       readonly code: string
       readonly message: string
       readonly retryClass: string
       readonly supportCorrelationRef?: string
     }
-  | { readonly kind: "unsupported"; readonly originalKind: string }
+  | {
+      readonly kind: "unsupported"
+      readonly originalKind: string
+      readonly originalSchemaVersion: number
+      readonly safeFallback: string
+    }
 )
 
 export type ChatProjectionMessage = {
@@ -174,8 +214,13 @@ function projectPart(part: MessagePartEnvelope): ChatPart {
   switch (part.kind) {
     case "text":
       return { ...base, kind: "text", text: part.payload.spans.map((span) => span.text).join("") }
-    case "reasoning":
-      return { ...base, kind: "reasoning", text: part.payload.safe_summary }
+    case "reasoning-summary":
+      return {
+        ...base,
+        kind: "reasoning-summary",
+        partRef: part.payload.part_ref,
+        text: part.payload.safe_summary,
+      }
     case "citation":
       return {
         ...base,
@@ -189,9 +234,13 @@ function projectPart(part: MessagePartEnvelope): ChatPart {
       return {
         ...base,
         kind: "tool",
+        toolCallId: part.payload.tool_call_id,
         name: part.payload.tool_label,
-        args: part.payload.input_summary,
+        args: part.payload.input_summary ?? {},
         status: toolStatus(part),
+        ...(part.payload.safe_result_preview === undefined ? {} : { result: part.payload.safe_result_preview }),
+        ...(part.payload.is_error === undefined ? {} : { isError: part.payload.is_error }),
+        ...(part.payload.truncated === undefined ? {} : { truncated: part.payload.truncated }),
         ...(part.payload.effect_ref === undefined ? {} : { effectRef: part.payload.effect_ref }),
         ...(part.payload.receipt_ref === undefined ? {} : { receiptRef: part.payload.receipt_ref }),
       }
@@ -228,14 +277,41 @@ function projectPart(part: MessagePartEnvelope): ChatPart {
         ...(part.payload.deadline === undefined ? {} : { deadline: part.payload.deadline }),
         ...(part.payload.receipt_ref === undefined ? {} : { receiptRef: part.payload.receipt_ref }),
       }
-    case "job":
+    case "plan-progress":
+      return {
+        ...base,
+        kind: "plan-progress",
+        planRef: part.payload.plan_ref,
+        summary: part.payload.safe_summary,
+        steps: part.payload.steps.map((step) => ({ stepRef: step.step_ref, label: step.label, status: step.status })),
+      }
+    case "subagent":
+      return {
+        ...base,
+        kind: "subagent",
+        subagentRef: part.payload.subagent_ref,
+        status: part.payload.status,
+        ...(part.payload.safe_summary === undefined ? {} : { summary: part.payload.safe_summary }),
+      }
+    case "media-operation":
+      return {
+        ...base,
+        kind: "media-operation",
+        mediaOperationRef: part.payload.media_operation_ref,
+        capability: part.payload.capability,
+        status: part.payload.status,
+        safeMetadata: part.payload.safe_metadata,
+        ...(part.payload.progress_bps === undefined ? {} : { progressBps: part.payload.progress_bps }),
+        ...(part.payload.artifact_ref === undefined ? {} : { artifactRef: part.payload.artifact_ref }),
+      }
     case "artifact":
       return {
         ...base,
-        kind: part.kind,
-        ownerRef: part.payload.owner_ref,
-        status: part.payload.status,
-        safeMetadata: part.payload.safe_metadata,
+        kind: "artifact",
+        artifactRef: part.payload.artifact_ref,
+        versionRef: part.payload.version_ref,
+        safeMetadata: part.payload.safe_metadata ?? {},
+        ...(part.payload.content_type === undefined ? {} : { contentType: part.payload.content_type }),
       }
     case "cost":
       return {
@@ -248,17 +324,34 @@ function projectPart(part: MessagePartEnvelope): ChatPart {
         ...(part.payload.currency_or_credit_unit === undefined ? {} : { currencyOrCreditUnit: part.payload.currency_or_credit_unit }),
       }
     case "notice":
+      return {
+        ...base,
+        kind: "notice",
+        noticeRef: part.payload.notice_ref,
+        code: part.payload.code,
+        message: part.payload.message,
+        severity: part.payload.severity,
+        ...(part.payload.retry_class === undefined ? {} : { retryClass: part.payload.retry_class }),
+        ...(part.payload.support_correlation_ref === undefined ? {} : { supportCorrelationRef: part.payload.support_correlation_ref }),
+      }
     case "error":
       return {
         ...base,
-        kind: part.kind,
+        kind: "error",
+        errorRef: part.payload.error_ref,
         code: part.payload.code,
         message: part.payload.message,
         retryClass: part.payload.retry_class,
         ...(part.payload.support_correlation_ref === undefined ? {} : { supportCorrelationRef: part.payload.support_correlation_ref }),
       }
     case "unsupported":
-      return { ...base, kind: "unsupported", originalKind: part.payload.original_kind }
+      return {
+        ...base,
+        kind: "unsupported",
+        originalKind: part.payload.original_kind,
+        originalSchemaVersion: part.payload.original_schema_version,
+        safeFallback: part.payload.safe_fallback,
+      }
   }
 }
 
@@ -509,6 +602,8 @@ export function reduceChatProjection(state: ChatProjection, action: ChatProjecti
           version: 1,
           lifecycle: "streaming",
           originalKind: action.originalKind,
+          originalSchemaVersion: 1,
+          safeFallback: "This content requires a newer client.",
         }).message),
       }
     }

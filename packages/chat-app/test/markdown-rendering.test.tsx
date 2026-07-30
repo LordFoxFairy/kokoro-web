@@ -1,8 +1,8 @@
 import { renderToStaticMarkup } from "react-dom/server"
 import { describe, expect, it } from "vitest"
 
-import { ChatView, MarkdownText } from "../src/chat-product.js"
-import { createChatProjection, type ChatProjection } from "@kokoro/chat-surface"
+import { ChatPartView, ChatView, MarkdownText } from "../src/chat-product.js"
+import { createChatProjection, type ChatPart, type ChatProjection } from "@kokoro/chat-surface"
 import type { ChatController, ChatState } from "../src/chat-controller.js"
 import { DEFAULT_CHAT_COPY } from "../src/chat-copy.js"
 
@@ -25,6 +25,44 @@ describe("Chat Markdown rendering", () => {
     expect(html).not.toContain("<img")
     expect(html).toContain("href=\"https://media.example/pixel.png\"")
     expect(html).toContain("tracking pixel")
+  })
+
+  it("renders plan progress, subagent, Media operation, and artifact projections as distinct cards", () => {
+    const controller = {
+      decideAction: async () => undefined,
+      decidePlan: async () => undefined,
+    }
+    const common = { version: 1, lifecycle: "streaming" as const }
+    const parts: readonly ChatPart[] = [
+      { ...common, id: "reasoning-1", ordinal: 0, kind: "reasoning-summary", partRef: "reasoning-ref", text: "Compared safe alternatives" },
+      { ...common, id: "plan-progress-1", ordinal: 1, kind: "plan-progress", planRef: "plan-ref", summary: "Building the result", steps: [{ stepRef: "step-1", label: "Render", status: "in_progress" }] },
+      { ...common, id: "subagent-1", ordinal: 2, kind: "subagent", subagentRef: "subagent-ref", status: "running", summary: "Checking references" },
+      { ...common, id: "media-1", ordinal: 3, kind: "media-operation", mediaOperationRef: "media-ref", capability: "image.generate", status: "running", progressBps: 3750, artifactRef: "artifact-final", safeMetadata: { title: "Poster", stage: "render" } },
+      { ...common, id: "artifact-1", ordinal: 4, lifecycle: "completed", kind: "artifact", artifactRef: "artifact-final", versionRef: "artifact-v1", contentType: "image/png", safeMetadata: { title: "Poster" } },
+      { ...common, id: "notice-1", ordinal: 5, lifecycle: "completed", kind: "notice", noticeRef: "notice-ref", code: "WAIT", message: "Still working", severity: "warning" },
+      { ...common, id: "error-1", ordinal: 6, lifecycle: "failed", kind: "error", errorRef: "error-ref", code: "FAILED", message: "Stopped", retryClass: "never" },
+    ]
+    const html = parts.map((part) => renderToStaticMarkup(
+      <ChatPartView controller={controller} copy={DEFAULT_CHAT_COPY} disabled={false} part={part} runId="run-12345678" />,
+    )).join("")
+
+    expect(html).toContain("Reasoning summary")
+    expect(html).toContain("Plan progress")
+    expect(html).toContain("Building the result")
+    expect(html).toContain("Subagent")
+    expect(html).toContain("Checking references")
+    expect(html).toContain("Media operation")
+    expect(html).toContain("image.generate")
+    expect(html).toContain("Poster")
+    expect(html).toContain("render")
+    expect(html).toContain("37.5%")
+    expect(html).toContain("artifact-final")
+    expect(html).toContain("Artifact")
+    expect(html).toContain("artifact-v1")
+    expect(html).toContain("image/png")
+    expect(html).toContain("WAIT")
+    expect(html).toContain("warning")
+    expect(html).toContain("FAILED")
   })
 
   it("renders a safe recovery control instead of an internal action token", () => {
