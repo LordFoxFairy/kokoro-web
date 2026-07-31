@@ -65,29 +65,36 @@ export function mergeBrowserArtifactVersions(
   current: readonly BrowserArtifactVersion[],
   incoming: readonly BrowserArtifactVersion[],
 ): Readonly<{ versions: readonly BrowserArtifactVersion[]; madeProgress: boolean }> {
-  const currentByRef = new Map(current.map((version) => [version.artifactVersionRef, version]))
-  let madeProgress = current.length !== incoming.length
-  const versions = incoming.map((candidate) => {
-    const existing = currentByRef.get(candidate.artifactVersionRef)
+  const versionsByRef = new Map(current.map((version) => [version.artifactVersionRef, version]))
+  let madeProgress = false
+  for (const candidate of incoming) {
+    const existing = versionsByRef.get(candidate.artifactVersionRef)
     if (existing === undefined) {
       madeProgress = true
-      return candidate
+      versionsByRef.set(candidate.artifactVersionRef, candidate)
+      continue
     }
     if (!immutableIdentityMatches(existing, candidate)) {
       throw new TypeError("Artifact owner identity conflict")
     }
     const existingVersion = BigInt(existing.ownerVersion)
     const candidateVersion = BigInt(candidate.ownerVersion)
-    if (candidateVersion < existingVersion) return existing
+    if (candidateVersion < existingVersion) continue
     if (candidateVersion === existingVersion) {
       if (!sameOwnerFacts(existing, candidate)) throw new TypeError("Artifact owner version conflict")
-      return existing
+      continue
     }
     if (existing.availability === "ready" && candidate.availability === "ready" && !sameOwnerFacts(existing, candidate)) {
       throw new TypeError("Artifact immutable content conflict")
     }
     madeProgress = true
-    return candidate
+    versionsByRef.set(candidate.artifactVersionRef, candidate)
+  }
+  const versions = [...versionsByRef.values()].sort((left, right) => {
+    const leftNumber = BigInt(left.versionNumber)
+    const rightNumber = BigInt(right.versionNumber)
+    if (leftNumber !== rightNumber) return leftNumber > rightNumber ? -1 : 1
+    return left.artifactVersionRef < right.artifactVersionRef ? -1 : left.artifactVersionRef > right.artifactVersionRef ? 1 : 0
   })
   return Object.freeze({ versions: Object.freeze(versions), madeProgress })
 }
@@ -99,13 +106,43 @@ export function shouldPollArtifactVersions(
   return selectedArtifactRef !== null && versions.some(({ availability: state }) => state === "processing")
 }
 
-export function resolveInitialArtifactRef(
-  requested: string | null | undefined,
-  artifacts: readonly Readonly<{ artifactRef: string }>[],
-): string | null {
-  return requested !== undefined && requested !== null && artifacts.some(({ artifactRef }) => artifactRef === requested)
-    ? requested
-    : null
+type MediaBrowserClient = ReturnType<typeof createMediaBrowserClient>
+
+export async function loadInitialLibraryOwner(
+  client: Pick<MediaBrowserClient, "getArtifact" | "listArtifacts" | "listArtifactVersions">,
+  requestedArtifactRef: string | null | undefined,
+  signal: AbortSignal,
+) {
+  const artifactPagePromise = client.listArtifacts({ limit: 50 }, signal)
+  if (requestedArtifactRef === undefined || requestedArtifactRef === null) {
+    return Object.freeze({
+      artifactPage: await artifactPagePromise,
+      selectedArtifact: null,
+      versionPage: null,
+    })
+  }
+  const [artifactPage, exact] = await Promise.all([
+    artifactPagePromise,
+    client.getArtifact(requestedArtifactRef, signal),
+  ])
+  const versionPage = await client.listArtifactVersions(requestedArtifactRef, { limit: 50 }, signal)
+  return Object.freeze({ artifactPage, selectedArtifact: exact.artifact, versionPage })
+}
+
+function appendArtifactSummaries(
+  current: readonly BrowserArtifactSummary[],
+  incoming: readonly BrowserArtifactSummary[],
+): readonly BrowserArtifactSummary[] {
+  const refs = new Set(current.map(({ artifactRef }) => artifactRef))
+  return Object.freeze([...current, ...incoming.filter(({ artifactRef }) => !refs.has(artifactRef))])
+}
+
+/** Refreshes the leading cursor page without discarding exact or later-page Artifacts. */
+export function mergeRefreshedArtifactSummaries(
+  current: readonly BrowserArtifactSummary[],
+  refreshed: readonly BrowserArtifactSummary[],
+): readonly BrowserArtifactSummary[] {
+  return appendArtifactSummaries(refreshed, current)
 }
 
 function ArtifactPreview(props: Readonly<{
@@ -167,10 +204,14 @@ export function LibraryView(props: Readonly<{
   artifacts: readonly BrowserArtifactSummary[]
   versions: readonly BrowserArtifactVersion[]
   selectedArtifactRef: string | null
+  artifactNextCursor: string | null
+  versionNextCursor: string | null
   busy: boolean
   error: string | null
   onSelectArtifact(artifact: BrowserArtifactSummary): void
   onRefresh(): void
+  onLoadMoreArtifacts(): void
+  onLoadMoreVersions(): void
 }>) {
   const selected = props.artifacts.find(({ artifactRef }) => artifactRef === props.selectedArtifactRef)
   return <main aria-busy={props.busy} className={styles.productShell}>
@@ -186,9 +227,11 @@ export function LibraryView(props: Readonly<{
           const active = artifact.artifactRef === props.selectedArtifactRef
           return <li key={artifact.artifactRef}><button aria-current={active ? "true" : undefined} aria-pressed={active} data-selected={active} type="button" onClick={() => props.onSelectArtifact(artifact)}><strong>{artifact.title}</strong><span>{artifact.availability}</span></button></li>
         })}</ul>}
+        {props.artifactNextCursor === null ? null : <button disabled={props.busy} type="button" onClick={props.onLoadMoreArtifacts}>Load more artifacts</button>}
       </section>
       <section className={styles.versionGrid} aria-label="Artifact versions" aria-live="polite">
         {props.versions.length === 0 ? <p className={styles.empty}>Choose an artifact to inspect exact versions.</p> : props.versions.map((version) => <ArtifactVersionCard key={version.artifactVersionRef} title={selected?.title ?? "Artifact"} version={version} />)}
+        {props.versionNextCursor === null ? null : <button className={styles.paginationButton} disabled={props.busy} type="button" onClick={props.onLoadMoreVersions}>Load more versions</button>}
       </section>
     </div>
   </main>
@@ -207,13 +250,17 @@ export function LibraryProduct(props: Readonly<{
   if (requests.current === null) requests.current = createScopedRequestCoordinator(scope)
   const [stateScope, setStateScope] = useState(scope)
   const [artifacts, setArtifacts] = useState<readonly BrowserArtifactSummary[]>([])
+  const [artifactNextCursor, setArtifactNextCursor] = useState<string | null>(null)
   const [versions, setVersions] = useState<readonly BrowserArtifactVersion[]>([])
+  const [versionNextCursor, setVersionNextCursor] = useState<string | null>(null)
   const versionsSnapshot = useRef<readonly BrowserArtifactVersion[]>([])
   const [selectedArtifactRef, setSelectedArtifactRef] = useState<string | null>(null)
   const selectedArtifactRefSnapshot = useRef<string | null>(null)
+  const selectedGeneration = useRef(0)
   const versionPoller = useRef<VisibilityAwarePoller | null>(null)
   const [busy, setBusy] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [liveVersionError, setLiveVersionError] = useState<string | null>(null)
   const mergeVersions = useCallback((incoming: readonly BrowserArtifactVersion[]) => {
     if (!requests.current?.isScopeCurrent(scope)) return false
     const merged = mergeBrowserArtifactVersions(versionsSnapshot.current, incoming)
@@ -227,12 +274,16 @@ export function LibraryProduct(props: Readonly<{
     coordinator.reset(scope)
     setStateScope(scope)
     setArtifacts(Object.freeze([]))
+    setArtifactNextCursor(null)
     setVersions(Object.freeze([]))
+    setVersionNextCursor(null)
     versionsSnapshot.current = Object.freeze([])
     setSelectedArtifactRef(null)
     selectedArtifactRefSnapshot.current = null
+    selectedGeneration.current += 1
     setBusy(true)
     setError(null)
+    setLiveVersionError(null)
     return () => coordinator.invalidate(scope)
   }, [scope])
   useEffect(() => {
@@ -241,19 +292,20 @@ export function LibraryProduct(props: Readonly<{
   }, [])
   const refresh = async (request: ScopedRequestHandle) => {
     const selected = selectedArtifactRefSnapshot.current
+    const generation = selectedGeneration.current
     const [page, versionPage] = await Promise.all([
       client.listArtifacts({ limit: 50 }, request.signal),
       selected === null ? Promise.resolve(null) : client.listArtifactVersions(selected, { limit: 50 }, request.signal),
     ])
     if (!request.isCurrent()) return
-    setArtifacts(page.items)
-    if (selected !== null && !page.items.some(({ artifactRef }) => artifactRef === selected)) {
-      selectedArtifactRefSnapshot.current = null
-      setSelectedArtifactRef(null)
-      setVersions(Object.freeze([]))
-      versionsSnapshot.current = Object.freeze([])
-    } else if (versionPage !== null && selectedArtifactRefSnapshot.current === selected) {
+    setArtifacts((current) => mergeRefreshedArtifactSummaries(current, page.items))
+    setArtifactNextCursor(page.pageInfo.nextCursor)
+    if (
+      versionPage !== null && selectedArtifactRefSnapshot.current === selected &&
+      selectedGeneration.current === generation
+    ) {
       mergeVersions(versionPage.items)
+      setVersionNextCursor(versionPage.pageInfo.nextCursor)
     }
   }
   const action = async (slot: string, run: (request: ScopedRequestHandle) => Promise<void>) => {
@@ -277,17 +329,19 @@ export function LibraryProduct(props: Readonly<{
     const request = coordinator.begin("bootstrap", scope)
     void (async () => {
       try {
-        const artifactPage = await client.listArtifacts({ limit: 50 }, request.signal)
+        const loaded = await loadInitialLibraryOwner(client, props.initialArtifactRef, request.signal)
         if (!request.isCurrent()) return
-        setArtifacts(artifactPage.items)
-        const initialArtifactRef = resolveInitialArtifactRef(props.initialArtifactRef, artifactPage.items)
-        if (initialArtifactRef !== null) {
-          selectedArtifactRefSnapshot.current = initialArtifactRef
-          setSelectedArtifactRef(initialArtifactRef)
-          const versionPage = await client.listArtifactVersions(initialArtifactRef, { limit: 50 }, request.signal)
-          if (request.isCurrent() && selectedArtifactRefSnapshot.current === initialArtifactRef) {
-            mergeVersions(versionPage.items)
-          }
+        const selectedArtifact = loaded.selectedArtifact
+        setArtifacts(selectedArtifact === null
+          ? loaded.artifactPage.items
+          : appendArtifactSummaries([selectedArtifact], loaded.artifactPage.items))
+        setArtifactNextCursor(loaded.artifactPage.pageInfo.nextCursor)
+        if (selectedArtifact !== null && loaded.versionPage !== null) {
+          selectedGeneration.current += 1
+          selectedArtifactRefSnapshot.current = selectedArtifact.artifactRef
+          setSelectedArtifactRef(selectedArtifact.artifactRef)
+          mergeVersions(loaded.versionPage.items)
+          setVersionNextCursor(loaded.versionPage.pageInfo.nextCursor)
         }
       } catch (failure) {
         if (request.isCurrent()) setError(failure instanceof Error ? failure.message : "Library is unavailable")
@@ -312,7 +366,10 @@ export function LibraryProduct(props: Readonly<{
         return mergeVersions(value.page.items)
       },
       onFailure: () => {
-        if (requests.current?.isScopeCurrent(scope)) setError("Live artifact versions are temporarily delayed.")
+        if (requests.current?.isScopeCurrent(scope)) setLiveVersionError("Live artifact versions are temporarily delayed.")
+      },
+      onRecovery: () => {
+        if (requests.current?.isScopeCurrent(scope)) setLiveVersionError(null)
       },
       initialDelayMs: 1_500,
       maximumDelayMs: 24_000,
@@ -333,16 +390,45 @@ export function LibraryProduct(props: Readonly<{
     artifacts={visible ? artifacts : []}
     versions={visible ? versions : []}
     selectedArtifactRef={visible ? selectedArtifactRef : null}
+    artifactNextCursor={visible ? artifactNextCursor : null}
+    versionNextCursor={visible ? versionNextCursor : null}
     busy={visible ? busy : true}
-    error={visible ? error : null}
-    onRefresh={() => void action("refresh", refresh)}
-    onSelectArtifact={(artifact) => void action("selection", async (request) => {
+    error={visible ? error ?? liveVersionError : null}
+    onRefresh={() => void action("library-owner-read", refresh)}
+    onSelectArtifact={(artifact) => void action("library-owner-read", async (request) => {
+      const generation = ++selectedGeneration.current
       selectedArtifactRefSnapshot.current = artifact.artifactRef
       setSelectedArtifactRef(artifact.artifactRef)
       setVersions(Object.freeze([]))
+      setVersionNextCursor(null)
       versionsSnapshot.current = Object.freeze([])
       const page = await client.listArtifactVersions(artifact.artifactRef, { limit: 50 }, request.signal)
-      if (request.isCurrent() && selectedArtifactRefSnapshot.current === artifact.artifactRef) mergeVersions(page.items)
+      if (
+        request.isCurrent() && selectedArtifactRefSnapshot.current === artifact.artifactRef &&
+        selectedGeneration.current === generation
+      ) {
+        mergeVersions(page.items)
+        setVersionNextCursor(page.pageInfo.nextCursor)
+      }
+    })}
+    onLoadMoreArtifacts={() => void action("library-owner-read", async (request) => {
+      if (artifactNextCursor === null) return
+      const page = await client.listArtifacts({ cursor: artifactNextCursor, limit: 50 }, request.signal)
+      if (!request.isCurrent()) return
+      setArtifacts((current) => appendArtifactSummaries(current, page.items))
+      setArtifactNextCursor(page.pageInfo.nextCursor)
+    })}
+    onLoadMoreVersions={() => void action("library-owner-read", async (request) => {
+      const artifactRef = selectedArtifactRefSnapshot.current
+      const generation = selectedGeneration.current
+      if (artifactRef === null || versionNextCursor === null) return
+      const page = await client.listArtifactVersions(artifactRef, { cursor: versionNextCursor, limit: 50 }, request.signal)
+      if (
+        !request.isCurrent() || selectedArtifactRefSnapshot.current !== artifactRef ||
+        selectedGeneration.current !== generation
+      ) return
+      mergeVersions(page.items)
+      setVersionNextCursor(page.pageInfo.nextCursor)
     })}
   />
 }

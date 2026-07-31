@@ -20,6 +20,109 @@ const binding: SiteDeploymentBinding = {
 }
 
 describe("one-time Platform identity delivery", () => {
+  it("propagates the media request budget through personal project resolution", async () => {
+    const issuedAt = new Date()
+    const requests: PlatformPublicRequest<never>[] = []
+    const transport: PlatformPublicTransport = { async execute(request) {
+      requests.push(request as PlatformPublicRequest<never>)
+      if (request.operationId === "exchangeProductContext") {
+        const commandId = request.headers["X-Kokoro-Command-Id"] ?? "1".repeat(32)
+        return { status: 200, body: {
+          receipt: {
+            commandId,
+            committedAt: issuedAt.toISOString(),
+            receiptRef: "receipt-product-context-12345678",
+            requestDigest: "d".repeat(64),
+            state: "committed",
+          },
+          context: {
+            productContextRef: "product-context-12345678",
+            siteProjectBindingRef: binding.siteProjectBindingRef,
+            deploymentRef: binding.deploymentRef,
+            siteRef: "site-12345678",
+            siteReleaseRef: binding.siteReleaseRef,
+            webArtifactDigest: binding.webArtifactDigest,
+            runtimeEnvironment: binding.runtimeEnvironment,
+            region: binding.region,
+            audience: binding.productAudience,
+            sessionContractRevision: binding.sessionContractRevision,
+            policyEpoch: "4",
+            revocationEpoch: "2",
+            enabledSurfaceIds: ["image"],
+            featurePolicyRevision: "feature-policy-12345678",
+            modelOptionCatalogRef: "model-options-12345678",
+            modelOptionCatalogs: [{
+              surfaceId: "image",
+              catalogRevisionRef: "image-catalog-12345678",
+              defaultModelOptionRevisionRef: "image-option-12345678",
+              options: [{
+                modelOptionRevisionRef: "image-option-12345678",
+                optionKey: "image.standard",
+                label: "Standard",
+                inputModalities: ["text"],
+                outputModalities: ["image"],
+                supportedEfforts: [],
+                badges: [],
+                availability: "available",
+              }],
+              publishedAt: issuedAt.toISOString(),
+            }],
+            agentCatalogRef: "agent-catalog-12345678",
+            localePolicy: { defaultLocale: "en-US", allowedLocales: ["en-US"] },
+            cacheMaxAgeSeconds: 30,
+            issuedAt: issuedAt.toISOString(),
+            expiresAt: new Date(issuedAt.getTime() + 240_000).toISOString(),
+          },
+        } }
+      }
+      if (request.operationId === "getPersonalContext") return { status: 200, body: {
+        personalContextRef: "personal-context-12345678",
+        productContextRef: "product-context-12345678",
+        actor: {
+          subjectRef: "subject-12345678",
+          subjectGeneration: "1",
+          state: "active",
+          displayName: "Example User",
+          avatarUrl: null,
+        },
+        projects: [{
+          projectRef: "project-12345678",
+          workspaceRef: "workspace-12345678",
+          executionSpaceRef: "execution-space-12345678",
+          displayName: "Personal",
+          membershipRevision: "membership-12345678",
+        }],
+        defaultProjectRef: "project-12345678",
+        contextRevision: "personal-revision-12345678",
+        issuedAt: issuedAt.toISOString(),
+        expiresAt: new Date(issuedAt.getTime() + 180_000).toISOString(),
+      } }
+      throw new Error(`unexpected operation: ${request.operationId}`)
+    } }
+    const provider = {
+      platformTransport: () => transport,
+      artifactDeliveryTransport: () => ({ redeem: async () => { throw new Error("not used") } }),
+      sessionHttp: () => ({ send: async () => { throw new Error("not used") } }),
+      platformCsrfToken: () => "c".repeat(64),
+      issueBrowserCsrf: () => "browser-csrf",
+      verifyBrowserCsrf: () => true,
+      close: () => undefined,
+    } as unknown as NodeSiteRuntimeProvider
+    const runtime = createSiteBffRuntime({ binding, publicOrigin: "https://site.example", provider })
+    const controller = new AbortController()
+    const remainingDeadlineMs = () => 1_234
+
+    await runtime.media({
+      sessionRef: "identity-session-12345678",
+      sessionCredential: "s".repeat(64),
+      expiresAt: new Date(issuedAt.getTime() + 300_000).toISOString(),
+    }, { signal: controller.signal, remainingDeadlineMs })
+
+    const personalRequest = requests.find(({ operationId }) => operationId === "getPersonalContext")
+    expect(personalRequest?.signal).toBe(controller.signal)
+    expect(personalRequest?.deadlineMs).toBe(1_234)
+  })
+
   it("reuses only the prior raw recovery capability when a delivery command is superseded", () => {
     const prior = { command: {
       commandId: "1".repeat(32),

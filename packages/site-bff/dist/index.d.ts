@@ -64,6 +64,10 @@ export type SiteSessionRuntime = Readonly<{
     publicBootstrap: Readonly<PublicSiteBootstrap>;
     proxy: ReturnType<typeof createSessionBrowserV3Proxy>;
 }>;
+export interface SiteRequestBudget {
+    readonly signal: AbortSignal;
+    remainingDeadlineMs(): number;
+}
 export interface SiteBffRuntime {
     readonly publicOrigin: string;
     readonly deploymentIdentity: Readonly<{
@@ -129,7 +133,7 @@ export interface SiteBffRuntime {
     }>, command: PublicCommandContext): Promise<AssetUploadCommandResponse>;
     getAssetUploadStatus(auth: OpaqueAuthSession, intentRef: string): Promise<AssetUploadStatusResponse>;
     recoverAssetUploadCommand(auth: OpaqueAuthSession, commandId: string): Promise<AssetUploadCommandResponse>;
-    media(auth: OpaqueAuthSession): Promise<SiteMediaAuthority>;
+    media(auth: OpaqueAuthSession, budget: SiteRequestBudget): Promise<SiteMediaAuthority>;
     accountProducts(auth: OpaqueAuthSession): Promise<AccountProductsResponse>;
     creditSummary(auth: OpaqueAuthSession): Promise<CreditSummaryResponse>;
     commandReceipt(auth: OpaqueAuthSession | null, commandId: string, receiptRecoveryCapability?: string): Promise<PublicCommandReceiptResponse>;

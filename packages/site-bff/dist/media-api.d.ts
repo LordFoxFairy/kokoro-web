@@ -8,5 +8,6 @@ export interface SiteMediaApi {
 export declare function createSiteMediaApi(input: Readonly<{
     runtime: SiteBffRuntime;
     readAuthSession(): Promise<OpaqueAuthSession | null> | OpaqueAuthSession | null;
+    monotonicNow?: () => number;
 }>): SiteMediaApi;
 //# sourceMappingURL=media-api.d.ts.map

@@ -36,6 +36,7 @@
 .candidateList a { color: var(--k-brand, #9ca7ff); }
 .artifactRail ul button { display: flex; width: 100%; justify-content: space-between; text-align: left; }
 .artifactRail ul button[data-selected="true"] { border-color: var(--k-brand, #6f7cff); background: color-mix(in srgb, var(--k-brand, #6f7cff) 14%, var(--k-bg-container, #141722)); }
+.artifactRail > button { width: 100%; margin-top: .75rem; }
 .versionGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
 .versionGrid > article { overflow: hidden; }
 .previewFrame { display: grid; min-height: 14rem; place-items: center; isolation: isolate; background: var(--k-bg-base, #0b0d12); }
@@ -48,6 +49,7 @@
 .versionMeta, .safeFailure { margin: 0; padding: .85rem; }
 .versionMeta > div { display: grid; gap: .25rem; }
 .downloadStatus { display: block; min-height: 1.1rem; padding: 0 .85rem .75rem; color: var(--k-text-secondary, #afb4c3); font-size: .72rem; }
+.paginationButton { grid-column: 1 / -1; width: 100%; }
 .safeFailure, .error { border: 1px solid var(--k-error-border, #7f3942); color: var(--k-error-strong, #ffabb5); background: var(--k-error-bg, #2a1216); }
 .error { width: min(100% - 4rem, 74rem); margin: 0 auto 1rem; border-radius: .75rem; padding: .75rem 1rem; }
 .productShell :focus-visible { outline: 3px solid color-mix(in srgb, var(--k-brand, #6f7cff) 55%, white); outline-offset: 2px; }

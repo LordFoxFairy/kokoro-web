@@ -27,6 +27,27 @@ export function supersedeSiteDelivery(prior, fresh) {
         priorCommandId: prior.command.commandId,
     });
 }
+function waitWithinBudget(promise, budget) {
+    const timeoutMs = budget.remainingDeadlineMs();
+    return new Promise((resolve, reject) => {
+        let settled = false;
+        const finish = (run) => {
+            if (settled)
+                return;
+            settled = true;
+            clearTimeout(timer);
+            budget.signal.removeEventListener("abort", abort);
+            run();
+        };
+        const abort = () => finish(() => reject(budget.signal.reason ?? new Error("Site request aborted")));
+        const timer = setTimeout(() => finish(() => reject(new Error("Site request deadline exhausted"))), timeoutMs);
+        timer.unref();
+        budget.signal.addEventListener("abort", abort, { once: true });
+        if (budget.signal.aborted)
+            abort();
+        promise.then((value) => finish(() => resolve(value)), (error) => finish(() => reject(error)));
+    });
+}
 function required(env, name) {
     const value = env[name]?.trim();
     if (!value)
@@ -119,15 +140,23 @@ export function createSiteBffRuntime(input) {
         transport: input.provider.platformTransport({ binding: input.binding, authSession }),
         csrfToken: () => input.provider.platformCsrfToken(),
     });
-    const resolveSite = async (authSession) => {
+    const resolveSite = async (authSession, budget) => {
         const platform = authenticatedClient(authSession);
-        return bootstrapSiteRuntimeFromOpaqueSession({
+        const resolution = bootstrapSiteRuntimeFromOpaqueSession({
             productContexts,
             authSession,
             personalAuthority: {
-                getPersonalContext: () => platform.execute({ operationId: "getPersonalContext", data: {} }),
+                getPersonalContext: () => platform.execute({
+                    operationId: "getPersonalContext",
+                    data: {},
+                    ...(budget === undefined ? {} : {
+                        signal: budget.signal,
+                        deadlineMs: budget.remainingDeadlineMs(),
+                    }),
+                }),
             },
         });
+        return budget === undefined ? resolution : waitWithinBudget(resolution, budget);
     };
     const assemble = async (authSession) => {
         const platform = authenticatedClient(authSession);
@@ -157,8 +186,8 @@ export function createSiteBffRuntime(input) {
             }),
         });
     };
-    const projectAuthority = async (authSession) => {
-        const resolved = await resolveSite(authSession);
+    const projectAuthority = async (authSession, budget) => {
+        const resolved = await resolveSite(authSession, budget);
         return Object.freeze({
             platform: authenticatedClient(authSession),
             projectRef: resolved.bootstrap.defaultProjectRef,
@@ -323,8 +352,8 @@ export function createSiteBffRuntime(input) {
                 data: { path: { projectRef, commandId } },
             });
         },
-        async media(authSession) {
-            const { platform, projectRef } = await projectAuthority(authSession);
+        async media(authSession, budget) {
+            const { platform, projectRef } = await projectAuthority(authSession, budget);
             return createSiteMediaAuthority({
                 platform,
                 projectRef,

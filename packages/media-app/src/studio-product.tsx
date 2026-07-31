@@ -330,6 +330,8 @@ export function StudioProduct(props: Readonly<{
   const [quote, setQuote] = useState<StudioQuoteView | null>(null)
   const [busy, setBusy] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [operationPollingError, setOperationPollingError] = useState<string | null>(null)
+  const [commandPollingError, setCommandPollingError] = useState<string | null>(null)
   const [recoveryRevision, setRecoveryRevision] = useState(0)
   const [submissionBlocked, setSubmissionBlocked] = useState(false)
   const quoteRequest = useRef(0)
@@ -397,6 +399,8 @@ export function StudioProduct(props: Readonly<{
     setQuote(null)
     setBusy(true)
     setError(null)
+    setOperationPollingError(null)
+    setCommandPollingError(null)
     setRecoveryRevision(0)
     setSubmissionBlocked(false)
     return () => coordinator.invalidate(scope)
@@ -445,7 +449,10 @@ export function StudioProduct(props: Readonly<{
         return mergeOperations(values.map(projectPlatformMediaOperationOwnerState))
       },
       onFailure: () => {
-        if (requests.current?.isScopeCurrent(scope)) setError("Live media updates are temporarily delayed.")
+        if (requests.current?.isScopeCurrent(scope)) setOperationPollingError("Live media updates are temporarily delayed.")
+      },
+      onRecovery: () => {
+        if (requests.current?.isScopeCurrent(scope)) setOperationPollingError(null)
       },
     })
     operationPoller.current = poller
@@ -471,7 +478,10 @@ export function StudioProduct(props: Readonly<{
         return terminal.every(Boolean)
       },
       onFailure: () => {
-        if (requests.current?.isScopeCurrent(scope)) setError("Command outcome reconciliation is temporarily delayed.")
+        if (requests.current?.isScopeCurrent(scope)) setCommandPollingError("Command outcome reconciliation is temporarily delayed.")
+      },
+      onRecovery: () => {
+        if (requests.current?.isScopeCurrent(scope)) setCommandPollingError(null)
       },
       initialDelayMs: 1_500,
       maximumDelayMs: 24_000,
@@ -539,7 +549,7 @@ export function StudioProduct(props: Readonly<{
     quote={visible ? quote : null}
     busy={visible ? busy : true}
     submissionBlocked={visible ? submissionBlocked : true}
-    error={visible ? error : null}
+    error={visible ? error ?? operationPollingError ?? commandPollingError : null}
     onInputChanged={() => {
       quoteRequest.current += 1
       setQuote(null)

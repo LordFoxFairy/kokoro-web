@@ -41,6 +41,45 @@ function authority(overrides: Partial<SiteMediaAuthority> = {}): SiteMediaAuthor
 }
 
 describe("Site media browser API", () => {
+  test("spends one monotonic request budget across authority resolution and the owner call", async () => {
+    let elapsedMs = 0
+    const listDefinitions = vi.fn(() => Promise.resolve({ items: [], pageInfo: { nextCursor: null } }))
+    let resolvedSignal: AbortSignal | undefined
+    const media = vi.fn((_auth: unknown, budget: Readonly<{
+      signal: AbortSignal
+      remainingDeadlineMs(): number
+    }>) => {
+      resolvedSignal = budget.signal
+      expect(budget.remainingDeadlineMs()).toBe(29_995)
+      elapsedMs = 20
+      return Promise.resolve(authority({ listDefinitions }))
+    })
+    const runtimeWithResolution = {
+      publicOrigin: origin,
+      verifyBrowserMutation: () => true,
+      media,
+    } as unknown as SiteBffRuntime
+    const controller = new AbortController()
+    const api = createSiteMediaApi({
+      runtime: runtimeWithResolution,
+      readAuthSession: () => {
+        elapsedMs = 5
+        return auth
+      },
+      monotonicNow: () => elapsedMs,
+    })
+
+    const response = await api.handle(request("/definitions", { signal: controller.signal }), ["definitions"])
+
+    expect(response.status).toBe(200)
+    expect(listDefinitions).toHaveBeenCalledWith(
+      { limit: undefined },
+      expect.objectContaining({ signal: resolvedSignal, deadlineMs: 29_980 }),
+    )
+    controller.abort("browser disconnected")
+    expect(resolvedSignal?.aborted).toBe(true)
+  })
+
   test("routes definition reads without accepting a browser project identity", async () => {
     const listDefinitions = vi.fn(() => Promise.resolve({
       items: [{
@@ -69,7 +108,7 @@ describe("Site media browser API", () => {
     expect(accepted.status).toBe(200)
     expect(listDefinitions).toHaveBeenCalledWith(
       { limit: 20 },
-      expect.objectContaining({ signal: expect.any(AbortSignal), deadlineMs: 30_000 }),
+      expect.objectContaining({ signal: expect.any(AbortSignal), deadlineMs: expect.any(Number) }),
     )
   })
 
@@ -82,7 +121,7 @@ describe("Site media browser API", () => {
     expect(response.status).toBe(200)
     expect(getDefinition).toHaveBeenCalledWith("x", expect.objectContaining({
       signal: definitionRequest.signal,
-      deadlineMs: 30_000,
+      deadlineMs: expect.any(Number),
     }))
   })
 
@@ -114,7 +153,7 @@ describe("Site media browser API", () => {
     expect(submit).toHaveBeenCalledWith(
       expect.objectContaining({ promptIntent: "A fox beneath the moon" }),
       { commandId: "1".repeat(32), idempotencyKey: "i".repeat(24) },
-      expect.objectContaining({ signal: expect.any(AbortSignal), deadlineMs: 30_000 }),
+      expect.objectContaining({ signal: expect.any(AbortSignal), deadlineMs: expect.any(Number) }),
     )
   })
 
@@ -189,7 +228,7 @@ describe("Site media browser API", () => {
       "artifact-1",
       "artifact-v1",
       { purpose: "preview", viewportClass: "thumbnail" },
-      expect.objectContaining({ signal: rangedRequest.signal, deadlineMs: 30_000, range: { start: 0n, endInclusive: 1n } }),
+      expect.objectContaining({ signal: rangedRequest.signal, deadlineMs: expect.any(Number), range: { start: 0n, endInclusive: 1n } }),
     )
 
     const ambiguous = await api.handle(

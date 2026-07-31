@@ -119,6 +119,34 @@ export type SiteSessionRuntime = Readonly<{
   proxy: ReturnType<typeof createSessionBrowserV3Proxy>
 }>
 
+export interface SiteRequestBudget {
+  readonly signal: AbortSignal
+  remainingDeadlineMs(): number
+}
+
+function waitWithinBudget<Value>(promise: Promise<Value>, budget: SiteRequestBudget): Promise<Value> {
+  const timeoutMs = budget.remainingDeadlineMs()
+  return new Promise<Value>((resolve, reject) => {
+    let settled = false
+    const finish = (run: () => void) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      budget.signal.removeEventListener("abort", abort)
+      run()
+    }
+    const abort = () => finish(() => reject(budget.signal.reason ?? new Error("Site request aborted")))
+    const timer = setTimeout(() => finish(() => reject(new Error("Site request deadline exhausted"))), timeoutMs)
+    timer.unref()
+    budget.signal.addEventListener("abort", abort, { once: true })
+    if (budget.signal.aborted) abort()
+    promise.then(
+      (value) => finish(() => resolve(value)),
+      (error: unknown) => finish(() => reject(error)),
+    )
+  })
+}
+
 export interface SiteBffRuntime {
   readonly publicOrigin: string
   readonly deploymentIdentity: Readonly<{ deploymentRef: string; webArtifactDigest: string; publicOrigin: string }>
@@ -145,7 +173,7 @@ export interface SiteBffRuntime {
   completeAssetUpload(auth: OpaqueAuthSession, intentRef: string, input: Readonly<{ expectedVersion: string; sessionRef: string }>, command: PublicCommandContext): Promise<AssetUploadCommandResponse>
   getAssetUploadStatus(auth: OpaqueAuthSession, intentRef: string): Promise<AssetUploadStatusResponse>
   recoverAssetUploadCommand(auth: OpaqueAuthSession, commandId: string): Promise<AssetUploadCommandResponse>
-  media(auth: OpaqueAuthSession): Promise<SiteMediaAuthority>
+  media(auth: OpaqueAuthSession, budget: SiteRequestBudget): Promise<SiteMediaAuthority>
   accountProducts(auth: OpaqueAuthSession): Promise<AccountProductsResponse>
   creditSummary(auth: OpaqueAuthSession): Promise<CreditSummaryResponse>
   commandReceipt(auth: OpaqueAuthSession | null, commandId: string, receiptRecoveryCapability?: string): Promise<PublicCommandReceiptResponse>
@@ -259,15 +287,23 @@ export function createSiteBffRuntime(input: Readonly<{
     csrfToken: () => input.provider.platformCsrfToken(),
   })
 
-  const resolveSite = async (authSession: OpaqueAuthSession) => {
+  const resolveSite = async (authSession: OpaqueAuthSession, budget?: SiteRequestBudget) => {
     const platform = authenticatedClient(authSession)
-    return bootstrapSiteRuntimeFromOpaqueSession({
+    const resolution = bootstrapSiteRuntimeFromOpaqueSession({
       productContexts,
       authSession,
       personalAuthority: {
-        getPersonalContext: () => platform.execute({ operationId: "getPersonalContext", data: {} }),
+        getPersonalContext: () => platform.execute({
+          operationId: "getPersonalContext",
+          data: {},
+          ...(budget === undefined ? {} : {
+            signal: budget.signal,
+            deadlineMs: budget.remainingDeadlineMs(),
+          }),
+        }),
       },
     })
+    return budget === undefined ? resolution : waitWithinBudget(resolution, budget)
   }
 
   const assemble = async (authSession: OpaqueAuthSession): Promise<SiteSessionRuntime> => {
@@ -299,11 +335,11 @@ export function createSiteBffRuntime(input: Readonly<{
     })
   }
 
-  const projectAuthority = async (authSession: OpaqueAuthSession): Promise<Readonly<{
+  const projectAuthority = async (authSession: OpaqueAuthSession, budget?: SiteRequestBudget): Promise<Readonly<{
     platform: ReturnType<typeof createPlatformPublicClient>
     projectRef: string
   }>> => {
-    const resolved = await resolveSite(authSession)
+    const resolved = await resolveSite(authSession, budget)
     return Object.freeze({
       platform: authenticatedClient(authSession),
       projectRef: resolved.bootstrap.defaultProjectRef,
@@ -513,8 +549,8 @@ export function createSiteBffRuntime(input: Readonly<{
         data: { path: { projectRef, commandId } },
       })
     },
-    async media(authSession: OpaqueAuthSession) {
-      const { platform, projectRef } = await projectAuthority(authSession)
+    async media(authSession: OpaqueAuthSession, budget: SiteRequestBudget) {
+      const { platform, projectRef } = await projectAuthority(authSession, budget)
       return createSiteMediaAuthority({
         platform,
         projectRef,

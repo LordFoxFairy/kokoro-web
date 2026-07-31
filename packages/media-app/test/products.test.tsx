@@ -196,6 +196,8 @@ describe("Site media product views", () => {
         contentUrl: "/api/media/artifacts/artifact-1/versions/artifact-v1/content?purpose=preview&viewport=thumbnail",
       }]}
       selectedArtifactRef="artifact-1"
+      artifactNextCursor={null}
+      versionNextCursor={null}
       versions={[
         { ...common, availability: "ready", display: { format: "png", width: 512, height: 512, byteSize: "4" }, contentUrl: "/api/media/artifacts/artifact-1/versions/artifact-v1/content?purpose=preview&amp;viewport=thumbnail" },
         { ...common, artifactVersionRef: "artifact-v2", availability: "restricted", safeFailure: { code: "artifact_restricted", retryClass: "never", safeMessage: "Restricted by policy." } },
@@ -204,6 +206,8 @@ describe("Site media product views", () => {
       error={null}
       onSelectArtifact={vi.fn()}
       onRefresh={vi.fn()}
+      onLoadMoreArtifacts={vi.fn()}
+      onLoadMoreVersions={vi.fn()}
     />)
     expect(html).toContain("/api/media/artifacts/artifact-1/versions/artifact-v1/content")
     expect(html).toContain("Loading preview")
@@ -296,6 +300,17 @@ describe("Site media product views", () => {
     const newer = { ...common, ownerVersion: "2", availability: "processing" }
     const stale = { ...common, ownerVersion: "1", availability: "processing" }
     expect(merge([newer], [stale])).toEqual({ versions: [newer], madeProgress: false })
+    const newestRef = {
+      ...common,
+      artifactVersionRef: "artifact-v2",
+      versionNumber: "2",
+      ownerVersion: "1",
+      availability: "processing",
+    }
+    expect(merge([newestRef, newer], [stale])).toEqual({
+      versions: [newestRef, newer],
+      madeProgress: false,
+    })
     expect(shouldPoll("artifact-1", [newer])).toBe(true)
     const ready = { ...common, ownerVersion: "3", availability: "ready", display: { format: "png", width: 32, height: 32, byteSize: "4" }, contentUrl: "/api/media/artifacts/artifact-1/versions/artifact-v1/content?purpose=preview&viewport=thumbnail" }
     expect(merge([newer], [ready])).toEqual({ versions: [ready], madeProgress: true })
@@ -303,17 +318,81 @@ describe("Site media product views", () => {
     expect(shouldPoll(null, [newer])).toBe(false)
   })
 
-  test("selects a Studio deep link only after the Artifact appears in the owner list", async () => {
+  test("resolves a Studio deep link by exact owner lookup instead of scanning list pages", async () => {
     const module = await import("../src/library-product") as unknown as Readonly<Record<string, unknown>>
-    const resolve = module.resolveInitialArtifactRef as undefined | ((
+    const load = module.loadInitialLibraryOwner as undefined | ((
+      client: Readonly<Record<string, unknown>>,
       requested: string | null | undefined,
-      artifacts: readonly Readonly<{ artifactRef: string }>[],
-    ) => string | null)
-    expect(typeof resolve).toBe("function")
-    if (resolve === undefined) return
-    const artifacts = [{ artifactRef: "artifact-1" }]
-    expect(resolve("artifact-1", artifacts)).toBe("artifact-1")
-    expect(resolve("artifact-other", artifacts)).toBeNull()
-    expect(resolve(undefined, artifacts)).toBeNull()
+      signal: AbortSignal,
+    ) => Promise<Readonly<Record<string, unknown>>>)
+    expect(typeof load).toBe("function")
+    if (load === undefined) return
+    const listed = {
+      artifactRef: "artifact-current",
+      availability: "ready",
+      currentArtifactVersionRef: "artifact-current-v1",
+      mediaClass: "image",
+      title: "Current",
+      createdAt: "2026-07-31T00:00:00.000Z",
+      updatedAt: "2026-07-31T00:00:00.000Z",
+      contentUrl: "/api/media/artifacts/artifact-current/versions/artifact-current-v1/content?purpose=preview&viewport=thumbnail",
+    }
+    const exact = {
+      ...listed,
+      artifactRef: "artifact-older",
+      currentArtifactVersionRef: "artifact-older-v9",
+      title: "Older exact artifact",
+      contentUrl: "/api/media/artifacts/artifact-older/versions/artifact-older-v9/content?purpose=preview&viewport=thumbnail",
+    }
+    const listArtifacts = vi.fn(() => Promise.resolve({ items: [listed], pageInfo: { nextCursor: "artifact-cursor-2" } }))
+    const getArtifact = vi.fn(() => Promise.resolve({ artifact: exact }))
+    const listArtifactVersions = vi.fn(() => Promise.resolve({ items: [], pageInfo: { nextCursor: "version-cursor-2" } }))
+
+    const result = await load(
+      { listArtifacts, getArtifact, listArtifactVersions },
+      "artifact-older",
+      new AbortController().signal,
+    )
+
+    expect(getArtifact).toHaveBeenCalledWith("artifact-older", expect.any(AbortSignal))
+    expect(listArtifacts).toHaveBeenCalledTimes(1)
+    expect(listArtifactVersions).toHaveBeenCalledWith("artifact-older", { limit: 50 }, expect.any(AbortSignal))
+    expect(result).toMatchObject({
+      artifactPage: { pageInfo: { nextCursor: "artifact-cursor-2" } },
+      selectedArtifact: { artifactRef: "artifact-older" },
+      versionPage: { pageInfo: { nextCursor: "version-cursor-2" } },
+    })
+  })
+
+  test("renders bounded cursor pagination controls for Artifact and Version pages", () => {
+    const html = renderToStaticMarkup(<LibraryView
+      brandName="Fox Site"
+      artifacts={[]}
+      versions={[]}
+      selectedArtifactRef={null}
+      artifactNextCursor="artifact-cursor-2"
+      versionNextCursor="version-cursor-2"
+      busy={false}
+      error={null}
+      onSelectArtifact={vi.fn()}
+      onRefresh={vi.fn()}
+      onLoadMoreArtifacts={vi.fn()}
+      onLoadMoreVersions={vi.fn()}
+    />)
+    expect(html).toContain("Load more artifacts")
+    expect(html).toContain("Load more versions")
+  })
+
+  test("keeps an exact deep-linked Artifact when refreshing the first cursor page", async () => {
+    const module = await import("../src/library-product") as unknown as Readonly<Record<string, unknown>>
+    const merge = module.mergeRefreshedArtifactSummaries as undefined | ((
+      current: readonly Readonly<{ artifactRef: string }>[],
+      refreshed: readonly Readonly<{ artifactRef: string }>[],
+    ) => readonly Readonly<{ artifactRef: string }>[])
+    expect(typeof merge).toBe("function")
+    if (merge === undefined) return
+    const exact = { artifactRef: "artifact-older" }
+    const firstPage = { artifactRef: "artifact-current" }
+    expect(merge([exact], [firstPage])).toEqual([firstPage, exact])
   })
 })

@@ -113,7 +113,7 @@ export function createSiteMediaAuthority(input) {
             ...options,
         }),
         async artifactContent(artifactRef, artifactVersionRef, delivery, options) {
-            const clock = input.now ?? Date.now;
+            const clock = input.now ?? (() => performance.now());
             const startedAt = clock();
             const remainingDeadlineMs = () => {
                 const remaining = options.deadlineMs - Math.max(0, clock() - startedAt);

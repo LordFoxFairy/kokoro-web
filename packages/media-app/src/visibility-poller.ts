@@ -27,6 +27,7 @@ export function createVisibilityAwarePoller<Value>(input: Readonly<{
   fetchValue(key: string, signal: AbortSignal): Promise<Value>
   onValues(values: readonly Value[], signal: AbortSignal): boolean | void | Promise<boolean | void>
   onFailure(error: unknown): void
+  onRecovery?(): void
   environment?: PollingEnvironment
   initialDelayMs?: number
   maximumDelayMs?: number
@@ -48,6 +49,7 @@ export function createVisibilityAwarePoller<Value>(input: Readonly<{
   let controller: AbortController | undefined
   let generation = 0
   let stopped = false
+  let recoveringFromFailure = false
 
   const clear = () => {
     if (timer !== undefined) environment.cancel(timer)
@@ -87,12 +89,19 @@ export function createVisibilityAwarePoller<Value>(input: Readonly<{
       }
       if (active.signal.aborted || scheduledGeneration !== generation) return
       const madeProgress = values.length === 0 ? false : await input.onValues(Object.freeze(values), active.signal)
-      for (const failure of failures) input.onFailure(failure)
+      if (failures.length > 0) {
+        recoveringFromFailure = true
+        for (const failure of failures) input.onFailure(failure)
+      } else if (recoveringFromFailure) {
+        recoveringFromFailure = false
+        input.onRecovery?.()
+      }
       delayMs = failures.length > 0 || madeProgress === false
         ? Math.min(maximumDelayMs, delayMs * 2)
         : initialDelayMs
     } catch (error) {
       if (!active.signal.aborted && scheduledGeneration === generation) {
+        recoveringFromFailure = true
         input.onFailure(error)
         delayMs = Math.min(maximumDelayMs, delayMs * 2)
         active.abort("polling batch failed")

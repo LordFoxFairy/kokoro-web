@@ -89,6 +89,50 @@ describe("media owner refresh", () => {
 })
 
 describe("visibility-aware bounded poller", () => {
+  test("reports recovery after a failed batch is followed by a fully successful batch", async () => {
+    let nextTimer = 0
+    const scheduled = new Map<number, { task: () => void; delayMs: number }>()
+    const environment: PollingEnvironment = {
+      visible: () => true,
+      schedule(task, delayMs) {
+        const id = ++nextTimer
+        scheduled.set(id, { task, delayMs })
+        return id
+      },
+      cancel: (id) => { scheduled.delete(id) },
+      observeVisibility: () => () => undefined,
+    }
+    let attempt = 0
+    const onRecovery = vi.fn()
+    const poller = createVisibilityAwarePoller({
+      environment,
+      fetchValue: async () => {
+        attempt += 1
+        if (attempt === 1) throw new Error("temporary")
+        return "ready"
+      },
+      onValues: () => true,
+      onFailure: vi.fn(),
+      onRecovery,
+      initialDelayMs: 100,
+      maximumDelayMs: 400,
+    })
+
+    poller.setKeys(["operation-active"])
+    const first = [...scheduled.entries()][0]
+    if (first === undefined) throw new Error("missing first poll")
+    scheduled.delete(first[0])
+    first[1].task()
+    await vi.waitFor(() => expect([...scheduled.values()].map(({ delayMs }) => delayMs)).toEqual([200]))
+
+    const second = [...scheduled.entries()][0]
+    if (second === undefined) throw new Error("missing recovery poll")
+    scheduled.delete(second[0])
+    second[1].task()
+    await vi.waitFor(() => expect(onRecovery).toHaveBeenCalledOnce())
+    poller.stop()
+  })
+
   test("settles each key so a failed command cannot starve successful reconciliation", async () => {
     let nextTimer = 0
     const scheduled = new Map<number, { task: () => void; delayMs: number }>()
