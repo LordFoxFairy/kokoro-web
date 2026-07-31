@@ -1,8 +1,35 @@
-import { describe, expect, test } from "vitest"
+import { describe, expect, expectTypeOf, test } from "vitest"
 
-import { createPlatformPublicClient, PlatformPublicInputError, type PlatformPublicTransport } from "../src/platform-public-client.js"
+import { PLATFORM_PUBLIC_OPERATIONS } from "../src/generated/platform-public/operations.gen.js"
+import {
+  createPlatformPublicClient,
+  PlatformPublicInputError,
+  type PlatformPublicOperationMethod,
+  type PlatformPublicTransport,
+} from "../src/platform-public-client.js"
 
 describe("Platform media command headers", () => {
+  test("derives the closed transport method union from the generated operation registry", async () => {
+    expectTypeOf<PlatformPublicOperationMethod>().toEqualTypeOf<
+      (typeof PLATFORM_PUBLIC_OPERATIONS)[keyof typeof PLATFORM_PUBLIC_OPERATIONS]["method"]
+    >()
+    expectTypeOf<"TRACE">().not.toMatchTypeOf<PlatformPublicOperationMethod>()
+
+    let captured: Parameters<PlatformPublicTransport["execute"]>[0] | undefined
+    const sentinel = new Error("captured")
+    const client = createPlatformPublicClient({
+      transport: { execute(request) { captured = request; return Promise.reject(sentinel) } },
+      csrfToken: () => "c".repeat(32),
+    })
+
+    await expect(client.execute({
+      operationId: "listMediaOperations",
+      data: { path: { projectRef: "project-1" }, query: {} },
+    })).rejects.toBe(sentinel)
+
+    expect(captured?.method).toBe(PLATFORM_PUBLIC_OPERATIONS.listMediaOperations.method)
+  })
+
   test("carries caller cancellation and deadline to the registered transport", async () => {
     let captured: Parameters<PlatformPublicTransport["execute"]>[0] | undefined
     const sentinel = new Error("captured")

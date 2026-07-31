@@ -13,6 +13,9 @@ export type PlatformPublicOperationInput<Operation extends PlatformPublicOperati
   "headers" | "url"
 >;
 
+type PlatformPublicOperationRegistry = typeof PLATFORM_PUBLIC_OPERATIONS;
+export type PlatformPublicOperationMethod = PlatformPublicOperationRegistry[PlatformPublicOperationId]["method"];
+
 export interface PublicCommandContext {
   readonly commandId: string;
   readonly idempotencyKey: string;
@@ -24,7 +27,7 @@ export interface SecretPublicCommandContext extends PublicCommandContext {
 
 export interface PlatformPublicRequest<Operation extends PlatformPublicOperationId> {
   readonly operationId: Operation;
-  readonly method: "GET" | "POST";
+  readonly method: PlatformPublicOperationRegistry[Operation]["method"];
   readonly path: string;
   readonly headers: Readonly<Record<string, string>>;
   readonly body: PlatformPublicOperationDataMap[Operation] extends { readonly body: infer Body }
