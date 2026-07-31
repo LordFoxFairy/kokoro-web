@@ -42,6 +42,10 @@ export type ArtifactDeliveryResponse = Readonly<{
   status: 200 | 206;
   headers: Readonly<Partial<Record<ArtifactDeliveryResponseHeader, string>>>;
   body: ReadableStream<Uint8Array>;
+}> | Readonly<{
+  status: 416;
+  headers: Readonly<Partial<Record<ArtifactDeliveryResponseHeader, string>>> & Readonly<{ "content-range": string }>;
+  body: null;
 }>;
 
 export class ArtifactDeliveryInputError extends TypeError {
@@ -142,6 +146,22 @@ function validateResponse(
   return { status, expectedBodyBytes: span };
 }
 
+function validateUnsatisfiedRange(
+  status: number,
+  headers: Readonly<Partial<Record<ArtifactDeliveryResponseHeader, string>>>,
+  range: ArtifactDeliveryByteRange | undefined,
+  expectedByteSize: bigint,
+  expectedMediaType: ArtifactDeliveryMediaType,
+): status is 416 {
+  if (status !== 416) return false;
+  if (range === undefined || expectedByteSize < 1n) invalidProtocol();
+  if (headers["content-range"] !== `bytes */${expectedByteSize}`) invalidProtocol();
+  if (headers["content-type"] !== undefined && headers["content-type"].toLowerCase() !== expectedMediaType) invalidProtocol();
+  if (headers["content-length"] !== undefined && headers["content-length"] !== "0") invalidProtocol();
+  if (headers["accept-ranges"] !== undefined && headers["accept-ranges"] !== "bytes") invalidProtocol();
+  return true;
+}
+
 function capability(value: string): string {
   if (
     value.length < CAPABILITY_MINIMUM || value.length > CAPABILITY_MAXIMUM ||
@@ -195,6 +215,12 @@ export function createArtifactDeliveryClient(input: Readonly<{ transport: Artifa
       try {
         if (!(response.body instanceof ReadableStream)) invalidProtocol();
         const headers = Object.freeze(filteredHeaders(response.headers));
+        if (validateUnsatisfiedRange(response.status, headers, options.range, options.expectedByteSize, options.expectedMediaType)) {
+          const contentRange = headers["content-range"];
+          if (contentRange === undefined) invalidProtocol();
+          await response.body.cancel("range not satisfiable").catch(() => undefined);
+          return Object.freeze({ status: 416 as const, headers: Object.freeze({ ...headers, "content-range": contentRange }), body: null });
+        }
         const validated = validateResponse(
           response.status,
           headers,

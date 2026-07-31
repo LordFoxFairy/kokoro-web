@@ -69,6 +69,30 @@ describe("Node artifact delivery transport", () => {
     expect((await reader.read()).value).toEqual(Uint8Array.of(1, 2, 3, 4))
   })
 
+  test("preserves a bodyless 416 with its unsatisfied-range metadata", async () => {
+    const response = upstream(416, { "content-range": "bytes */8", "content-length": "0" })
+    const transport = createNodeArtifactDeliveryTransport({
+      binding: { workloadCredential: "workload-secret" },
+      maximumTimeoutMs: 10_000,
+      open: () => Promise.resolve(response),
+    })
+    const delivered = await transport.redeem({
+      method: "GET",
+      path: "/v1/artifact-delivery-authorizations/authorization-1/content",
+      headers: {
+        "Kokoro-Contract-Version": "1",
+        "X-Kokoro-Request-Deadline-Ms": "5000",
+        Range: "bytes=9-10",
+      },
+      signal: new AbortController().signal,
+      security: { deliveryCapability: "d".repeat(32) },
+    })
+
+    expect(delivered.status).toBe(416)
+    expect(delivered.headers.get("content-range")).toBe("bytes */8")
+    response.end()
+  })
+
   test("propagates abort after headers and enforces the caller deadline across the stream", async () => {
     vi.useFakeTimers()
     try {

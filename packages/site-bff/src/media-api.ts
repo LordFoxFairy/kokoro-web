@@ -87,6 +87,13 @@ function text(value: unknown, maximum = 2_048): string {
   return value
 }
 
+function utf8Text(value: unknown, maximumBytes: number): string {
+  if (typeof value !== "string" || value.length < 1 || new TextEncoder().encode(value).byteLength > maximumBytes) {
+    throw new SyntaxError("utf8 text")
+  }
+  return value
+}
+
 function command(value: unknown): Readonly<{ commandId: string; idempotencyKey: string }> {
   const input = record(value, ["commandId", "idempotencyKey"])
   const commandId = text(input.commandId, 64)
@@ -109,7 +116,7 @@ function mediaInput(value: unknown): MediaOperationInput {
   return Object.freeze({
     kind: "image_text_to_image",
     definitionRevisionRef: text(input.definitionRevisionRef, 256),
-    promptIntent: text(input.promptIntent, 32_768),
+    promptIntent: utf8Text(input.promptIntent, 32_768),
     aspectRatio,
     candidateCount: input.candidateCount as number,
     modelOptionRevisionRef: text(input.modelOptionRevisionRef, 256),

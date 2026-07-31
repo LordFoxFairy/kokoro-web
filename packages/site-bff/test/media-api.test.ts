@@ -101,6 +101,33 @@ describe("Site media browser API", () => {
     )
   })
 
+  test("enforces the prompt contract in UTF-8 bytes and maps semantic overflow to 400", async () => {
+    const submit = vi.fn(() => Promise.resolve({ receipt: { receiptKind: "submit_rejected" }, operation: null }))
+    const api = createSiteMediaApi({ runtime: runtime(authority({ submit })), readAuthSession: () => auth })
+    const submitPrompt = (promptIntent: string) => api.handle(request("/operations", {
+      method: "POST",
+      headers: { origin, "content-type": "application/json", "x-kokoro-browser-csrf": "browser-csrf" },
+      body: JSON.stringify({
+        command: { commandId: "1".repeat(32), idempotencyKey: "i".repeat(24) },
+        input: {
+          kind: "image_text_to_image",
+          definitionRevisionRef: "image.text_to_image@1",
+          promptIntent,
+          aspectRatio: "square_1_1",
+          candidateCount: 1,
+          modelOptionRevisionRef: "image.safe@1",
+          outputFormat: "png",
+        },
+      }),
+    }), ["operations"])
+
+    expect((await submitPrompt("🦊".repeat(8_192))).status).toBe(202)
+    const rejected = await submitPrompt("🦊".repeat(8_193))
+    expect(rejected.status).toBe(400)
+    await expect(rejected.json()).resolves.toMatchObject({ error: { code: "REQUEST_INVALID" } })
+    expect(submit).toHaveBeenCalledTimes(1)
+  })
+
   test("adds same-origin content URLs only to ready artifact owner projections", async () => {
     const listArtifacts = () => Promise.resolve({
       items: [
@@ -157,5 +184,23 @@ describe("Site media browser API", () => {
     )
     expect(oversizedRange.status).toBe(416)
     expect(artifactContent).toHaveBeenCalledTimes(1)
+  })
+
+  test("passes through a validated unsatisfied range without replacing its owner size", async () => {
+    const artifactContent = vi.fn(() => Promise.resolve({
+      status: 416 as const,
+      headers: { "content-range": "bytes */4", "accept-ranges": "bytes" } as const,
+      body: null,
+    }))
+    const api = createSiteMediaApi({ runtime: runtime(authority({ artifactContent })), readAuthSession: () => auth })
+    const response = await api.handle(request(
+      "/artifacts/artifact-1/versions/artifact-v1/content?purpose=preview&viewport=thumbnail",
+      { headers: { range: "bytes=9-10" } },
+    ), ["artifacts", "artifact-1", "versions", "artifact-v1", "content"])
+
+    expect(response.status).toBe(416)
+    expect(response.headers.get("content-range")).toBe("bytes */4")
+    expect(response.headers.get("cache-control")).toBe("private, no-store")
+    expect(await response.text()).toBe("")
   })
 })

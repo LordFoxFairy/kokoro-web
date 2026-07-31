@@ -115,7 +115,7 @@ function validMimeType(value: string): boolean {
   });
 }
 
-function headers(input: IncomingHttpHeaders, rawHeaders: readonly string[]): Headers {
+function headers(input: IncomingHttpHeaders, rawHeaders: readonly string[], status: number): Headers {
   const counts = new Map<string, number>();
   for (let index = 0; index < rawHeaders.length; index += 2) {
     const name = rawHeaders[index]?.toLowerCase();
@@ -125,7 +125,8 @@ function headers(input: IncomingHttpHeaders, rawHeaders: readonly string[]): Hea
   }
   if ([...counts.values()].some((count) => count !== 1)) protocol();
   const contentType = input["content-type"];
-  if (typeof contentType !== "string" || !validMimeType(contentType)) protocol();
+  if (status !== 416 && (typeof contentType !== "string" || !validMimeType(contentType))) protocol();
+  if (contentType !== undefined && (typeof contentType !== "string" || !validMimeType(contentType))) protocol();
   const output = new Headers();
   for (const [name, raw] of Object.entries(input)) {
     if (raw === undefined) continue;
@@ -166,7 +167,7 @@ export function createNodeArtifactDeliveryTransport(input: Readonly<{
       });
       let responseHeaders: Headers;
       try {
-        responseHeaders = headers(response.headers, response.rawHeaders);
+        responseHeaders = headers(response.headers, response.rawHeaders, response.statusCode ?? 502);
       } catch (error) {
         const protocolError = error instanceof NodeArtifactDeliveryTransportError
           ? error

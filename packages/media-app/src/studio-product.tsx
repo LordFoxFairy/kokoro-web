@@ -15,6 +15,7 @@ import {
   createMediaBrowserClient,
   createMediaCommandIdentity,
   createMediaCommandRecoveryStore,
+  MediaCommandRecoveryStorageError,
   type MediaBrowserFetch,
 } from "./browser-client"
 import { applyMediaCommandReceipt } from "./command-recovery"
@@ -97,6 +98,61 @@ export function createStudioOperationInput(input: Readonly<{
   })
 }
 
+export type StudioDraft = Readonly<{
+  definitionRevisionRef: string
+  modelOptionCatalogRevisionRef: string
+  prompt: string
+  optionRef: string
+  aspectRatio: ImageAspectRatio
+  outputFormat: ImageOutputFormat
+  candidateCount: number
+  inputRevision: number
+}>
+
+/** Reconciles all revision-bound controls in one state transition. */
+export function reconcileStudioDraft(
+  draft: StudioDraft,
+  definition: OperationDefinition | undefined,
+  options: readonly PublishedModelOption[],
+): StudioDraft {
+  const availableOptions = options.filter(({ availability }) => availability === "available")
+  const definitionRevisionRef = definition?.definitionRevisionRef ?? ""
+  const modelOptionCatalogRevisionRef = definition?.kind === "image_text_to_image"
+    ? definition.modelOptionCatalogRevisionRef
+    : ""
+  const optionRef = availableOptions.some(({ modelOptionRevisionRef }) => modelOptionRevisionRef === draft.optionRef)
+    ? draft.optionRef
+    : availableOptions[0]?.modelOptionRevisionRef ?? ""
+  const supportedAspects: readonly ImageAspectRatio[] = definition?.kind === "image_text_to_image"
+    ? definition.supportedAspectRatios
+    : (["square_1_1"] as const)
+  const supportedFormats: readonly ImageOutputFormat[] = definition?.kind === "image_text_to_image"
+    ? definition.supportedOutputFormats
+    : (["png"] as const)
+  const aspectRatio = supportedAspects.includes(draft.aspectRatio) ? draft.aspectRatio : supportedAspects[0] ?? "square_1_1"
+  const outputFormat = supportedFormats.includes(draft.outputFormat) ? draft.outputFormat : supportedFormats[0] ?? "png"
+  const maximum = definition?.kind === "image_text_to_image" ? definition.maximumCandidateCount : 1
+  const candidateCount = Number.isInteger(draft.candidateCount)
+    ? Math.max(1, Math.min(maximum, draft.candidateCount))
+    : 1
+  if (
+    definitionRevisionRef === draft.definitionRevisionRef &&
+    modelOptionCatalogRevisionRef === draft.modelOptionCatalogRevisionRef &&
+    optionRef === draft.optionRef && aspectRatio === draft.aspectRatio &&
+    outputFormat === draft.outputFormat && candidateCount === draft.candidateCount
+  ) return draft
+  return Object.freeze({
+    ...draft,
+    definitionRevisionRef,
+    modelOptionCatalogRevisionRef,
+    optionRef,
+    aspectRatio,
+    outputFormat,
+    candidateCount,
+    inputRevision: draft.inputRevision + 1,
+  })
+}
+
 export function StudioView(props: Readonly<{
   brandName: string
   definitions: readonly OperationDefinition[]
@@ -112,30 +168,41 @@ export function StudioView(props: Readonly<{
   onInputChanged?(): void
 }>) {
   const definition = props.definitions[0]
-  const [prompt, setPrompt] = useState("")
-  const [optionRef, setOptionRef] = useState(props.options.find(({ availability }) => availability === "available")?.modelOptionRevisionRef ?? "")
-  const [aspectRatio, setAspectRatio] = useState<ImageAspectRatio>("square_1_1")
-  const [outputFormat, setOutputFormat] = useState<ImageOutputFormat>("png")
-  const [candidateCount, setCandidateCount] = useState(1)
-  const [inputRevision, setInputRevision] = useState(0)
+  const [draft, setDraft] = useState<StudioDraft>(() => Object.freeze({
+    definitionRevisionRef: "",
+    modelOptionCatalogRevisionRef: "",
+    prompt: "",
+    optionRef: "",
+    aspectRatio: "square_1_1",
+    outputFormat: "png",
+    candidateCount: 1,
+    inputRevision: 0,
+  }))
+  const onInputChanged = props.onInputChanged
+  const correctedDraft = reconcileStudioDraft(draft, definition, props.options)
+  useEffect(() => {
+    if (correctedDraft === draft) return
+    setDraft(correctedDraft)
+    onInputChanged?.()
+  }, [correctedDraft, draft, onInputChanged])
   const operationInput = (): MediaOperationInput | null => createStudioOperationInput({
     definition,
     options: props.options,
-    optionRef,
-    prompt,
-    aspectRatio,
-    outputFormat,
-    candidateCount,
+    optionRef: draft.optionRef,
+    prompt: draft.prompt,
+    aspectRatio: draft.aspectRatio,
+    outputFormat: draft.outputFormat,
+    candidateCount: draft.candidateCount,
   })
-  const changed = () => {
-    setInputRevision((current) => current + 1)
-    props.onInputChanged?.()
+  const changed = (update: Partial<Omit<StudioDraft, "inputRevision">>) => {
+    setDraft((current) => Object.freeze({ ...current, ...update, inputRevision: current.inputRevision + 1 }))
+    onInputChanged?.()
   }
-  const activeQuote = isStudioQuoteActive(props.quote, inputRevision) ? props.quote : null
+  const activeQuote = isStudioQuoteActive(props.quote, draft.inputRevision) ? props.quote : null
   const submit = (event: FormEvent) => {
     event.preventDefault()
     const input = operationInput()
-    if (input !== null) props.onQuote(input, inputRevision)
+    if (input !== null) props.onQuote(input, draft.inputRevision)
   }
   return <main className={styles.productShell}>
     <header className={styles.productHeader}>
@@ -146,23 +213,23 @@ export function StudioView(props: Readonly<{
     <div className={styles.studioGrid}>
       <form className={styles.controlPanel} onSubmit={submit}>
         <div><span className={styles.eyebrow}>Creation brief</span><h2>{definition?.title ?? "Studio unavailable"}</h2><p>{definition?.description ?? "No published image definition is available for this Site."}</p></div>
-        <label>Prompt<textarea required maxLength={definition?.kind === "image_text_to_image" ? definition.promptMaximumUtf8Bytes : 32768} value={prompt} onChange={(event) => { setPrompt(event.target.value); changed() }} /></label>
+        <label>Prompt<textarea required maxLength={definition?.kind === "image_text_to_image" ? definition.promptMaximumUtf8Bytes : 32768} value={draft.prompt} onChange={(event) => changed({ prompt: event.target.value })} /></label>
         <div className={styles.fieldGrid}>
-          <label>Model<select value={optionRef} onChange={(event) => { setOptionRef(event.target.value); changed() }}>
+          <label>Model<select value={draft.optionRef} onChange={(event) => changed({ optionRef: event.target.value })}>
             <option value="">Choose a published model</option>
             {props.options.map((option) => <option disabled={option.availability !== "available"} key={option.modelOptionRevisionRef} value={option.modelOptionRevisionRef}>{option.label}</option>)}
           </select></label>
-          <label>Aspect<select value={aspectRatio} onChange={(event) => { setAspectRatio(event.target.value as ImageAspectRatio); changed() }}>
+          <label>Aspect<select value={draft.aspectRatio} onChange={(event) => changed({ aspectRatio: event.target.value as ImageAspectRatio })}>
             {(definition?.kind === "image_text_to_image" ? definition.supportedAspectRatios : ["square_1_1"] as const).map((value) => <option key={value} value={value}>{value.replaceAll("_", " ")}</option>)}
           </select></label>
-          <label>Format<select value={outputFormat} onChange={(event) => { setOutputFormat(event.target.value as ImageOutputFormat); changed() }}>
+          <label>Format<select value={draft.outputFormat} onChange={(event) => changed({ outputFormat: event.target.value as ImageOutputFormat })}>
             {(definition?.kind === "image_text_to_image" ? definition.supportedOutputFormats : ["png"] as const).map((value) => <option key={value} value={value}>{value.toUpperCase()}</option>)}
           </select></label>
-          <label>Candidates<input min={1} max={definition?.kind === "image_text_to_image" ? definition.maximumCandidateCount : 1} step={1} type="number" value={candidateCount} onChange={(event) => { setCandidateCount(Number(event.target.value)); changed() }} /></label>
+          <label>Candidates<input min={1} max={definition?.kind === "image_text_to_image" ? definition.maximumCandidateCount : 1} step={1} type="number" value={draft.candidateCount} onChange={(event) => changed({ candidateCount: Number(event.target.value) })} /></label>
         </div>
         <div className={styles.quoteBand}>
           {activeQuote === null ? <span>Quote required before submission</span> : <span><strong>{activeQuote.amount} {activeQuote.creditUnit}</strong><small>Non-binding · expires {new Date(activeQuote.expiresAt).toLocaleTimeString()}</small></span>}
-          <div><button disabled={props.busy || operationInput() === null} type="submit">Get quote</button><button disabled={props.busy || activeQuote === null || operationInput() === null} type="button" onClick={() => { const input = operationInput(); if (input !== null && isStudioQuoteActive(activeQuote, inputRevision)) props.onSubmit(input, inputRevision) }}>Create</button></div>
+          <div><button disabled={props.busy || operationInput() === null} type="submit">Get quote</button><button disabled={props.busy || activeQuote === null || operationInput() === null} type="button" onClick={() => { const input = operationInput(); if (input !== null && isStudioQuoteActive(activeQuote, draft.inputRevision)) props.onSubmit(input, draft.inputRevision) }}>Create</button></div>
         </div>
       </form>
       <section className={styles.activityPanel} aria-labelledby="studio-activity">
@@ -209,10 +276,14 @@ export function StudioProduct(props: Readonly<{
     setOperations(merged)
     return true
   }, [scope])
-  const recoveryStore = useCallback(() => createMediaCommandRecoveryStore({
-    storage: window.localStorage,
-    scope,
-  }), [scope])
+  const recoveryStore = useCallback(() => {
+    try {
+      return createMediaCommandRecoveryStore({ storage: window.localStorage, scope })
+    } catch (cause) {
+      if (cause instanceof MediaCommandRecoveryStorageError) throw cause
+      throw new MediaCommandRecoveryStorageError({ cause })
+    }
+  }, [scope])
   const reconcileCommand = useCallback(async (
     response: MediaOperationCommandResponse,
     signal?: AbortSignal,
@@ -234,9 +305,11 @@ export function StudioProduct(props: Readonly<{
     setRecoveryRevision((current) => current + 1)
     return reconciliation.kind === "terminal"
   }, [client, mergeOperations, recoveryStore, scope])
-  const refresh = async (signal: AbortSignal) => {
-    const page = await client.listOperations({ limit: 50 }, signal)
+  const refresh = async (request: ScopedRequestHandle) => {
+    const page = await client.listOperations({ limit: 50 }, request.signal)
+    if (!request.isCurrent()) return
     mergeOperations(page.items.map(projectPlatformMediaOperationOwnerState))
+    setRecoveryRevision((current) => current + 1)
   }
   useEffect(() => {
     const coordinator = requests.current
@@ -274,7 +347,12 @@ export function StudioProduct(props: Readonly<{
         mergeOperations(operationPage.items.map(projectPlatformMediaOperationOwnerState))
         const first = definitionPage.items[0]
         if (first !== undefined) {
-          const optionPage = await client.listModelOptions(first.definitionRef, { limit: 100 }, request.signal)
+          const optionPage = await client.listModelOptions(
+            first.definitionRef,
+            first.definitionRevisionRef,
+            { limit: 100 },
+            request.signal,
+          )
           if (request.isCurrent()) setOptions(optionPage.items)
         }
       } catch (failure) {
@@ -329,9 +407,14 @@ export function StudioProduct(props: Readonly<{
   }, [client, reconcileCommand, scope])
   useEffect(() => {
     if (!requests.current?.isScopeCurrent(scope)) return
-    commandPoller.current?.setKeys(recoveryStore().list()
-      .map(({ command }) => command.commandId)
-      .filter((commandId) => !contactSupportCommands.current.has(commandId)))
+    try {
+      commandPoller.current?.setKeys(recoveryStore().list()
+        .map(({ command }) => command.commandId)
+        .filter((commandId) => !contactSupportCommands.current.has(commandId)))
+    } catch (failure) {
+      commandPoller.current?.setKeys([])
+      setError(failure instanceof Error ? failure.message : "Command recovery storage is unavailable.")
+    }
   }, [recoveryRevision, recoveryStore, scope])
   useEffect(() => {
     if (quote === null) return
@@ -396,6 +479,6 @@ export function StudioProduct(props: Readonly<{
       const response = await client.cancel(operation.mediaOperationRef, { expectedOwnerVersion: operation.ownerVersion }, command, request.signal)
       await reconcileCommand(response, request.signal)
     })}
-    onRefresh={() => void action("control", ({ signal }) => refresh(signal))}
+    onRefresh={() => void action("control", refresh)}
   />
 }

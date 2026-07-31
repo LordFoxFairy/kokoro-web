@@ -72,6 +72,43 @@ describe("media owner refresh", () => {
 })
 
 describe("visibility-aware bounded poller", () => {
+  test("settles each key so a failed command cannot starve successful reconciliation", async () => {
+    let nextTimer = 0
+    const scheduled = new Map<number, { task: () => void; delayMs: number }>()
+    const environment: PollingEnvironment = {
+      visible: () => true,
+      schedule(task, delayMs) {
+        const id = ++nextTimer
+        scheduled.set(id, { task, delayMs })
+        return id
+      },
+      cancel: (id) => { scheduled.delete(id) },
+      observeVisibility: () => () => undefined,
+    }
+    const onValues = vi.fn()
+    const onFailure = vi.fn()
+    const poller = createVisibilityAwarePoller({
+      environment,
+      fetchValue: (key) => key === "bad" ? Promise.reject(new Error("bad command")) : Promise.resolve(key),
+      onValues,
+      onFailure,
+      initialDelayMs: 100,
+      maximumDelayMs: 400,
+      concurrency: 2,
+    })
+
+    poller.setKeys(["good", "bad"])
+    const first = [...scheduled.entries()][0]
+    if (first === undefined) throw new Error("missing poll")
+    scheduled.delete(first[0])
+    first[1].task()
+
+    await vi.waitFor(() => expect(onValues).toHaveBeenCalledWith(["good"], expect.any(AbortSignal)))
+    expect(onFailure).toHaveBeenCalledOnce()
+    await vi.waitFor(() => expect([...scheduled.values()].map(({ delayMs }) => delayMs)).toEqual([200]))
+    poller.stop()
+  })
+
   test("polls only supplied keys, backs off on failure, and aborts an in-flight read when hidden", async () => {
     let visible = true
     let visibilityListener: () => void = () => undefined

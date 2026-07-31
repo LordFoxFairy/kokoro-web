@@ -74,15 +74,23 @@ export function createVisibilityAwarePoller<Value>(input: Readonly<{
     controller = active
     try {
       const values: Value[] = []
+      const failures: unknown[] = []
       for (let offset = 0; offset < keys.length; offset += concurrency) {
         if (active.signal.aborted || scheduledGeneration !== generation) return
-        values.push(...await Promise.all(
+        const settled = await Promise.allSettled(
           keys.slice(offset, offset + concurrency).map((key) => input.fetchValue(key, active.signal)),
-        ))
+        )
+        for (const result of settled) {
+          if (result.status === "fulfilled") values.push(result.value)
+          else failures.push(result.reason)
+        }
       }
       if (active.signal.aborted || scheduledGeneration !== generation) return
-      const madeProgress = await input.onValues(Object.freeze(values), active.signal)
-      delayMs = madeProgress === false ? Math.min(maximumDelayMs, delayMs * 2) : initialDelayMs
+      const madeProgress = values.length === 0 ? false : await input.onValues(Object.freeze(values), active.signal)
+      for (const failure of failures) input.onFailure(failure)
+      delayMs = failures.length > 0 || madeProgress === false
+        ? Math.min(maximumDelayMs, delayMs * 2)
+        : initialDelayMs
     } catch (error) {
       if (!active.signal.aborted && scheduledGeneration === generation) {
         input.onFailure(error)

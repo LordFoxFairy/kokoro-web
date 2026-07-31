@@ -101,6 +101,52 @@ describe("artifact delivery client", () => {
     })).rejects.toMatchObject({ code: "ARTIFACT_DELIVERY_RANGE_INVALID" })
   })
 
+  test("returns only a canonical owner-sized 416 response and cancels its upstream body", async () => {
+    const body = stream()
+    const cancel = vi.spyOn(body, "cancel")
+    const client = createArtifactDeliveryClient({ transport: { redeem: () => Promise.resolve({
+      status: 416,
+      headers: new Headers({ "content-range": "bytes */32", "content-length": "0", "accept-ranges": "bytes" }),
+      body,
+    }) } })
+    const response = await client.redeem({
+      authorizationRef: "authorization-1",
+      deliveryCapability: "c".repeat(32),
+      deadlineMs: 5_000,
+      signal: new AbortController().signal,
+      expectedByteSize: 32n,
+      expectedMediaType: "image/png",
+      range: { start: 40n, endInclusive: 50n },
+    })
+
+    expect(response).toEqual({
+      status: 416,
+      headers: { "accept-ranges": "bytes", "content-length": "0", "content-range": "bytes */32" },
+      body: null,
+    })
+    expect(cancel).toHaveBeenCalledOnce()
+  })
+
+  test.each(["bytes */31", "bytes 0-0/32", "bytes */*"])("rejects malformed or conflicting 416 range metadata %s", async (contentRange) => {
+    const body = stream()
+    const cancel = vi.spyOn(body, "cancel")
+    const client = createArtifactDeliveryClient({ transport: { redeem: () => Promise.resolve({
+      status: 416,
+      headers: new Headers({ "content-range": contentRange }),
+      body,
+    }) } })
+    await expect(client.redeem({
+      authorizationRef: "authorization-1",
+      deliveryCapability: "c".repeat(32),
+      deadlineMs: 5_000,
+      signal: new AbortController().signal,
+      expectedByteSize: 32n,
+      expectedMediaType: "image/png",
+      range: { start: 40n, endInclusive: 50n },
+    })).rejects.toBeInstanceOf(ArtifactDeliveryProtocolError)
+    expect(cancel).toHaveBeenCalledOnce()
+  })
+
   test.each([
     ["early EOF", Uint8Array.of(1), 2n],
     ["owner-bound overflow", Uint8Array.of(1, 2, 3), 2n],

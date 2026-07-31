@@ -5,6 +5,7 @@ import { LibraryView } from "../src/library-product"
 import {
   createStudioOperationInput,
   isStudioQuoteActive,
+  reconcileStudioDraft,
   StudioView,
 } from "../src/studio-product"
 
@@ -104,6 +105,52 @@ describe("Site media product views", () => {
     expect(createStudioOperationInput({ ...base, candidateCount: 1.5 })).toBeNull()
     expect(createStudioOperationInput({ ...base, candidateCount: 0 })).toBeNull()
     expect(createStudioOperationInput({ ...base, candidateCount: 3 })).toBeNull()
+  })
+
+  test("atomically reconciles all revision-bound controls when the publication changes", () => {
+    const next = reconcileStudioDraft({
+      definitionRevisionRef: "image.text_to_image@1",
+      modelOptionCatalogRevisionRef: "catalog@1",
+      prompt: "A fox",
+      optionRef: "removed@1",
+      aspectRatio: "landscape_16_9",
+      outputFormat: "jpeg",
+      candidateCount: 4,
+      inputRevision: 7,
+    }, {
+      definitionKey: "image.text_to_image@v1",
+      definitionRef: "image.text_to_image",
+      definitionRevisionRef: "image.text_to_image@2",
+      description: "Create an image",
+      kind: "image_text_to_image",
+      maximumCandidateCount: 2,
+      modelOptionCatalogRevisionRef: "catalog@2",
+      promptMaximumUtf8Bytes: 32768,
+      publishedAt: "2026-07-31T00:00:00.000Z",
+      supportedAspectRatios: ["portrait_9_16"],
+      supportedOutputFormats: ["webp"],
+      title: "Image",
+    }, [{
+      availability: "available",
+      badges: [],
+      inputModalities: ["text"],
+      label: "Replacement",
+      modelOptionRevisionRef: "replacement@2",
+      optionKey: "replacement",
+      outputModalities: ["image"],
+      supportedEfforts: [],
+    }])
+
+    expect(next).toEqual({
+      definitionRevisionRef: "image.text_to_image@2",
+      modelOptionCatalogRevisionRef: "catalog@2",
+      prompt: "A fox",
+      optionRef: "replacement@2",
+      aspectRatio: "portrait_9_16",
+      outputFormat: "webp",
+      candidateCount: 2,
+      inputRevision: 8,
+    })
   })
 
   test("renders delivery URLs only for ready versions and typed safe failures otherwise", () => {
