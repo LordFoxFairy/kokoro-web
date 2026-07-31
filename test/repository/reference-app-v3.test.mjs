@@ -42,6 +42,8 @@ test("the independently generated Site template owns the complete Browser v3 pro
   assert.match(studio, /StudioProduct/u)
   assert.match(studio, /enabledSurfaceIds\.includes\("image"\)/u)
   assert.match(library, /LibraryProduct/u)
+  assert.match(library, /browserRuntimeScope/u)
+  assert.match(library, /runtime\.publicBootstrap\.defaultProjectRef/u)
   assert.match(mediaApi, /createSiteMediaApi/u)
   assert.doesNotMatch(page, /apps\/user|HomeGate|SessionShell/u)
 })

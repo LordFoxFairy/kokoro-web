@@ -85,7 +85,7 @@ export function createMediaBrowserClient(input: Readonly<{
     headers: { accept: "application/json" },
     ...(signal === undefined ? {} : { signal }),
   })) as Promise<ResponseType>
-  const control = async <ResponseType>(path: string, body: unknown): Promise<ResponseType> => json(await fetcher(`/api/media${path}`, {
+  const control = async <ResponseType>(path: string, body: unknown, signal?: AbortSignal): Promise<ResponseType> => json(await fetcher(`/api/media${path}`, {
     method: "POST",
     credentials: "same-origin",
     headers: {
@@ -94,25 +94,27 @@ export function createMediaBrowserClient(input: Readonly<{
       "x-kokoro-browser-csrf": input.csrfToken,
     },
     body: JSON.stringify(body),
+    ...(signal === undefined ? {} : { signal }),
   })) as Promise<ResponseType>
   return Object.freeze({
-    listDefinitions: (page: MediaPageQuery): Promise<MediaOperationDefinitionPage> => read(`/definitions${query(page)}`),
-    getDefinition: (definitionRef: string): Promise<MediaOperationDefinitionResponse> => read(`/definitions/${reference(definitionRef)}`),
-    listModelOptions: (definitionRef: string, page: MediaPageQuery): Promise<MediaDefinitionModelOptionPage> => read(`/definitions/${reference(definitionRef)}/model-options${query(page)}`),
-    quote: (operationInput: MediaOperationInput, command: MediaCommandIdentity): Promise<MediaOperationQuoteResponse> => control("/quotes", { command, input: operationInput }),
-    listOperations: (page: MediaPageQuery): Promise<MediaOperationPage> => read(`/operations${query(page)}`),
-    submit: (operationInput: MediaOperationInput, command: MediaCommandIdentity): Promise<MediaOperationCommandResponse> => control("/operations", { command, input: operationInput }),
+    listDefinitions: (page: MediaPageQuery, signal?: AbortSignal): Promise<MediaOperationDefinitionPage> => read(`/definitions${query(page)}`, signal),
+    getDefinition: (definitionRef: string, signal?: AbortSignal): Promise<MediaOperationDefinitionResponse> => read(`/definitions/${reference(definitionRef)}`, signal),
+    listModelOptions: (definitionRef: string, page: MediaPageQuery, signal?: AbortSignal): Promise<MediaDefinitionModelOptionPage> => read(`/definitions/${reference(definitionRef)}/model-options${query(page)}`, signal),
+    quote: (operationInput: MediaOperationInput, command: MediaCommandIdentity, signal?: AbortSignal): Promise<MediaOperationQuoteResponse> => control("/quotes", { command, input: operationInput }, signal),
+    listOperations: (page: MediaPageQuery, signal?: AbortSignal): Promise<MediaOperationPage> => read(`/operations${query(page)}`, signal),
+    submit: (operationInput: MediaOperationInput, command: MediaCommandIdentity, signal?: AbortSignal): Promise<MediaOperationCommandResponse> => control("/operations", { command, input: operationInput }, signal),
     getOperation: (operationRef: string, signal?: AbortSignal): Promise<MediaOperationResponse> => read(`/operations/${reference(operationRef)}`, signal),
     cancel: (
       operationRef: string,
       cancellation: Readonly<{ expectedOwnerVersion: string; reason?: string }>,
       command: MediaCommandIdentity,
-    ): Promise<MediaOperationCommandResponse> => control(`/operations/${reference(operationRef)}/cancel`, { command, ...cancellation }),
+      signal?: AbortSignal,
+    ): Promise<MediaOperationCommandResponse> => control(`/operations/${reference(operationRef)}/cancel`, { command, ...cancellation }, signal),
     recoverCommand: (commandId: string, signal?: AbortSignal): Promise<MediaOperationCommandResponse> => read(`/commands/${reference(commandId)}`, signal),
-    listArtifacts: (page: MediaPageQuery): Promise<BrowserArtifactPage> => read(`/artifacts${query(page)}`),
-    getArtifact: (artifactRef: string): Promise<BrowserArtifactResponse> => read(`/artifacts/${reference(artifactRef)}`),
-    listArtifactVersions: (artifactRef: string, page: MediaPageQuery): Promise<BrowserArtifactVersionPage> => read(`/artifacts/${reference(artifactRef)}/versions${query(page)}`),
-    getArtifactVersion: (artifactRef: string, artifactVersionRef: string): Promise<BrowserArtifactVersionResponse> => read(`/artifacts/${reference(artifactRef)}/versions/${reference(artifactVersionRef)}`),
+    listArtifacts: (page: MediaPageQuery, signal?: AbortSignal): Promise<BrowserArtifactPage> => read(`/artifacts${query(page)}`, signal),
+    getArtifact: (artifactRef: string, signal?: AbortSignal): Promise<BrowserArtifactResponse> => read(`/artifacts/${reference(artifactRef)}`, signal),
+    listArtifactVersions: (artifactRef: string, page: MediaPageQuery, signal?: AbortSignal): Promise<BrowserArtifactVersionPage> => read(`/artifacts/${reference(artifactRef)}/versions${query(page)}`, signal),
+    getArtifactVersion: (artifactRef: string, artifactVersionRef: string, signal?: AbortSignal): Promise<BrowserArtifactVersionResponse> => read(`/artifacts/${reference(artifactRef)}/versions/${reference(artifactVersionRef)}`, signal),
   })
 }
 

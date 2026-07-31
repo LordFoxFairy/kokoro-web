@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 
 import {
   createMediaBrowserClient,
@@ -8,6 +8,10 @@ import {
   type BrowserArtifactVersion,
   type MediaBrowserFetch,
 } from "./browser-client"
+import {
+  createScopedRequestCoordinator,
+  type ScopedRequestHandle,
+} from "./scoped-requests"
 import styles from "./media-product.module.css"
 
 function downloadUrl(contentUrl: string): string {
@@ -62,32 +66,81 @@ export function LibraryView(props: Readonly<{
 export function LibraryProduct(props: Readonly<{
   brandName: string
   csrfToken: string
+  browserRuntimeScope: string
   fetch?: MediaBrowserFetch
 }>) {
+  const scope = props.browserRuntimeScope
   const client = useMemo(() => createMediaBrowserClient({ fetch: props.fetch, csrfToken: props.csrfToken }), [props.fetch, props.csrfToken])
+  const requests = useRef<ReturnType<typeof createScopedRequestCoordinator> | null>(null)
+  if (requests.current === null) requests.current = createScopedRequestCoordinator(scope)
+  const [stateScope, setStateScope] = useState(scope)
   const [artifacts, setArtifacts] = useState<readonly BrowserArtifactSummary[]>([])
   const [versions, setVersions] = useState<readonly BrowserArtifactVersion[]>([])
   const [busy, setBusy] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const refresh = async () => {
-    const page = await client.listArtifacts({ limit: 50 })
-    setArtifacts(page.items)
+  useEffect(() => {
+    const coordinator = requests.current
+    if (coordinator === null) return
+    coordinator.reset(scope)
+    setStateScope(scope)
+    setArtifacts(Object.freeze([]))
+    setVersions(Object.freeze([]))
+    setBusy(true)
+    setError(null)
+    return () => coordinator.invalidate(scope)
+  }, [scope])
+  useEffect(() => {
+    const coordinator = requests.current
+    return () => coordinator?.stop()
+  }, [])
+  const refresh = async (request: ScopedRequestHandle) => {
+    const page = await client.listArtifacts({ limit: 50 }, request.signal)
+    if (request.isCurrent()) setArtifacts(page.items)
   }
-  const action = async (run: () => Promise<void>) => {
+  const action = async (slot: string, run: (request: ScopedRequestHandle) => Promise<void>) => {
+    const coordinator = requests.current
+    if (coordinator === null || !coordinator.isScopeCurrent(scope)) return
+    const request = coordinator.begin(slot, scope)
     setBusy(true); setError(null)
-    try { await run() } catch (failure) { setError(failure instanceof Error ? failure.message : "Library action failed") } finally { setBusy(false) }
+    try {
+      await run(request)
+    } catch (failure) {
+      if (request.isCurrent()) setError(failure instanceof Error ? failure.message : "Library action failed")
+    } finally {
+      const current = request.isCurrent()
+      request.finish()
+      if (current) setBusy(false)
+    }
   }
-  useEffect(() => { void action(refresh) }, [client])
+  useEffect(() => {
+    const coordinator = requests.current
+    if (coordinator === null || !coordinator.isScopeCurrent(scope)) return
+    const request = coordinator.begin("bootstrap", scope)
+    void (async () => {
+      try {
+        await refresh(request)
+      } catch (failure) {
+        if (request.isCurrent()) setError(failure instanceof Error ? failure.message : "Library is unavailable")
+      } finally {
+        const current = request.isCurrent()
+        request.finish()
+        if (current) setBusy(false)
+      }
+    })()
+    return () => request.abort("Library bootstrap changed")
+  }, [client, scope])
+  const visible = stateScope === scope && requests.current.isScopeCurrent(scope)
   return <LibraryView
     brandName={props.brandName}
-    artifacts={artifacts}
-    versions={versions}
-    busy={busy}
-    error={error}
-    onRefresh={() => void action(refresh)}
-    onSelectArtifact={(artifact) => void action(async () => {
-      const page = await client.listArtifactVersions(artifact.artifactRef, { limit: 50 })
-      setVersions(page.items)
+    artifacts={visible ? artifacts : []}
+    versions={visible ? versions : []}
+    busy={visible ? busy : true}
+    error={visible ? error : null}
+    onRefresh={() => void action("refresh", refresh)}
+    onSelectArtifact={(artifact) => void action("selection", async (request) => {
+      setVersions(Object.freeze([]))
+      const page = await client.listArtifactVersions(artifact.artifactRef, { limit: 50 }, request.signal)
+      if (request.isCurrent()) setVersions(page.items)
     })}
   />
 }

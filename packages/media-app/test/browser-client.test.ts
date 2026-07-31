@@ -57,6 +57,47 @@ describe("Site media browser client", () => {
     ])
   })
 
+  test("forwards cancellation to both read and control requests", async () => {
+    const fetch = vi.fn((input: string | URL | Request, init?: RequestInit) => {
+      void input
+      void init
+      return Promise.resolve(new Response(JSON.stringify({
+        items: [],
+        pageInfo: { nextCursor: null },
+      }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }))
+    })
+    const client = createMediaBrowserClient({ fetch, csrfToken: "browser-csrf" })
+    const controller = new AbortController()
+    const command = { commandId: "1".repeat(32), idempotencyKey: "i".repeat(24) }
+    const operationInput = {
+      kind: "image_text_to_image" as const,
+      definitionRevisionRef: "image.text_to_image@1",
+      promptIntent: "A fox beneath the moon",
+      aspectRatio: "square_1_1" as const,
+      candidateCount: 1,
+      modelOptionRevisionRef: "image.safe@1",
+      outputFormat: "png" as const,
+    }
+
+    await client.listDefinitions({ limit: 20 }, controller.signal)
+    await client.quote(operationInput, command, controller.signal)
+    await client.submit(operationInput, command, controller.signal)
+    await client.cancel(
+      "operation-1",
+      { expectedOwnerVersion: "1", reason: "owner requested" },
+      command,
+      controller.signal,
+    )
+    await client.listArtifacts({ limit: 20 }, controller.signal)
+    await client.listArtifactVersions("artifact-1", { limit: 20 }, controller.signal)
+
+    expect(fetch).toHaveBeenCalledTimes(6)
+    for (const [, init] of fetch.mock.calls) expect(init).toEqual(expect.objectContaining({ signal: controller.signal }))
+  })
+
   test("persists only command identity for owner recovery", () => {
     const values = new Map<string, string>()
     const storage = {

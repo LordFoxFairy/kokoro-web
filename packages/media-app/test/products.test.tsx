@@ -2,7 +2,11 @@ import { renderToStaticMarkup } from "react-dom/server"
 import { describe, expect, test, vi } from "vitest"
 
 import { LibraryView } from "../src/library-product"
-import { isStudioQuoteActive, StudioView } from "../src/studio-product"
+import {
+  createStudioOperationInput,
+  isStudioQuoteActive,
+  StudioView,
+} from "../src/studio-product"
 
 describe("Site media product views", () => {
   test("binds a quote to one input revision and its expiry", () => {
@@ -61,6 +65,45 @@ describe("Site media product views", () => {
     expect(html).toContain("Image Safe")
     expect(html).toContain("50%")
     expect(html).toContain("12 credits")
+  })
+
+  test("constructs Studio input only within the published integer candidate range", () => {
+    const definition = {
+      definitionKey: "image.text_to_image@v1" as const,
+      definitionRef: "image.text_to_image" as const,
+      definitionRevisionRef: "image.text_to_image@1",
+      description: "Create an image",
+      kind: "image_text_to_image" as const,
+      maximumCandidateCount: 2,
+      modelOptionCatalogRevisionRef: "catalog@1",
+      promptMaximumUtf8Bytes: 32768 as const,
+      publishedAt: "2026-07-31T00:00:00.000Z",
+      supportedAspectRatios: ["square_1_1" as const],
+      supportedOutputFormats: ["png" as const],
+      title: "Image",
+    }
+    const base = {
+      definition,
+      options: [{
+        availability: "available" as const,
+        badges: [],
+        inputModalities: ["text" as const],
+        label: "Image Safe",
+        modelOptionRevisionRef: "image.safe@1",
+        optionKey: "safe",
+        outputModalities: ["image" as const],
+        supportedEfforts: [],
+      }],
+      optionRef: "image.safe@1",
+      prompt: "A fox beneath the moon",
+      aspectRatio: "square_1_1" as const,
+      outputFormat: "png" as const,
+    }
+
+    expect(createStudioOperationInput({ ...base, candidateCount: 1 })).toEqual(expect.objectContaining({ candidateCount: 1 }))
+    expect(createStudioOperationInput({ ...base, candidateCount: 1.5 })).toBeNull()
+    expect(createStudioOperationInput({ ...base, candidateCount: 0 })).toBeNull()
+    expect(createStudioOperationInput({ ...base, candidateCount: 3 })).toBeNull()
   })
 
   test("renders delivery URLs only for ready versions and typed safe failures otherwise", () => {

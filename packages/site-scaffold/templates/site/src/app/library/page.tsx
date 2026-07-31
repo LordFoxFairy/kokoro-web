@@ -1,7 +1,7 @@
 import { LibraryProduct } from "@kokoro/media-app";
 import { notFound, redirect } from "next/navigation";
 
-import { readOpaqueAuthSession } from "../../auth";
+import { browserRuntimeScope, readOpaqueAuthSession } from "../../auth";
 import { siteBff } from "../../bff";
 import { site } from "../../site-bootstrap";
 
@@ -13,5 +13,9 @@ export default async function LibraryPage() {
   const enabled = runtime.publicBootstrap.enabledSurfaceIds.includes("image") &&
     runtime.publicBootstrap.modelOptionCatalogs.some((catalog) => catalog.surfaceId === "image");
   if (!enabled) notFound();
-  return <LibraryProduct brandName={site.displayName} csrfToken={bff.issueBrowserCsrf()} />;
+  return <LibraryProduct
+    brandName={site.displayName}
+    browserRuntimeScope={browserRuntimeScope(opaque, runtime.publicBootstrap.defaultProjectRef)}
+    csrfToken={bff.issueBrowserCsrf()}
+  />;
 }

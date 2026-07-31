@@ -20,6 +20,10 @@ import {
 import { applyMediaCommandReceipt } from "./command-recovery"
 import { MEDIA_OPERATION_TERMINAL_STATES, mergeMediaOperationOwnerStates } from "./owner-refresh"
 import { projectPlatformMediaOperationOwnerState } from "./owner-projection"
+import {
+  createScopedRequestCoordinator,
+  type ScopedRequestHandle,
+} from "./scoped-requests"
 import { createVisibilityAwarePoller, type VisibilityAwarePoller } from "./visibility-poller"
 import styles from "./media-product.module.css"
 
@@ -38,6 +42,10 @@ export function isStudioQuoteActive(
   return quote !== null && quote.inputRevision === inputRevision && Date.parse(quote.expiresAt) > now
 }
 
+function wasAborted(signal: AbortSignal | undefined): boolean {
+  return signal?.aborted ?? false
+}
+
 function stateLabel(state: MediaOperationOwnerState["state"]): string {
   switch (state) {
     case "admission_pending": return "Checking admission"
@@ -52,6 +60,41 @@ function stateLabel(state: MediaOperationOwnerState["state"]): string {
     case "failed": return "Failed"
     case "canceled": return "Canceled"
   }
+}
+
+export function createStudioOperationInput(input: Readonly<{
+  definition: OperationDefinition | undefined
+  options: readonly PublishedModelOption[]
+  optionRef: string
+  prompt: string
+  aspectRatio: ImageAspectRatio
+  outputFormat: ImageOutputFormat
+  candidateCount: number
+}>): MediaOperationInput | null {
+  const { definition } = input
+  const prompt = input.prompt.trim()
+  if (
+    definition?.kind !== "image_text_to_image" ||
+    prompt === "" ||
+    new TextEncoder().encode(prompt).byteLength > definition.promptMaximumUtf8Bytes ||
+    !input.options.some(({ availability, modelOptionRevisionRef }) => (
+      availability === "available" && modelOptionRevisionRef === input.optionRef
+    )) ||
+    !definition.supportedAspectRatios.includes(input.aspectRatio) ||
+    !definition.supportedOutputFormats.includes(input.outputFormat) ||
+    !Number.isInteger(input.candidateCount) ||
+    input.candidateCount < 1 ||
+    input.candidateCount > definition.maximumCandidateCount
+  ) return null
+  return Object.freeze({
+    kind: definition.kind,
+    definitionRevisionRef: definition.definitionRevisionRef,
+    promptIntent: prompt,
+    aspectRatio: input.aspectRatio,
+    candidateCount: input.candidateCount,
+    modelOptionRevisionRef: input.optionRef,
+    outputFormat: input.outputFormat,
+  })
 }
 
 export function StudioView(props: Readonly<{
@@ -75,17 +118,15 @@ export function StudioView(props: Readonly<{
   const [outputFormat, setOutputFormat] = useState<ImageOutputFormat>("png")
   const [candidateCount, setCandidateCount] = useState(1)
   const [inputRevision, setInputRevision] = useState(0)
-  const operationInput = (): MediaOperationInput | null => definition?.kind === "image_text_to_image" && optionRef !== "" && prompt.trim() !== ""
-    ? {
-        kind: definition.kind,
-        definitionRevisionRef: definition.definitionRevisionRef,
-        promptIntent: prompt.trim(),
-        aspectRatio,
-        candidateCount,
-        modelOptionRevisionRef: optionRef,
-        outputFormat,
-      }
-    : null
+  const operationInput = (): MediaOperationInput | null => createStudioOperationInput({
+    definition,
+    options: props.options,
+    optionRef,
+    prompt,
+    aspectRatio,
+    outputFormat,
+    candidateCount,
+  })
   const changed = () => {
     setInputRevision((current) => current + 1)
     props.onInputChanged?.()
@@ -117,7 +158,7 @@ export function StudioView(props: Readonly<{
           <label>Format<select value={outputFormat} onChange={(event) => { setOutputFormat(event.target.value as ImageOutputFormat); changed() }}>
             {(definition?.kind === "image_text_to_image" ? definition.supportedOutputFormats : ["png"] as const).map((value) => <option key={value} value={value}>{value.toUpperCase()}</option>)}
           </select></label>
-          <label>Candidates<input min={1} max={definition?.kind === "image_text_to_image" ? definition.maximumCandidateCount : 1} type="number" value={candidateCount} onChange={(event) => { setCandidateCount(Number(event.target.value)); changed() }} /></label>
+          <label>Candidates<input min={1} max={definition?.kind === "image_text_to_image" ? definition.maximumCandidateCount : 1} step={1} type="number" value={candidateCount} onChange={(event) => { setCandidateCount(Number(event.target.value)); changed() }} /></label>
         </div>
         <div className={styles.quoteBand}>
           {activeQuote === null ? <span>Quote required before submission</span> : <span><strong>{activeQuote.amount} {activeQuote.creditUnit}</strong><small>Non-binding · expires {new Date(activeQuote.expiresAt).toLocaleTimeString()}</small></span>}
@@ -143,7 +184,11 @@ export function StudioProduct(props: Readonly<{
   browserRuntimeScope: string
   fetch?: MediaBrowserFetch
 }>) {
+  const scope = props.browserRuntimeScope
   const client = useMemo(() => createMediaBrowserClient({ fetch: props.fetch, csrfToken: props.csrfToken }), [props.fetch, props.csrfToken])
+  const requests = useRef<ReturnType<typeof createScopedRequestCoordinator> | null>(null)
+  if (requests.current === null) requests.current = createScopedRequestCoordinator(scope)
+  const [stateScope, setStateScope] = useState(scope)
   const [definitions, setDefinitions] = useState<readonly OperationDefinition[]>([])
   const [options, setOptions] = useState<readonly PublishedModelOption[]>([])
   const [operations, setOperations] = useState<readonly MediaOperationOwnerState[]>([])
@@ -157,25 +202,28 @@ export function StudioProduct(props: Readonly<{
   const commandPoller = useRef<VisibilityAwarePoller | null>(null)
   const contactSupportCommands = useRef(new Set<string>())
   const mergeOperations = useCallback((updates: readonly MediaOperationOwnerState[]) => {
+    if (!requests.current?.isScopeCurrent(scope)) return false
     const merged = mergeMediaOperationOwnerStates(operationSnapshot.current, updates)
     if (merged === operationSnapshot.current) return false
     operationSnapshot.current = merged
     setOperations(merged)
     return true
-  }, [])
+  }, [scope])
   const recoveryStore = useCallback(() => createMediaCommandRecoveryStore({
     storage: window.localStorage,
-    scope: props.browserRuntimeScope,
-  }), [props.browserRuntimeScope])
+    scope,
+  }), [scope])
   const reconcileCommand = useCallback(async (
     response: MediaOperationCommandResponse,
     signal?: AbortSignal,
   ): Promise<boolean> => {
+    if (wasAborted(signal) || !requests.current?.isScopeCurrent(scope)) return false
     const recovery = recoveryStore()
     const reconciliation = applyMediaCommandReceipt(recovery, response.receipt)
     if (response.operation !== null) mergeOperations([projectPlatformMediaOperationOwnerState(response.operation)])
     if (reconciliation.kind === "get_operation") {
       const owner = await client.getOperation(reconciliation.operationRef, signal)
+      if (wasAborted(signal) || !requests.current?.isScopeCurrent(scope)) return false
       mergeOperations([projectPlatformMediaOperationOwnerState(owner.operation)])
     } else if (reconciliation.kind === "contact_support") {
       contactSupportCommands.current.add(response.receipt.commandId)
@@ -185,49 +233,76 @@ export function StudioProduct(props: Readonly<{
     }
     setRecoveryRevision((current) => current + 1)
     return reconciliation.kind === "terminal"
-  }, [client, mergeOperations, recoveryStore])
-  const refresh = async () => {
-    const page = await client.listOperations({ limit: 50 })
+  }, [client, mergeOperations, recoveryStore, scope])
+  const refresh = async (signal: AbortSignal) => {
+    const page = await client.listOperations({ limit: 50 }, signal)
     mergeOperations(page.items.map(projectPlatformMediaOperationOwnerState))
   }
   useEffect(() => {
-    let active = true
+    const coordinator = requests.current
+    if (coordinator === null) return
+    coordinator.reset(scope)
+    operationSnapshot.current = Object.freeze([])
+    contactSupportCommands.current.clear()
+    quoteRequest.current += 1
+    setStateScope(scope)
+    setDefinitions(Object.freeze([]))
+    setOptions(Object.freeze([]))
+    setOperations(Object.freeze([]))
+    setQuote(null)
+    setBusy(true)
+    setError(null)
+    setRecoveryRevision(0)
+    return () => coordinator.invalidate(scope)
+  }, [scope])
+  useEffect(() => {
+    const coordinator = requests.current
+    return () => coordinator?.stop()
+  }, [])
+  useEffect(() => {
+    const coordinator = requests.current
+    if (coordinator === null || !coordinator.isScopeCurrent(scope)) return
+    const request = coordinator.begin("bootstrap", scope)
     void (async () => {
       try {
         const [definitionPage, operationPage] = await Promise.all([
-          client.listDefinitions({ limit: 50 }),
-          client.listOperations({ limit: 50 }),
+          client.listDefinitions({ limit: 50 }, request.signal),
+          client.listOperations({ limit: 50 }, request.signal),
         ])
-        if (!active) return
+        if (!request.isCurrent()) return
         setDefinitions(definitionPage.items)
         mergeOperations(operationPage.items.map(projectPlatformMediaOperationOwnerState))
         const first = definitionPage.items[0]
         if (first !== undefined) {
-          const optionPage = await client.listModelOptions(first.definitionRef, { limit: 100 })
-          if (active) setOptions(optionPage.items)
+          const optionPage = await client.listModelOptions(first.definitionRef, { limit: 100 }, request.signal)
+          if (request.isCurrent()) setOptions(optionPage.items)
         }
       } catch (failure) {
-        if (active) setError(failure instanceof Error ? failure.message : "Studio is unavailable")
+        if (request.isCurrent()) setError(failure instanceof Error ? failure.message : "Studio is unavailable")
       } finally {
-        if (active) setBusy(false)
+        const current = request.isCurrent()
+        request.finish()
+        if (current) setBusy(false)
       }
     })()
-    return () => { active = false }
-  }, [client, mergeOperations, props.browserRuntimeScope])
+    return () => request.abort("Studio bootstrap changed")
+  }, [client, mergeOperations, scope])
   useEffect(() => {
     const poller = createVisibilityAwarePoller({
       fetchValue: async (operationRef, signal) => (await client.getOperation(operationRef, signal)).operation,
       onValues(values) {
         return mergeOperations(values.map(projectPlatformMediaOperationOwnerState))
       },
-      onFailure: () => setError("Live media updates are temporarily delayed."),
+      onFailure: () => {
+        if (requests.current?.isScopeCurrent(scope)) setError("Live media updates are temporarily delayed.")
+      },
     })
     operationPoller.current = poller
     return () => {
       poller.stop()
       if (operationPoller.current === poller) operationPoller.current = null
     }
-  }, [client, mergeOperations])
+  }, [client, mergeOperations, scope])
   useEffect(() => {
     operationPoller.current?.setKeys(operations
       .filter(({ state }) => !MEDIA_OPERATION_TERMINAL_STATES.has(state))
@@ -240,7 +315,9 @@ export function StudioProduct(props: Readonly<{
         const terminal = await Promise.all(values.map((response) => reconcileCommand(response, signal)))
         return terminal.every(Boolean)
       },
-      onFailure: () => setError("Command outcome reconciliation is temporarily delayed."),
+      onFailure: () => {
+        if (requests.current?.isScopeCurrent(scope)) setError("Command outcome reconciliation is temporarily delayed.")
+      },
       initialDelayMs: 1_500,
       maximumDelayMs: 24_000,
     })
@@ -249,12 +326,13 @@ export function StudioProduct(props: Readonly<{
       poller.stop()
       if (commandPoller.current === poller) commandPoller.current = null
     }
-  }, [client, reconcileCommand])
+  }, [client, reconcileCommand, scope])
   useEffect(() => {
+    if (!requests.current?.isScopeCurrent(scope)) return
     commandPoller.current?.setKeys(recoveryStore().list()
       .map(({ command }) => command.commandId)
       .filter((commandId) => !contactSupportCommands.current.has(commandId)))
-  }, [recoveryRevision, recoveryStore])
+  }, [recoveryRevision, recoveryStore, scope])
   useEffect(() => {
     if (quote === null) return
     const remaining = Date.parse(quote.expiresAt) - Date.now()
@@ -265,46 +343,59 @@ export function StudioProduct(props: Readonly<{
     const timer = window.setTimeout(() => setQuote(null), Math.min(remaining, 2_147_483_647))
     return () => window.clearTimeout(timer)
   }, [quote])
-  const action = async (run: () => Promise<void>) => {
+  const action = async (slot: string, run: (request: ScopedRequestHandle) => Promise<void>) => {
+    const coordinator = requests.current
+    if (coordinator === null || !coordinator.isScopeCurrent(scope)) return
+    const request = coordinator.begin(slot, scope)
     setBusy(true); setError(null)
-    try { await run() } catch (failure) { setError(failure instanceof Error ? failure.message : "Studio action failed") } finally { setBusy(false) }
+    try {
+      await run(request)
+    } catch (failure) {
+      if (request.isCurrent()) setError(failure instanceof Error ? failure.message : "Studio action failed")
+    } finally {
+      const current = request.isCurrent()
+      request.finish()
+      if (current) setBusy(false)
+    }
   }
+  const visible = stateScope === scope && requests.current.isScopeCurrent(scope)
   return <StudioView
+    key={scope}
     brandName={props.brandName}
-    definitions={definitions}
-    options={options}
-    operations={operations}
-    quote={quote}
-    busy={busy}
-    error={error}
+    definitions={visible ? definitions : []}
+    options={visible ? options : []}
+    operations={visible ? operations : []}
+    quote={visible ? quote : null}
+    busy={visible ? busy : true}
+    error={visible ? error : null}
     onInputChanged={() => {
       quoteRequest.current += 1
       setQuote(null)
     }}
-    onQuote={(operationInput, inputRevision) => void action(async () => {
-      const request = ++quoteRequest.current
-      const response = await client.quote(operationInput, createMediaCommandIdentity())
-      if (request === quoteRequest.current) {
+    onQuote={(operationInput, inputRevision) => void action("control", async (request) => {
+      const quoteGeneration = ++quoteRequest.current
+      const response = await client.quote(operationInput, createMediaCommandIdentity(), request.signal)
+      if (request.isCurrent() && quoteGeneration === quoteRequest.current) {
         setQuote({ ...response.quote.estimate, expiresAt: response.quote.expiresAt, inputRevision })
       }
     })}
-    onSubmit={(operationInput) => void action(async () => {
+    onSubmit={(operationInput) => void action("control", async (request) => {
       const command = createMediaCommandIdentity()
       const recovery = recoveryStore()
       recovery.remember({ kind: "submit", command, createdAt: new Date().toISOString() })
       setRecoveryRevision((current) => current + 1)
-      const response = await client.submit(operationInput, command)
-      await reconcileCommand(response)
-      setQuote(null)
+      const response = await client.submit(operationInput, command, request.signal)
+      await reconcileCommand(response, request.signal)
+      if (request.isCurrent()) setQuote(null)
     })}
-    onCancel={(operation) => void action(async () => {
+    onCancel={(operation) => void action("control", async (request) => {
       const command = createMediaCommandIdentity()
       const recovery = recoveryStore()
       recovery.remember({ kind: "cancel", command, createdAt: new Date().toISOString() })
       setRecoveryRevision((current) => current + 1)
-      const response = await client.cancel(operation.mediaOperationRef, { expectedOwnerVersion: operation.ownerVersion }, command)
-      await reconcileCommand(response)
+      const response = await client.cancel(operation.mediaOperationRef, { expectedOwnerVersion: operation.ownerVersion }, command, request.signal)
+      await reconcileCommand(response, request.signal)
     })}
-    onRefresh={() => void action(refresh)}
+    onRefresh={() => void action("control", ({ signal }) => refresh(signal))}
   />
 }
