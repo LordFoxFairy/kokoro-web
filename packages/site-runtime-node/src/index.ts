@@ -20,10 +20,18 @@ import type {
   SiteDeploymentBinding,
 } from "@kokoro/bff-runtime";
 import type {
+  ArtifactDeliveryTransport,
   PlatformPublicOperationId,
   PlatformPublicRequest,
   PlatformPublicTransport,
 } from "@kokoro/site-client/server";
+import { createNodeArtifactDeliveryTransport } from "./artifact-delivery-transport.js";
+
+export {
+  createNodeArtifactDeliveryTransport,
+  NodeArtifactDeliveryTransportError,
+  type NodeArtifactDeliveryOpenRequest,
+} from "./artifact-delivery-transport.js";
 
 const PLATFORM_BODY_LIMIT = 2 * 1024 * 1024;
 const SECRET_FILE_LIMIT = 1024 * 1024;
@@ -53,6 +61,7 @@ export interface NodeSiteRuntimeTls {
 
 export interface NodeSiteRuntimeProvider {
   platformTransport(input: Readonly<{ binding: SiteDeploymentBinding; authSession?: OpaqueAuthSession }>): PlatformPublicTransport;
+  artifactDeliveryTransport(input: Readonly<{ binding: SiteDeploymentBinding }>): ArtifactDeliveryTransport;
   sessionHttp(input: Readonly<{ binding: SiteDeploymentBinding }>): AuthenticatedSessionBrowserV3HttpPort;
   platformCsrfToken(): string;
   issueBrowserCsrf(): string;
@@ -371,6 +380,17 @@ export function createNodeSiteRuntimeProvider(input: Readonly<{
           return Object.freeze({ status: response.statusCode ?? 502, body: await boundedJson(response, input.config.upstreamTimeoutMs) });
         },
       }) as PlatformPublicTransport;
+    },
+    artifactDeliveryTransport(runtimeInput) {
+      return createNodeArtifactDeliveryTransport({
+        binding: runtimeInput.binding,
+        maximumTimeoutMs: input.config.upstreamTimeoutMs,
+        open: (request) => openHttps({
+          origin: input.config.platformOrigin,
+          agent,
+          ...request,
+        }),
+      });
     },
     sessionHttp(runtimeInput) {
       const { binding } = runtimeInput;

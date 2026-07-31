@@ -2,9 +2,12 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import { bootstrapSiteRuntimeFromOpaqueSession, createOriginCsrfBrowserRequestVerifier, createSessionBrowserV3Proxy, createSessionBrowserV3Transport, loadSiteDeploymentBinding, ProductContextManager, SessionAccessManager, publicSiteBootstrap, } from "@kokoro/bff-runtime";
 import { createPlatformPublicClient, } from "@kokoro/site-client/server";
+import { createSiteMediaAuthority } from "./media-authority.js";
 export { createLaunchStateVault } from "./launch-state.js";
 export { createSiteLaunchApi, SITE_LAUNCH_STATE_COOKIE } from "./launch-api.js";
 export { createSiteAssetApi } from "./asset-api.js";
+export { createSiteMediaApi } from "./media-api.js";
+export { SiteArtifactAvailabilityError, } from "./media-authority.js";
 export { createSiteSessionApi } from "./session-api.js";
 export class SiteBffError extends Error {
     code;
@@ -154,7 +157,7 @@ export function createSiteBffRuntime(input) {
             }),
         });
     };
-    const assetProject = async (authSession) => {
+    const projectAuthority = async (authSession) => {
         const resolved = await resolveSite(authSession);
         return Object.freeze({
             platform: authenticatedClient(authSession),
@@ -291,7 +294,7 @@ export function createSiteBffRuntime(input) {
             });
         },
         async createAssetUploadIntent(authSession, uploadInput, commandIdentity) {
-            const { platform, projectRef } = await assetProject(authSession);
+            const { platform, projectRef } = await projectAuthority(authSession);
             return platform.execute({
                 operationId: "createAssetUploadIntent",
                 data: { path: { projectRef }, body: uploadInput },
@@ -299,7 +302,7 @@ export function createSiteBffRuntime(input) {
             });
         },
         async completeAssetUpload(authSession, intentRef, completion, commandIdentity) {
-            const { platform, projectRef } = await assetProject(authSession);
+            const { platform, projectRef } = await projectAuthority(authSession);
             return platform.execute({
                 operationId: "completeAssetUpload",
                 data: { path: { projectRef, intentRef }, body: completion },
@@ -307,17 +310,25 @@ export function createSiteBffRuntime(input) {
             });
         },
         async getAssetUploadStatus(authSession, intentRef) {
-            const { platform, projectRef } = await assetProject(authSession);
+            const { platform, projectRef } = await projectAuthority(authSession);
             return platform.execute({
                 operationId: "getAssetUploadStatus",
                 data: { path: { projectRef, intentRef } },
             });
         },
         async recoverAssetUploadCommand(authSession, commandId) {
-            const { platform, projectRef } = await assetProject(authSession);
+            const { platform, projectRef } = await projectAuthority(authSession);
             return platform.execute({
                 operationId: "recoverAssetUploadCommand",
                 data: { path: { projectRef, commandId } },
+            });
+        },
+        async media(authSession) {
+            const { platform, projectRef } = await projectAuthority(authSession);
+            return createSiteMediaAuthority({
+                platform,
+                projectRef,
+                deliveryTransport: input.provider.artifactDeliveryTransport({ binding: input.binding }),
             });
         },
         accountProducts(authSession) {

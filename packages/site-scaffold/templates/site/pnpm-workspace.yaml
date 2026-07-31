@@ -11,6 +11,7 @@ overrides:
   "@kokoro/chat-app": "file:vendor/chat-app.tgz"
   "@kokoro/site-bff": "file:vendor/site-bff.tgz"
   "@kokoro/account-app": "file:vendor/account-app.tgz"
+  "@kokoro/media-app": "file:vendor/media-app.tgz"
   baseline-browser-mapping: 2.10.41
   caniuse-lite: 1.0.30001800
   brace-expansion@<1.1.16: 1.1.16

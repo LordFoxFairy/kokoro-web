@@ -5,6 +5,8 @@ Platform Public client, `bff-runtime` trust kernel, generated Session Browser v3
 registered node transport provider. It never accepts a Host-derived Site, raw backend URL, browser
 credential, or a caller-selected purpose grant.
 
+Studio and Library use the exact allowlisted media/artifact composition, never a generic Platform proxy. The BFF resolves the Site's current project on the server for definitions, published model options, quote, submit, cancel, recover, operation reads, and artifact/version reads. Artifact content exists only for an exact ready owner version: the BFF verifies readiness, issues and immediately redeems a one-time capability on the server, validates owner byte size and Range metadata, and streams only the strict safe header allowlist. Delivery capability and Platform URL never enter browser JSON, React props, redirects, or content URLs.
+
 Auth.js owns the Site-local encrypted cookie and browser authentication ceremony. This package exchanges
 credentials with Platform and resolves authoritative actor claims on every runtime bootstrap. Only the
 browser-safe bootstrap projection may cross into React props or JSON responses.

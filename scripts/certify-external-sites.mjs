@@ -111,6 +111,7 @@ async function main() {
     await run(pnpm, ["--filter", "@kokoro/chat-app", "build"], webRoot);
     await run(pnpm, ["--filter", "@kokoro/site-bff", "build"], webRoot);
     await run(pnpm, ["--filter", "@kokoro/account-app", "build"], webRoot);
+    await run(pnpm, ["--filter", "@kokoro/media-app", "build"], webRoot);
     await run(pnpm, ["--filter", "@kokoro/site-scaffold", "build"], webRoot);
     const packages = await Promise.all([
       pack("@kokoro/site-app-kit", packageDirectory),
@@ -123,6 +124,7 @@ async function main() {
       pack("@kokoro/chat-app", packageDirectory),
       pack("@kokoro/site-bff", packageDirectory),
       pack("@kokoro/account-app", packageDirectory),
+      pack("@kokoro/media-app", packageDirectory),
     ]);
     const packageArtifacts = Object.fromEntries(packages.map((entry) => [entry.name, entry.sha256]));
 

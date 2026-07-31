@@ -41,6 +41,10 @@
     "@kokoro/account-app": {
       "version": __ACCOUNT_APP_VERSION_JSON__,
       "sha256": __ACCOUNT_APP_SHA256_JSON__
+    },
+    "@kokoro/media-app": {
+      "version": __MEDIA_APP_VERSION_JSON__,
+      "sha256": __MEDIA_APP_SHA256_JSON__
     }
   }
 }

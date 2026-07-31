@@ -26,7 +26,8 @@ async function createPackageArtifact(
     | "@kokoro/asset-client"
     | "@kokoro/chat-app"
     | "@kokoro/site-bff"
-    | "@kokoro/account-app",
+    | "@kokoro/account-app"
+    | "@kokoro/media-app",
 ) {
   const source = join(root, `${archiveName}-source`);
   await mkdir(join(source, "package"), { recursive: true });
@@ -59,6 +60,7 @@ describe("independent Site project scaffold", () => {
       await createPackageArtifact(root, "chat-app", "@kokoro/chat-app"),
       await createPackageArtifact(root, "site-bff", "@kokoro/site-bff"),
       await createPackageArtifact(root, "account-app", "@kokoro/account-app"),
+      await createPackageArtifact(root, "media-app", "@kokoro/media-app"),
     ] as const;
     const floor = {
       contract: "platform-public-v1" as const,
@@ -112,6 +114,10 @@ describe("independent Site project scaffold", () => {
     expect(alpha.generatedFiles).toContain("Dockerfile");
     expect(alpha.generatedFiles).toContain("src/app/api/health/live/route.ts");
     expect(alpha.generatedFiles).toContain("src/app/api/health/ready/route.ts");
+    expect(alpha.generatedFiles).toContain("src/app/api/media/[[...path]]/route.ts");
+    expect(alpha.generatedFiles).toContain("src/app/studio/page.tsx");
+    expect(alpha.generatedFiles).toContain("src/app/library/page.tsx");
+    expect(alpha.generatedFiles).toContain("vendor/media-app.tgz");
     expect(beta.generatedFiles).toContain("deploy/artifact-manifest.json");
 
     const occupied = join(root, "occupied");

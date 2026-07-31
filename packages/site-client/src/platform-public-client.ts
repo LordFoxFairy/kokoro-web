@@ -196,12 +196,20 @@ export function createPlatformPublicClient(options: PlatformPublicClientOptions)
     readonly idempotencyKey?: string;
     /** Used only for the capability alternative on anonymous receipt lookup. */
     readonly receiptRecoveryCapability?: string;
+    /** Generated canonical caller-intent digest, accepted only by media submission. */
+    readonly callerRequestFingerprint?: string;
   }): Promise<PlatformPublicOperationResponseMap[Operation]> {
     const definition = PLATFORM_PUBLIC_OPERATIONS[input.operationId];
     assertDataShape(input.operationId, input.data);
+    if (input.callerRequestFingerprint !== undefined && input.operationId !== "submitMediaOperation") {
+      throw new PlatformPublicInputError(input.operationId, "headers");
+    }
     const headers: Record<string, string> = {
       "Kokoro-Contract-Version": PLATFORM_PUBLIC_CONTRACT_METADATA.contractVersion,
       ...(input.idempotencyKey === undefined ? {} : { "Idempotency-Key": input.idempotencyKey }),
+      ...(input.callerRequestFingerprint === undefined ? {} : {
+        "X-Kokoro-Caller-Request-Fingerprint": input.callerRequestFingerprint,
+      }),
     };
     if (definition.mutation) {
       headers["X-CSRF-Token"] = options.csrfToken();

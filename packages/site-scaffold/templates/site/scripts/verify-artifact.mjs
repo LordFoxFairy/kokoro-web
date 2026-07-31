@@ -18,6 +18,7 @@ assert.match(artifact.packages["@kokoro/asset-client"].sha256, /^[0-9a-f]{64}$/u
 assert.match(artifact.packages["@kokoro/chat-app"].sha256, /^[0-9a-f]{64}$/u);
 assert.match(artifact.packages["@kokoro/site-bff"].sha256, /^[0-9a-f]{64}$/u);
 assert.match(artifact.packages["@kokoro/account-app"].sha256, /^[0-9a-f]{64}$/u);
+assert.match(artifact.packages["@kokoro/media-app"].sha256, /^[0-9a-f]{64}$/u);
 assert.equal(
   createHash("sha256").update(await readFile("vendor/site-app-kit.tgz")).digest("hex"),
   artifact.packages["@kokoro/site-app-kit"].sha256,
@@ -57,6 +58,10 @@ assert.equal(
 assert.equal(
   createHash("sha256").update(await readFile("vendor/account-app.tgz")).digest("hex"),
   artifact.packages["@kokoro/account-app"].sha256,
+);
+assert.equal(
+  createHash("sha256").update(await readFile("vendor/media-app.tgz")).digest("hex"),
+  artifact.packages["@kokoro/media-app"].sha256,
 );
 assert.equal(floor.contract, "platform-public-v1");
 assert.equal(floor.version, "1");

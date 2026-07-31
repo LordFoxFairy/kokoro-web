@@ -6,11 +6,13 @@ type PartPayload<Kind extends MessagePartEnvelope["kind"]> =
 type ContractMediaCandidate = PartPayload<"media-operation">["candidates"][number]
 type ContractMediaFailure = Extract<ContractMediaCandidate, { readonly state: "failed" }>["safe_failure"]
 
-export type ChatMediaFailure = Readonly<{
+export type MediaFailure = Readonly<{
   code: ContractMediaFailure["code"]
   retryClass: ContractMediaFailure["retry_class"]
   safeMessage?: string
 }>
+
+export type ChatMediaFailure = MediaFailure
 
 type ChatMediaCandidateBase = Readonly<{
   candidateRef: string
@@ -23,7 +25,7 @@ type ChatMediaCandidatePlainState = Exclude<
   "ready" | "restricted" | "failed"
 >
 
-export type ChatMediaCandidate =
+export type MediaCandidate =
   | (ChatMediaCandidateBase & Readonly<{ state: ChatMediaCandidatePlainState }>)
   | (ChatMediaCandidateBase & Readonly<{
       state: "ready"
@@ -34,6 +36,8 @@ export type ChatMediaCandidate =
       state: "restricted" | "failed"
       failure: ChatMediaFailure
     }>)
+
+export type ChatMediaCandidate = MediaCandidate
 
 export type ChatCostProjectionLink = Readonly<{
   costProjectionRef: string
@@ -57,7 +61,7 @@ type ChatMediaOperationNonterminalState = Exclude<
   "completed" | "partial" | "failed" | "canceled"
 >
 
-export type ChatMediaOperationOwnerState =
+export type MediaOperationOwnerState =
   | (ChatMediaOperationBase & Readonly<{ state: ChatMediaOperationNonterminalState }>)
   | (ChatMediaOperationBase & Readonly<{
       state: "completed" | "partial" | "canceled"
@@ -69,6 +73,8 @@ export type ChatMediaOperationOwnerState =
       failure: ChatMediaFailure
     }>)
 
+export type ChatMediaOperationOwnerState = MediaOperationOwnerState
+
 export type ChatArtifactImageDisplay = Readonly<{
   format: "png" | "jpeg" | "webp"
   width: number
@@ -76,53 +82,57 @@ export type ChatArtifactImageDisplay = Readonly<{
   byteSize: string
 }>
 
-type ChatArtifactBase = Readonly<{
+type ArtifactBase = Readonly<{
   artifactRef: string
   artifactVersionRef: string
   ownerVersion: string
   mediaClass: "image"
-  updatedAt: string
 }>
 
-export type ChatArtifactOwnerState =
-  | (ChatArtifactBase & Readonly<{ availability: "processing" | "deleted" }>)
-  | (ChatArtifactBase & Readonly<{
+export type ArtifactOwnerState =
+  | (ArtifactBase & Readonly<{ availability: "processing" | "deleted" }>)
+  | (ArtifactBase & Readonly<{
       availability: "ready"
       display: ChatArtifactImageDisplay
     }>)
-  | (ChatArtifactBase & Readonly<{
+  | (ArtifactBase & Readonly<{
       availability: "restricted" | "unavailable"
       failure: ChatMediaFailure
     }>)
+
+export type ChatArtifactOwnerState = ArtifactOwnerState & Readonly<{ updatedAt: string }>
 
 export type ChatCreditCostAmount = Readonly<{
   creditUnit: string
   amount: string
 }>
 
-type ChatCostBase = Readonly<{
-  mediaOperationRef: string
+type CostBase = Readonly<{
   costProjectionRef: string
   ownerVersion: string
   freshness: PartPayload<"cost">["freshness"]
-  updatedAt: string
 }>
 
-export type ChatCostOwnerState =
-  | (ChatCostBase & Readonly<{ state: "pending" }>)
-  | (ChatCostBase & Readonly<{
+export type CreditCostOwnerState =
+  | (CostBase & Readonly<{ state: "pending" }>)
+  | (CostBase & Readonly<{
       state: "estimated" | "final"
       amount: ChatCreditCostAmount
     }>)
-  | (ChatCostBase & Readonly<{
+  | (CostBase & Readonly<{
       state: "corrected"
       correctsOwnerVersion: string
       amount: ChatCreditCostAmount
     }>)
-  | (ChatCostBase & Readonly<{
+  | (CostBase & Readonly<{
       state: "unavailable"
       safeReason: string
     }>)
+
+export type ChatCostOwnerState = CreditCostOwnerState & Readonly<{
+  mediaOperationRef: string
+  updatedAt: string
+}>
 
 export type OwnerTransitionConflict =
   | "owner_identity_conflict"

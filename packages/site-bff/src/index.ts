@@ -41,12 +41,19 @@ import type {
   VerificationActivationResponse,
 } from "@kokoro/site-client"
 import type { NodeSiteRuntimeProvider } from "@kokoro/site-runtime-node"
+import { createSiteMediaAuthority, type SiteMediaAuthority } from "./media-authority.js"
 
 export { createLaunchStateVault } from "./launch-state.js"
 export type { LaunchCommandState, LaunchOperation, LaunchStateBinding, LaunchStateVault, SecurityLaunchState } from "./launch-state.js"
 export { createSiteLaunchApi, SITE_LAUNCH_STATE_COOKIE } from "./launch-api.js"
 export type { SiteLaunchApi } from "./launch-api.js"
 export { createSiteAssetApi } from "./asset-api.js"
+export { createSiteMediaApi, type SiteMediaApi } from "./media-api.js"
+export {
+  SiteArtifactAvailabilityError,
+  type SiteMediaAuthority,
+  type SiteMediaPageQuery,
+} from "./media-authority.js"
 export { createSiteSessionApi, type SiteSessionApi, type SiteSessionApiRuntime } from "./session-api.js"
 export type { BrowserAssetUpload, BrowserAttachmentRef, SiteAssetApi } from "./asset-api.js"
 
@@ -138,6 +145,7 @@ export interface SiteBffRuntime {
   completeAssetUpload(auth: OpaqueAuthSession, intentRef: string, input: Readonly<{ expectedVersion: string; sessionRef: string }>, command: PublicCommandContext): Promise<AssetUploadCommandResponse>
   getAssetUploadStatus(auth: OpaqueAuthSession, intentRef: string): Promise<AssetUploadStatusResponse>
   recoverAssetUploadCommand(auth: OpaqueAuthSession, commandId: string): Promise<AssetUploadCommandResponse>
+  media(auth: OpaqueAuthSession): Promise<SiteMediaAuthority>
   accountProducts(auth: OpaqueAuthSession): Promise<AccountProductsResponse>
   creditSummary(auth: OpaqueAuthSession): Promise<CreditSummaryResponse>
   commandReceipt(auth: OpaqueAuthSession | null, commandId: string, receiptRecoveryCapability?: string): Promise<PublicCommandReceiptResponse>
@@ -291,7 +299,7 @@ export function createSiteBffRuntime(input: Readonly<{
     })
   }
 
-  const assetProject = async (authSession: OpaqueAuthSession): Promise<Readonly<{
+  const projectAuthority = async (authSession: OpaqueAuthSession): Promise<Readonly<{
     platform: ReturnType<typeof createPlatformPublicClient>
     projectRef: string
   }>> => {
@@ -471,7 +479,7 @@ export function createSiteBffRuntime(input: Readonly<{
       uploadInput: AssetUploadIntentInput,
       commandIdentity: PublicCommandContext,
     ) {
-      const { platform, projectRef } = await assetProject(authSession)
+      const { platform, projectRef } = await projectAuthority(authSession)
       return platform.execute({
         operationId: "createAssetUploadIntent",
         data: { path: { projectRef }, body: uploadInput },
@@ -484,7 +492,7 @@ export function createSiteBffRuntime(input: Readonly<{
       completion: Readonly<{ expectedVersion: string; sessionRef: string }>,
       commandIdentity: PublicCommandContext,
     ) {
-      const { platform, projectRef } = await assetProject(authSession)
+      const { platform, projectRef } = await projectAuthority(authSession)
       return platform.execute({
         operationId: "completeAssetUpload",
         data: { path: { projectRef, intentRef }, body: completion },
@@ -492,17 +500,25 @@ export function createSiteBffRuntime(input: Readonly<{
       })
     },
     async getAssetUploadStatus(authSession: OpaqueAuthSession, intentRef: string) {
-      const { platform, projectRef } = await assetProject(authSession)
+      const { platform, projectRef } = await projectAuthority(authSession)
       return platform.execute({
         operationId: "getAssetUploadStatus",
         data: { path: { projectRef, intentRef } },
       })
     },
     async recoverAssetUploadCommand(authSession: OpaqueAuthSession, commandId: string) {
-      const { platform, projectRef } = await assetProject(authSession)
+      const { platform, projectRef } = await projectAuthority(authSession)
       return platform.execute({
         operationId: "recoverAssetUploadCommand",
         data: { path: { projectRef, commandId } },
+      })
+    },
+    async media(authSession: OpaqueAuthSession) {
+      const { platform, projectRef } = await projectAuthority(authSession)
+      return createSiteMediaAuthority({
+        platform,
+        projectRef,
+        deliveryTransport: input.provider.artifactDeliveryTransport({ binding: input.binding }),
       })
     },
     accountProducts(authSession: OpaqueAuthSession) {

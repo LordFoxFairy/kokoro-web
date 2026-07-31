@@ -23,7 +23,8 @@ export interface ImmutablePackageArtifact {
     | "@kokoro/asset-client"
     | "@kokoro/chat-app"
     | "@kokoro/site-bff"
-    | "@kokoro/account-app";
+    | "@kokoro/account-app"
+    | "@kokoro/media-app";
   readonly version: string;
   readonly archivePath: string;
   readonly sha256: string;
@@ -47,6 +48,7 @@ export interface CreateSiteProjectInput {
   readonly deployment: SiteDeploymentTarget;
   readonly contractFloor: SiteContractFloor;
   readonly packages: readonly [
+    ImmutablePackageArtifact,
     ImmutablePackageArtifact,
     ImmutablePackageArtifact,
     ImmutablePackageArtifact,
@@ -240,6 +242,7 @@ export async function createSiteProject(input: CreateSiteProjectInput): Promise<
     "@kokoro/chat-app",
     "@kokoro/site-bff",
     "@kokoro/account-app",
+    "@kokoro/media-app",
   ] as const;
   if (
     input.packages.length !== requiredArtifacts.length ||
@@ -267,6 +270,7 @@ export async function createSiteProject(input: CreateSiteProjectInput): Promise<
     const chatApp = artifact("@kokoro/chat-app");
     const siteBff = artifact("@kokoro/site-bff");
     const accountApp = artifact("@kokoro/account-app");
+    const mediaApp = artifact("@kokoro/media-app");
 
     const replacements = {
       __PACKAGE_NAME_JSON__: JSON.stringify(input.packageName),
@@ -298,6 +302,8 @@ export async function createSiteProject(input: CreateSiteProjectInput): Promise<
       __SITE_BFF_SHA256_JSON__: JSON.stringify(siteBff.sha256),
       __ACCOUNT_APP_VERSION_JSON__: JSON.stringify(accountApp.version),
       __ACCOUNT_APP_SHA256_JSON__: JSON.stringify(accountApp.sha256),
+      __MEDIA_APP_VERSION_JSON__: JSON.stringify(mediaApp.version),
+      __MEDIA_APP_SHA256_JSON__: JSON.stringify(mediaApp.sha256),
     } as const;
 
     const templateFiles = await listTemplateFiles(TEMPLATE_ROOT);
@@ -320,6 +326,7 @@ export async function createSiteProject(input: CreateSiteProjectInput): Promise<
     const copiedChatApp = join(staging, "vendor", "chat-app.tgz");
     const copiedSiteBff = join(staging, "vendor", "site-bff.tgz");
     const copiedAccountApp = join(staging, "vendor", "account-app.tgz");
+    const copiedMediaApp = join(staging, "vendor", "media-app.tgz");
     for (const [artifact, destination] of [
       [appKit, copiedAppKit],
       [client, copiedClient],
@@ -331,6 +338,7 @@ export async function createSiteProject(input: CreateSiteProjectInput): Promise<
       [chatApp, copiedChatApp],
       [siteBff, copiedSiteBff],
       [accountApp, copiedAccountApp],
+      [mediaApp, copiedMediaApp],
     ] as const) {
       await copyFile(artifact.archivePath, destination, constants.COPYFILE_EXCL);
       await verifyCopiedPackageArtifact(artifact, destination);
@@ -353,6 +361,7 @@ export async function createSiteProject(input: CreateSiteProjectInput): Promise<
         [chatApp.name]: chatApp.sha256,
         [siteBff.name]: siteBff.sha256,
         [accountApp.name]: accountApp.sha256,
+        [mediaApp.name]: mediaApp.sha256,
       }),
       generatedFiles: Object.freeze([
         ...templateFiles,
@@ -366,6 +375,7 @@ export async function createSiteProject(input: CreateSiteProjectInput): Promise<
         "vendor/chat-app.tgz",
         "vendor/site-bff.tgz",
         "vendor/account-app.tgz",
+        "vendor/media-app.tgz",
       ]),
     });
   } catch (error) {

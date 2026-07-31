@@ -19,6 +19,8 @@ only for Platform-enabled Site surfaces. Registration additionally requires serv
 `KOKORO_SITE_REGISTRATION_LEGAL_DOCUMENTS`; one strict typed SiteRelease projection derives server-only term refs and
 browser-safe labels/HTTPS or same-origin links. Browser input can accept the published set but cannot choose authority refs.
 
+When Platform publishes the `image` surface and catalog, this independent Site also renders its own `/studio` creation work area and `/library` artifact browser through `@kokoro/media-app`. Both call only the Site's same-origin allowlisted media BFF. Library emits a content URL only for `ready`; processing, restricted, unavailable, and deleted remain typed owner states. Content authorization is issued and redeemed server-side and streamed without revealing the capability or Platform endpoint.
+
 The Node instrumentation validates the complete local runtime configuration before serving traffic. `/api/health/live` is process-only;
 `/api/health/ready` verifies the registered Platform product context and any enabled account/legal configuration without exposing policy. The standalone container runs as a
 non-root user, and deployment metadata declares the exact health probes. Root Web has no runnable shared-user fallback.

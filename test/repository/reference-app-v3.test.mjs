@@ -21,9 +21,12 @@ test("fresh-only Web exposes no retired universal Site runtime", async () => {
 })
 
 test("the independently generated Site template owns the complete Browser v3 product composition", async () => {
-  const [manifest, page] = await Promise.all([
+  const [manifest, page, studio, library, mediaApi] = await Promise.all([
     readFile(path.join(root, "packages/site-scaffold/templates/site/package.json"), "utf8"),
     readFile(path.join(root, "packages/site-scaffold/templates/site/src/app/page.tsx"), "utf8"),
+    readFile(path.join(root, "packages/site-scaffold/templates/site/src/app/studio/page.tsx"), "utf8"),
+    readFile(path.join(root, "packages/site-scaffold/templates/site/src/app/library/page.tsx"), "utf8"),
+    readFile(path.join(root, "packages/site-scaffold/templates/site/src/app/api/media/[[...path]]/route.ts"), "utf8"),
   ])
   for (const packageName of [
     "@kokoro/site-bff",
@@ -32,9 +35,14 @@ test("the independently generated Site template owns the complete Browser v3 pro
     "@kokoro/asset-client",
     "@kokoro/chat-app",
     "@kokoro/account-app",
+    "@kokoro/media-app",
   ]) assert.match(manifest, new RegExp(packageName.replace("/", "\\/"), "u"))
   assert.match(page, /ChatProduct/u)
   assert.match(page, /readOpaqueAuthSession/u)
+  assert.match(studio, /StudioProduct/u)
+  assert.match(studio, /enabledSurfaceIds\.includes\("image"\)/u)
+  assert.match(library, /LibraryProduct/u)
+  assert.match(mediaApi, /createSiteMediaApi/u)
   assert.doesNotMatch(page, /apps\/user|HomeGate|SessionShell/u)
 })
 

@@ -3,11 +3,14 @@ import { createSessionBrowserV3Proxy, type OpaqueAuthSession, type PublicSiteBoo
 import { type PublicCommandContext, type SecretPublicCommandContext, type PlatformPublicTransport } from "@kokoro/site-client/server";
 import type { AccountProductsResponse, AssetUploadCommandResponse, AssetUploadIntentInput, AssetUploadIntentResponse, AssetUploadStatusResponse, CommandReceiptResponse, CreditSummaryResponse, EmailVerificationTransactionResponse, IdentitySessionList, PublicCommandReceiptResponse, ReauthenticationResponse, RecoveryCodeSetResponse, RedemptionCommandResponse, RedemptionPreviewResponse, TotpEnrollmentTransactionResponse, VerificationActivationResponse } from "@kokoro/site-client";
 import type { NodeSiteRuntimeProvider } from "@kokoro/site-runtime-node";
+import { type SiteMediaAuthority } from "./media-authority.js";
 export { createLaunchStateVault } from "./launch-state.js";
 export type { LaunchCommandState, LaunchOperation, LaunchStateBinding, LaunchStateVault, SecurityLaunchState } from "./launch-state.js";
 export { createSiteLaunchApi, SITE_LAUNCH_STATE_COOKIE } from "./launch-api.js";
 export type { SiteLaunchApi } from "./launch-api.js";
 export { createSiteAssetApi } from "./asset-api.js";
+export { createSiteMediaApi, type SiteMediaApi } from "./media-api.js";
+export { SiteArtifactAvailabilityError, type SiteMediaAuthority, type SiteMediaPageQuery, } from "./media-authority.js";
 export { createSiteSessionApi, type SiteSessionApi, type SiteSessionApiRuntime } from "./session-api.js";
 export type { BrowserAssetUpload, BrowserAttachmentRef, SiteAssetApi } from "./asset-api.js";
 export declare class SiteBffError extends Error {
@@ -126,6 +129,7 @@ export interface SiteBffRuntime {
     }>, command: PublicCommandContext): Promise<AssetUploadCommandResponse>;
     getAssetUploadStatus(auth: OpaqueAuthSession, intentRef: string): Promise<AssetUploadStatusResponse>;
     recoverAssetUploadCommand(auth: OpaqueAuthSession, commandId: string): Promise<AssetUploadCommandResponse>;
+    media(auth: OpaqueAuthSession): Promise<SiteMediaAuthority>;
     accountProducts(auth: OpaqueAuthSession): Promise<AccountProductsResponse>;
     creditSummary(auth: OpaqueAuthSession): Promise<CreditSummaryResponse>;
     commandReceipt(auth: OpaqueAuthSession | null, commandId: string, receiptRecoveryCapability?: string): Promise<PublicCommandReceiptResponse>;
