@@ -9,6 +9,7 @@ import {
   mergeMemoryEntries,
   mergeMemoryHistory,
   projectMemoryCommand,
+  reconcileMemoryEntryPage,
   settleMemorySelection,
   type MemoryControllerState,
   type MemoryStorage,
@@ -139,6 +140,12 @@ describe("Memory controller", () => {
     const forgotten = projectMemoryCommand(prioritized, purge)
     expect(forgotten.entries).toEqual([])
     expect(forgotten.selectedEntry).toMatchObject({ state: "revoked_purge_pending", purgeReceiptRef: "purge-1" })
+    expect(forgotten).toMatchObject({
+      generation: 5,
+      history: [],
+      historyNextCursor: null,
+      nextCursor: null,
+    })
 
     const exportResult = {
       state: "succeeded",
@@ -166,6 +173,14 @@ describe("Memory controller", () => {
       effectiveAt: "2026-07-31T00:00:01.000Z",
       purgeReceiptRef: "purge-space-1",
       purgeState: "revoked_purge_pending",
+    })
+    expect(revoked).toMatchObject({
+      generation: 5,
+      history: [],
+      historyNextCursor: null,
+      nextCursor: null,
+      selectedEntry: null,
+      selectedEntryRef: null,
     })
 
     const purged = projectMemoryCommand(revoked, response("purged"))
@@ -237,8 +252,71 @@ describe("Memory controller", () => {
       })),
     })
 
-    await expect(client.recover(requestedCommandId)).rejects.toMatchObject({
+    await expect(client.recover({
+      commandId: requestedCommandId,
+      commandKind: "rememberMemoryEntry",
+      createdAt: "2026-07-31T00:00:00.000Z",
+      targetRef: null,
+    })).rejects.toMatchObject({
       code: "BFF_PROTOCOL_INVALID",
     })
+  })
+
+  test("rejects schema-valid direct command kind and result semantic mismatches", async () => {
+    const command = { commandId: "a".repeat(32), idempotencyKey: "b".repeat(48) }
+    const response = (commandKind: "prioritizeMemoryEntry" | "resetMemorySpace", result: unknown) => Response.json({
+      command: {
+        commandId: command.commandId,
+        commandKind,
+        receiptRef: "receipt-semantic-1",
+        receivedAt: "2026-07-31T00:00:00.000Z",
+        updatedAt: "2026-07-31T00:00:01.000Z",
+      },
+      result,
+      state: "succeeded",
+    })
+    const wrongKind = createMemoryBrowserClient({
+      csrfToken: "csrf",
+      fetch: () => Promise.resolve(response("resetMemorySpace", {
+        entry: entry({ entryVersion: "2", prioritized: true }),
+        resultKind: "entry",
+      })),
+    })
+    await expect(wrongKind.prioritize("entry-1", { expectedEntryVersion: "1" }, command))
+      .rejects.toMatchObject({ code: "BFF_PROTOCOL_INVALID" })
+
+    const wrongResult = createMemoryBrowserClient({
+      csrfToken: "csrf",
+      fetch: () => Promise.resolve(response("prioritizeMemoryEntry", {
+        effectiveAt: "2026-07-31T00:00:01.000Z",
+        entryRef: null,
+        purgeReceiptRef: "purge-space-1",
+        purgeScope: "space",
+        purgeState: "purged",
+        resultKind: "purge",
+      })),
+    })
+    await expect(wrongResult.prioritize("entry-1", { expectedEntryVersion: "1" }, command))
+      .rejects.toMatchObject({ code: "BFF_PROTOCOL_INVALID" })
+
+    const wrongTarget = createMemoryBrowserClient({
+      csrfToken: "csrf",
+      fetch: () => Promise.resolve(response("prioritizeMemoryEntry", {
+        entry: entry({ entryRef: "entry-other", entryVersion: "2", prioritized: true }),
+        resultKind: "entry",
+      })),
+    })
+    await expect(wrongTarget.prioritize("entry-1", { expectedEntryVersion: "1" }, command))
+      .rejects.toMatchObject({ code: "BFF_PROTOCOL_INVALID" })
+  })
+
+  test("adopts a priority page only when it contains the confirmed owner version", () => {
+    const confirmed = entry({ entryVersion: "3", prioritized: true })
+    const other = entry({ entryRef: "entry-2" })
+
+    expect(reconcileMemoryEntryPage([other, confirmed], [other, entry({ entryVersion: "2" })], confirmed)).toBeNull()
+    expect(reconcileMemoryEntryPage([other, confirmed], [other], confirmed)).toBeNull()
+    expect(reconcileMemoryEntryPage([other, confirmed], [confirmed, other], confirmed)?.map(({ entryRef }) => entryRef))
+      .toEqual(["entry-1", "entry-2"])
   })
 })

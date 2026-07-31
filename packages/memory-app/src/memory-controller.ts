@@ -167,8 +167,43 @@ export function createMemoryCommandIdentity(): MemoryCommandIdentity {
   return Object.freeze({ commandId: hex(bytes(16)), idempotencyKey: hex(bytes(24)) })
 }
 
-function sameCommand(response: MemoryCommandResponse, commandId: string): MemoryCommandResponse {
-  if (response.command.commandId !== commandId) protocol()
+type MemoryCommandExpectation = Readonly<{
+  commandId: string
+  commandKind: MemoryCommandKind
+  targetRef: string | null
+}>
+
+function commandResultMatches(response: MemoryCommandResponse, expected: MemoryCommandExpectation): boolean {
+  if (response.state !== "succeeded") return true
+  const result = response.result
+  switch (expected.commandKind) {
+    case "updateMemorySettings":
+      return expected.targetRef === null && result.resultKind === "settings"
+    case "rememberMemoryEntry":
+      return expected.targetRef === null && result.resultKind === "entry" && result.entry.state === "active"
+    case "correctMemoryEntry":
+    case "prioritizeMemoryEntry":
+    case "deprioritizeMemoryEntry":
+      return result.resultKind === "entry" && result.entry.state === "active" && result.entry.entryRef === expected.targetRef
+    case "restoreMemoryEntryRevision":
+      return result.resultKind === "restored" && result.entry.entryRef === expected.targetRef
+    case "forgetMemoryEntry":
+      return result.resultKind === "purge" && result.purgeScope === "entry" && result.entryRef === expected.targetRef
+    case "resetMemorySpace":
+      return expected.targetRef === null && result.resultKind === "purge" && result.purgeScope === "space" && result.entryRef === null
+    case "requestMemoryExport":
+      return expected.targetRef === null && result.resultKind === "export"
+    case "requestMemoryImport":
+      return result.resultKind === "import" && result.import.assetRef === expected.targetRef
+  }
+}
+
+function sameCommand(response: MemoryCommandResponse, expected: MemoryCommandExpectation): MemoryCommandResponse {
+  if (
+    response.command.commandId !== expected.commandId ||
+    response.command.commandKind !== expected.commandKind ||
+    !commandResultMatches(response, expected)
+  ) protocol()
   return response
 }
 
@@ -210,7 +245,7 @@ export function createMemoryBrowserClient(input: Readonly<{
       return read("/settings", zMemorySettings, signal)
     },
     async updateSettings(body: MemorySettingsUpdateInput, command = createMemoryCommandIdentity(), signal?: AbortSignal) {
-      return sameCommand(await mutate("PATCH", "/settings", command, body, zMemoryCommandResponse, signal), command.commandId)
+      return sameCommand(await mutate("PATCH", "/settings", command, body, zMemoryCommandResponse, signal), { ...command, commandKind: "updateMemorySettings", targetRef: null })
     },
     async listEntries(input: MemoryPageQuery = {}, signal?: AbortSignal): Promise<MemoryEntryPage> {
       const page = await read(`/entries${query(input)}`, zMemoryEntryPage, signal)
@@ -228,28 +263,28 @@ export function createMemoryBrowserClient(input: Readonly<{
       return page
     },
     async remember(body: MemoryRememberInput, command = createMemoryCommandIdentity(), signal?: AbortSignal) {
-      return sameCommand(await mutate("POST", "/entries", command, body, zMemoryCommandResponse, signal), command.commandId)
+      return sameCommand(await mutate("POST", "/entries", command, body, zMemoryCommandResponse, signal), { ...command, commandKind: "rememberMemoryEntry", targetRef: null })
     },
     async correct(entryRef: string, body: MemoryCorrectInput, command = createMemoryCommandIdentity(), signal?: AbortSignal) {
-      return sameCommand(await mutate("POST", `/entries/${encodedReference(zMemoryEntryRef, entryRef)}/correct`, command, body, zMemoryCommandResponse, signal), command.commandId)
+      return sameCommand(await mutate("POST", `/entries/${encodedReference(zMemoryEntryRef, entryRef)}/correct`, command, body, zMemoryCommandResponse, signal), { ...command, commandKind: "correctMemoryEntry", targetRef: entryRef })
     },
     async restore(entryRef: string, revisionRef: string, body: MemoryRestoreInput, command = createMemoryCommandIdentity(), signal?: AbortSignal) {
-      return sameCommand(await mutate("POST", `/entries/${encodedReference(zMemoryEntryRef, entryRef)}/history/${encodedReference(zMemoryRevisionRef, revisionRef)}/restore`, command, body, zMemoryCommandResponse, signal), command.commandId)
+      return sameCommand(await mutate("POST", `/entries/${encodedReference(zMemoryEntryRef, entryRef)}/history/${encodedReference(zMemoryRevisionRef, revisionRef)}/restore`, command, body, zMemoryCommandResponse, signal), { ...command, commandKind: "restoreMemoryEntryRevision", targetRef: entryRef })
     },
     async prioritize(entryRef: string, body: MemoryPriorityInput, command = createMemoryCommandIdentity(), signal?: AbortSignal) {
-      return sameCommand(await mutate("POST", `/entries/${encodedReference(zMemoryEntryRef, entryRef)}/prioritize`, command, body, zMemoryCommandResponse, signal), command.commandId)
+      return sameCommand(await mutate("POST", `/entries/${encodedReference(zMemoryEntryRef, entryRef)}/prioritize`, command, body, zMemoryCommandResponse, signal), { ...command, commandKind: "prioritizeMemoryEntry", targetRef: entryRef })
     },
     async deprioritize(entryRef: string, body: MemoryPriorityInput, command = createMemoryCommandIdentity(), signal?: AbortSignal) {
-      return sameCommand(await mutate("POST", `/entries/${encodedReference(zMemoryEntryRef, entryRef)}/deprioritize`, command, body, zMemoryCommandResponse, signal), command.commandId)
+      return sameCommand(await mutate("POST", `/entries/${encodedReference(zMemoryEntryRef, entryRef)}/deprioritize`, command, body, zMemoryCommandResponse, signal), { ...command, commandKind: "deprioritizeMemoryEntry", targetRef: entryRef })
     },
     async forget(entryRef: string, body: MemoryForgetInput, command = createMemoryCommandIdentity(), signal?: AbortSignal) {
-      return sameCommand(await mutate("POST", `/entries/${encodedReference(zMemoryEntryRef, entryRef)}/forget`, command, body, zMemoryCommandResponse, signal), command.commandId)
+      return sameCommand(await mutate("POST", `/entries/${encodedReference(zMemoryEntryRef, entryRef)}/forget`, command, body, zMemoryCommandResponse, signal), { ...command, commandKind: "forgetMemoryEntry", targetRef: entryRef })
     },
     async reset(body: MemoryResetInput, command = createMemoryCommandIdentity(), signal?: AbortSignal) {
-      return sameCommand(await mutate("POST", "/reset", command, body, zMemoryCommandResponse, signal), command.commandId)
+      return sameCommand(await mutate("POST", "/reset", command, body, zMemoryCommandResponse, signal), { ...command, commandKind: "resetMemorySpace", targetRef: null })
     },
     async requestExport(body: MemoryExportInput, command = createMemoryCommandIdentity(), signal?: AbortSignal) {
-      return sameCommand(await mutate("POST", "/exports", command, body, zMemoryCommandResponse, signal), command.commandId)
+      return sameCommand(await mutate("POST", "/exports", command, body, zMemoryCommandResponse, signal), { ...command, commandKind: "requestMemoryExport", targetRef: null })
     },
     async getExport(exportRef: string, signal?: AbortSignal): Promise<BrowserMemoryExportResponse> {
       const response = await fetcher(`/api/memory/exports/${encodedReference(zMemoryExportRef, exportRef)}`, {
@@ -261,16 +296,16 @@ export function createMemoryBrowserClient(input: Readonly<{
       return projectedExportResponse(await responseJson(response))
     },
     async requestImport(body: MemoryImportInput, command = createMemoryCommandIdentity(), signal?: AbortSignal) {
-      return sameCommand(await mutate("POST", "/imports", command, body, zMemoryCommandResponse, signal), command.commandId)
+      return sameCommand(await mutate("POST", "/imports", command, body, zMemoryCommandResponse, signal), { ...command, commandKind: "requestMemoryImport", targetRef: body.assetRef })
     },
     getImport(importRef: string, signal?: AbortSignal): Promise<MemoryImportResponse> {
       return read(`/imports/${encodedReference(zMemoryImportRef, importRef)}`, zMemoryImportResponse, signal)
     },
-    async recover(commandId: string, signal?: AbortSignal) {
+    async recover(expected: PendingMemoryCommand, signal?: AbortSignal) {
       const response = await read(`/commands/${encodedReference({ safeParse: (value) => /^[0-9a-f]{32}$/u.test(String(value))
         ? { success: true as const, data: String(value) }
-        : { success: false as const } }, commandId)}`, zMemoryCommandResponse, signal)
-      return sameCommand(response, commandId)
+        : { success: false as const } }, expected.commandId)}`, zMemoryCommandResponse, signal)
+      return sameCommand(response, expected)
     },
   })
 }
@@ -342,7 +377,10 @@ export function mergeMemoryEntries(
 export function reconcileMemoryEntryPage(
   current: readonly MemoryEntryActiveView[],
   incoming: readonly MemoryEntryActiveView[],
-): readonly MemoryEntryActiveView[] {
+  confirmedEntry: MemoryEntryActiveView,
+): readonly MemoryEntryActiveView[] | null {
+  const observed = incoming.find(({ entryRef }) => entryRef === confirmedEntry.entryRef)
+  if (observed === undefined || BigInt(observed.entryVersion) < BigInt(confirmedEntry.entryVersion)) return null
   const currentByRef = new Map(current.map((entry) => [entry.entryRef, entry]))
   return Object.freeze(incoming.map((candidate) => {
     const existing = currentByRef.get(candidate.entryRef)
@@ -449,9 +487,13 @@ export function projectMemoryCommand(state: MemoryControllerState, response: Mem
       if (purge.purgeScope === "space") {
         return Object.freeze({
           ...base,
+          generation: state.generation + 1,
           entries: Object.freeze([]),
+          nextCursor: null,
+          selectedEntryRef: null,
           selectedEntry: null,
           history: Object.freeze([]),
+          historyNextCursor: null,
           spacePurge: Object.freeze({
             effectiveAt: purge.effectiveAt,
             purgeReceiptRef: purge.purgeReceiptRef,
@@ -461,8 +503,12 @@ export function projectMemoryCommand(state: MemoryControllerState, response: Mem
       }
       return Object.freeze({
         ...base,
+        generation: state.generation + 1,
         entries: state.entries.filter(({ entryRef }) => entryRef !== purge.entryRef),
+        nextCursor: null,
         selectedEntry: state.selectedEntryRef === purge.entryRef ? purgeView : state.selectedEntry,
+        history: state.selectedEntryRef === purge.entryRef ? Object.freeze([]) : state.history,
+        historyNextCursor: state.selectedEntryRef === purge.entryRef ? null : state.historyNextCursor,
       })
     }
   }
