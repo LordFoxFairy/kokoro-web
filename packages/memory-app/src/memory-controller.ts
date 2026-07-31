@@ -168,8 +168,10 @@ export function createMemoryCommandIdentity(): MemoryCommandIdentity {
 }
 
 type MemoryCommandExpectation = Readonly<{
+  assetVersionRef?: string
   commandId: string
   commandKind: MemoryCommandKind
+  restoredFromRevisionRef?: string
   targetRef: string | null
 }>
 
@@ -182,11 +184,14 @@ function commandResultMatches(response: MemoryCommandResponse, expected: MemoryC
     case "rememberMemoryEntry":
       return expected.targetRef === null && result.resultKind === "entry" && result.entry.state === "active"
     case "correctMemoryEntry":
-    case "prioritizeMemoryEntry":
-    case "deprioritizeMemoryEntry":
       return result.resultKind === "entry" && result.entry.state === "active" && result.entry.entryRef === expected.targetRef
+    case "prioritizeMemoryEntry":
+      return result.resultKind === "entry" && result.entry.state === "active" && result.entry.entryRef === expected.targetRef && result.entry.prioritized
+    case "deprioritizeMemoryEntry":
+      return result.resultKind === "entry" && result.entry.state === "active" && result.entry.entryRef === expected.targetRef && !result.entry.prioritized
     case "restoreMemoryEntryRevision":
-      return result.resultKind === "restored" && result.entry.entryRef === expected.targetRef
+      return result.resultKind === "restored" && result.entry.entryRef === expected.targetRef &&
+        result.restoredFromRevisionRef === expected.restoredFromRevisionRef
     case "forgetMemoryEntry":
       return result.resultKind === "purge" && result.purgeScope === "entry" && result.entryRef === expected.targetRef
     case "resetMemorySpace":
@@ -194,7 +199,8 @@ function commandResultMatches(response: MemoryCommandResponse, expected: MemoryC
     case "requestMemoryExport":
       return expected.targetRef === null && result.resultKind === "export"
     case "requestMemoryImport":
-      return result.resultKind === "import" && result.import.assetRef === expected.targetRef
+      return result.resultKind === "import" && result.import.assetRef === expected.targetRef &&
+        result.import.assetVersionRef === expected.assetVersionRef
   }
 }
 
@@ -269,7 +275,7 @@ export function createMemoryBrowserClient(input: Readonly<{
       return sameCommand(await mutate("POST", `/entries/${encodedReference(zMemoryEntryRef, entryRef)}/correct`, command, body, zMemoryCommandResponse, signal), { ...command, commandKind: "correctMemoryEntry", targetRef: entryRef })
     },
     async restore(entryRef: string, revisionRef: string, body: MemoryRestoreInput, command = createMemoryCommandIdentity(), signal?: AbortSignal) {
-      return sameCommand(await mutate("POST", `/entries/${encodedReference(zMemoryEntryRef, entryRef)}/history/${encodedReference(zMemoryRevisionRef, revisionRef)}/restore`, command, body, zMemoryCommandResponse, signal), { ...command, commandKind: "restoreMemoryEntryRevision", targetRef: entryRef })
+      return sameCommand(await mutate("POST", `/entries/${encodedReference(zMemoryEntryRef, entryRef)}/history/${encodedReference(zMemoryRevisionRef, revisionRef)}/restore`, command, body, zMemoryCommandResponse, signal), { ...command, commandKind: "restoreMemoryEntryRevision", restoredFromRevisionRef: revisionRef, targetRef: entryRef })
     },
     async prioritize(entryRef: string, body: MemoryPriorityInput, command = createMemoryCommandIdentity(), signal?: AbortSignal) {
       return sameCommand(await mutate("POST", `/entries/${encodedReference(zMemoryEntryRef, entryRef)}/prioritize`, command, body, zMemoryCommandResponse, signal), { ...command, commandKind: "prioritizeMemoryEntry", targetRef: entryRef })
@@ -296,7 +302,7 @@ export function createMemoryBrowserClient(input: Readonly<{
       return projectedExportResponse(await responseJson(response))
     },
     async requestImport(body: MemoryImportInput, command = createMemoryCommandIdentity(), signal?: AbortSignal) {
-      return sameCommand(await mutate("POST", "/imports", command, body, zMemoryCommandResponse, signal), { ...command, commandKind: "requestMemoryImport", targetRef: body.assetRef })
+      return sameCommand(await mutate("POST", "/imports", command, body, zMemoryCommandResponse, signal), { ...command, assetVersionRef: body.assetVersionRef, commandKind: "requestMemoryImport", targetRef: body.assetRef })
     },
     getImport(importRef: string, signal?: AbortSignal): Promise<MemoryImportResponse> {
       return read(`/imports/${encodedReference(zMemoryImportRef, importRef)}`, zMemoryImportResponse, signal)
@@ -311,9 +317,11 @@ export function createMemoryBrowserClient(input: Readonly<{
 }
 
 export type PendingMemoryCommand = Readonly<{
+  assetVersionRef?: string
   commandId: string
   commandKind: MemoryCommandKind
   createdAt: string
+  restoredFromRevisionRef?: string
   targetRef: string | null
 }>
 
@@ -380,8 +388,14 @@ export function reconcileMemoryEntryPage(
   confirmedEntry: MemoryEntryActiveView,
 ): readonly MemoryEntryActiveView[] | null {
   const observed = incoming.find(({ entryRef }) => entryRef === confirmedEntry.entryRef)
-  if (observed === undefined || BigInt(observed.entryVersion) < BigInt(confirmedEntry.entryVersion)) return null
   const currentByRef = new Map(current.map((entry) => [entry.entryRef, entry]))
+  const currentTarget = currentByRef.get(confirmedEntry.entryRef)
+  const minimumTargetVersion = currentTarget === undefined
+    ? BigInt(confirmedEntry.entryVersion)
+    : BigInt(currentTarget.entryVersion) > BigInt(confirmedEntry.entryVersion)
+      ? BigInt(currentTarget.entryVersion)
+      : BigInt(confirmedEntry.entryVersion)
+  if (observed === undefined || BigInt(observed.entryVersion) < minimumTargetVersion) return null
   return Object.freeze(incoming.map((candidate) => {
     const existing = currentByRef.get(candidate.entryRef)
     return existing === undefined ? candidate : mergeMemoryEntries([existing], [candidate])[0] ?? candidate
@@ -424,6 +438,14 @@ export function settleMemorySelection(
 ): MemoryControllerState {
   if (state.generation !== generation || state.selectedEntryRef !== selectedEntry.entryRef) return state
   return Object.freeze({ ...state, selectedEntry, history: mergeMemoryHistory([], history) })
+}
+
+export function projectMemoryReadEpoch(
+  state: MemoryControllerState,
+  expectedGeneration: number,
+  project: (current: MemoryControllerState) => MemoryControllerState,
+): MemoryControllerState {
+  return state.generation === expectedGeneration ? project(state) : state
 }
 
 function replaceExport(current: readonly BrowserMemoryExportStatus[], incoming: MemoryExportStatus): readonly BrowserMemoryExportStatus[] {
@@ -550,12 +572,24 @@ function pendingRecord(value: unknown): PendingMemoryCommand | null {
   ) return null
   const createdAt = Date.parse(input.createdAt)
   if (!Number.isFinite(createdAt) || new Date(createdAt).toISOString() !== input.createdAt) return null
-  return Object.freeze({
+  const base = {
     commandId: input.commandId,
     commandKind: input.commandKind as MemoryCommandKind,
     createdAt: input.createdAt,
     targetRef: input.targetRef,
-  })
+  }
+  const targetsNothing = ["updateMemorySettings", "rememberMemoryEntry", "resetMemorySpace", "requestMemoryExport"].includes(base.commandKind)
+  if ((targetsNothing && base.targetRef !== null) || (!targetsNothing && typeof base.targetRef !== "string")) return null
+  if (base.commandKind === "restoreMemoryEntryRevision") {
+    if (typeof input.restoredFromRevisionRef !== "string" || input.restoredFromRevisionRef === "" || input.assetVersionRef !== undefined) return null
+    return Object.freeze({ ...base, restoredFromRevisionRef: input.restoredFromRevisionRef })
+  }
+  if (base.commandKind === "requestMemoryImport") {
+    if (typeof input.assetVersionRef !== "string" || input.assetVersionRef === "" || input.restoredFromRevisionRef !== undefined) return null
+    return Object.freeze({ ...base, assetVersionRef: input.assetVersionRef })
+  }
+  if (input.assetVersionRef !== undefined || input.restoredFromRevisionRef !== undefined) return null
+  return Object.freeze(base)
 }
 
 export function createMemoryCommandJournal(input: Readonly<{

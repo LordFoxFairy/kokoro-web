@@ -441,6 +441,68 @@ describe("Memory product runtime scope", () => {
     expect(screen.queryByText("Stale historical content")).toBeNull()
   })
 
+  test("does not let an overlapping detail read repopulate an entry after forget commits", async () => {
+    const releases: Array<() => void> = []
+    let deferSelection = false
+    const activeEntry = entryValue("entry-1", "Forget overlap memory")
+    const fetcher = vi.fn<MemoryBrowserFetch>((input, init) => {
+      const path = String(input)
+      if (path.endsWith("/settings")) return Promise.resolve(Response.json(settings))
+      if (path.includes("/entries?")) return Promise.resolve(Response.json({ items: [activeEntry], pageInfo: { hasMore: false, nextCursor: null } }))
+      if (path.includes("/entries/entry-1/history")) {
+        if (deferSelection) return new Promise<Response>((resolve) => releases.push(() => resolve(historyResponse("entry-1"))))
+        return Promise.resolve(historyResponse("entry-1"))
+      }
+      if (path.endsWith("/entries/entry-1")) {
+        if (deferSelection) return new Promise<Response>((resolve) => releases.push(() => resolve(entryResponse("entry-1", "Stale forgotten detail"))))
+        return Promise.resolve(Response.json({ entry: activeEntry }))
+      }
+      if (path.endsWith("/entries/entry-1/forget")) {
+        const body = JSON.parse(String(init?.body)) as { command: { commandId: string } }
+        return Promise.resolve(Response.json({
+          command: {
+            commandId: body.command.commandId,
+            commandKind: "forgetMemoryEntry",
+            receiptRef: "receipt-forget-overlap",
+            receivedAt: "2026-07-31T00:00:00.000Z",
+            updatedAt: "2026-07-31T00:00:01.000Z",
+          },
+          result: {
+            effectiveAt: "2026-07-31T00:00:01.000Z",
+            entryRef: "entry-1",
+            purgeReceiptRef: "purge-forget-overlap",
+            purgeScope: "entry",
+            purgeState: "revoked_purge_pending",
+            resultKind: "purge",
+          },
+          state: "succeeded",
+        }))
+      }
+      throw new Error(`Unexpected Memory request: ${path}`)
+    })
+    render(<MemoryProduct brandName="Site A" browserRuntimeScope="site-a:user-1:release-1" csrfToken="csrf-stable" fetch={fetcher} />)
+    const memory = await screen.findByRole("button", { name: /Forget overlap memory/ })
+    fireEvent.click(memory)
+    const confirmation = await screen.findByRole("textbox", { name: "Type FORGET" })
+    fireEvent.change(confirmation, { target: { value: "FORGET" } })
+    const forget = screen.getByRole("button", { name: "Forget permanently" })
+    deferSelection = true
+
+    act(() => {
+      memory.click()
+      forget.click()
+    })
+    expect(await screen.findByText("purge-forget-overlap")).toBeTruthy()
+    await act(async () => {
+      for (const release of releases) release()
+      await Promise.resolve()
+    })
+
+    expect(screen.getByText("purge-forget-overlap")).toBeTruthy()
+    expect(screen.queryByText("Stale forgotten detail")).toBeNull()
+    expect(screen.queryByRole("button", { name: /Forget overlap memory/ })).toBeNull()
+  })
+
   test("does not regress a confirmed priority version when its refresh page is stale", async () => {
     let listCalls = 0
     const stale = entryValue("entry-1", "Priority memory", {

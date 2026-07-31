@@ -28,6 +28,7 @@ import {
   mergeMemoryEntries,
   mergeMemoryHistory,
   projectMemoryCommand,
+  projectMemoryReadEpoch,
   reconcileMemoryEntryPage,
   settleMemorySelection,
   type MemoryBrowserFetch,
@@ -491,36 +492,49 @@ export function MemoryProduct(props: Readonly<{
 
   useEffect(() => {
     const expectedScope = scopeFenceRef.current.capture()
-    setState(EMPTY_STATE)
+    let readGeneration = commitState((current) => Object.freeze({
+      ...EMPTY_STATE,
+      generation: current.generation + 1,
+    })).generation
     setStatus("")
     setError(null)
     setImportSource(null)
     setImportProgress(null)
     void request(async (signal) => {
       const [settings, page] = await Promise.all([client.getSettings(signal), client.listEntries({ limit: 50 }, signal)])
-      if (!scopeFenceRef.current.isCurrent(expectedScope)) return
+      if (!scopeFenceRef.current.isCurrent(expectedScope) || stateRef.current.generation !== readGeneration) return
       const pendingCommands = createMemoryCommandJournal({ storage: localStorage, scope: expectedScope.browserRuntimeScope }).list()
-      let next: MemoryControllerState = Object.freeze({ ...EMPTY_STATE, settings, entries: page.items, nextCursor: page.pageInfo.nextCursor, pendingCommands })
+      const loaded = commitState((current) => projectMemoryReadEpoch(current, readGeneration, (active) => Object.freeze({
+        ...active,
+        settings,
+        entries: page.items,
+        nextCursor: page.pageInfo.nextCursor,
+        pendingCommands,
+      })))
+      if (loaded.generation !== readGeneration) return
       const initial = props.initialEntryRef
       if (initial !== undefined) {
-        next = beginMemorySelection(next, initial)
-        setState(next)
-        const generation = next.generation
+        const selecting = commitState((current) => projectMemoryReadEpoch(current, readGeneration, (active) => beginMemorySelection(active, initial)))
+        if (selecting.selectedEntryRef !== initial || selecting.generation === readGeneration) return
+        readGeneration = selecting.generation
         const [entryResponse, history] = await Promise.all([client.getEntry(initial, signal), client.listHistory(initial, { limit: 50 }, signal)])
-        if (!scopeFenceRef.current.isCurrent(expectedScope)) return
-        next = Object.freeze({ ...settleMemorySelection(next, generation, entryResponse.entry, history.items), historyNextCursor: history.pageInfo.nextCursor })
+        if (!scopeFenceRef.current.isCurrent(expectedScope) || stateRef.current.generation !== readGeneration) return
+        const settled = commitState((current) => projectMemoryReadEpoch(current, readGeneration, (active) => {
+          const selected = settleMemorySelection(active, readGeneration, entryResponse.entry, history.items)
+          return selected === active ? active : Object.freeze({ ...selected, historyNextCursor: history.pageInfo.nextCursor })
+        }))
+        if (settled.generation !== readGeneration) return
       }
-      if (!scopeFenceRef.current.isCurrent(expectedScope)) return
-      setState(next)
+      if (!scopeFenceRef.current.isCurrent(expectedScope) || stateRef.current.generation !== readGeneration) return
       setStatus("Memory controls are current")
     }).catch((cause: unknown) => {
-      if (scopeFenceRef.current.isCurrent(expectedScope) && !(cause instanceof DOMException && cause.name === "AbortError")) setError(errorMessage(cause))
+      if (scopeFenceRef.current.isCurrent(expectedScope) && stateRef.current.generation === readGeneration && !(cause instanceof DOMException && cause.name === "AbortError")) setError(errorMessage(cause))
     })
     return () => {
       for (const controller of controllers.current) controller.abort("Memory product unmounted")
       controllers.current.clear()
     }
-  }, [client, props.browserRuntimeScope, props.initialEntryRef, request])
+  }, [client, commitState, props.browserRuntimeScope, props.initialEntryRef, request])
 
   const select = useCallback((entryRef: string) => {
     const expectedScope = scopeFenceRef.current.capture()
@@ -548,10 +562,11 @@ export function MemoryProduct(props: Readonly<{
     commandKind: MemoryCommandKind,
     targetRef: string | null,
     operation: (client: MemoryClient, command: ReturnType<typeof createMemoryCommandIdentity>, signal: AbortSignal) => Promise<MemoryCommandResponse>,
+    recoverySemantics: Readonly<{ assetVersionRef?: string; restoredFromRevisionRef?: string }> = {},
   ) => {
     const expectedScope = scopeFenceRef.current.capture()
     const command = createMemoryCommandIdentity()
-    const pending: PendingMemoryCommand = Object.freeze({ commandId: command.commandId, commandKind, targetRef, createdAt: new Date().toISOString() })
+    const pending: PendingMemoryCommand = Object.freeze({ ...recoverySemantics, commandId: command.commandId, commandKind, targetRef, createdAt: new Date().toISOString() })
     let journal: ReturnType<typeof createMemoryCommandJournal> | null = null
     try {
       journal = createMemoryCommandJournal({ storage: localStorage, scope: expectedScope.browserRuntimeScope })
@@ -615,7 +630,7 @@ export function MemoryProduct(props: Readonly<{
     },
     restore: (revision: MemoryRevisionView) => {
       if (active === null || revision.state !== "available") return
-      void execute("restoreMemoryEntryRevision", active.entryRef, (activeClient, command, signal) => activeClient.restore(active.entryRef, revision.revisionRef, { expectedRevision: active.revision }, command, signal))
+      void execute("restoreMemoryEntryRevision", active.entryRef, (activeClient, command, signal) => activeClient.restore(active.entryRef, revision.revisionRef, { expectedRevision: active.revision }, command, signal), { restoredFromRevisionRef: revision.revisionRef })
     },
     priority: (prioritized: boolean) => {
       if (active === null) return
@@ -635,7 +650,7 @@ export function MemoryProduct(props: Readonly<{
     exportMemory: (includeHistory: boolean) => void execute("requestMemoryExport", null, (activeClient, command, signal) => activeClient.requestExport({ format: "kokoro_memory_export_v1", includeHistory }, command, signal)),
     importMemory: () => {
       if (importSource === null) return
-      void execute("requestMemoryImport", importSource.assetRef, (activeClient, command, signal) => activeClient.requestImport({ assetRef: importSource.assetRef, assetVersionRef: importSource.assetVersionRef, conflictPolicy: "quarantine", format: "kokoro_memory_export_v1" }, command, signal))
+      void execute("requestMemoryImport", importSource.assetRef, (activeClient, command, signal) => activeClient.requestImport({ assetRef: importSource.assetRef, assetVersionRef: importSource.assetVersionRef, conflictPolicy: "quarantine", format: "kokoro_memory_export_v1" }, command, signal), { assetVersionRef: importSource.assetVersionRef })
     },
   }
 

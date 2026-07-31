@@ -9,6 +9,7 @@ import {
   mergeMemoryEntries,
   mergeMemoryHistory,
   projectMemoryCommand,
+  projectMemoryReadEpoch,
   reconcileMemoryEntryPage,
   settleMemorySelection,
   type MemoryControllerState,
@@ -153,6 +154,38 @@ describe("Memory controller", () => {
       result: { resultKind: "export", export: { artifactDownloadRequest: null, expiresAt: null, exportRef: "export-1", failureCode: null, format: "kokoro_memory_export_v1", requestedAt: "2026-07-31T00:00:00.000Z", state: "queued", updatedAt: "2026-07-31T00:00:01.000Z" } },
     } satisfies MemoryCommandResponse
     expect(projectMemoryCommand(forgotten, exportResult).exports[0]?.state).toBe("queued")
+  })
+
+  test("rejects stale initial deep-link projections after reset or forget advances the read epoch", () => {
+    const command = (commandKind: "resetMemorySpace" | "forgetMemoryEntry", entryRef: string | null) => ({
+      command: {
+        commandId: commandKind === "resetMemorySpace" ? "1".repeat(32) : "2".repeat(32),
+        commandKind,
+        receiptRef: `receipt-${commandKind}`,
+        receivedAt: "2026-07-31T00:00:00.000Z",
+        updatedAt: "2026-07-31T00:00:01.000Z",
+      },
+      result: {
+        effectiveAt: "2026-07-31T00:00:01.000Z",
+        entryRef,
+        purgeReceiptRef: `purge-${commandKind}`,
+        purgeScope: entryRef === null ? "space" as const : "entry" as const,
+        purgeState: "revoked_purge_pending" as const,
+        resultKind: "purge" as const,
+      },
+      state: "succeeded" as const,
+    })
+    const initialEpoch = controllerState()
+    const staleProjection = () => Object.freeze({
+      ...initialEpoch,
+      entries: [entry({ content: "Stale initial list" })],
+      selectedEntry: entry({ content: "Stale initial detail" }),
+    })
+    const reset = projectMemoryCommand(initialEpoch, command("resetMemorySpace", null))
+    const forgotten = projectMemoryCommand(initialEpoch, command("forgetMemoryEntry", "entry-1"))
+
+    expect(projectMemoryReadEpoch(reset, initialEpoch.generation, staleProjection)).toBe(reset)
+    expect(projectMemoryReadEpoch(forgotten, initialEpoch.generation, staleProjection)).toBe(forgotten)
   })
 
   test("keeps a reset recovery receipt until the owner confirms physical space purge", () => {
@@ -310,6 +343,73 @@ describe("Memory controller", () => {
       .rejects.toMatchObject({ code: "BFF_PROTOCOL_INVALID" })
   })
 
+  test("rejects direct command results with the wrong operation-specific semantics", async () => {
+    const command = { commandId: "a".repeat(32), idempotencyKey: "b".repeat(48) }
+    const cursor = (commandKind: "prioritizeMemoryEntry" | "restoreMemoryEntryRevision" | "requestMemoryImport") => ({
+      commandId: command.commandId,
+      commandKind,
+      receiptRef: "receipt-semantic-2",
+      receivedAt: "2026-07-31T00:00:00.000Z",
+      updatedAt: "2026-07-31T00:00:01.000Z",
+    })
+    const wrongPriority = createMemoryBrowserClient({
+      csrfToken: "csrf",
+      fetch: () => Promise.resolve(Response.json({
+        command: cursor("prioritizeMemoryEntry"),
+        result: { entry: entry({ entryVersion: "2", prioritized: false }), resultKind: "entry" },
+        state: "succeeded",
+      })),
+    })
+    await expect(wrongPriority.prioritize("entry-1", { expectedEntryVersion: "1" }, command))
+      .rejects.toMatchObject({ code: "BFF_PROTOCOL_INVALID" })
+
+    const wrongRestoreRevision = createMemoryBrowserClient({
+      csrfToken: "csrf",
+      fetch: () => Promise.resolve(Response.json({
+        command: cursor("restoreMemoryEntryRevision"),
+        result: {
+          entry: entry({ currentRevisionRef: "revision-3", entryVersion: "2", revision: 3 }),
+          newRevision: 3,
+          newRevisionRef: "revision-3",
+          restoredFromRevisionRef: "revision-other",
+          resultKind: "restored",
+        },
+        state: "succeeded",
+      })),
+    })
+    await expect(wrongRestoreRevision.restore("entry-1", "revision-requested", { expectedRevision: 2 }, command))
+      .rejects.toMatchObject({ code: "BFF_PROTOCOL_INVALID" })
+
+    const wrongImportVersion = createMemoryBrowserClient({
+      csrfToken: "csrf",
+      fetch: () => Promise.resolve(Response.json({
+        command: cursor("requestMemoryImport"),
+        result: {
+          import: {
+            acceptedEntryCount: 0,
+            assetRef: "asset:memory-1",
+            assetVersionRef: "version:other",
+            format: "kokoro_memory_export_v1",
+            importRef: "import-1",
+            rejectedEntryCount: 0,
+            requestedAt: "2026-07-31T00:00:00.000Z",
+            safeStatusCode: null,
+            state: "queued",
+            updatedAt: "2026-07-31T00:00:01.000Z",
+          },
+          resultKind: "import",
+        },
+        state: "succeeded",
+      })),
+    })
+    await expect(wrongImportVersion.requestImport({
+      assetRef: "asset:memory-1",
+      assetVersionRef: "version:requested",
+      conflictPolicy: "quarantine",
+      format: "kokoro_memory_export_v1",
+    }, command)).rejects.toMatchObject({ code: "BFF_PROTOCOL_INVALID" })
+  })
+
   test("adopts a priority page only when it contains the confirmed owner version", () => {
     const confirmed = entry({ entryVersion: "3", prioritized: true })
     const other = entry({ entryRef: "entry-2" })
@@ -318,5 +418,123 @@ describe("Memory controller", () => {
     expect(reconcileMemoryEntryPage([other, confirmed], [other], confirmed)).toBeNull()
     expect(reconcileMemoryEntryPage([other, confirmed], [confirmed, other], confirmed)?.map(({ entryRef }) => entryRef))
       .toEqual(["entry-1", "entry-2"])
+  })
+
+  test("rejects an old priority page after a newer priority or correction projection", () => {
+    const confirmedPriority = entry({ entryVersion: "3", prioritized: true })
+    const oldPriorityPage = [confirmedPriority, entry({ entryRef: "entry-2" })]
+    const laterDepriority = entry({ entryVersion: "4", prioritized: false })
+    const laterCorrection = entry({ content: "Corrected after priority", entryVersion: "4", prioritized: true, revision: 2 })
+
+    expect(reconcileMemoryEntryPage([laterDepriority], oldPriorityPage, confirmedPriority)).toBeNull()
+    expect(reconcileMemoryEntryPage([laterCorrection], oldPriorityPage, confirmedPriority)).toBeNull()
+  })
+
+  test("persists non-sensitive restore and import recovery semantics and rejects incomplete records", () => {
+    const values = new Map<string, string>()
+    const storage: MemoryStorage = {
+      get length() { return values.size },
+      getItem: (key) => values.get(key) ?? null,
+      key: (index) => [...values.keys()][index] ?? null,
+      removeItem: (key) => { values.delete(key) },
+      setItem: (key, value) => { values.set(key, value) },
+    }
+    const journal = createMemoryCommandJournal({ storage, scope: "site-a:user-1", now: () => Date.parse("2026-07-31T00:01:00.000Z") })
+    journal.remember({
+      commandId: "c".repeat(32),
+      commandKind: "restoreMemoryEntryRevision",
+      createdAt: "2026-07-31T00:00:00.000Z",
+      restoredFromRevisionRef: "revision-requested",
+      targetRef: "entry-1",
+    })
+    journal.remember({
+      assetVersionRef: "version:requested",
+      commandId: "d".repeat(32),
+      commandKind: "requestMemoryImport",
+      createdAt: "2026-07-31T00:00:00.000Z",
+      targetRef: "asset:memory-1",
+    })
+
+    expect(journal.list()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ restoredFromRevisionRef: "revision-requested" }),
+      expect.objectContaining({ assetVersionRef: "version:requested" }),
+    ]))
+
+    const invalidId = "e".repeat(32)
+    storage.setItem(`kokoro.memory.command.v1:${encodeURIComponent("site-a:user-1")}:${invalidId}`, JSON.stringify({
+      commandId: invalidId,
+      commandKind: "restoreMemoryEntryRevision",
+      createdAt: "2026-07-31T00:00:00.000Z",
+      targetRef: "entry-1",
+    }))
+    expect(journal.list().some(({ commandId }) => commandId === invalidId)).toBe(false)
+  })
+
+  test("rejects recovered results that mismatch persisted restore or import targets", async () => {
+    const restoreId = "f".repeat(32)
+    const restoreClient = createMemoryBrowserClient({
+      csrfToken: "csrf",
+      fetch: () => Promise.resolve(Response.json({
+        command: {
+          commandId: restoreId,
+          commandKind: "restoreMemoryEntryRevision",
+          receiptRef: "receipt-recovered-restore",
+          receivedAt: "2026-07-31T00:00:00.000Z",
+          updatedAt: "2026-07-31T00:00:01.000Z",
+        },
+        result: {
+          entry: entry({ currentRevisionRef: "revision-3", entryVersion: "2", revision: 3 }),
+          newRevision: 3,
+          newRevisionRef: "revision-3",
+          restoredFromRevisionRef: "revision-other",
+          resultKind: "restored",
+        },
+        state: "succeeded",
+      })),
+    })
+    await expect(restoreClient.recover({
+      commandId: restoreId,
+      commandKind: "restoreMemoryEntryRevision",
+      createdAt: "2026-07-31T00:00:00.000Z",
+      restoredFromRevisionRef: "revision-requested",
+      targetRef: "entry-1",
+    })).rejects.toMatchObject({ code: "BFF_PROTOCOL_INVALID" })
+
+    const importId = "9".repeat(32)
+    const importClient = createMemoryBrowserClient({
+      csrfToken: "csrf",
+      fetch: () => Promise.resolve(Response.json({
+        command: {
+          commandId: importId,
+          commandKind: "requestMemoryImport",
+          receiptRef: "receipt-recovered-import",
+          receivedAt: "2026-07-31T00:00:00.000Z",
+          updatedAt: "2026-07-31T00:00:01.000Z",
+        },
+        result: {
+          import: {
+            acceptedEntryCount: 0,
+            assetRef: "asset:memory-1",
+            assetVersionRef: "version:other",
+            format: "kokoro_memory_export_v1",
+            importRef: "import-1",
+            rejectedEntryCount: 0,
+            requestedAt: "2026-07-31T00:00:00.000Z",
+            safeStatusCode: null,
+            state: "queued",
+            updatedAt: "2026-07-31T00:00:01.000Z",
+          },
+          resultKind: "import",
+        },
+        state: "succeeded",
+      })),
+    })
+    await expect(importClient.recover({
+      assetVersionRef: "version:requested",
+      commandId: importId,
+      commandKind: "requestMemoryImport",
+      createdAt: "2026-07-31T00:00:00.000Z",
+      targetRef: "asset:memory-1",
+    })).rejects.toMatchObject({ code: "BFF_PROTOCOL_INVALID" })
   })
 })
