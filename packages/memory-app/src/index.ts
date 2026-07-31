@@ -9,8 +9,11 @@ export {
   memoryCommandRequiresRecovery,
   memorySpacePurgeIsPending,
   projectMemoryCommand,
+  reconcileMemoryHistoryPage,
   reconcileMemoryEntryPage,
   reconcileMemoryOwnerPage,
+  settleMemoryExportRefresh,
+  settleMemoryImportRefresh,
   settleMemorySelection,
 } from "./memory-controller"
 export type {
@@ -21,7 +24,10 @@ export type {
   MemoryCommandIdentity,
   MemoryControllerState,
   MemoryEntryOwnerKnowledge,
+  MemoryHistoryPageMode,
+  MemoryHistoryPageReconciliation,
   MemoryOwnerPageMode,
+  MemoryOwnerPageReconciliationInput,
   MemoryOwnerPageReconciliation,
   MemoryPageQuery,
   MemoryStorage,

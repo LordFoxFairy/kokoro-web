@@ -25,10 +25,12 @@ import {
   MemoryBrowserError,
   memoryCommandRequiresRecovery,
   memorySpacePurgeIsPending,
-  mergeMemoryHistory,
   projectMemoryCommand,
   projectMemoryReadEpoch,
+  reconcileMemoryHistoryPage,
   reconcileMemoryOwnerPage,
+  settleMemoryExportRefresh,
+  settleMemoryImportRefresh,
   settleMemorySelection,
   type MemoryBrowserFetch,
   type BrowserMemoryExportStatus,
@@ -92,7 +94,6 @@ function categoryLabel(category: MemoryCategory): string {
     case "profile": return "Profile"
     case "preference": return "Preference"
     case "fact": return "Fact"
-    case "project_fact": return "Project fact"
   }
 }
 
@@ -112,7 +113,6 @@ function importLabel(item: MemoryImportStatus): string {
   switch (item.state) {
     case "queued": return "Queued"
     case "validating": return "Validating"
-    case "quarantined": return "Quarantined"
     case "applying": return "Applying"
     case "completed": return "Completed"
     case "rejected": return "Rejected"
@@ -275,7 +275,7 @@ export function MemoryView(props: MemoryViewProps) {
       <div><span className={styles.eyebrow}>Explicit command</span><h2 id="remember-title">Remember something</h2></div>
       <form onSubmit={create}>
         <label>Category<select disabled={props.busy} onChange={(event) => setCreateCategory(event.currentTarget.value as MemoryCategory)} value={createCategory}>
-          <option value="profile">Profile</option><option value="preference">Preference</option><option value="fact">Fact</option><option value="project_fact">Project fact</option>
+          <option value="profile">Profile</option><option value="preference">Preference</option><option value="fact">Fact</option>
         </select></label>
         <label>Memory<textarea aria-describedby="create-memory-budget" onChange={(event) => setCreateContent(event.currentTarget.value)} required value={createContent} /></label>
         <small id="create-memory-budget" role="status">{createBytes === null ? "Text contains an invalid Unicode sequence." : `${createBytes.toLocaleString()} of ${MAXIMUM_MEMORY_UTF8_BYTES.toLocaleString()} UTF-8 bytes`}</small>
@@ -363,10 +363,13 @@ const EMPTY_STATE: MemoryControllerState = Object.freeze({
   settings: null,
   entries: Object.freeze([]),
   entryOwnerKnowledge: Object.freeze([]),
+  currentOwnerSnapshot: null,
+  minimumSpaceVersion: null,
   nextCursor: null,
   selectedEntryRef: null,
   selectedEntry: null,
   history: Object.freeze([]),
+  currentHistoryOwnerSnapshot: null,
   historyNextCursor: null,
   exports: Object.freeze([]),
   imports: Object.freeze([]),
@@ -385,6 +388,16 @@ function errorMessage(error: unknown): string {
 
 function isAbortError(error: unknown): boolean {
   return error instanceof DOMException && error.name === "AbortError"
+}
+
+function retainedOwnerKnowledgeRefs(state: MemoryControllerState, retainRevoked = false): readonly string[] {
+  return Object.freeze([...new Set([
+    ...(state.selectedEntryRef === null ? [] : [state.selectedEntryRef]),
+    ...state.pendingCommands.flatMap(({ targetRef }) => targetRef === null ? [] : [targetRef]),
+    ...(retainRevoked
+      ? state.entryOwnerKnowledge.filter(({ state: ownerState }) => ownerState === "revoked").slice(-50).map(({ entryRef }) => entryRef)
+      : []),
+  ])])
 }
 
 type MemoryClient = ReturnType<typeof createMemoryBrowserClient>
@@ -417,13 +430,19 @@ export function createMemoryRuntimeScopeFence(browserRuntimeScope: string): Memo
   })
 }
 
-export function MemoryProduct(props: Readonly<{
+export type MemoryProductProps = Readonly<{
   brandName: string
   browserRuntimeScope: string
   csrfToken: string
   initialEntryRef?: string
   fetch?: MemoryBrowserFetch
-}>) {
+}>
+
+export function MemoryProduct(props: MemoryProductProps) {
+  return <MemoryProductRuntime key={props.browserRuntimeScope} {...props} />
+}
+
+function MemoryProductRuntime(props: MemoryProductProps) {
   const [state, setState] = useState<MemoryControllerState>(EMPTY_STATE)
   const [inFlight, setInFlight] = useState(0)
   const [status, setStatus] = useState("")
@@ -432,7 +451,12 @@ export function MemoryProduct(props: Readonly<{
   const controllers = useRef(new Set<AbortController>())
   const scopeFenceRef = useRef(createMemoryRuntimeScopeFence(props.browserRuntimeScope))
   const ownerKnowledgeScopeRef = useRef(props.browserRuntimeScope)
+  const initializationGenerationRef = useRef(0)
   const assetUploadGenerationRef = useRef(0)
+  const commandRequestSequenceRef = useRef(0)
+  const commandRequestsRef = useRef(new Map<string, number>())
+  const transferRefreshSequenceRef = useRef(0)
+  const transferRefreshRequestsRef = useRef(new Map<string, number>())
   const [assetUploader, setAssetUploader] = useState<ReturnType<typeof createAssetUploader> | null>(null)
   const [importSource, setImportSource] = useState<Readonly<{ assetRef: string; assetVersionRef: string; safeLabel: string }> | null>(null)
   const [importProgress, setImportProgress] = useState<AssetUploadProgress | null>(null)
@@ -449,9 +473,26 @@ export function MemoryProduct(props: Readonly<{
   useLayoutEffect(() => {
     scopeFenceRef.current.commit(props.browserRuntimeScope)
     assetUploadGenerationRef.current += 1
+    commandRequestsRef.current.clear()
+    transferRefreshRequestsRef.current.clear()
     for (const controller of controllers.current) controller.abort("Memory runtime scope changed")
     controllers.current.clear()
-  }, [client, props.browserRuntimeScope, props.initialEntryRef])
+    const initialized = commitState((current) => {
+      const preserveOwnerKnowledge = ownerKnowledgeScopeRef.current === props.browserRuntimeScope
+      ownerKnowledgeScopeRef.current = props.browserRuntimeScope
+      return Object.freeze({
+        ...EMPTY_STATE,
+        entryOwnerKnowledge: preserveOwnerKnowledge ? current.entryOwnerKnowledge : Object.freeze([]),
+        minimumSpaceVersion: preserveOwnerKnowledge ? current.minimumSpaceVersion : null,
+        generation: current.generation + 1,
+      })
+    })
+    initializationGenerationRef.current = initialized.generation
+    setStatus("")
+    setError(null)
+    setImportSource(null)
+    setImportProgress(null)
+  }, [client, commitState, props.browserRuntimeScope, props.initialEntryRef])
 
   const request = useCallback(async <Value,>(operation: (signal: AbortSignal) => Promise<Value>): Promise<Value> => {
     const controller = new AbortController()
@@ -495,28 +536,67 @@ export function MemoryProduct(props: Readonly<{
     }
   }, [props.browserRuntimeScope, props.csrfToken])
 
+  const refreshFirstPage = useCallback(async (
+    expectedScope: MemoryRuntimeScopeToken,
+    generation: number,
+  ): Promise<"installed" | "deferred" | "obsolete"> => {
+    const page = await request((signal) => client.listEntries({ limit: 50 }, signal))
+    if (!scopeFenceRef.current.isCurrent(expectedScope) || stateRef.current.generation !== generation) return "obsolete"
+    let installed = false
+    commitState((current) => {
+      if (current.generation !== generation) return current
+      const ownerVersionAdvanced = current.minimumSpaceVersion !== null &&
+        BigInt(page.ownerSnapshot.spaceVersion) > BigInt(current.minimumSpaceVersion)
+      const reconciled = reconcileMemoryOwnerPage({
+        currentEntries: current.entries,
+        currentOwnerSnapshot: current.currentOwnerSnapshot,
+        incomingEntries: page.items,
+        incomingOwnerSnapshot: page.ownerSnapshot,
+        minimumSpaceVersion: current.minimumSpaceVersion,
+        ownerKnowledge: current.entryOwnerKnowledge,
+        pageMode: "first",
+        retainEntryRefs: ownerVersionAdvanced
+          ? retainedOwnerKnowledgeRefs({ ...current, selectedEntryRef: null, pendingCommands: [] }, page.pageInfo.hasMore)
+          : retainedOwnerKnowledgeRefs(current, page.pageInfo.hasMore),
+      })
+      if (reconciled === null) return current
+      installed = true
+      return Object.freeze({
+        ...current,
+        entries: reconciled.entries,
+        entryOwnerKnowledge: reconciled.entryOwnerKnowledge,
+        currentOwnerSnapshot: reconciled.currentOwnerSnapshot,
+        minimumSpaceVersion: reconciled.minimumSpaceVersion,
+        nextCursor: page.pageInfo.nextCursor,
+        selectedEntryRef: ownerVersionAdvanced ? null : current.selectedEntryRef,
+        selectedEntry: ownerVersionAdvanced ? null : current.selectedEntry,
+        history: ownerVersionAdvanced ? Object.freeze([]) : current.history,
+        currentHistoryOwnerSnapshot: ownerVersionAdvanced ? null : current.currentHistoryOwnerSnapshot,
+        historyNextCursor: ownerVersionAdvanced ? null : current.historyNextCursor,
+      })
+    })
+    return installed ? "installed" : "deferred"
+  }, [client, commitState, request])
+
   useEffect(() => {
     const expectedScope = scopeFenceRef.current.capture()
     let initialPageDeferred = false
-    let readGeneration = commitState((current) => {
-      const preserveOwnerKnowledge = ownerKnowledgeScopeRef.current === props.browserRuntimeScope
-      ownerKnowledgeScopeRef.current = props.browserRuntimeScope
-      return Object.freeze({
-        ...EMPTY_STATE,
-        entryOwnerKnowledge: preserveOwnerKnowledge ? current.entryOwnerKnowledge : Object.freeze([]),
-        generation: current.generation + 1,
-      })
-    }).generation
-    setStatus("")
-    setError(null)
-    setImportSource(null)
-    setImportProgress(null)
+    let readGeneration = initializationGenerationRef.current
     void request(async (signal) => {
       const [settings, page] = await Promise.all([client.getSettings(signal), client.listEntries({ limit: 50 }, signal)])
       if (!scopeFenceRef.current.isCurrent(expectedScope) || stateRef.current.generation !== readGeneration) return
       const pendingCommands = createMemoryCommandJournal({ storage: localStorage, scope: expectedScope.browserRuntimeScope }).list()
       const loaded = commitState((current) => projectMemoryReadEpoch(current, readGeneration, (active) => {
-        const reconciled = reconcileMemoryOwnerPage([], page.items, null, active.entryOwnerKnowledge)
+        const reconciled = reconcileMemoryOwnerPage({
+          currentEntries: [],
+          currentOwnerSnapshot: null,
+          incomingEntries: page.items,
+          incomingOwnerSnapshot: page.ownerSnapshot,
+          minimumSpaceVersion: active.minimumSpaceVersion,
+          ownerKnowledge: active.entryOwnerKnowledge,
+          pageMode: "first",
+          retainEntryRefs: retainedOwnerKnowledgeRefs(active, page.pageInfo.hasMore),
+        })
         if (reconciled === null) {
           initialPageDeferred = true
           return Object.freeze({ ...active, settings, pendingCommands })
@@ -525,6 +605,8 @@ export function MemoryProduct(props: Readonly<{
           ...active,
           entries: reconciled.entries,
           entryOwnerKnowledge: reconciled.entryOwnerKnowledge,
+          currentOwnerSnapshot: reconciled.currentOwnerSnapshot,
+          minimumSpaceVersion: reconciled.minimumSpaceVersion,
           settings,
           nextCursor: page.pageInfo.nextCursor,
           pendingCommands,
@@ -538,11 +620,15 @@ export function MemoryProduct(props: Readonly<{
         readGeneration = selecting.generation
         const [entryResponse, history] = await Promise.all([client.getEntry(initial, signal), client.listHistory(initial, { limit: 50 }, signal)])
         if (!scopeFenceRef.current.isCurrent(expectedScope) || stateRef.current.generation !== readGeneration) return
+        const previousMinimumSpaceVersion = stateRef.current.minimumSpaceVersion
         const settled = commitState((current) => projectMemoryReadEpoch(current, readGeneration, (active) => {
-          const selected = settleMemorySelection(active, readGeneration, entryResponse.entry, history.items)
-          return selected === active ? active : Object.freeze({ ...selected, historyNextCursor: history.pageInfo.nextCursor })
+          return settleMemorySelection(active, readGeneration, entryResponse, history)
         }))
         if (settled.generation !== readGeneration) return
+        if (
+          previousMinimumSpaceVersion !== null &&
+          BigInt(entryResponse.observedSpaceVersion) > BigInt(previousMinimumSpaceVersion)
+        ) initialPageDeferred = await refreshFirstPage(expectedScope, readGeneration) === "deferred"
       }
       if (!scopeFenceRef.current.isCurrent(expectedScope) || stateRef.current.generation !== readGeneration) return
       setStatus(initialPageDeferred ? "Saved memories are awaiting a current owner page" : "Memory controls are current")
@@ -553,7 +639,7 @@ export function MemoryProduct(props: Readonly<{
       for (const controller of controllers.current) controller.abort("Memory product unmounted")
       controllers.current.clear()
     }
-  }, [client, commitState, props.browserRuntimeScope, props.initialEntryRef, request])
+  }, [client, commitState, props.browserRuntimeScope, props.initialEntryRef, refreshFirstPage, request])
 
   const select = useCallback((entryRef: string) => {
     const expectedScope = scopeFenceRef.current.capture()
@@ -569,11 +655,19 @@ export function MemoryProduct(props: Readonly<{
         stateRef.current.generation !== generation ||
         stateRef.current.selectedEntryRef !== entryRef
       ) return
+      const previousMinimumSpaceVersion = stateRef.current.minimumSpaceVersion
       const settled = commitState((current) => {
-        const selected = settleMemorySelection(current, generation, entryResponse.entry, history.items)
-        return selected === current ? current : Object.freeze({ ...selected, historyNextCursor: history.pageInfo.nextCursor })
+        return settleMemorySelection(current, generation, entryResponse, history)
       })
       if (settled.selectedEntry !== entryResponse.entry) return
+      if (
+        previousMinimumSpaceVersion !== null &&
+        BigInt(entryResponse.observedSpaceVersion) > BigInt(previousMinimumSpaceVersion)
+      ) await refreshFirstPage(expectedScope, generation)
+      if (
+        !scopeFenceRef.current.isCurrent(expectedScope) || stateRef.current.generation !== generation ||
+        stateRef.current.selectedEntry?.entryRef !== entryRef
+      ) return
       setStatus(`Opened memory revision ${entryResponse.entry.state === "active" ? entryResponse.entry.revision : "receipt"}`)
     }).catch((cause: unknown) => {
       if (
@@ -581,7 +675,7 @@ export function MemoryProduct(props: Readonly<{
         stateRef.current.generation === generation && stateRef.current.selectedEntryRef === entryRef
       ) setError(errorMessage(cause))
     })
-  }, [client, commitState, request])
+  }, [client, commitState, refreshFirstPage, request])
 
   const execute = useCallback(async (
     commandKind: MemoryCommandKind,
@@ -591,12 +685,18 @@ export function MemoryProduct(props: Readonly<{
   ) => {
     const expectedScope = scopeFenceRef.current.capture()
     const command = createMemoryCommandIdentity()
+    const requestGeneration = stateRef.current.generation
+    const requestSequence = commandRequestSequenceRef.current + 1
+    commandRequestSequenceRef.current = requestSequence
+    commandRequestsRef.current.set(command.commandId, requestSequence)
+    let activeGeneration = requestGeneration
     const pending: PendingMemoryCommand = Object.freeze({ ...recoverySemantics, commandId: command.commandId, commandKind, targetRef, createdAt: new Date().toISOString() })
     let journal: ReturnType<typeof createMemoryCommandJournal> | null = null
     try {
       journal = createMemoryCommandJournal({ storage: localStorage, scope: expectedScope.browserRuntimeScope })
       journal.remember(pending)
     } catch (cause) {
+      commandRequestsRef.current.delete(command.commandId)
       if (scopeFenceRef.current.isCurrent(expectedScope)) setError(errorMessage(cause))
       return
     }
@@ -605,56 +705,76 @@ export function MemoryProduct(props: Readonly<{
     setError(null)
     try {
       const response = await request((signal) => operation(client, command, signal))
-      if (!scopeFenceRef.current.isCurrent(expectedScope)) return
-      const projected = commitState((current) => projectMemoryCommand(current, response))
+      if (
+        !scopeFenceRef.current.isCurrent(expectedScope) ||
+        commandRequestsRef.current.get(command.commandId) !== requestSequence
+      ) return
+      const priorFloor = stateRef.current.minimumSpaceVersion
+      let responseAccepted = false
+      const projected = commitState((current) => {
+        if (
+          commandRequestsRef.current.get(command.commandId) !== requestSequence ||
+          !current.pendingCommands.some(({ commandId }) => commandId === command.commandId)
+        ) return current
+        responseAccepted = true
+        return projectMemoryCommand(current, response)
+      })
+      if (!responseAccepted) return
+      activeGeneration = projected.generation
       if (!memoryCommandRequiresRecovery(response)) journal.resolve(command.commandId)
-      let priorityRefreshDeferred = false
-      if (response.state === "succeeded" && (commandKind === "prioritizeMemoryEntry" || commandKind === "deprioritizeMemoryEntry")) {
-        if (response.result.resultKind !== "entry" || response.result.entry.state !== "active") throw new MemoryBrowserError(502, "BFF_PROTOCOL_INVALID", "Memory response was invalid")
+      let ownerPageRefreshDeferred = false
+      const ownerVersionAdvanced = response.state === "succeeded" && priorFloor !== null &&
+        BigInt(response.committedSpaceVersion) > BigInt(priorFloor)
+      if (
+        response.state === "succeeded" &&
+        (
+          ownerVersionAdvanced ||
+          response.result.resultKind === "entry" || response.result.resultKind === "restored" ||
+          response.result.resultKind === "purge" ||
+          (response.result.resultKind === "import" && response.result.import.state === "completed")
+        )
+      ) {
         const readGeneration = projected.generation
-        let page
         try {
-          page = await request((signal) => client.listEntries({ limit: 50 }, signal))
+          ownerPageRefreshDeferred = await refreshFirstPage(expectedScope, readGeneration) === "deferred"
         } catch (cause) {
-          if (!isAbortError(cause) && scopeFenceRef.current.isCurrent(expectedScope) && stateRef.current.generation === readGeneration) {
+          if (
+            !isAbortError(cause) && scopeFenceRef.current.isCurrent(expectedScope) &&
+            stateRef.current.generation === readGeneration &&
+            commandRequestsRef.current.get(command.commandId) === requestSequence
+          ) {
             setError(errorMessage(cause))
           }
           return
         }
-        if (!scopeFenceRef.current.isCurrent(expectedScope) || stateRef.current.generation !== readGeneration) return
-        const reconciled = reconcileMemoryOwnerPage(
-          stateRef.current.entries,
-          page.items,
-          response.result.entry,
-          stateRef.current.entryOwnerKnowledge,
-        )
-        if (reconciled === null) {
-          priorityRefreshDeferred = true
-        } else {
-          commitState((current) => current.generation !== readGeneration ? current : Object.freeze({
-            ...current,
-            entries: reconciled.entries,
-            entryOwnerKnowledge: reconciled.entryOwnerKnowledge,
-            nextCursor: page.pageInfo.nextCursor,
-          }))
-        }
       }
-      if (!scopeFenceRef.current.isCurrent(expectedScope)) return
+      if (
+        !scopeFenceRef.current.isCurrent(expectedScope) || stateRef.current.generation !== projected.generation ||
+        commandRequestsRef.current.get(command.commandId) !== requestSequence
+      ) return
       if (response.state === "rejected") {
         setError(response.rejection.code === "version_conflict"
           ? "This memory changed. Review its current revision before retrying."
           : `Memory owner rejected this command: ${response.rejection.code}`)
       } else {
-        setStatus(priorityRefreshDeferred
-          ? "Priority is confirmed; list ordering is awaiting a current owner page"
+        setStatus(ownerPageRefreshDeferred
+          ? "Memory change is confirmed; the list is awaiting a current owner page"
           : memorySpacePurgeIsPending(response)
           ? "Memory is revoked; physical purge is still being reconciled"
           : response.state === "succeeded" ? "Memory owner confirmed the change" : "Memory command is being reconciled")
       }
     } catch (cause) {
-      if (!isAbortError(cause) && scopeFenceRef.current.isCurrent(expectedScope)) setError(errorMessage(cause))
-    } finally { /* request tokens own busy state */ }
-  }, [client, commitState, request])
+      if (
+        !isAbortError(cause) && scopeFenceRef.current.isCurrent(expectedScope) &&
+        stateRef.current.generation === activeGeneration &&
+        commandRequestsRef.current.get(command.commandId) === requestSequence
+      ) setError(errorMessage(cause))
+    } finally {
+      if (commandRequestsRef.current.get(command.commandId) === requestSequence) {
+        commandRequestsRef.current.delete(command.commandId)
+      }
+    }
+  }, [client, commitState, refreshFirstPage, request])
 
   const active = state.selectedEntry?.state === "active" ? state.selectedEntry : null
   const commandHandlers = {
@@ -698,36 +818,72 @@ export function MemoryProduct(props: Readonly<{
     const cursor = stateRef.current.nextCursor
     const generation = stateRef.current.generation
     if (cursor === null) return
+    const invalidateAndRecover = async (): Promise<void> => {
+      let invalidated = false
+      commitState((current) => {
+        if (current.generation !== generation || current.nextCursor !== cursor) return current
+        invalidated = true
+        return Object.freeze({
+          ...current,
+          entries: Object.freeze([]),
+          entryOwnerKnowledge: Object.freeze(current.entryOwnerKnowledge
+            .filter(({ state: ownerState }) => ownerState === "revoked")
+            .slice(-50)),
+          currentOwnerSnapshot: null,
+          nextCursor: null,
+          selectedEntryRef: null,
+          selectedEntry: null,
+          history: Object.freeze([]),
+          currentHistoryOwnerSnapshot: null,
+          historyNextCursor: null,
+        })
+      })
+      if (!invalidated) return
+      try {
+        const outcome = await refreshFirstPage(expectedScope, generation)
+        if (outcome === "installed" && scopeFenceRef.current.isCurrent(expectedScope)) setStatus("Saved memories restarted from a current owner page")
+        else if (outcome === "deferred" && scopeFenceRef.current.isCurrent(expectedScope)) setStatus("Saved memories are awaiting a current owner page")
+      } catch (cause) {
+        if (!isAbortError(cause) && scopeFenceRef.current.isCurrent(expectedScope) && stateRef.current.generation === generation) setError(errorMessage(cause))
+      }
+    }
     void request((signal) => client.listEntries({ cursor, limit: 50 }, signal)).then((page) => {
       if (
         !scopeFenceRef.current.isCurrent(expectedScope) || stateRef.current.generation !== generation ||
         stateRef.current.nextCursor !== cursor
       ) return
-      const reconciled = reconcileMemoryOwnerPage(
-        stateRef.current.entries,
-        page.items,
-        null,
-        stateRef.current.entryOwnerKnowledge,
-        "continuation",
-      )
+      const reconciled = reconcileMemoryOwnerPage({
+        currentEntries: stateRef.current.entries,
+        currentOwnerSnapshot: stateRef.current.currentOwnerSnapshot,
+        incomingEntries: page.items,
+        incomingOwnerSnapshot: page.ownerSnapshot,
+        minimumSpaceVersion: stateRef.current.minimumSpaceVersion,
+        ownerKnowledge: stateRef.current.entryOwnerKnowledge,
+        pageMode: "continuation",
+        retainEntryRefs: retainedOwnerKnowledgeRefs(stateRef.current, page.pageInfo.hasMore),
+      })
       if (reconciled === null) {
-        setStatus("Saved memories are awaiting a current owner page")
+        void invalidateAndRecover()
         return
       }
       commitState((current) => current.generation !== generation || current.nextCursor !== cursor ? current : Object.freeze({
         ...current,
         entries: reconciled.entries,
         entryOwnerKnowledge: reconciled.entryOwnerKnowledge,
+        currentOwnerSnapshot: reconciled.currentOwnerSnapshot,
+        minimumSpaceVersion: reconciled.minimumSpaceVersion,
         nextCursor: page.pageInfo.nextCursor,
       }))
       setStatus("Loaded more saved memories")
     }).catch((cause: unknown) => {
-      if (
+      if (cause instanceof MemoryBrowserError && cause.code === "PAGE_CURSOR_INVALID") {
+        void invalidateAndRecover()
+      } else if (
         !isAbortError(cause) && scopeFenceRef.current.isCurrent(expectedScope) &&
         stateRef.current.generation === generation && stateRef.current.nextCursor === cursor
       ) setError(errorMessage(cause))
     })
-  }, [client, commitState, request])
+  }, [client, commitState, refreshFirstPage, request])
 
   const loadMoreHistory = useCallback(() => {
     const expectedScope = scopeFenceRef.current.capture()
@@ -736,6 +892,24 @@ export function MemoryProduct(props: Readonly<{
     const entryRef = current.selectedEntryRef
     const cursor = current.historyNextCursor
     const generation = current.generation
+    const invalidateAndReload = (): void => {
+      let invalidated = false
+      commitState((latest) => {
+        if (
+          latest.generation !== generation || latest.selectedEntryRef !== entryRef ||
+          latest.historyNextCursor !== cursor
+        ) return latest
+        invalidated = true
+        return Object.freeze({
+          ...latest,
+          selectedEntry: null,
+          history: Object.freeze([]),
+          currentHistoryOwnerSnapshot: null,
+          historyNextCursor: null,
+        })
+      })
+      if (invalidated) select(entryRef)
+    }
     void request((signal) => client.listHistory(entryRef, { cursor, limit: 50 }, signal)).then((page) => {
       if (
         !scopeFenceRef.current.isCurrent(expectedScope) ||
@@ -743,30 +917,87 @@ export function MemoryProduct(props: Readonly<{
         stateRef.current.selectedEntryRef !== entryRef ||
         stateRef.current.historyNextCursor !== cursor
       ) return
-      commitState((latest) => latest.generation !== generation || latest.selectedEntryRef !== entryRef ? latest : Object.freeze({ ...latest, history: mergeMemoryHistory(latest.history, page.items), historyNextCursor: page.pageInfo.nextCursor }))
+      const reconciled = reconcileMemoryHistoryPage({
+        currentHistory: stateRef.current.history,
+        currentHistoryOwnerSnapshot: stateRef.current.currentHistoryOwnerSnapshot,
+        incomingPage: page,
+        minimumSpaceVersion: stateRef.current.minimumSpaceVersion,
+        pageMode: "continuation",
+      })
+      if (reconciled === null) {
+        invalidateAndReload()
+        setStatus("Revision history changed; reopen this memory for a current owner view")
+        return
+      }
+      commitState((latest) => latest.generation !== generation || latest.selectedEntryRef !== entryRef ? latest : Object.freeze({
+        ...latest,
+        history: reconciled.history,
+        currentHistoryOwnerSnapshot: reconciled.currentHistoryOwnerSnapshot,
+        minimumSpaceVersion: reconciled.minimumSpaceVersion,
+        historyNextCursor: page.pageInfo.nextCursor,
+      }))
       setStatus("Loaded more revision history")
     }).catch((cause: unknown) => {
-      if (
+      if (cause instanceof MemoryBrowserError && cause.code === "PAGE_CURSOR_INVALID") {
+        invalidateAndReload()
+      } else if (
         !isAbortError(cause) && scopeFenceRef.current.isCurrent(expectedScope) &&
         stateRef.current.generation === generation && stateRef.current.selectedEntryRef === entryRef &&
         stateRef.current.historyNextCursor === cursor
       ) setError(errorMessage(cause))
     })
-  }, [client, commitState, request])
+  }, [client, commitState, request, select])
 
   const recover = useCallback((commandId: string) => {
     const expectedScope = scopeFenceRef.current.capture()
+    const requestGeneration = stateRef.current.generation
+    const requestSequence = commandRequestSequenceRef.current + 1
+    commandRequestSequenceRef.current = requestSequence
+    commandRequestsRef.current.set(commandId, requestSequence)
+    let activeGeneration = requestGeneration
     const pending = stateRef.current.pendingCommands.find((command) => command.commandId === commandId)
     if (pending === undefined) {
+      commandRequestsRef.current.delete(commandId)
       setError("The exact Memory command is no longer available for recovery")
       return
     }
-    void request((signal) => client.recover(pending, signal)).then((response) => {
-      if (!scopeFenceRef.current.isCurrent(expectedScope)) return
-      commitState((current) => projectMemoryCommand(current, response))
+    void request((signal) => client.recover(pending, signal)).then(async (response) => {
+      if (
+        !scopeFenceRef.current.isCurrent(expectedScope) ||
+        commandRequestsRef.current.get(commandId) !== requestSequence
+      ) return
+      const priorFloor = stateRef.current.minimumSpaceVersion
+      let responseAccepted = false
+      const projected = commitState((current) => {
+        if (
+          commandRequestsRef.current.get(commandId) !== requestSequence ||
+          !current.pendingCommands.some((command) => command.commandId === commandId)
+        ) return current
+        responseAccepted = true
+        return projectMemoryCommand(current, response)
+      })
+      if (!responseAccepted) return
+      activeGeneration = projected.generation
       if (!memoryCommandRequiresRecovery(response)) {
         createMemoryCommandJournal({ storage: localStorage, scope: expectedScope.browserRuntimeScope }).resolve(commandId)
       }
+      const ownerProjectionApplied = response.state === "succeeded" &&
+        (priorFloor === null || BigInt(response.committedSpaceVersion) >= BigInt(priorFloor))
+      const ownerVersionAdvanced = response.state === "succeeded" && priorFloor !== null &&
+        BigInt(response.committedSpaceVersion) > BigInt(priorFloor)
+      if (
+        ownerProjectionApplied && response.state === "succeeded" &&
+        (
+          ownerVersionAdvanced ||
+          response.result.resultKind === "entry" || response.result.resultKind === "restored" ||
+          response.result.resultKind === "purge" ||
+          (response.result.resultKind === "import" && response.result.import.state === "completed")
+        )
+      ) await refreshFirstPage(expectedScope, projected.generation)
+      if (
+        !scopeFenceRef.current.isCurrent(expectedScope) || stateRef.current.generation !== projected.generation ||
+        commandRequestsRef.current.get(commandId) !== requestSequence
+      ) return
       if (response.state === "rejected") {
         setError(`Memory owner rejected this command: ${response.rejection.code}`)
         setStatus("Recovered the exact rejected Memory command outcome")
@@ -775,8 +1006,15 @@ export function MemoryProduct(props: Readonly<{
           ? "Recovered the reset receipt; physical purge is still in progress"
           : response.state === "succeeded" ? "Recovered the exact Memory command outcome" : "Command recovery is still pending")
       }
-    }).catch((cause: unknown) => { if (scopeFenceRef.current.isCurrent(expectedScope)) setError(errorMessage(cause)) })
-  }, [client, commitState, request])
+    }).catch((cause: unknown) => {
+      if (
+        !isAbortError(cause) && scopeFenceRef.current.isCurrent(expectedScope) &&
+        stateRef.current.generation === activeGeneration && commandRequestsRef.current.get(commandId) === requestSequence
+      ) setError(errorMessage(cause))
+    }).finally(() => {
+      if (commandRequestsRef.current.get(commandId) === requestSequence) commandRequestsRef.current.delete(commandId)
+    })
+  }, [client, commitState, refreshFirstPage, request])
 
   const refreshSelected = useCallback(() => {
     const entryRef = stateRef.current.selectedEntryRef
@@ -785,21 +1023,75 @@ export function MemoryProduct(props: Readonly<{
 
   const refreshExport = useCallback((exportRef: string) => {
     const expectedScope = scopeFenceRef.current.capture()
+    const generation = stateRef.current.generation
+    const requestKey = `export:${exportRef}`
+    const requestSequence = transferRefreshSequenceRef.current + 1
+    transferRefreshSequenceRef.current = requestSequence
+    transferRefreshRequestsRef.current.set(requestKey, requestSequence)
     void request((signal) => client.getExport(exportRef, signal)).then(({ export: item }) => {
-      if (!scopeFenceRef.current.isCurrent(expectedScope)) return
-      setState((current) => Object.freeze({ ...current, exports: Object.freeze([item, ...current.exports.filter((candidate) => candidate.exportRef !== item.exportRef)]) }))
-      setStatus(`Export is ${exportLabel(item).toLowerCase()}`)
-    }).catch((cause: unknown) => { if (scopeFenceRef.current.isCurrent(expectedScope)) setError(errorMessage(cause)) })
-  }, [client, request])
+      if (
+        !scopeFenceRef.current.isCurrent(expectedScope) || stateRef.current.generation !== generation ||
+        transferRefreshRequestsRef.current.get(requestKey) !== requestSequence
+      ) return
+      const projected = commitState((current) => {
+        if (
+          current.generation !== generation ||
+          transferRefreshRequestsRef.current.get(requestKey) !== requestSequence
+        ) return current
+        return settleMemoryExportRefresh(current, generation, item)
+      })
+      if (
+        !scopeFenceRef.current.isCurrent(expectedScope) || projected.generation !== generation ||
+        transferRefreshRequestsRef.current.get(requestKey) !== requestSequence
+      ) return
+      const currentItem = projected.exports.find(({ exportRef: candidateRef }) => candidateRef === exportRef)
+      if (currentItem !== undefined) setStatus(`Export is ${exportLabel(currentItem).toLowerCase()}`)
+    }).catch((cause: unknown) => {
+      if (
+        scopeFenceRef.current.isCurrent(expectedScope) && stateRef.current.generation === generation &&
+        transferRefreshRequestsRef.current.get(requestKey) === requestSequence
+      ) setError(errorMessage(cause))
+    })
+  }, [client, commitState, request])
 
   const refreshImport = useCallback((importRef: string) => {
     const expectedScope = scopeFenceRef.current.capture()
-    void request((signal) => client.getImport(importRef, signal)).then(({ import: item }) => {
-      if (!scopeFenceRef.current.isCurrent(expectedScope)) return
-      setState((current) => Object.freeze({ ...current, imports: Object.freeze([item, ...current.imports.filter((candidate) => candidate.importRef !== item.importRef)]) }))
-      setStatus(`Import is ${importLabel(item).toLowerCase()}`)
-    }).catch((cause: unknown) => { if (scopeFenceRef.current.isCurrent(expectedScope)) setError(errorMessage(cause)) })
-  }, [client, request])
+    const generation = stateRef.current.generation
+    const requestKey = `import:${importRef}`
+    const requestSequence = transferRefreshSequenceRef.current + 1
+    transferRefreshSequenceRef.current = requestSequence
+    transferRefreshRequestsRef.current.set(requestKey, requestSequence)
+    let activeGeneration = generation
+    void request((signal) => client.getImport(importRef, signal)).then(async ({ import: item }) => {
+      if (
+        !scopeFenceRef.current.isCurrent(expectedScope) || stateRef.current.generation !== generation ||
+        transferRefreshRequestsRef.current.get(requestKey) !== requestSequence
+      ) return
+      const projected = commitState((current) => {
+        if (
+          current.generation !== generation ||
+          transferRefreshRequestsRef.current.get(requestKey) !== requestSequence
+        ) return current
+        return settleMemoryImportRefresh(current, generation, item)
+      })
+      activeGeneration = projected.generation
+      if (item.state === "completed" && projected.generation !== generation) {
+        await refreshFirstPage(expectedScope, projected.generation)
+      }
+      const statusGeneration = projected.generation
+      if (
+        !scopeFenceRef.current.isCurrent(expectedScope) || stateRef.current.generation !== statusGeneration ||
+        transferRefreshRequestsRef.current.get(requestKey) !== requestSequence
+      ) return
+      const currentItem = stateRef.current.imports.find(({ importRef: candidateRef }) => candidateRef === importRef)
+      if (currentItem !== undefined) setStatus(`Import is ${importLabel(currentItem).toLowerCase()}`)
+    }).catch((cause: unknown) => {
+      if (
+        scopeFenceRef.current.isCurrent(expectedScope) && stateRef.current.generation === activeGeneration &&
+        transferRefreshRequestsRef.current.get(requestKey) === requestSequence
+      ) setError(errorMessage(cause))
+    })
+  }, [client, commitState, refreshFirstPage, request])
 
   const chooseImportFile = useCallback((file: File) => {
     const expectedScope = scopeFenceRef.current.capture()

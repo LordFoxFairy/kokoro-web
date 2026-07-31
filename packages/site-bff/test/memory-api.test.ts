@@ -73,7 +73,11 @@ function authority(overrides: Partial<SiteMemoryAuthority> = {}): SiteMemoryAuth
   return {
     getSettings: () => Promise.resolve(settings),
     updateSettings: rejected,
-    listEntries: () => Promise.resolve({ items: [], pageInfo: { nextCursor: null } }),
+    listEntries: () => Promise.resolve({
+      items: [],
+      ownerSnapshot: { snapshotRef: "snapshot:default", spaceVersion: "1" },
+      pageInfo: { hasMore: false, nextCursor: null },
+    }),
     remember: rejected,
     getEntry: rejected,
     listHistory: rejected,
@@ -123,10 +127,22 @@ describe("Site Memory browser API", () => {
     const calls = {
       getSettings: vi.fn(() => Promise.resolve(settings)),
       updateSettings: vi.fn(() => Promise.resolve(commandResponse())),
-      listEntries: vi.fn(() => Promise.resolve({ items: [], pageInfo: { nextCursor: null } })),
+      listEntries: vi.fn(() => Promise.resolve({
+        items: [],
+        ownerSnapshot: { snapshotRef: "snapshot:routing", spaceVersion: "1" },
+        pageInfo: { hasMore: false, nextCursor: null },
+      })),
       remember: vi.fn(() => Promise.resolve(commandResponse())),
-      getEntry: vi.fn(() => Promise.resolve({ entry: { entryRef: "entry-1", purgeReceiptRef: "purge-1", purgedAt: "2026-07-31T00:00:00.000Z", state: "purged" as const } })),
-      listHistory: vi.fn(() => Promise.resolve({ entryRef: "entry-1", items: [], pageInfo: { nextCursor: null } })),
+      getEntry: vi.fn(() => Promise.resolve({
+        entry: { entryRef: "entry-1", purgeReceiptRef: "purge-1", purgedAt: "2026-07-31T00:00:00.000Z", state: "purged" as const },
+        observedSpaceVersion: "1",
+      })),
+      listHistory: vi.fn(() => Promise.resolve({
+        entryRef: "entry-1",
+        items: [],
+        ownerSnapshot: { snapshotRef: "history-snapshot:routing", spaceVersion: "1" },
+        pageInfo: { hasMore: false, nextCursor: null },
+      })),
       restore: vi.fn(() => Promise.resolve(commandResponse())),
       correct: vi.fn(() => Promise.resolve(commandResponse())),
       prioritize: vi.fn(() => Promise.resolve(commandResponse())),
@@ -236,7 +252,11 @@ describe("Site Memory browser API", () => {
   })
 
   test("rejects duplicate, unknown and browser-supplied authority query axes", async () => {
-    const listEntries = vi.fn(() => Promise.resolve({ items: [], pageInfo: { nextCursor: null } }))
+    const listEntries = vi.fn(() => Promise.resolve({
+      items: [],
+      ownerSnapshot: { snapshotRef: "snapshot:query", spaceVersion: "1" },
+      pageInfo: { hasMore: false, nextCursor: null },
+    }))
     const surface = api(authority({ listEntries }))
     for (const query of [
       "?limit=1&limit=2",

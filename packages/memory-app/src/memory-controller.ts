@@ -8,6 +8,7 @@ import type {
   MemoryEntryPage,
   MemoryEntryResponse,
   MemoryEntryView,
+  MemoryOwnerSnapshot,
   MemoryArtifactDownloadRequest,
   MemoryExportInput,
   MemoryExportStatus,
@@ -265,6 +266,7 @@ export function createMemoryBrowserClient(input: Readonly<{
     },
     async listHistory(entryRef: string, input: Readonly<{ cursor?: string; limit?: number }> = {}, signal?: AbortSignal): Promise<MemoryEntryHistoryPage> {
       const page = await read(`/entries/${encodedReference(zMemoryEntryRef, entryRef)}/history${historyQuery(input)}`, zMemoryEntryHistoryPage, signal)
+      if (page.entryRef !== entryRef) protocol()
       unique(page.items, ({ revisionRef }) => revisionRef)
       return page
     },
@@ -329,7 +331,6 @@ export type MemoryEntryOwnerKnowledge =
   | Readonly<{
     entryRef: string
     entryVersion: string
-    pageMembership: "required" | "observed" | "unknown"
     state: "active"
   }>
   | Readonly<{
@@ -347,10 +348,13 @@ export type MemoryControllerState = Readonly<{
   settings: MemorySettings | null
   entries: readonly MemoryEntryActiveView[]
   entryOwnerKnowledge: readonly MemoryEntryOwnerKnowledge[]
+  currentOwnerSnapshot: MemoryOwnerSnapshot | null
+  minimumSpaceVersion: string | null
   nextCursor: string | null
   selectedEntryRef: string | null
   selectedEntry: MemoryEntryView | null
   history: readonly MemoryRevisionView[]
+  currentHistoryOwnerSnapshot: MemoryOwnerSnapshot | null
   historyNextCursor: string | null
   exports: readonly BrowserMemoryExportStatus[]
   imports: readonly MemoryImportStatus[]
@@ -398,61 +402,98 @@ export function mergeMemoryEntries(
 export type MemoryOwnerPageReconciliation = Readonly<{
   entries: readonly MemoryEntryActiveView[]
   entryOwnerKnowledge: readonly MemoryEntryOwnerKnowledge[]
+  currentOwnerSnapshot: MemoryOwnerSnapshot
+  minimumSpaceVersion: string
 }>
 
 export type MemoryOwnerPageMode = "continuation" | "first"
 
-export function reconcileMemoryOwnerPage(
-  current: readonly MemoryEntryActiveView[],
-  incoming: readonly MemoryEntryActiveView[],
-  confirmedEntry: MemoryEntryActiveView | null,
-  ownerKnowledge: readonly MemoryEntryOwnerKnowledge[] = [],
-  pageMode: MemoryOwnerPageMode = "first",
-): MemoryOwnerPageReconciliation | null {
-  const currentByRef = new Map(current.map((entry) => [entry.entryRef, entry]))
-  const incomingByRef = new Map(incoming.map((entry) => [entry.entryRef, entry]))
-  if (confirmedEntry !== null) {
-    const observed = incomingByRef.get(confirmedEntry.entryRef)
-    const currentTarget = currentByRef.get(confirmedEntry.entryRef)
-    const minimumTargetVersion = currentTarget === undefined
-      ? BigInt(confirmedEntry.entryVersion)
-      : BigInt(currentTarget.entryVersion) > BigInt(confirmedEntry.entryVersion)
-        ? BigInt(currentTarget.entryVersion)
-        : BigInt(confirmedEntry.entryVersion)
-    if (observed === undefined || BigInt(observed.entryVersion) < minimumTargetVersion) return null
+export type MemoryOwnerPageReconciliationInput = Readonly<{
+  currentEntries: readonly MemoryEntryActiveView[]
+  currentOwnerSnapshot: MemoryOwnerSnapshot | null
+  incomingEntries: readonly MemoryEntryActiveView[]
+  incomingOwnerSnapshot: MemoryOwnerSnapshot
+  minimumSpaceVersion: string | null
+  ownerKnowledge: readonly MemoryEntryOwnerKnowledge[]
+  pageMode: MemoryOwnerPageMode
+  retainEntryRefs: readonly string[]
+}>
+
+function maximumVersion(left: string | null, right: string): string {
+  return left === null || BigInt(right) > BigInt(left) ? right : left
+}
+
+function sameOwnerSnapshot(left: MemoryOwnerSnapshot, right: MemoryOwnerSnapshot): boolean {
+  return left.snapshotRef === right.snapshotRef && left.spaceVersion === right.spaceVersion
+}
+
+function compactOwnerKnowledge(
+  current: readonly MemoryEntryOwnerKnowledge[],
+  entries: readonly MemoryEntryActiveView[],
+  retainEntryRefs: readonly string[],
+): readonly MemoryEntryOwnerKnowledge[] {
+  const retained = new Set(retainEntryRefs)
+  const compacted = new Map<string, MemoryEntryOwnerKnowledge>()
+  for (const item of current) {
+    if (retained.has(item.entryRef)) compacted.set(item.entryRef, item)
   }
-  for (const candidate of incoming) {
+  for (const entry of entries) {
+    const known = compacted.get(entry.entryRef)
+    if (known?.state === "revoked") throw new TypeError("Memory entry owner lifecycle conflict")
+    if (known?.state === "active" && BigInt(known.entryVersion) > BigInt(entry.entryVersion)) continue
+    compacted.set(entry.entryRef, Object.freeze({
+      entryRef: entry.entryRef,
+      entryVersion: entry.entryVersion,
+      state: "active",
+    }))
+  }
+  return Object.freeze([...compacted.values()])
+}
+
+export function reconcileMemoryOwnerPage(
+  input: MemoryOwnerPageReconciliationInput,
+): MemoryOwnerPageReconciliation | null {
+  if (
+    input.minimumSpaceVersion !== null &&
+    BigInt(input.incomingOwnerSnapshot.spaceVersion) < BigInt(input.minimumSpaceVersion)
+  ) return null
+  if (
+    input.pageMode === "continuation" &&
+    (input.currentOwnerSnapshot === null || !sameOwnerSnapshot(input.currentOwnerSnapshot, input.incomingOwnerSnapshot))
+  ) return null
+
+  const currentByRef = new Map(input.currentEntries.map((entry) => [entry.entryRef, entry]))
+  const incomingByRef = new Map(input.incomingEntries.map((entry) => [entry.entryRef, entry]))
+  for (const candidate of input.incomingEntries) {
     const existing = currentByRef.get(candidate.entryRef)
     if (existing !== undefined && BigInt(existing.entryVersion) > BigInt(candidate.entryVersion)) return null
   }
-  for (const knowledge of ownerKnowledge) {
+  for (const knowledge of input.ownerKnowledge) {
     const candidate = incomingByRef.get(knowledge.entryRef)
     if (knowledge.state === "revoked") {
       if (candidate !== undefined) return null
       continue
     }
     if (candidate !== undefined && BigInt(candidate.entryVersion) < BigInt(knowledge.entryVersion)) return null
-    if (pageMode === "first" && knowledge.pageMembership === "required" && candidate === undefined) return null
   }
-  const entries = pageMode === "continuation"
-    ? mergeMemoryEntries(current, incoming)
-    : Object.freeze(incoming.map((candidate) => {
+  const entries = input.pageMode === "continuation"
+    ? mergeMemoryEntries(input.currentEntries, input.incomingEntries)
+    : Object.freeze(input.incomingEntries.map((candidate) => {
       const existing = currentByRef.get(candidate.entryRef)
       return existing === undefined ? candidate : mergeMemoryEntries([existing], [candidate])[0] ?? candidate
     }))
   return Object.freeze({
     entries,
-    entryOwnerKnowledge: acceptMemoryOwnerPage(ownerKnowledge, incoming, pageMode === "first"),
+    entryOwnerKnowledge: compactOwnerKnowledge(input.ownerKnowledge, entries, input.retainEntryRefs),
+    currentOwnerSnapshot: input.incomingOwnerSnapshot,
+    minimumSpaceVersion: maximumVersion(input.minimumSpaceVersion, input.incomingOwnerSnapshot.spaceVersion),
   })
 }
 
 export function reconcileMemoryEntryPage(
-  current: readonly MemoryEntryActiveView[],
-  incoming: readonly MemoryEntryActiveView[],
-  confirmedEntry: MemoryEntryActiveView,
-  ownerKnowledge: readonly MemoryEntryOwnerKnowledge[] = [],
-): readonly MemoryEntryActiveView[] | null {
-  return reconcileMemoryOwnerPage(current, incoming, confirmedEntry, ownerKnowledge)?.entries ?? null
+  input: MemoryOwnerPageReconciliationInput,
+): MemoryOwnerPageReconciliation | null {
+  return reconcileMemoryOwnerPage(input)
 }
 
 function sameRevision(left: MemoryRevisionView, right: MemoryRevisionView): boolean {
@@ -472,6 +513,38 @@ export function mergeMemoryHistory(
   return Object.freeze([...revisions.values()].sort((left, right) => right.revision - left.revision))
 }
 
+export type MemoryHistoryPageMode = "continuation" | "first"
+
+export type MemoryHistoryPageReconciliation = Readonly<{
+  history: readonly MemoryRevisionView[]
+  currentHistoryOwnerSnapshot: MemoryOwnerSnapshot
+  minimumSpaceVersion: string
+}>
+
+export function reconcileMemoryHistoryPage(input: Readonly<{
+  currentHistory: readonly MemoryRevisionView[]
+  currentHistoryOwnerSnapshot: MemoryOwnerSnapshot | null
+  incomingPage: MemoryEntryHistoryPage
+  minimumSpaceVersion: string | null
+  pageMode: MemoryHistoryPageMode
+}>): MemoryHistoryPageReconciliation | null {
+  if (
+    input.minimumSpaceVersion !== null &&
+    BigInt(input.incomingPage.ownerSnapshot.spaceVersion) < BigInt(input.minimumSpaceVersion)
+  ) return null
+  if (
+    input.pageMode === "continuation" &&
+    (input.currentHistoryOwnerSnapshot === null || !sameOwnerSnapshot(input.currentHistoryOwnerSnapshot, input.incomingPage.ownerSnapshot))
+  ) return null
+  return Object.freeze({
+    history: input.pageMode === "continuation"
+      ? mergeMemoryHistory(input.currentHistory, input.incomingPage.items)
+      : mergeMemoryHistory([], input.incomingPage.items),
+    currentHistoryOwnerSnapshot: input.incomingPage.ownerSnapshot,
+    minimumSpaceVersion: maximumVersion(input.minimumSpaceVersion, input.incomingPage.ownerSnapshot.spaceVersion),
+  })
+}
+
 export function beginMemorySelection(state: MemoryControllerState, entryRef: string): MemoryControllerState {
   return Object.freeze({
     ...state,
@@ -479,6 +552,7 @@ export function beginMemorySelection(state: MemoryControllerState, entryRef: str
     selectedEntryRef: entryRef,
     selectedEntry: null,
     history: Object.freeze([]),
+    currentHistoryOwnerSnapshot: null,
     historyNextCursor: null,
   })
 }
@@ -486,10 +560,19 @@ export function beginMemorySelection(state: MemoryControllerState, entryRef: str
 export function settleMemorySelection(
   state: MemoryControllerState,
   generation: number,
-  selectedEntry: MemoryEntryView,
-  history: readonly MemoryRevisionView[],
+  response: MemoryEntryResponse,
+  historyPage: MemoryEntryHistoryPage,
 ): MemoryControllerState {
+  const selectedEntry = response.entry
   if (state.generation !== generation || state.selectedEntryRef !== selectedEntry.entryRef) return state
+  if (historyPage.entryRef !== selectedEntry.entryRef) return state
+  if (historyPage.ownerSnapshot.spaceVersion !== response.observedSpaceVersion) return state
+  if (state.minimumSpaceVersion !== null && BigInt(response.observedSpaceVersion) < BigInt(state.minimumSpaceVersion)) return state
+  const ownerVersionAdvanced = state.minimumSpaceVersion !== null &&
+    BigInt(response.observedSpaceVersion) > BigInt(state.minimumSpaceVersion)
+  const minimumSpaceVersion = maximumVersion(state.minimumSpaceVersion, response.observedSpaceVersion)
+  const ownerSnapshotIsCurrent = !ownerVersionAdvanced && state.currentOwnerSnapshot !== null &&
+    BigInt(state.currentOwnerSnapshot.spaceVersion) >= BigInt(response.observedSpaceVersion)
   if (selectedEntry.state === "active") {
     if (state.selectedEntry?.entryRef === selectedEntry.entryRef && state.selectedEntry.state !== "active") return state
     const knowledge = state.entryOwnerKnowledge.find(({ entryRef }) => entryRef === selectedEntry.entryRef)
@@ -502,26 +585,45 @@ export function settleMemorySelection(
       if (incomingVersion < floorVersion) return state
       if (incomingVersion === floorVersion) mergeMemoryEntries([floor], [selectedEntry])
     }
-    const listed = state.entries.some(({ entryRef }) => entryRef === selectedEntry.entryRef)
+    const listed = !ownerVersionAdvanced && state.entries.some(({ entryRef }) => entryRef === selectedEntry.entryRef)
+    const entries = ownerVersionAdvanced
+      ? Object.freeze([])
+      : listed ? mergeMemoryEntries(state.entries, [selectedEntry]) : state.entries
     return Object.freeze({
       ...state,
-      entries: listed ? mergeMemoryEntries(state.entries, [selectedEntry]) : state.entries,
-      entryOwnerKnowledge: advanceActiveOwnerKnowledge(
-        state.entryOwnerKnowledge,
-        selectedEntry,
-        listed ? "observed" : "unknown",
+      entries,
+      entryOwnerKnowledge: compactOwnerKnowledge(
+        advanceActiveOwnerKnowledge(state.entryOwnerKnowledge, selectedEntry),
+        entries,
+        [selectedEntry.entryRef],
       ),
+      currentOwnerSnapshot: ownerSnapshotIsCurrent ? state.currentOwnerSnapshot : null,
+      minimumSpaceVersion,
+      nextCursor: ownerSnapshotIsCurrent ? state.nextCursor : null,
       selectedEntry,
-      history: mergeMemoryHistory([], history),
+      history: mergeMemoryHistory([], historyPage.items),
+      currentHistoryOwnerSnapshot: historyPage.ownerSnapshot,
+      historyNextCursor: historyPage.pageInfo.nextCursor,
     })
   }
+  const entries = ownerVersionAdvanced
+    ? Object.freeze([])
+    : state.entries.filter(({ entryRef }) => entryRef !== selectedEntry.entryRef)
   return Object.freeze({
     ...state,
-    entries: state.entries.filter(({ entryRef }) => entryRef !== selectedEntry.entryRef),
-    entryOwnerKnowledge: revokeOwnerKnowledge(state.entryOwnerKnowledge, [selectedEntry.entryRef]),
+    entries,
+    entryOwnerKnowledge: compactOwnerKnowledge(
+      revokeOwnerKnowledge(state.entryOwnerKnowledge, [selectedEntry.entryRef]),
+      entries,
+      [selectedEntry.entryRef],
+    ),
+    currentOwnerSnapshot: null,
+    minimumSpaceVersion,
     nextCursor: null,
     selectedEntry,
-    history: mergeMemoryHistory([], history),
+    history: mergeMemoryHistory([], historyPage.items),
+    currentHistoryOwnerSnapshot: historyPage.ownerSnapshot,
+    historyNextCursor: historyPage.pageInfo.nextCursor,
   })
 }
 
@@ -533,12 +635,108 @@ export function projectMemoryReadEpoch(
   return state.generation === expectedGeneration ? project(state) : state
 }
 
+function exportProjection(value: BrowserMemoryExportStatus | MemoryExportStatus): unknown {
+  const request = value.artifactDownloadRequest
+  return {
+    ...value,
+    artifactDownloadRequest: request === null ? null : {
+      artifactRef: request.artifactRef,
+      artifactVersionRef: request.artifactVersionRef,
+      deliveryRequestRef: request.deliveryRequestRef,
+      purpose: request.purpose,
+    },
+  }
+}
+
+function sameProjection(left: unknown, right: unknown): boolean {
+  return JSON.stringify(left) === JSON.stringify(right)
+}
+
+const EXPORT_REACHABLE_STATES: Readonly<Record<MemoryExportStatus["state"], readonly MemoryExportStatus["state"][]>> = {
+  queued: ["queued", "running", "ready", "failed", "expired", "purged"],
+  running: ["running", "ready", "failed", "expired", "purged"],
+  ready: ["ready", "expired", "purged"],
+  failed: ["failed", "purged"],
+  expired: ["expired", "purged"],
+  purged: ["purged"],
+}
+
+const IMPORT_REACHABLE_STATES: Readonly<Record<MemoryImportStatus["state"], readonly MemoryImportStatus["state"][]>> = {
+  queued: ["queued", "validating", "quarantined", "applying", "completed", "rejected", "failed"],
+  validating: ["validating", "quarantined", "applying", "completed", "rejected", "failed"],
+  quarantined: ["quarantined", "applying", "completed", "rejected", "failed"],
+  applying: ["applying", "completed", "rejected", "failed"],
+  completed: ["completed"],
+  rejected: ["rejected"],
+  failed: ["failed"],
+}
+
 function replaceExport(current: readonly BrowserMemoryExportStatus[], incoming: MemoryExportStatus): readonly BrowserMemoryExportStatus[] {
+  const existing = current.find(({ exportRef }) => exportRef === incoming.exportRef)
+  if (existing !== undefined) {
+    const comparison = BigInt(incoming.statusVersion) - BigInt(existing.statusVersion)
+    if (comparison < 0n) return current
+    if (comparison === 0n) {
+      if (!sameProjection(exportProjection(existing), exportProjection(incoming))) throw new TypeError("Memory export status version conflict")
+      return current
+    }
+    if (!EXPORT_REACHABLE_STATES[existing.state].includes(incoming.state)) throw new TypeError("Memory export state regressed")
+  }
   return Object.freeze([incoming, ...current.filter(({ exportRef }) => exportRef !== incoming.exportRef)])
 }
 
 function replaceImport(current: readonly MemoryImportStatus[], incoming: MemoryImportStatus): readonly MemoryImportStatus[] {
+  const existing = current.find(({ importRef }) => importRef === incoming.importRef)
+  if (existing !== undefined) {
+    const comparison = BigInt(incoming.statusVersion) - BigInt(existing.statusVersion)
+    if (comparison < 0n) return current
+    if (comparison === 0n) {
+      if (!sameProjection(existing, incoming)) throw new TypeError("Memory import status version conflict")
+      return current
+    }
+    if (!IMPORT_REACHABLE_STATES[existing.state].includes(incoming.state)) throw new TypeError("Memory import state regressed")
+  }
   return Object.freeze([incoming, ...current.filter(({ importRef }) => importRef !== incoming.importRef)])
+}
+
+export function settleMemoryExportRefresh(
+  state: MemoryControllerState,
+  generation: number,
+  incoming: BrowserMemoryExportStatus,
+): MemoryControllerState {
+  if (state.generation !== generation) return state
+  const exports = replaceExport(state.exports, incoming)
+  return exports === state.exports ? state : Object.freeze({ ...state, exports })
+}
+
+export function settleMemoryImportRefresh(
+  state: MemoryControllerState,
+  generation: number,
+  incoming: MemoryImportStatus,
+): MemoryControllerState {
+  if (state.generation !== generation) return state
+  const imports = replaceImport(state.imports, incoming)
+  const accepted = imports.find(({ importRef }) => importRef === incoming.importRef)?.statusVersion === incoming.statusVersion
+  if (!accepted || incoming.state !== "completed") return imports === state.imports ? state : Object.freeze({ ...state, imports })
+  const resultingSpaceVersion = incoming.resultingSpaceVersion
+  if (resultingSpaceVersion === null) throw new TypeError("Completed Memory import omitted its owner version")
+  const advancesFloor = state.minimumSpaceVersion === null || BigInt(resultingSpaceVersion) > BigInt(state.minimumSpaceVersion)
+  if (!advancesFloor) return imports === state.imports ? state : Object.freeze({ ...state, imports })
+  return Object.freeze({
+    ...state,
+    generation: state.generation + 1,
+    entries: Object.freeze([]),
+    entryOwnerKnowledge: Object.freeze([]),
+    currentOwnerSnapshot: null,
+    minimumSpaceVersion: resultingSpaceVersion,
+    nextCursor: null,
+    selectedEntryRef: null,
+    selectedEntry: null,
+    history: Object.freeze([]),
+    currentHistoryOwnerSnapshot: null,
+    historyNextCursor: null,
+    imports,
+  })
 }
 
 function currentActiveEntryFloor(state: MemoryControllerState, entryRef: string): MemoryEntryActiveView | null {
@@ -561,27 +759,17 @@ function projectSelectedActiveEntry(
   return floor === null ? incoming : mergeMemoryEntries([floor], [incoming])[0] ?? floor
 }
 
-function membershipPriority(membership: "required" | "observed" | "unknown"): number {
-  if (membership === "required") return 2
-  return membership === "observed" ? 1 : 0
-}
-
 function advanceActiveOwnerKnowledge(
   current: readonly MemoryEntryOwnerKnowledge[],
   incoming: MemoryEntryActiveView,
-  pageMembership: "required" | "observed" | "unknown",
 ): readonly MemoryEntryOwnerKnowledge[] {
   const knowledge = new Map(current.map((item) => [item.entryRef, item]))
   const existing = knowledge.get(incoming.entryRef)
   if (existing?.state === "revoked") throw new TypeError("Memory entry owner lifecycle conflict")
   if (existing?.state === "active" && BigInt(existing.entryVersion) > BigInt(incoming.entryVersion)) return current
-  const nextMembership = existing?.state === "active" && membershipPriority(existing.pageMembership) > membershipPriority(pageMembership)
-    ? existing.pageMembership
-    : pageMembership
   knowledge.set(incoming.entryRef, Object.freeze({
     entryRef: incoming.entryRef,
     entryVersion: incoming.entryVersion,
-    pageMembership: nextMembership,
     state: "active",
   }))
   return Object.freeze([...knowledge.values()])
@@ -598,18 +786,6 @@ function revokeOwnerKnowledge(
   return Object.freeze([...knowledge.values()])
 }
 
-function acceptMemoryOwnerPage(
-  current: readonly MemoryEntryOwnerKnowledge[],
-  incoming: readonly MemoryEntryActiveView[],
-  confirmsFirstPageMembership: boolean,
-): readonly MemoryEntryOwnerKnowledge[] {
-  let knowledge = Object.freeze(current.map((item) => confirmsFirstPageMembership && item.state === "active" && item.pageMembership === "required"
-    ? Object.freeze({ ...item, pageMembership: "observed" as const })
-    : item))
-  for (const entry of incoming) knowledge = advanceActiveOwnerKnowledge(knowledge, entry, "observed")
-  return knowledge
-}
-
 export function projectMemoryCommand(state: MemoryControllerState, response: MemoryCommandResponse): MemoryControllerState {
   if (response.state !== "succeeded") {
     return Object.freeze({
@@ -621,47 +797,126 @@ export function projectMemoryCommand(state: MemoryControllerState, response: Mem
   }
   const awaitingSpacePurge = response.result.resultKind === "purge" &&
     response.result.purgeScope === "space" && response.result.purgeState === "revoked_purge_pending"
-  const base = {
+  const pendingCommands = awaitingSpacePurge
+    ? state.pendingCommands
+    : state.pendingCommands.filter(({ commandId }) => commandId !== response.command.commandId)
+  if (
+    state.minimumSpaceVersion !== null &&
+    BigInt(response.committedSpaceVersion) < BigInt(state.minimumSpaceVersion)
+  ) {
+    const resolved = Object.freeze({ ...state, pendingCommands })
+    if (response.result.resultKind === "export") {
+      return settleMemoryExportRefresh(resolved, state.generation, response.result.export)
+    }
+    if (response.result.resultKind === "import") {
+      return settleMemoryImportRefresh(resolved, state.generation, response.result.import)
+    }
+    return resolved
+  }
+  const ownerVersionAdvanced = state.minimumSpaceVersion !== null &&
+    BigInt(response.committedSpaceVersion) > BigInt(state.minimumSpaceVersion)
+  const base: MemoryControllerState = {
     ...state,
-    pendingCommands: awaitingSpacePurge
-      ? state.pendingCommands
-      : state.pendingCommands.filter(({ commandId }) => commandId !== response.command.commandId),
+    generation: ownerVersionAdvanced ? state.generation + 1 : state.generation,
+    entries: ownerVersionAdvanced ? Object.freeze([]) : state.entries,
+    entryOwnerKnowledge: ownerVersionAdvanced ? Object.freeze([]) : state.entryOwnerKnowledge,
+    currentOwnerSnapshot: state.currentOwnerSnapshot !== null &&
+      BigInt(state.currentOwnerSnapshot.spaceVersion) >= BigInt(response.committedSpaceVersion)
+      ? state.currentOwnerSnapshot
+      : null,
+    minimumSpaceVersion: maximumVersion(state.minimumSpaceVersion, response.committedSpaceVersion),
+    nextCursor: state.currentOwnerSnapshot !== null &&
+      BigInt(state.currentOwnerSnapshot.spaceVersion) >= BigInt(response.committedSpaceVersion)
+      ? state.nextCursor
+      : null,
+    selectedEntryRef: ownerVersionAdvanced ? null : state.selectedEntryRef,
+    selectedEntry: ownerVersionAdvanced ? null : state.selectedEntry,
+    history: ownerVersionAdvanced ? Object.freeze([]) : state.history,
+    currentHistoryOwnerSnapshot: ownerVersionAdvanced ? null : state.currentHistoryOwnerSnapshot,
+    historyNextCursor: ownerVersionAdvanced ? null : state.historyNextCursor,
+    pendingCommands,
   }
   switch (response.result.resultKind) {
     case "settings":
       return Object.freeze({ ...base, settings: response.result.settings })
     case "export":
-      return Object.freeze({ ...base, exports: replaceExport(state.exports, response.result.export) })
+      return settleMemoryExportRefresh(Object.freeze(base), base.generation, response.result.export)
     case "import":
-      return Object.freeze({ ...base, imports: replaceImport(state.imports, response.result.import) })
-    case "restored":
+      return settleMemoryImportRefresh(Object.freeze(base), base.generation, response.result.import)
+    case "restored": {
+      const resultEntry = response.result.entry
+      const targetFloor = currentActiveEntryFloor(state, resultEntry.entryRef)
+      const authorizedEntry = ownerVersionAdvanced || targetFloor === null
+        ? resultEntry
+        : mergeMemoryEntries([targetFloor], [resultEntry])[0] ?? resultEntry
+      const entries = mergeMemoryEntries(base.entries, [authorizedEntry])
+      const keepSelectedTarget = state.selectedEntryRef === resultEntry.entryRef
       return Object.freeze({
         ...base,
         generation: state.generation + 1,
-        entries: mergeMemoryEntries(state.entries, [response.result.entry]),
-        entryOwnerKnowledge: advanceActiveOwnerKnowledge(state.entryOwnerKnowledge, response.result.entry, "required"),
+        entries,
+        entryOwnerKnowledge: compactOwnerKnowledge(
+          advanceActiveOwnerKnowledge(base.entryOwnerKnowledge, authorizedEntry),
+          entries,
+          keepSelectedTarget ? [resultEntry.entryRef] : [],
+        ),
+        currentOwnerSnapshot: null,
         nextCursor: null,
-        selectedEntry: projectSelectedActiveEntry(state, response.result.entry),
+        selectedEntryRef: ownerVersionAdvanced ? (keepSelectedTarget ? resultEntry.entryRef : null) : base.selectedEntryRef,
+        selectedEntry: ownerVersionAdvanced
+          ? keepSelectedTarget ? authorizedEntry : null
+          : projectSelectedActiveEntry(state, authorizedEntry),
+        history: Object.freeze([]),
+        currentHistoryOwnerSnapshot: null,
+        historyNextCursor: null,
       })
+    }
     case "entry": {
       const resultEntry = response.result.entry
+      const keepSelectedTarget = state.selectedEntryRef === resultEntry.entryRef
       if (resultEntry.state !== "active") {
+        const entries = base.entries.filter(({ entryRef }) => entryRef !== resultEntry.entryRef)
         return Object.freeze({
           ...base,
           generation: state.generation + 1,
-          entries: state.entries.filter(({ entryRef }) => entryRef !== resultEntry.entryRef),
-          entryOwnerKnowledge: revokeOwnerKnowledge(state.entryOwnerKnowledge, [resultEntry.entryRef]),
+          entries,
+          entryOwnerKnowledge: compactOwnerKnowledge(
+            revokeOwnerKnowledge(base.entryOwnerKnowledge, [resultEntry.entryRef]),
+            entries,
+            [resultEntry.entryRef],
+          ),
+          currentOwnerSnapshot: null,
           nextCursor: null,
-          selectedEntry: state.selectedEntryRef === resultEntry.entryRef ? resultEntry : state.selectedEntry,
+          selectedEntryRef: ownerVersionAdvanced ? (keepSelectedTarget ? resultEntry.entryRef : null) : base.selectedEntryRef,
+          selectedEntry: keepSelectedTarget ? resultEntry : base.selectedEntry,
+          history: keepSelectedTarget ? Object.freeze([]) : base.history,
+          currentHistoryOwnerSnapshot: keepSelectedTarget ? null : base.currentHistoryOwnerSnapshot,
+          historyNextCursor: keepSelectedTarget ? null : base.historyNextCursor,
         })
       }
+      const targetFloor = currentActiveEntryFloor(state, resultEntry.entryRef)
+      const authorizedEntry = ownerVersionAdvanced || targetFloor === null
+        ? resultEntry
+        : mergeMemoryEntries([targetFloor], [resultEntry])[0] ?? resultEntry
+      const entries = mergeMemoryEntries(base.entries, [authorizedEntry])
       return Object.freeze({
         ...base,
         generation: state.generation + 1,
-        entries: mergeMemoryEntries(state.entries, [resultEntry]),
-        entryOwnerKnowledge: advanceActiveOwnerKnowledge(state.entryOwnerKnowledge, resultEntry, "required"),
+        entries,
+        entryOwnerKnowledge: compactOwnerKnowledge(
+          advanceActiveOwnerKnowledge(base.entryOwnerKnowledge, authorizedEntry),
+          entries,
+          keepSelectedTarget ? [resultEntry.entryRef] : [],
+        ),
+        currentOwnerSnapshot: null,
         nextCursor: null,
-        selectedEntry: projectSelectedActiveEntry(state, resultEntry),
+        selectedEntryRef: ownerVersionAdvanced ? (keepSelectedTarget ? resultEntry.entryRef : null) : base.selectedEntryRef,
+        selectedEntry: ownerVersionAdvanced
+          ? keepSelectedTarget ? authorizedEntry : null
+          : projectSelectedActiveEntry(state, authorizedEntry),
+        history: keepSelectedTarget ? Object.freeze([]) : base.history,
+        currentHistoryOwnerSnapshot: keepSelectedTarget ? null : base.currentHistoryOwnerSnapshot,
+        historyNextCursor: keepSelectedTarget ? null : base.historyNextCursor,
       })
     }
     case "purge": {
@@ -670,20 +925,17 @@ export function projectMemoryCommand(state: MemoryControllerState, response: Mem
         ? { entryRef: purge.entryRef, purgeReceiptRef: purge.purgeReceiptRef, purgedAt: purge.effectiveAt, state: "purged" }
         : { entryRef: purge.entryRef, purgeReceiptRef: purge.purgeReceiptRef, revokedAt: purge.effectiveAt, state: "revoked_purge_pending" }
       if (purge.purgeScope === "space") {
-        const revokedRefs = new Set([
-          ...state.entryOwnerKnowledge.map(({ entryRef }) => entryRef),
-          ...state.entries.map(({ entryRef }) => entryRef),
-          ...(state.selectedEntryRef === null ? [] : [state.selectedEntryRef]),
-        ])
         return Object.freeze({
           ...base,
           generation: state.generation + 1,
           entries: Object.freeze([]),
-          entryOwnerKnowledge: revokeOwnerKnowledge(state.entryOwnerKnowledge, [...revokedRefs]),
+          entryOwnerKnowledge: Object.freeze([]),
+          currentOwnerSnapshot: null,
           nextCursor: null,
           selectedEntryRef: null,
           selectedEntry: null,
           history: Object.freeze([]),
+          currentHistoryOwnerSnapshot: null,
           historyNextCursor: null,
           spacePurge: Object.freeze({
             effectiveAt: purge.effectiveAt,
@@ -692,17 +944,25 @@ export function projectMemoryCommand(state: MemoryControllerState, response: Mem
           }),
         })
       }
+      const entries = base.entries.filter(({ entryRef }) => entryRef !== purge.entryRef)
+      const retainEntryRefs = purge.entryRef === null ? [] : [purge.entryRef]
+      const keepSelectedTarget = state.selectedEntryRef === purge.entryRef
       return Object.freeze({
         ...base,
         generation: state.generation + 1,
-        entries: state.entries.filter(({ entryRef }) => entryRef !== purge.entryRef),
-        entryOwnerKnowledge: purge.entryRef === null
-          ? state.entryOwnerKnowledge
-          : revokeOwnerKnowledge(state.entryOwnerKnowledge, [purge.entryRef]),
+        entries,
+        entryOwnerKnowledge: compactOwnerKnowledge(
+          purge.entryRef === null ? base.entryOwnerKnowledge : revokeOwnerKnowledge(base.entryOwnerKnowledge, [purge.entryRef]),
+          entries,
+          retainEntryRefs,
+        ),
+        currentOwnerSnapshot: null,
         nextCursor: null,
-        selectedEntry: state.selectedEntryRef === purge.entryRef ? purgeView : state.selectedEntry,
-        history: state.selectedEntryRef === purge.entryRef ? Object.freeze([]) : state.history,
-        historyNextCursor: state.selectedEntryRef === purge.entryRef ? null : state.historyNextCursor,
+        selectedEntryRef: ownerVersionAdvanced ? (keepSelectedTarget ? purge.entryRef : null) : base.selectedEntryRef,
+        selectedEntry: keepSelectedTarget ? purgeView : base.selectedEntry,
+        history: keepSelectedTarget ? Object.freeze([]) : base.history,
+        currentHistoryOwnerSnapshot: keepSelectedTarget ? null : base.currentHistoryOwnerSnapshot,
+        historyNextCursor: keepSelectedTarget ? null : base.historyNextCursor,
       })
     }
   }
