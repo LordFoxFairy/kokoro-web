@@ -3,7 +3,7 @@
   min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-rows: auto auto auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto auto auto auto minmax(0, 1fr);
   gap: 0.85rem;
   padding: 1rem;
   overflow: hidden;
@@ -18,7 +18,22 @@
   gap: 0.65rem;
 }
 
-.header div:last-child {
+.mobileToggle {
+  display: none;
+  margin-left: auto;
+  border: 1px solid var(--k-border);
+  border-radius: 0.55rem;
+  padding: 0.4rem 0.6rem;
+  color: var(--k-text);
+  background: var(--k-bg-base);
+  cursor: pointer;
+}
+
+.railBody {
+  display: contents;
+}
+
+.brandText {
   display: grid;
 }
 
@@ -278,10 +293,27 @@
   opacity: 0.5;
 }
 
-@media (max-width: 760px) {
+@media (max-width: 860px) {
   .rail {
-    max-height: 45vh;
+    max-height: 100dvh;
+    grid-template-rows: auto minmax(0, 1fr);
     border-right: 0;
     border-bottom: 1px solid var(--k-border);
+  }
+
+  .mobileToggle {
+    display: block;
+  }
+
+  .railBody {
+    min-height: 0;
+    display: grid;
+    grid-template-rows: auto auto auto auto minmax(0, 1fr);
+    gap: 0.85rem;
+    overflow: hidden;
+  }
+
+  .railBody[data-mobile-collapsed="true"] {
+    display: none;
   }
 }

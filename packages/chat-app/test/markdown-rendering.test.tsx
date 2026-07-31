@@ -7,7 +7,7 @@ import type { ChatController, ChatState } from "../src/chat-controller.js"
 import { DEFAULT_CHAT_COPY } from "../src/chat-copy.js"
 
 describe("Chat Markdown rendering", () => {
-  it("uses grammar highlighting and exposes a block-scoped copy control", () => {
+  it("uses grammar highlighting and exposes block-scoped copy and download controls", () => {
     const html = renderToStaticMarkup(
       <MarkdownText text={"```typescript\nconst ready: boolean = true\n```"} />,
     )
@@ -15,6 +15,7 @@ describe("Chat Markdown rendering", () => {
     expect(html).toContain("hljs-keyword")
     expect(html).toContain("data-language=\"typescript\"")
     expect(html).toContain(">Copy<")
+    expect(html).toContain(">Download<")
   })
 
   it("does not auto-load remote Markdown images in the browser", () => {

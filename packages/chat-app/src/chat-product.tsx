@@ -16,6 +16,7 @@ import {
   type ChangeEvent,
   isValidElement,
   type KeyboardEvent,
+  memo,
   type ReactNode,
   useEffect,
   useMemo,
@@ -25,6 +26,7 @@ import {
 } from "react"
 
 import { createBrowserSessionTransport } from "./browser-session-transport"
+import { downloadCodeText } from "./code-download"
 import {
   createChatController,
   type ChatController,
@@ -38,7 +40,12 @@ import {
   type ComposerDraftStore,
 } from "./composer-draft"
 import { hasSubmittableComposerContent } from "./composer-content"
-import { resolveChatCopy, type ChatProductCopy } from "./chat-copy"
+import { ConversationThread } from "./conversation-thread"
+import { DEFAULT_CHAT_COPY, resolveChatCopy, type ChatProductCopy } from "./chat-copy"
+import {
+  sameConversationMessageRender,
+  type ConversationMessageRenderProps,
+} from "./message-render-policy"
 import { createSessionOrganizer } from "./session-organizer"
 import { SessionRail } from "./session-rail"
 import styles from "./chat-product.module.css"
@@ -152,7 +159,10 @@ function codeLanguage(node: ReactNode): string | null {
   return /(?:^|\s)language-([A-Za-z0-9_+-]+)/u.exec(child.props.className ?? "")?.[1] ?? null
 }
 
-function CodeBlock(props: Readonly<{ children?: ReactNode }>) {
+function CodeBlock(props: Readonly<{
+  children?: ReactNode
+  copy: Pick<ChatProductCopy, "copy" | "copied" | "downloadCode">
+}>) {
   const [copied, setCopied] = useState(false)
   const language = codeLanguage(props.children)
   const copy = async (): Promise<void> => {
@@ -164,16 +174,25 @@ function CodeBlock(props: Readonly<{ children?: ReactNode }>) {
       setCopied(false)
     }
   }
+  const text = renderedText(props.children).replace(/\n$/u, "")
+  const download = (): void => downloadCodeText({ text, language, document, url: URL })
   return <div className={styles.codeBlock} data-language={language ?? "plain-text"}>
     <div className={styles.codeBlockHeader}>
       <span>{language ?? "Code"}</span>
-      <button aria-live="polite" type="button" onClick={() => void copy()}>{copied ? "Copied" : "Copy"}</button>
+      <div className={styles.codeBlockActions}>
+        <button aria-live="polite" type="button" onClick={() => void copy()}>{copied ? props.copy.copied : props.copy.copy}</button>
+        <button type="button" onClick={download}>{props.copy.downloadCode}</button>
+      </div>
     </div>
     <pre>{props.children}</pre>
   </div>
 }
 
-export function MarkdownText(props: Readonly<{ text: string }>) {
+export function MarkdownText(props: Readonly<{
+  text: string
+  copy?: Pick<ChatProductCopy, "copy" | "copied" | "downloadCode">
+}>) {
+  const copy = props.copy ?? DEFAULT_CHAT_COPY
   return (
     <div className={styles.markdown}>
       <ReactMarkdown
@@ -190,7 +209,7 @@ export function MarkdownText(props: Readonly<{ text: string }>) {
               ? <span>{alt ?? ""}</span>
               : <a href={safe} rel="noreferrer noopener" target="_blank">{alt?.trim() || safe}</a>
           },
-          pre: ({ children }) => <CodeBlock>{children}</CodeBlock>,
+          pre: ({ children }) => <CodeBlock copy={copy}>{children}</CodeBlock>,
         }}
       >{props.text}</ReactMarkdown>
     </div>
@@ -479,8 +498,8 @@ export function ChatPartView(props: {
 }) {
   const { part } = props
   switch (part.kind) {
-    case "text": return <MarkdownText text={part.text} />
-    case "reasoning-summary": return <details className={styles.reasoning}><summary>{props.copy.reasoning}</summary><MarkdownText text={part.text} /></details>
+    case "text": return <MarkdownText copy={props.copy} text={part.text} />
+    case "reasoning-summary": return <details className={styles.reasoning}><summary>{props.copy.reasoning}</summary><MarkdownText copy={props.copy} text={part.text} /></details>
     case "citation": {
       const href = safeHref(part.locator)
       return <aside className={styles.citation}><span aria-hidden>↗</span><div><strong>{href === null ? part.title : <a href={href} rel="noreferrer noopener" target="_blank">{part.title}</a>}</strong>{part.attribution ? <p>{part.attribution}</p> : null}</div></aside>
@@ -553,6 +572,16 @@ function MessageActions(props: Readonly<{
   if (editing) return <div className={styles.inlineEditor}><textarea aria-label="Edit message" maxLength={1_048_576} onChange={(event) => setValue(event.target.value)} rows={4} value={value} /><div className={styles.actions}><button type="button" disabled={props.disabled || value.trim().length === 0} onClick={() => void props.controller.editMessage(props.message.id, value).then((applied) => { if (applied) setEditing(false) })}>{props.copy.saveEdit}</button><button type="button" onClick={() => setEditing(false)}>{props.copy.cancelEdit}</button></div></div>
   return <div className={styles.messageActions}>{messageText(props.message) ? <button type="button" onClick={() => void copyText()}>{copied ? props.copy.copied : props.copy.copy}</button> : null}{props.message.role === "user" ? <button type="button" disabled={props.disabled} onClick={() => setEditing(true)}>{props.copy.edit}</button> : <button type="button" disabled={props.disabled} onClick={() => void props.controller.regenerateMessage(props.message.id)}>{props.copy.regenerate}</button>}</div>
 }
+
+const ConversationMessageView = memo(function ConversationMessageView(
+  props: ConversationMessageRenderProps,
+) {
+  return <article className={styles.message} data-role={props.message.role} data-status={props.message.status}>
+    <div className={styles.messageMeta}><strong>{props.message.role === "user" ? props.copy.you : props.copy.assistant}</strong><span>{props.message.status}</span></div>
+    {props.message.parts.map((part) => <ChatPartView controller={props.controller} copy={props.copy} disabled={props.commandPending} key={part.id} part={part} runId={props.message.runId} />)}
+    <MessageActions controller={props.controller} copy={props.copy} disabled={props.mutationDisabled} message={props.message} />
+  </article>
+}, sameConversationMessageRender)
 
 export function ChatView(props: {
   readonly brandName: string
@@ -719,12 +748,14 @@ export function ChatView(props: {
     <section className={styles.runBand} data-run={props.state.projection.activeRunState ?? "idle"} aria-live="polite"><div><span className={styles.liveDot} aria-hidden /><strong>{runLabel(props.state, props.copy)}</strong><small>{connectionLabel(props.state, props.copy)}</small></div><div className={styles.branchControls}><label><span>{props.copy.branch}</span><select aria-label={props.copy.switchBranch} disabled={mutationDisabled} onChange={(event) => void props.controller.activateBranch(event.target.value)} value={props.state.projection.activeBranchId ?? ""}>{props.state.snapshot?.branches.map((candidate, index) => <option key={candidate.branch_id} value={candidate.branch_id}>{candidate.branch_id === props.state.projection.activeBranchId ? `${props.copy.currentBranch} · ` : ""}${candidate.origin} ${index + 1}</option>)}</select></label>{branch ? <button type="button" disabled={mutationDisabled} onClick={() => void props.controller.forkBranch(branch.branch_id)}>{props.copy.forkBranch}</button> : null}{activeRun ? <button type="button" className={styles.stop} onClick={() => void props.controller.cancel()} disabled={commandPending}>{props.copy.stop}</button> : null}</div></section>
     {props.state.failure ? <section className={styles.failure} role="alert"><strong>{props.state.failure.message}</strong>{["refetch_snapshot", "refresh_grant", "retry_same_cursor", "poll_or_stream", "reconcile_receipt"].includes(props.state.failure.action) ? <button type="button" onClick={() => void props.controller.recover()}>{props.copy.refreshConversation}</button> : null}</section> : null}
     {props.state.projection.repair.required ? <section className={styles.repair} role="status">{props.copy.repairRequired}</section> : null}
-    <section className={styles.thread} aria-label={props.copy.conversation}>
-      {props.state.phase === "loading" ? <p className={styles.empty}>{props.copy.loading}</p> : null}
-      {props.state.phase === "not_found" ? <p className={styles.empty}>{props.copy.notFound}</p> : null}
-      {props.state.projection.messages.length === 0 && props.state.phase === "ready" ? <div className={styles.emptyState}><span aria-hidden>✦</span><h2>{props.copy.emptyTitle}</h2><p>{props.copy.emptyDescription}</p></div> : null}
-      {props.state.projection.messages.map((message) => <article className={styles.message} data-role={message.role} data-status={message.status} key={message.id}><div className={styles.messageMeta}><strong>{message.role === "user" ? props.copy.you : props.copy.assistant}</strong><span>{message.status}</span></div>{message.parts.map((part) => <ChatPartView controller={props.controller} copy={props.copy} disabled={commandPending} key={part.id} part={part} runId={message.runId} />)}<MessageActions controller={props.controller} copy={props.copy} disabled={mutationDisabled} message={message} /></article>)}
-    </section>
+    <ConversationThread
+      copy={props.copy}
+      isStreaming={activeRun}
+      key={`${props.sessionId}:${props.state.projection.activeBranchId ?? "no-branch"}:${props.state.snapshot?.snapshot_watermark.cursor ?? "no-snapshot"}`}
+      messages={props.state.projection.messages}
+      phase={props.state.phase}
+      renderMessage={(message) => <ConversationMessageView commandPending={commandPending} controller={props.controller} copy={props.copy} key={message.id} message={message} mutationDisabled={mutationDisabled} />}
+    />
     {props.state.phase === "ready" ? <form className={styles.composer} onSubmit={submit}>
       <div className={styles.composerControls}>{props.state.chatCatalog ? <ModelOptionSelector catalog={props.state.chatCatalog} copy={props.copy} disabled={false} onChange={(value) => {
         props.controller.selectModelOption(value)

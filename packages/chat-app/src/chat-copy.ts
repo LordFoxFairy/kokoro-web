@@ -32,6 +32,7 @@ export type ChatProductCopy = Readonly<{
   stop: string
   copy: string
   copied: string
+  downloadCode: string
   edit: string
   saveEdit: string
   cancelEdit: string
@@ -40,6 +41,10 @@ export type ChatProductCopy = Readonly<{
   branch: string
   switchBranch: string
   currentBranch: string
+  showEarlierMessages: string
+  jumpToLatest: string
+  openChatNavigation: string
+  closeChatNavigation: string
   reasoning: string
   sources: string
   plan: string
@@ -143,6 +148,7 @@ export const DEFAULT_CHAT_COPY: ChatProductCopy = Object.freeze({
   stop: "Stop",
   copy: "Copy",
   copied: "Copied",
+  downloadCode: "Download",
   edit: "Edit",
   saveEdit: "Save and send",
   cancelEdit: "Cancel",
@@ -151,6 +157,10 @@ export const DEFAULT_CHAT_COPY: ChatProductCopy = Object.freeze({
   branch: "Branch",
   switchBranch: "Switch branch",
   currentBranch: "Current",
+  showEarlierMessages: "Show earlier messages",
+  jumpToLatest: "New response · Jump to latest",
+  openChatNavigation: "Open chat navigation",
+  closeChatNavigation: "Close chat navigation",
   reasoning: "Reasoning summary",
   sources: "Sources",
   plan: "Plan",

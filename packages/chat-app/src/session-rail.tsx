@@ -1,6 +1,6 @@
 "use client"
 
-import { type FormEvent, useState } from "react"
+import { type FormEvent, useId, useRef, useState } from "react"
 
 import type {
   SessionOrganizer,
@@ -27,6 +27,9 @@ export function SessionRail(props: {
   const [renamingSessionId, setRenamingSessionId] = useState<string | null>(null)
   const [sessionTitle, setSessionTitle] = useState("")
   const [confirmTrashSessionId, setConfirmTrashSessionId] = useState<string | null>(null)
+  const [mobileCollapsed, setMobileCollapsed] = useState(true)
+  const navigationId = useId()
+  const navigationRef = useRef<HTMLDivElement | null>(null)
   const disabled = !props.available || props.state.pendingAction !== null
 
   const submitSearch = (event: FormEvent<HTMLFormElement>): void => {
@@ -59,18 +62,50 @@ export function SessionRail(props: {
     void props.controller.renameSession(id, title)
   }
   const activeView = props.state.filter.kind !== "archived" && props.state.filter.kind !== "trashed"
+  const toggleMobileNavigation = (): void => {
+    if (!mobileCollapsed) {
+      setMobileCollapsed(true)
+      return
+    }
+    setMobileCollapsed(false)
+    window.requestAnimationFrame(() => {
+      navigationRef.current?.querySelector<HTMLElement>("button:not(:disabled), input:not(:disabled)")?.focus()
+    })
+  }
+  const newChat = (): void => {
+    setMobileCollapsed(true)
+    props.onNew()
+  }
+  const openChat = (sessionId: string): void => {
+    setMobileCollapsed(true)
+    props.onOpen(sessionId)
+  }
 
   return (
     <aside className={styles.rail} aria-label="Chats and folders">
       <header className={styles.header}>
         <div className={styles.brandMark} aria-hidden>✦</div>
-        <div>
+        <div className={styles.brandText}>
           <strong>{props.brandName}</strong>
           <span>{props.copy.workspaceLabel}</span>
         </div>
+        <button
+          aria-controls={navigationId}
+          aria-expanded={!mobileCollapsed}
+          aria-label={mobileCollapsed ? props.copy.openChatNavigation : props.copy.closeChatNavigation}
+          className={styles.mobileToggle}
+          onClick={toggleMobileNavigation}
+          type="button"
+        >{mobileCollapsed ? "☰" : "×"}</button>
       </header>
 
-      <button className={styles.newChat} type="button" onClick={props.onNew} disabled={disabled}>
+      <div
+        className={styles.railBody}
+        data-mobile-collapsed={mobileCollapsed}
+        id={navigationId}
+        ref={navigationRef}
+      >
+      <button className={styles.newChat} type="button" onClick={newChat} disabled={disabled}>
         <span aria-hidden>＋</span> {props.copy.newChat}
       </button>
 
@@ -230,7 +265,7 @@ export function SessionRail(props: {
                     className={styles.chatSelect}
                     type="button"
                     aria-current={session.sessionId === props.activeSessionId ? "page" : undefined}
-                    onClick={() => props.onOpen(session.sessionId)}
+                    onClick={() => openChat(session.sessionId)}
                   >
                     <strong>{session.title}</strong>
                     <span>{new Date(session.updatedAt).toLocaleString()}</span>
@@ -286,6 +321,7 @@ export function SessionRail(props: {
           >{props.state.loadingMore ? "Loading…" : props.copy.loadMore}</button>
         ) : null}
       </section>
+      </div>
     </aside>
   )
 }

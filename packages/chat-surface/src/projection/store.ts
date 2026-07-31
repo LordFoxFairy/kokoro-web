@@ -157,6 +157,10 @@ type ChatProjectionAction =
   | { readonly type: "snapshot"; readonly snapshot: SessionSnapshot }
   | ChatProjectionMutation
 type PartEnvelopeFingerprints = WeakMap<ChatPart, string>
+type ProjectionIndexes = Readonly<{
+  messageIndexById: Map<string, number>
+  partOwnerById: Map<string, string>
+}>
 
 const ACTIVE_RUN_STATUSES = new Set([
   "admission_pending",
@@ -391,12 +395,35 @@ function projectMessage(
 function upsertMessage(
   messages: readonly ChatProjectionMessage[],
   message: ChatProjectionMessage,
+  knownIndex?: number,
 ): readonly ChatProjectionMessage[] {
-  const index = messages.findIndex((candidate) => candidate.id === message.id)
-  if (index < 0) return [...messages, message]
+  const index = knownIndex ?? -1
+  const frozenMessage = deepFreeze(message)
+  if (index < 0) return Object.freeze([...messages, frozenMessage])
   const next = [...messages]
-  next[index] = message
-  return next
+  next[index] = frozenMessage
+  return Object.freeze(next)
+}
+
+function buildProjectionIndexes(messages: readonly ChatProjectionMessage[]): Readonly<{
+  indexes: ProjectionIndexes
+  conflict?: "message_identity_conflict" | "part_identity_conflict"
+}> {
+  const messageIndexById = new Map<string, number>()
+  const partOwnerById = new Map<string, string>()
+  let conflict: "message_identity_conflict" | "part_identity_conflict" | undefined
+  for (const [index, message] of messages.entries()) {
+    if (messageIndexById.has(message.id)) conflict ??= "message_identity_conflict"
+    else messageIndexById.set(message.id, index)
+    for (const part of message.parts) {
+      if (partOwnerById.has(part.id)) conflict ??= "part_identity_conflict"
+      else partOwnerById.set(part.id, message.id)
+    }
+  }
+  return {
+    indexes: Object.freeze({ messageIndexById, partOwnerById }),
+    ...(conflict === undefined ? {} : { conflict }),
+  }
 }
 
 function upsertPart(
@@ -496,21 +523,25 @@ function reduceEvent(
   state: ChatProjection,
   event: SessionEvent,
   fingerprints: PartEnvelopeFingerprints,
+  indexes: ProjectionIndexes,
 ): ChatProjection {
   switch (event.kind) {
     case "message.created": {
       if (event.payload.message.branch_id !== state.activeBranchId) return state
       const message = projectMessage(event.payload.message, fingerprints)
-      return message === null ? state : { ...state, messages: upsertMessage(state.messages, message) }
+      return message === null ? state : {
+        ...state,
+        messages: upsertMessage(state.messages, message, indexes.messageIndexById.get(message.id)),
+      }
     }
     case "message.part.updated": {
       const part = event.payload.part
-      const owner = state.messages.find((message) => message.parts.some((candidate) => candidate.id === part.part_id))
-      if (owner !== undefined && owner.id !== part.message_id) {
+      const ownerId = indexes.partOwnerById.get(part.part_id)
+      if (ownerId !== undefined && ownerId !== part.message_id) {
         return { ...state, repair: { required: true, reason: "part_identity_conflict" } }
       }
-      const index = state.messages.findIndex((message) => message.id === part.message_id)
-      if (index < 0) {
+      const index = indexes.messageIndexById.get(part.message_id)
+      if (index === undefined) {
         return { ...state, repair: { required: true, reason: "message_part_without_message" } }
       }
       const currentMessage = state.messages[index] as ChatProjectionMessage
@@ -520,8 +551,8 @@ function reduceEvent(
       }
       if (result.message === currentMessage) return state
       const messages = [...state.messages]
-      messages[index] = result.message
-      return { ...state, messages }
+      messages[index] = deepFreeze(result.message)
+      return { ...state, messages: Object.freeze(messages) }
     }
     case "run.launch.updated": {
       const launch = event.payload.launch
@@ -596,6 +627,7 @@ function reduceChatProjection(
   state: ChatProjection,
   action: ChatProjectionAction,
   fingerprints: PartEnvelopeFingerprints,
+  indexes: ProjectionIndexes,
 ): ChatProjection {
   switch (action.type) {
     case "snapshot": {
@@ -614,7 +646,7 @@ function reduceChatProjection(
       }
     }
     case "event":
-      return reduceEvent(state, action.event, fingerprints)
+      return reduceEvent(state, action.event, fingerprints, indexes)
     case "connection":
       return { ...state, connection: copyUnknown(action.connection) as SessionConnectionState }
     case "command":
@@ -642,7 +674,7 @@ function reduceChatProjection(
           originalKind: action.originalKind,
           originalSchemaVersion: 1,
           safeFallback: "This content requires a newer client.",
-        }, fingerprints).message),
+        }, fingerprints).message, indexes.messageIndexById.get(message.id)),
       }
     }
   }
@@ -659,6 +691,7 @@ export type ChatProjectionStore = {
 export function createChatProjectionStore(): ChatProjectionStore {
   let state = createChatProjection()
   let fingerprints: PartEnvelopeFingerprints = new WeakMap()
+  let indexes = buildProjectionIndexes(state.messages).indexes
   const listeners = new Set<() => void>()
   const commit = (next: ChatProjection): void => {
     if (next === state) return
@@ -673,16 +706,38 @@ export function createChatProjectionStore(): ChatProjectionStore {
     },
     hydrate(snapshot) {
       const nextFingerprints: PartEnvelopeFingerprints = new WeakMap()
-      const next = reduceChatProjection(state, { type: "snapshot", snapshot }, nextFingerprints)
+      let next = reduceChatProjection(state, { type: "snapshot", snapshot }, nextFingerprints, indexes)
+      const built = buildProjectionIndexes(next.messages)
+      if (built.conflict !== undefined) {
+        next = { ...next, repair: { required: true, reason: built.conflict } }
+      }
       fingerprints = nextFingerprints
+      indexes = built.indexes
       commit(next)
     },
     reset() {
       fingerprints = new WeakMap()
-      commit(createChatProjection())
+      const next = createChatProjection()
+      indexes = buildProjectionIndexes(next.messages).indexes
+      commit(next)
     },
     dispatch(action) {
-      commit(reduceChatProjection(state, action, fingerprints))
+      let next = reduceChatProjection(state, action, fingerprints, indexes)
+      if (next !== state && next.messages !== state.messages) {
+        if (action.type === "event" && action.event.kind === "message.part.updated") {
+          indexes.partOwnerById.set(action.event.payload.part.part_id, action.event.payload.part.message_id)
+        } else if (
+          action.type === "unsupported" ||
+          action.type === "event" && ["message.created", "branch.activated", "session.updated"].includes(action.event.kind)
+        ) {
+          const built = buildProjectionIndexes(next.messages)
+          indexes = built.indexes
+          if (built.conflict !== undefined) {
+            next = { ...next, repair: { required: true, reason: built.conflict } }
+          }
+        }
+      }
+      commit(next)
     },
   }
 }

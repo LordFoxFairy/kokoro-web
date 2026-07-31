@@ -27,6 +27,16 @@ Unknown generated kinds remain visible through the unsupported safe fallback ins
 Tool cards distinguish an authoritative tool-result error from transport lifecycle state and disclose when the
 safe result preview was truncated.
 
+The conversation viewport initially mounts a bounded tail window and preserves stable message identities while
+older pages are revealed. Prepending history restores the reader's exact scroll anchor. Streaming follows only
+while the reader is near the end; once detached it keeps the viewed content stationary, coalesces updates into
+one accessible “jump to latest” notice, and never steals scroll. Site/runtime scope, active branch, and fresh
+snapshot identity remount this UI-only viewport state without changing Session authority. Off-screen message
+layout uses browser content visibility as a second paint/layout guard. Code downloads are created only from the
+already safe-rendered text in a temporary browser Blob URL that is revoked immediately; this is unrelated to
+Artifact delivery capabilities. On narrow screens the session organizer is an aria-expanded disclosure and
+moves focus into its first enabled action when opened.
+
 Transport reconnect is effect-free and resumes the opaque Session cursor with bounded jitter. Any cursor,
 branch, part-version, or authorization projection repair closes the stale stream and single-flights a fresh
 complete snapshot before attaching again. A failed repair remains an explicit user-retryable state; the UI

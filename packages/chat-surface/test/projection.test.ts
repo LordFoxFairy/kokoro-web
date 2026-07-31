@@ -249,6 +249,62 @@ describe("Chat projection", () => {
     ])
   })
 
+  it("locates a 1000-message tail update without scanning the message collection", () => {
+    const base = snapshot()
+    const messages: SessionSnapshot["messages"] = Array.from({ length: 1_000 }, (_, index) => {
+      const messageId = `message-${String(index).padStart(8, "0")}`
+      const parentMessageId = index === 0 ? undefined : `message-${String(index - 1).padStart(8, "0")}`
+      return {
+        message_id: messageId,
+        branch_id: base.session.active_branch_id,
+        ...(parentMessageId === undefined ? {} : { parent_message_id: parentMessageId }),
+        role: index % 2 === 0 ? "user" as const : "assistant" as const,
+        ordinal: index,
+        lifecycle: index === 999 ? "streaming" as const : "completed" as const,
+        parts: [{
+          part_id: `part-${String(index).padStart(8, "0")}`,
+          message_id: messageId,
+          ordinal: 0,
+          version: 1,
+          schema_version: 1,
+          lifecycle: index === 999 ? "streaming" as const : "completed" as const,
+          kind: "text" as const,
+          payload: { spans: [{ text: `message ${index}` }] },
+        }],
+        attachments: [],
+        created_at: NOW,
+      }
+    })
+    const tail = messages.at(-1)
+    if (tail === undefined) throw new Error("tail fixture missing")
+    const longSnapshot: SessionSnapshot = {
+      ...base,
+      session: { ...base.session, active_leaf_message_id: tail.message_id },
+      messages,
+    }
+    const update = event({
+      kind: "message.part.updated",
+      payload: { part: { ...tail.parts[0]!, version: 2, payload: { spans: [{ text: "streamed tail" }] } } },
+    })
+    const store = createChatProjectionStore()
+    store.hydrate(longSnapshot)
+    const find = vi.spyOn(Array.prototype, "find")
+    const findIndex = vi.spyOn(Array.prototype, "findIndex")
+    let messageFindCalls: number
+    let findIndexCalls: number
+    try {
+      store.dispatch({ type: "event", event: update })
+      messageFindCalls = find.mock.calls.length
+      findIndexCalls = findIndex.mock.calls.length
+    } finally {
+      find.mockRestore()
+      findIndex.mockRestore()
+    }
+    expect(messageFindCalls).toBe(0)
+    expect(findIndexCalls).toBe(1)
+    expect(store.getSnapshot().messages.at(-1)?.parts[0]).toMatchObject({ version: 2, text: "streamed tail" })
+  })
+
   it("requests snapshot repair without applying a part version gap", () => {
     const store = createChatProjectionStore()
     store.hydrate(snapshot())
