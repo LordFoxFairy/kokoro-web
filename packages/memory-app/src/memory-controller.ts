@@ -325,7 +325,17 @@ export type PendingMemoryCommand = Readonly<{
   targetRef: string | null
 }>
 
-export type MemoryEntryVersionFence = Readonly<Pick<MemoryEntryActiveView, "entryRef" | "entryVersion">>
+export type MemoryEntryOwnerKnowledge =
+  | Readonly<{
+    entryRef: string
+    entryVersion: string
+    pageMembership: "required" | "observed" | "unknown"
+    state: "active"
+  }>
+  | Readonly<{
+    entryRef: string
+    state: "revoked"
+  }>
 
 export type MemorySpacePurgeView = Readonly<Pick<
   MemoryPurgeCommandResult,
@@ -336,7 +346,7 @@ export type MemoryControllerState = Readonly<{
   generation: number
   settings: MemorySettings | null
   entries: readonly MemoryEntryActiveView[]
-  entryVersionFences: readonly MemoryEntryVersionFence[]
+  entryOwnerKnowledge: readonly MemoryEntryOwnerKnowledge[]
   nextCursor: string | null
   selectedEntryRef: string | null
   selectedEntry: MemoryEntryView | null
@@ -385,34 +395,64 @@ export function mergeMemoryEntries(
   return Object.freeze([...entries.values()])
 }
 
-export function reconcileMemoryEntryPage(
+export type MemoryOwnerPageReconciliation = Readonly<{
+  entries: readonly MemoryEntryActiveView[]
+  entryOwnerKnowledge: readonly MemoryEntryOwnerKnowledge[]
+}>
+
+export type MemoryOwnerPageMode = "continuation" | "first"
+
+export function reconcileMemoryOwnerPage(
   current: readonly MemoryEntryActiveView[],
   incoming: readonly MemoryEntryActiveView[],
-  confirmedEntry: MemoryEntryActiveView,
-  requiredEntries: readonly MemoryEntryVersionFence[] = [],
-): readonly MemoryEntryActiveView[] | null {
-  const observed = incoming.find(({ entryRef }) => entryRef === confirmedEntry.entryRef)
+  confirmedEntry: MemoryEntryActiveView | null,
+  ownerKnowledge: readonly MemoryEntryOwnerKnowledge[] = [],
+  pageMode: MemoryOwnerPageMode = "first",
+): MemoryOwnerPageReconciliation | null {
   const currentByRef = new Map(current.map((entry) => [entry.entryRef, entry]))
   const incomingByRef = new Map(incoming.map((entry) => [entry.entryRef, entry]))
-  const currentTarget = currentByRef.get(confirmedEntry.entryRef)
-  const minimumTargetVersion = currentTarget === undefined
-    ? BigInt(confirmedEntry.entryVersion)
-    : BigInt(currentTarget.entryVersion) > BigInt(confirmedEntry.entryVersion)
-      ? BigInt(currentTarget.entryVersion)
-      : BigInt(confirmedEntry.entryVersion)
-  if (observed === undefined || BigInt(observed.entryVersion) < minimumTargetVersion) return null
+  if (confirmedEntry !== null) {
+    const observed = incomingByRef.get(confirmedEntry.entryRef)
+    const currentTarget = currentByRef.get(confirmedEntry.entryRef)
+    const minimumTargetVersion = currentTarget === undefined
+      ? BigInt(confirmedEntry.entryVersion)
+      : BigInt(currentTarget.entryVersion) > BigInt(confirmedEntry.entryVersion)
+        ? BigInt(currentTarget.entryVersion)
+        : BigInt(confirmedEntry.entryVersion)
+    if (observed === undefined || BigInt(observed.entryVersion) < minimumTargetVersion) return null
+  }
   for (const candidate of incoming) {
     const existing = currentByRef.get(candidate.entryRef)
     if (existing !== undefined && BigInt(existing.entryVersion) > BigInt(candidate.entryVersion)) return null
   }
-  for (const required of requiredEntries) {
-    const candidate = incomingByRef.get(required.entryRef)
-    if (candidate === undefined || BigInt(candidate.entryVersion) < BigInt(required.entryVersion)) return null
+  for (const knowledge of ownerKnowledge) {
+    const candidate = incomingByRef.get(knowledge.entryRef)
+    if (knowledge.state === "revoked") {
+      if (candidate !== undefined) return null
+      continue
+    }
+    if (candidate !== undefined && BigInt(candidate.entryVersion) < BigInt(knowledge.entryVersion)) return null
+    if (pageMode === "first" && knowledge.pageMembership === "required" && candidate === undefined) return null
   }
-  return Object.freeze(incoming.map((candidate) => {
-    const existing = currentByRef.get(candidate.entryRef)
-    return existing === undefined ? candidate : mergeMemoryEntries([existing], [candidate])[0] ?? candidate
-  }))
+  const entries = pageMode === "continuation"
+    ? mergeMemoryEntries(current, incoming)
+    : Object.freeze(incoming.map((candidate) => {
+      const existing = currentByRef.get(candidate.entryRef)
+      return existing === undefined ? candidate : mergeMemoryEntries([existing], [candidate])[0] ?? candidate
+    }))
+  return Object.freeze({
+    entries,
+    entryOwnerKnowledge: acceptMemoryOwnerPage(ownerKnowledge, incoming, pageMode === "first"),
+  })
+}
+
+export function reconcileMemoryEntryPage(
+  current: readonly MemoryEntryActiveView[],
+  incoming: readonly MemoryEntryActiveView[],
+  confirmedEntry: MemoryEntryActiveView,
+  ownerKnowledge: readonly MemoryEntryOwnerKnowledge[] = [],
+): readonly MemoryEntryActiveView[] | null {
+  return reconcileMemoryOwnerPage(current, incoming, confirmedEntry, ownerKnowledge)?.entries ?? null
 }
 
 function sameRevision(left: MemoryRevisionView, right: MemoryRevisionView): boolean {
@@ -452,15 +492,37 @@ export function settleMemorySelection(
   if (state.generation !== generation || state.selectedEntryRef !== selectedEntry.entryRef) return state
   if (selectedEntry.state === "active") {
     if (state.selectedEntry?.entryRef === selectedEntry.entryRef && state.selectedEntry.state !== "active") return state
+    const knowledge = state.entryOwnerKnowledge.find(({ entryRef }) => entryRef === selectedEntry.entryRef)
+    if (knowledge?.state === "revoked") return state
     const floor = currentActiveEntryFloor(state, selectedEntry.entryRef)
+    const incomingVersion = BigInt(selectedEntry.entryVersion)
+    if (knowledge?.state === "active" && incomingVersion < BigInt(knowledge.entryVersion)) return state
     if (floor !== null) {
-      const incomingVersion = BigInt(selectedEntry.entryVersion)
       const floorVersion = BigInt(floor.entryVersion)
       if (incomingVersion < floorVersion) return state
       if (incomingVersion === floorVersion) mergeMemoryEntries([floor], [selectedEntry])
     }
+    const listed = state.entries.some(({ entryRef }) => entryRef === selectedEntry.entryRef)
+    return Object.freeze({
+      ...state,
+      entries: listed ? mergeMemoryEntries(state.entries, [selectedEntry]) : state.entries,
+      entryOwnerKnowledge: advanceActiveOwnerKnowledge(
+        state.entryOwnerKnowledge,
+        selectedEntry,
+        listed ? "observed" : "unknown",
+      ),
+      selectedEntry,
+      history: mergeMemoryHistory([], history),
+    })
   }
-  return Object.freeze({ ...state, selectedEntry, history: mergeMemoryHistory([], history) })
+  return Object.freeze({
+    ...state,
+    entries: state.entries.filter(({ entryRef }) => entryRef !== selectedEntry.entryRef),
+    entryOwnerKnowledge: revokeOwnerKnowledge(state.entryOwnerKnowledge, [selectedEntry.entryRef]),
+    nextCursor: null,
+    selectedEntry,
+    history: mergeMemoryHistory([], history),
+  })
 }
 
 export function projectMemoryReadEpoch(
@@ -499,16 +561,53 @@ function projectSelectedActiveEntry(
   return floor === null ? incoming : mergeMemoryEntries([floor], [incoming])[0] ?? floor
 }
 
-function advanceEntryVersionFence(
-  current: readonly MemoryEntryVersionFence[],
+function membershipPriority(membership: "required" | "observed" | "unknown"): number {
+  if (membership === "required") return 2
+  return membership === "observed" ? 1 : 0
+}
+
+function advanceActiveOwnerKnowledge(
+  current: readonly MemoryEntryOwnerKnowledge[],
   incoming: MemoryEntryActiveView,
-): readonly MemoryEntryVersionFence[] {
-  const fences = new Map(current.map((fence) => [fence.entryRef, fence]))
-  const existing = fences.get(incoming.entryRef)
-  if (existing === undefined || BigInt(incoming.entryVersion) > BigInt(existing.entryVersion)) {
-    fences.set(incoming.entryRef, Object.freeze({ entryRef: incoming.entryRef, entryVersion: incoming.entryVersion }))
+  pageMembership: "required" | "observed" | "unknown",
+): readonly MemoryEntryOwnerKnowledge[] {
+  const knowledge = new Map(current.map((item) => [item.entryRef, item]))
+  const existing = knowledge.get(incoming.entryRef)
+  if (existing?.state === "revoked") throw new TypeError("Memory entry owner lifecycle conflict")
+  if (existing?.state === "active" && BigInt(existing.entryVersion) > BigInt(incoming.entryVersion)) return current
+  const nextMembership = existing?.state === "active" && membershipPriority(existing.pageMembership) > membershipPriority(pageMembership)
+    ? existing.pageMembership
+    : pageMembership
+  knowledge.set(incoming.entryRef, Object.freeze({
+    entryRef: incoming.entryRef,
+    entryVersion: incoming.entryVersion,
+    pageMembership: nextMembership,
+    state: "active",
+  }))
+  return Object.freeze([...knowledge.values()])
+}
+
+function revokeOwnerKnowledge(
+  current: readonly MemoryEntryOwnerKnowledge[],
+  entryRefs: readonly string[],
+): readonly MemoryEntryOwnerKnowledge[] {
+  const knowledge = new Map(current.map((item) => [item.entryRef, item]))
+  for (const entryRef of entryRefs) {
+    knowledge.set(entryRef, Object.freeze({ entryRef, state: "revoked" }))
   }
-  return Object.freeze([...fences.values()])
+  return Object.freeze([...knowledge.values()])
+}
+
+function acceptMemoryOwnerPage(
+  current: readonly MemoryEntryOwnerKnowledge[],
+  incoming: readonly MemoryEntryActiveView[],
+  confirmsFirstPageMembership: boolean,
+): readonly MemoryEntryOwnerKnowledge[] {
+  let knowledge = Object.freeze(current.map((item) => confirmsFirstPageMembership && item.state === "active" && item.pageMembership === "required"
+    ? Object.freeze({ ...item, pageMembership: "observed" as const })
+    : item))
+  for (const entry of incoming) knowledge = advanceActiveOwnerKnowledge(knowledge, entry, "observed")
+  return knowledge
 }
 
 export function projectMemoryCommand(state: MemoryControllerState, response: MemoryCommandResponse): MemoryControllerState {
@@ -540,7 +639,8 @@ export function projectMemoryCommand(state: MemoryControllerState, response: Mem
         ...base,
         generation: state.generation + 1,
         entries: mergeMemoryEntries(state.entries, [response.result.entry]),
-        entryVersionFences: advanceEntryVersionFence(state.entryVersionFences, response.result.entry),
+        entryOwnerKnowledge: advanceActiveOwnerKnowledge(state.entryOwnerKnowledge, response.result.entry, "required"),
+        nextCursor: null,
         selectedEntry: projectSelectedActiveEntry(state, response.result.entry),
       })
     case "entry": {
@@ -550,7 +650,8 @@ export function projectMemoryCommand(state: MemoryControllerState, response: Mem
           ...base,
           generation: state.generation + 1,
           entries: state.entries.filter(({ entryRef }) => entryRef !== resultEntry.entryRef),
-          entryVersionFences: state.entryVersionFences.filter(({ entryRef }) => entryRef !== resultEntry.entryRef),
+          entryOwnerKnowledge: revokeOwnerKnowledge(state.entryOwnerKnowledge, [resultEntry.entryRef]),
+          nextCursor: null,
           selectedEntry: state.selectedEntryRef === resultEntry.entryRef ? resultEntry : state.selectedEntry,
         })
       }
@@ -558,7 +659,8 @@ export function projectMemoryCommand(state: MemoryControllerState, response: Mem
         ...base,
         generation: state.generation + 1,
         entries: mergeMemoryEntries(state.entries, [resultEntry]),
-        entryVersionFences: advanceEntryVersionFence(state.entryVersionFences, resultEntry),
+        entryOwnerKnowledge: advanceActiveOwnerKnowledge(state.entryOwnerKnowledge, resultEntry, "required"),
+        nextCursor: null,
         selectedEntry: projectSelectedActiveEntry(state, resultEntry),
       })
     }
@@ -568,11 +670,16 @@ export function projectMemoryCommand(state: MemoryControllerState, response: Mem
         ? { entryRef: purge.entryRef, purgeReceiptRef: purge.purgeReceiptRef, purgedAt: purge.effectiveAt, state: "purged" }
         : { entryRef: purge.entryRef, purgeReceiptRef: purge.purgeReceiptRef, revokedAt: purge.effectiveAt, state: "revoked_purge_pending" }
       if (purge.purgeScope === "space") {
+        const revokedRefs = new Set([
+          ...state.entryOwnerKnowledge.map(({ entryRef }) => entryRef),
+          ...state.entries.map(({ entryRef }) => entryRef),
+          ...(state.selectedEntryRef === null ? [] : [state.selectedEntryRef]),
+        ])
         return Object.freeze({
           ...base,
           generation: state.generation + 1,
           entries: Object.freeze([]),
-          entryVersionFences: Object.freeze([]),
+          entryOwnerKnowledge: revokeOwnerKnowledge(state.entryOwnerKnowledge, [...revokedRefs]),
           nextCursor: null,
           selectedEntryRef: null,
           selectedEntry: null,
@@ -589,7 +696,9 @@ export function projectMemoryCommand(state: MemoryControllerState, response: Mem
         ...base,
         generation: state.generation + 1,
         entries: state.entries.filter(({ entryRef }) => entryRef !== purge.entryRef),
-        entryVersionFences: state.entryVersionFences.filter(({ entryRef }) => entryRef !== purge.entryRef),
+        entryOwnerKnowledge: purge.entryRef === null
+          ? state.entryOwnerKnowledge
+          : revokeOwnerKnowledge(state.entryOwnerKnowledge, [purge.entryRef]),
         nextCursor: null,
         selectedEntry: state.selectedEntryRef === purge.entryRef ? purgeView : state.selectedEntry,
         history: state.selectedEntryRef === purge.entryRef ? Object.freeze([]) : state.history,

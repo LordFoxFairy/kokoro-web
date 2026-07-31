@@ -25,11 +25,10 @@ import {
   MemoryBrowserError,
   memoryCommandRequiresRecovery,
   memorySpacePurgeIsPending,
-  mergeMemoryEntries,
   mergeMemoryHistory,
   projectMemoryCommand,
   projectMemoryReadEpoch,
-  reconcileMemoryEntryPage,
+  reconcileMemoryOwnerPage,
   settleMemorySelection,
   type MemoryBrowserFetch,
   type BrowserMemoryExportStatus,
@@ -363,7 +362,7 @@ const EMPTY_STATE: MemoryControllerState = Object.freeze({
   generation: 0,
   settings: null,
   entries: Object.freeze([]),
-  entryVersionFences: Object.freeze([]),
+  entryOwnerKnowledge: Object.freeze([]),
   nextCursor: null,
   selectedEntryRef: null,
   selectedEntry: null,
@@ -432,6 +431,7 @@ export function MemoryProduct(props: Readonly<{
   const stateRef = useRef(state)
   const controllers = useRef(new Set<AbortController>())
   const scopeFenceRef = useRef(createMemoryRuntimeScopeFence(props.browserRuntimeScope))
+  const ownerKnowledgeScopeRef = useRef(props.browserRuntimeScope)
   const assetUploadGenerationRef = useRef(0)
   const [assetUploader, setAssetUploader] = useState<ReturnType<typeof createAssetUploader> | null>(null)
   const [importSource, setImportSource] = useState<Readonly<{ assetRef: string; assetVersionRef: string; safeLabel: string }> | null>(null)
@@ -497,10 +497,16 @@ export function MemoryProduct(props: Readonly<{
 
   useEffect(() => {
     const expectedScope = scopeFenceRef.current.capture()
-    let readGeneration = commitState((current) => Object.freeze({
-      ...EMPTY_STATE,
-      generation: current.generation + 1,
-    })).generation
+    let initialPageDeferred = false
+    let readGeneration = commitState((current) => {
+      const preserveOwnerKnowledge = ownerKnowledgeScopeRef.current === props.browserRuntimeScope
+      ownerKnowledgeScopeRef.current = props.browserRuntimeScope
+      return Object.freeze({
+        ...EMPTY_STATE,
+        entryOwnerKnowledge: preserveOwnerKnowledge ? current.entryOwnerKnowledge : Object.freeze([]),
+        generation: current.generation + 1,
+      })
+    }).generation
     setStatus("")
     setError(null)
     setImportSource(null)
@@ -509,13 +515,21 @@ export function MemoryProduct(props: Readonly<{
       const [settings, page] = await Promise.all([client.getSettings(signal), client.listEntries({ limit: 50 }, signal)])
       if (!scopeFenceRef.current.isCurrent(expectedScope) || stateRef.current.generation !== readGeneration) return
       const pendingCommands = createMemoryCommandJournal({ storage: localStorage, scope: expectedScope.browserRuntimeScope }).list()
-      const loaded = commitState((current) => projectMemoryReadEpoch(current, readGeneration, (active) => Object.freeze({
-        ...active,
-        settings,
-        entries: page.items,
-        nextCursor: page.pageInfo.nextCursor,
-        pendingCommands,
-      })))
+      const loaded = commitState((current) => projectMemoryReadEpoch(current, readGeneration, (active) => {
+        const reconciled = reconcileMemoryOwnerPage([], page.items, null, active.entryOwnerKnowledge)
+        if (reconciled === null) {
+          initialPageDeferred = true
+          return Object.freeze({ ...active, settings, pendingCommands })
+        }
+        return Object.freeze({
+          ...active,
+          entries: reconciled.entries,
+          entryOwnerKnowledge: reconciled.entryOwnerKnowledge,
+          settings,
+          nextCursor: page.pageInfo.nextCursor,
+          pendingCommands,
+        })
+      }))
       if (loaded.generation !== readGeneration) return
       const initial = props.initialEntryRef
       if (initial !== undefined) {
@@ -531,7 +545,7 @@ export function MemoryProduct(props: Readonly<{
         if (settled.generation !== readGeneration) return
       }
       if (!scopeFenceRef.current.isCurrent(expectedScope) || stateRef.current.generation !== readGeneration) return
-      setStatus("Memory controls are current")
+      setStatus(initialPageDeferred ? "Saved memories are awaiting a current owner page" : "Memory controls are current")
     }).catch((cause: unknown) => {
       if (scopeFenceRef.current.isCurrent(expectedScope) && stateRef.current.generation === readGeneration && !(cause instanceof DOMException && cause.name === "AbortError")) setError(errorMessage(cause))
     })
@@ -608,19 +622,19 @@ export function MemoryProduct(props: Readonly<{
           return
         }
         if (!scopeFenceRef.current.isCurrent(expectedScope) || stateRef.current.generation !== readGeneration) return
-        const reconciled = reconcileMemoryEntryPage(
+        const reconciled = reconcileMemoryOwnerPage(
           stateRef.current.entries,
           page.items,
           response.result.entry,
-          stateRef.current.entryVersionFences,
+          stateRef.current.entryOwnerKnowledge,
         )
         if (reconciled === null) {
           priorityRefreshDeferred = true
         } else {
           commitState((current) => current.generation !== readGeneration ? current : Object.freeze({
             ...current,
-            entries: reconciled,
-            entryVersionFences: Object.freeze([]),
+            entries: reconciled.entries,
+            entryOwnerKnowledge: reconciled.entryOwnerKnowledge,
             nextCursor: page.pageInfo.nextCursor,
           }))
         }
@@ -689,7 +703,23 @@ export function MemoryProduct(props: Readonly<{
         !scopeFenceRef.current.isCurrent(expectedScope) || stateRef.current.generation !== generation ||
         stateRef.current.nextCursor !== cursor
       ) return
-      commitState((current) => current.generation !== generation ? current : Object.freeze({ ...current, entries: mergeMemoryEntries(current.entries, page.items), nextCursor: page.pageInfo.nextCursor }))
+      const reconciled = reconcileMemoryOwnerPage(
+        stateRef.current.entries,
+        page.items,
+        null,
+        stateRef.current.entryOwnerKnowledge,
+        "continuation",
+      )
+      if (reconciled === null) {
+        setStatus("Saved memories are awaiting a current owner page")
+        return
+      }
+      commitState((current) => current.generation !== generation || current.nextCursor !== cursor ? current : Object.freeze({
+        ...current,
+        entries: reconciled.entries,
+        entryOwnerKnowledge: reconciled.entryOwnerKnowledge,
+        nextCursor: page.pageInfo.nextCursor,
+      }))
       setStatus("Loaded more saved memories")
     }).catch((cause: unknown) => {
       if (

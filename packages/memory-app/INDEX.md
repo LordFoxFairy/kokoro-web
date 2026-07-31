@@ -15,6 +15,11 @@ Correction and restore append revisions. Forget/reset expose immediate logical r
 Every asynchronous projection captures a committed `(browserRuntimeScope, generation)` token. Selection, pagination, command
 recovery, import/export refresh and Asset upload discard late results after a Site/user/release scope switch, including A→B→A,
 or after same-scope auth/transport client rotation; abort remains resource cleanup rather than the correctness mechanism.
+Within one runtime scope, a unified per-entry owner-knowledge fence retains the highest active version or a terminal revoked
+tombstone across list refreshes and same-scope client/deep-link bootstrap. Active detail reads lift an existing list member without
+inventing membership for an unlisted entry; revoked refs reject any later page that tries to reintroduce them. A genuinely new
+runtime scope starts from a fresh owner bootstrap. Every succeeded entry/list mutation invalidates the prior pagination cursor, and
+only a fully reconciled first page may publish a replacement cursor.
 
 The package does not own Memory persistence, Session history, GA context use, Asset/Artifact bytes or Site feature enablement. `@kokoro/site-scaffold` is the build-time authority that either includes the complete package/page/BFF route in one Site artifact or omits them entirely.
 

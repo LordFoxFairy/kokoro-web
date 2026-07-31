@@ -10,6 +10,7 @@ export {
   memorySpacePurgeIsPending,
   projectMemoryCommand,
   reconcileMemoryEntryPage,
+  reconcileMemoryOwnerPage,
   settleMemorySelection,
 } from "./memory-controller"
 export type {
@@ -19,6 +20,9 @@ export type {
   BrowserMemoryExportStatus,
   MemoryCommandIdentity,
   MemoryControllerState,
+  MemoryEntryOwnerKnowledge,
+  MemoryOwnerPageMode,
+  MemoryOwnerPageReconciliation,
   MemoryPageQuery,
   MemoryStorage,
   PendingMemoryCommand,

@@ -11,6 +11,7 @@ import {
   projectMemoryCommand,
   projectMemoryReadEpoch,
   reconcileMemoryEntryPage,
+  reconcileMemoryOwnerPage,
   settleMemorySelection,
   type MemoryControllerState,
   type MemoryStorage,
@@ -41,7 +42,7 @@ function controllerState(): MemoryControllerState {
     generation: 4,
     settings: null,
     entries: [entry()],
-    entryVersionFences: [],
+    entryOwnerKnowledge: [],
     nextCursor: "next-page",
     selectedEntryRef: "entry-1",
     selectedEntry: entry(),
@@ -171,8 +172,10 @@ describe("Memory controller", () => {
       },
     ]
 
-    expect(responses.map((response) => projectMemoryCommand(controllerState(), response).generation))
+    const projected = responses.map((response) => projectMemoryCommand(controllerState(), response))
+    expect(projected.map(({ generation }) => generation))
       .toEqual(responses.map(() => controllerState().generation + 1))
+    expect(projected.map(({ nextCursor }) => nextCursor)).toEqual(responses.map(() => null))
   })
 
   test("does not settle a selected detail below the current list owner version", () => {
@@ -181,6 +184,55 @@ describe("Memory controller", () => {
     const staleDetail = entry({ entryVersion: "3", revision: 3, currentRevisionRef: "revision-3" })
 
     expect(settleMemorySelection(loading, loading.generation, staleDetail, [])).toBe(loading)
+  })
+
+  test("promotes a newer selected detail into one owner-knowledge floor without inventing page membership", () => {
+    const newerDetail = entry({
+      content: "Newest detail",
+      currentRevisionRef: "revision-4",
+      entryVersion: "4",
+      revision: 4,
+      updatedAt: "2026-07-31T00:00:04.000Z",
+    })
+    const listed = { ...controllerState(), selectedEntry: null }
+    const listedResult = settleMemorySelection(listed, listed.generation, newerDetail, [])
+    expect(listedResult.entries).toEqual([newerDetail])
+    expect(listedResult.entryOwnerKnowledge).toContainEqual({
+      entryRef: "entry-1",
+      entryVersion: "4",
+      pageMembership: "observed",
+      state: "active",
+    })
+
+    const unlisted = {
+      ...controllerState(),
+      entries: [entry({ entryRef: "entry-2" })],
+      selectedEntry: null,
+    }
+    const unlistedResult = settleMemorySelection(unlisted, unlisted.generation, newerDetail, [])
+    expect(unlistedResult.entries.map(({ entryRef }) => entryRef)).toEqual(["entry-2"])
+    expect(unlistedResult.entryOwnerKnowledge).toContainEqual({
+      entryRef: "entry-1",
+      entryVersion: "4",
+      pageMembership: "unknown",
+      state: "active",
+    })
+  })
+
+  test("projects a non-active selected detail as a revoked list tombstone", () => {
+    const current = controllerState()
+    const revoked = {
+      entryRef: "entry-1",
+      purgeReceiptRef: "purge-selected-detail",
+      revokedAt: "2026-07-31T00:00:05.000Z",
+      state: "revoked_purge_pending",
+    } as const
+    const settled = settleMemorySelection(current, current.generation, revoked, [])
+
+    expect(settled.entries).toEqual([])
+    expect(settled.entryOwnerKnowledge).toContainEqual({ entryRef: "entry-1", state: "revoked" })
+    expect(settled.nextCursor).toBeNull()
+    expect(settled.selectedEntry).toEqual(revoked)
   })
 
   test("clears A synchronously and ignores A after a deep-link switch to B", () => {
@@ -540,8 +592,47 @@ describe("Memory controller", () => {
       [newerOther, confirmedPriority],
       [confirmedPriority],
       confirmedPriority,
-      [newerOther],
+      [{
+        entryRef: newerOther.entryRef,
+        entryVersion: newerOther.entryVersion,
+        pageMembership: "required",
+        state: "active",
+      }],
     )).toBeNull()
+  })
+
+  test("retains a revoked owner tombstone and rejects every later page that contains the entry", () => {
+    const purge = {
+      command: {
+        commandId: "8".repeat(32),
+        commandKind: "forgetMemoryEntry",
+        receiptRef: "receipt-forget-tombstone",
+        receivedAt: "2026-07-31T00:00:00.000Z",
+        updatedAt: "2026-07-31T00:00:01.000Z",
+      },
+      result: {
+        effectiveAt: "2026-07-31T00:00:01.000Z",
+        entryRef: "entry-1",
+        purgeReceiptRef: "purge-forget-tombstone",
+        purgeScope: "entry",
+        purgeState: "revoked_purge_pending",
+        resultKind: "purge",
+      },
+      state: "succeeded",
+    } satisfies MemoryCommandResponse
+    const forgotten = projectMemoryCommand(controllerState(), purge)
+    const confirmedOther = entry({ entryRef: "entry-2", entryVersion: "3", prioritized: true })
+
+    expect(forgotten.nextCursor).toBeNull()
+    expect(forgotten.entryOwnerKnowledge).toContainEqual({ entryRef: "entry-1", state: "revoked" })
+    expect(reconcileMemoryEntryPage(
+      [confirmedOther],
+      [confirmedOther, entry()],
+      confirmedOther,
+      forgotten.entryOwnerKnowledge,
+    )).toBeNull()
+    expect(reconcileMemoryOwnerPage([], [entry()], null, forgotten.entryOwnerKnowledge)).toBeNull()
+    expect(reconcileMemoryOwnerPage([], [entry()], null, [])?.entries).toEqual([entry()])
   })
 
   test("persists non-sensitive restore and import recovery semantics and rejects incomplete records", () => {

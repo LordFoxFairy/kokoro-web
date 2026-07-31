@@ -248,13 +248,13 @@ describe("Memory product runtime scope", () => {
       entryA.click()
       entryB.click()
     })
-    expect(await screen.findByText("Current detail B")).toBeTruthy()
+    expect(await screen.findAllByText("Current detail B")).toHaveLength(2)
     await act(async () => {
       rejectEntryA()
       await Promise.resolve()
     })
 
-    expect(screen.getByText("Current detail B")).toBeTruthy()
+    expect(screen.getAllByText("Current detail B")).toHaveLength(2)
     expect(screen.queryByRole("alert")).toBeNull()
   })
 
@@ -301,19 +301,19 @@ describe("Memory product runtime scope", () => {
       fetch={fetcher}
     />)
     fireEvent.click(await screen.findByRole("button", { name: /Memory A/ }))
-    expect(await screen.findByText("Current detail A")).toBeTruthy()
+    expect(await screen.findAllByText("Current detail A")).toHaveLength(2)
 
     act(() => {
       screen.getByRole("button", { name: "Load more history" }).click()
       screen.getByRole("button", { name: /Memory B/ }).click()
     })
-    expect(await screen.findByText("Current detail B")).toBeTruthy()
+    expect(await screen.findAllByText("Current detail B")).toHaveLength(2)
     await act(async () => {
       rejectHistoryA()
       await Promise.resolve()
     })
 
-    expect(screen.getByText("Current detail B")).toBeTruthy()
+    expect(screen.getAllByText("Current detail B")).toHaveLength(2)
     expect(screen.queryByRole("alert")).toBeNull()
   })
 
@@ -669,6 +669,75 @@ describe("Memory product runtime scope", () => {
     expect(screen.queryByRole("button", { name: /Forget overlap memory/ })).toBeNull()
   })
 
+  test("keeps a forgotten entry revoked when a later same-scope page still contains it", async () => {
+    const staleEntry = entryValue("entry-1", "Forgotten paged memory")
+    const initialFetch = vi.fn<MemoryBrowserFetch>((input, init) => {
+      const path = String(input)
+      if (path.endsWith("/settings")) return Promise.resolve(Response.json(settings))
+      if (path.includes("/entries?") && !path.includes("cursor=")) {
+        return Promise.resolve(Response.json({ items: [staleEntry], pageInfo: { hasMore: false, nextCursor: null } }))
+      }
+      if (path.endsWith("/entries/entry-1")) return Promise.resolve(Response.json({ entry: staleEntry }))
+      if (path.includes("/entries/entry-1/history")) return Promise.resolve(historyResponse("entry-1"))
+      if (path.endsWith("/entries/entry-1/forget")) {
+        const body = JSON.parse(String(init?.body)) as { command: { commandId: string } }
+        return Promise.resolve(Response.json({
+          command: {
+            commandId: body.command.commandId,
+            commandKind: "forgetMemoryEntry",
+            receiptRef: "receipt-forget-paged",
+            receivedAt: "2026-07-31T00:00:00.000Z",
+            updatedAt: "2026-07-31T00:00:01.000Z",
+          },
+          result: {
+            effectiveAt: "2026-07-31T00:00:01.000Z",
+            entryRef: "entry-1",
+            purgeReceiptRef: "purge-forget-paged",
+            purgeScope: "entry",
+            purgeState: "revoked_purge_pending",
+            resultKind: "purge",
+          },
+          state: "succeeded",
+        }))
+      }
+      throw new Error(`Unexpected Memory request: ${path}`)
+    })
+    const rendered = render(<MemoryProduct
+      brandName="Site A"
+      browserRuntimeScope="site-a:user-1:release-1"
+      csrfToken="csrf-before-forget"
+      fetch={initialFetch}
+    />)
+
+    fireEvent.click(await screen.findByRole("button", { name: /Forgotten paged memory/ }))
+    fireEvent.change(await screen.findByRole("textbox", { name: "Type FORGET" }), { target: { value: "FORGET" } })
+    fireEvent.click(screen.getByRole("button", { name: "Forget permanently" }))
+    expect(await screen.findByText("purge-forget-paged")).toBeTruthy()
+
+    const rotatedFetch = vi.fn<MemoryBrowserFetch>((input) => {
+      const path = String(input)
+      if (path.endsWith("/settings")) return Promise.resolve(Response.json(settings))
+      if (path.includes("cursor=after-forget")) {
+        return Promise.resolve(Response.json({ items: [staleEntry], pageInfo: { hasMore: false, nextCursor: null } }))
+      }
+      if (path.includes("/entries?")) {
+        return Promise.resolve(Response.json({ items: [], pageInfo: { hasMore: true, nextCursor: "after-forget" } }))
+      }
+      throw new Error(`Unexpected Memory request: ${path}`)
+    })
+    rendered.rerender(<MemoryProduct
+      brandName="Site A"
+      browserRuntimeScope="site-a:user-1:release-1"
+      csrfToken="csrf-after-forget"
+      fetch={rotatedFetch}
+    />)
+
+    fireEvent.click(await screen.findByRole("button", { name: "Load more memories" }))
+    await waitFor(() => expect(rotatedFetch).toHaveBeenCalledTimes(3))
+    expect(screen.queryByRole("button", { name: /Forgotten paged memory/ })).toBeNull()
+    expect(await screen.findByText("Saved memories are awaiting a current owner page")).toBeTruthy()
+  })
+
   test("does not regress a confirmed priority version when its refresh page is stale", async () => {
     let listCalls = 0
     const stale = entryValue("entry-1", "Priority memory", {
@@ -729,9 +798,9 @@ describe("Memory product runtime scope", () => {
 
     expect(screen.getByRole("button", { name: "Remove priority" })).toBeTruthy()
     expect(screen.getByRole("button", { name: /Preference · Priority.*Priority memory/ })).toBeTruthy()
-    fireEvent.click(screen.getByRole("button", { name: "Load more memories" }))
-    await waitFor(() => expect(listCalls).toBe(3))
-    expect(fetcher.mock.calls.some(([input]) => String(input).includes("cursor=cursor-before-priority"))).toBe(true)
+    expect(screen.queryByRole("button", { name: "Load more memories" })).toBeNull()
+    expect(listCalls).toBe(2)
+    expect(fetcher.mock.calls.some(([input]) => String(input).includes("cursor=cursor-before-priority"))).toBe(false)
     expect(fetcher.mock.calls.some(([input]) => String(input).includes("cursor=cursor-from-stale-page"))).toBe(false)
   })
 
