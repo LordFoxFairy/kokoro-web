@@ -48,6 +48,8 @@ type ChatMediaOperationBase = Readonly<{
   mediaOperationRef: string
   definitionRef: string
   definitionRevisionRef: string
+  /** Present for Platform-owned views; Session media parts do not currently publish this identity. */
+  modelOptionRevisionRef?: string
   ownerVersion: string
   progressBps: number
   candidates: readonly ChatMediaCandidate[]
@@ -188,9 +190,25 @@ function projectCandidate(candidate: ContractMediaCandidate): ChatMediaCandidate
   }
 }
 
+export function assertCanonicalMediaCandidateIdentity(
+  candidates: readonly Readonly<{ candidateRef: string; ordinal: number }>[],
+): void {
+  const refs = new Set<string>()
+  for (const [index, candidate] of candidates.entries()) {
+    if (candidate.ordinal !== index || refs.has(candidate.candidateRef)) {
+      throw new TypeError("Media candidate identity must be unique and ordered by ordinal")
+    }
+    refs.add(candidate.candidateRef)
+  }
+}
+
 export function projectMediaOperationOwnerState(
   payload: PartPayload<"media-operation">,
 ): ChatMediaOperationOwnerState {
+  assertCanonicalMediaCandidateIdentity(payload.candidates.map((candidate) => ({
+    candidateRef: candidate.candidate_ref,
+    ordinal: candidate.ordinal,
+  })))
   const base = {
     mediaOperationRef: payload.media_operation_ref,
     definitionRef: payload.definition_ref,
@@ -335,7 +353,8 @@ export function validateMediaOperationTransition(
   if (
     current.mediaOperationRef !== next.mediaOperationRef ||
     current.definitionRef !== next.definitionRef ||
-    current.definitionRevisionRef !== next.definitionRevisionRef
+    current.definitionRevisionRef !== next.definitionRevisionRef ||
+    current.modelOptionRevisionRef !== next.modelOptionRevisionRef
   ) return "owner_identity_conflict"
   const versionConflict = ownerVersionConflict(current.ownerVersion, next.ownerVersion, current, next)
   if (versionConflict !== undefined) return versionConflict

@@ -5,6 +5,7 @@ import type {
   MediaFailure,
   MediaOperationOwnerState,
 } from "@kokoro/chat-surface"
+import { assertCanonicalMediaCandidateIdentity } from "@kokoro/chat-surface"
 import type {
   ArtifactVersion,
   MediaCandidateView,
@@ -58,10 +59,12 @@ function candidate(input: MediaCandidateView): MediaCandidate {
 export function projectPlatformMediaOperationOwnerState(
   input: MediaOperationView,
 ): MediaOperationOwnerState {
+  assertCanonicalMediaCandidateIdentity(input.candidates)
   const base = {
     mediaOperationRef: input.operationRef,
     definitionRef: input.definitionRef,
     definitionRevisionRef: input.definitionRevisionRef,
+    modelOptionRevisionRef: input.modelOptionRevisionRef,
     ownerVersion: input.ownerVersion,
     progressBps: input.progressBps,
     candidates: Object.freeze(input.candidates.map(candidate)),

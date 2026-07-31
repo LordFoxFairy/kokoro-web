@@ -9,6 +9,10 @@ import type {
   OperationDefinition,
   PublishedModelOption,
 } from "@kokoro/site-client"
+import {
+  canonicalMediaOperationInputV1Bytes,
+  mediaCallerRequestFingerprintSha256,
+} from "@kokoro/site-client"
 import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 import {
@@ -87,7 +91,7 @@ export function createStudioOperationInput(input: Readonly<{
     input.candidateCount < 1 ||
     input.candidateCount > definition.maximumCandidateCount
   ) return null
-  return Object.freeze({
+  const operationInput = Object.freeze({
     kind: definition.kind,
     definitionRevisionRef: definition.definitionRevisionRef,
     promptIntent: prompt,
@@ -96,6 +100,12 @@ export function createStudioOperationInput(input: Readonly<{
     modelOptionRevisionRef: input.optionRef,
     outputFormat: input.outputFormat,
   })
+  try {
+    canonicalMediaOperationInputV1Bytes({ contractMajor: 1, ...operationInput })
+  } catch {
+    return null
+  }
+  return operationInput
 }
 
 export type StudioDraft = Readonly<{
@@ -160,6 +170,7 @@ export function StudioView(props: Readonly<{
   operations: readonly MediaOperationOwnerState[]
   quote: StudioQuoteView | null
   busy: boolean
+  submissionBlocked: boolean
   error: string | null
   onQuote(input: MediaOperationInput, inputRevision: number): void
   onSubmit(input: MediaOperationInput, inputRevision: number): void
@@ -228,8 +239,8 @@ export function StudioView(props: Readonly<{
           <label>Candidates<input min={1} max={definition?.kind === "image_text_to_image" ? definition.maximumCandidateCount : 1} step={1} type="number" value={draft.candidateCount} onChange={(event) => changed({ candidateCount: Number(event.target.value) })} /></label>
         </div>
         <div className={styles.quoteBand}>
-          {activeQuote === null ? <span>Quote required before submission</span> : <span><strong>{activeQuote.amount} {activeQuote.creditUnit}</strong><small>Non-binding · expires {new Date(activeQuote.expiresAt).toLocaleTimeString()}</small></span>}
-          <div><button disabled={props.busy || operationInput() === null} type="submit">Get quote</button><button disabled={props.busy || activeQuote === null || operationInput() === null} type="button" onClick={() => { const input = operationInput(); if (input !== null && isStudioQuoteActive(activeQuote, draft.inputRevision)) props.onSubmit(input, draft.inputRevision) }}>Create</button></div>
+          {props.submissionBlocked ? <span>Recovering a previous creation before another can start</span> : activeQuote === null ? <span>Quote required before submission</span> : <span><strong>{activeQuote.amount} {activeQuote.creditUnit}</strong><small>Non-binding · expires {new Date(activeQuote.expiresAt).toLocaleTimeString()}</small></span>}
+          <div><button disabled={props.busy || operationInput() === null} type="submit">Get quote</button><button disabled={props.busy || props.submissionBlocked || activeQuote === null || operationInput() === null} type="button" onClick={() => { const input = operationInput(); if (input !== null && isStudioQuoteActive(activeQuote, draft.inputRevision)) props.onSubmit(input, draft.inputRevision) }}>Create</button></div>
         </div>
       </form>
       <section className={styles.activityPanel} aria-labelledby="studio-activity">
@@ -263,6 +274,7 @@ export function StudioProduct(props: Readonly<{
   const [busy, setBusy] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [recoveryRevision, setRecoveryRevision] = useState(0)
+  const [submissionBlocked, setSubmissionBlocked] = useState(false)
   const quoteRequest = useRef(0)
   const operationSnapshot = useRef<readonly MediaOperationOwnerState[]>([])
   const operationPoller = useRef<VisibilityAwarePoller | null>(null)
@@ -289,9 +301,12 @@ export function StudioProduct(props: Readonly<{
     signal?: AbortSignal,
   ): Promise<boolean> => {
     if (wasAborted(signal) || !requests.current?.isScopeCurrent(scope)) return false
+    const projectedOperation = response.operation === null
+      ? null
+      : projectPlatformMediaOperationOwnerState(response.operation)
     const recovery = recoveryStore()
     const reconciliation = applyMediaCommandReceipt(recovery, response.receipt)
-    if (response.operation !== null) mergeOperations([projectPlatformMediaOperationOwnerState(response.operation)])
+    if (projectedOperation !== null) mergeOperations([projectedOperation])
     if (reconciliation.kind === "get_operation") {
       const owner = await client.getOperation(reconciliation.operationRef, signal)
       if (wasAborted(signal) || !requests.current?.isScopeCurrent(scope)) return false
@@ -326,6 +341,7 @@ export function StudioProduct(props: Readonly<{
     setBusy(true)
     setError(null)
     setRecoveryRevision(0)
+    setSubmissionBlocked(false)
     return () => coordinator.invalidate(scope)
   }, [scope])
   useEffect(() => {
@@ -388,7 +404,11 @@ export function StudioProduct(props: Readonly<{
   }, [operations])
   useEffect(() => {
     const poller = createVisibilityAwarePoller({
-      fetchValue: (commandId, signal) => client.recoverCommand(commandId, signal),
+      fetchValue: (commandId, signal) => {
+        const expectation = recoveryStore().list().find(({ command }) => command.commandId === commandId)
+        if (expectation === undefined) throw new Error("Command recovery identity is unavailable")
+        return client.recoverCommand(commandId, expectation, signal)
+      },
       async onValues(values, signal) {
         const terminal = await Promise.all(values.map((response) => reconcileCommand(response, signal)))
         return terminal.every(Boolean)
@@ -404,11 +424,13 @@ export function StudioProduct(props: Readonly<{
       poller.stop()
       if (commandPoller.current === poller) commandPoller.current = null
     }
-  }, [client, reconcileCommand, scope])
+  }, [client, reconcileCommand, recoveryStore, scope])
   useEffect(() => {
     if (!requests.current?.isScopeCurrent(scope)) return
     try {
-      commandPoller.current?.setKeys(recoveryStore().list()
+      const records = recoveryStore().list()
+      setSubmissionBlocked(records.some(({ kind }) => kind === "submit"))
+      commandPoller.current?.setKeys(records
         .map(({ command }) => command.commandId)
         .filter((commandId) => !contactSupportCommands.current.has(commandId)))
     } catch (failure) {
@@ -416,6 +438,15 @@ export function StudioProduct(props: Readonly<{
       setError(failure instanceof Error ? failure.message : "Command recovery storage is unavailable.")
     }
   }, [recoveryRevision, recoveryStore, scope])
+  useEffect(() => {
+    const listener = (event: StorageEvent) => {
+      if (event.key?.startsWith(`kokoro.media.command.v2:${encodeURIComponent(scope)}:`) ?? false) {
+        setRecoveryRevision((current) => current + 1)
+      }
+    }
+    window.addEventListener("storage", listener)
+    return () => window.removeEventListener("storage", listener)
+  }, [scope])
   useEffect(() => {
     if (quote === null) return
     const remaining = Date.parse(quote.expiresAt) - Date.now()
@@ -450,6 +481,7 @@ export function StudioProduct(props: Readonly<{
     operations={visible ? operations : []}
     quote={visible ? quote : null}
     busy={visible ? busy : true}
+    submissionBlocked={visible ? submissionBlocked : true}
     error={visible ? error : null}
     onInputChanged={() => {
       quoteRequest.current += 1
@@ -463,9 +495,16 @@ export function StudioProduct(props: Readonly<{
       }
     })}
     onSubmit={(operationInput) => void action("control", async (request) => {
-      const command = createMediaCommandIdentity()
       const recovery = recoveryStore()
-      recovery.remember({ kind: "submit", command, createdAt: new Date().toISOString() })
+      if (recovery.list().some(({ kind }) => kind === "submit")) {
+        setSubmissionBlocked(true)
+        throw new Error("A previous creation still needs reconciliation before another can start.")
+      }
+      const command = createMediaCommandIdentity()
+      const callerRequestFingerprint = await mediaCallerRequestFingerprintSha256({ contractMajor: 1, ...operationInput })
+      if (!request.isCurrent()) return
+      recovery.remember({ kind: "submit", command, callerRequestFingerprint, createdAt: new Date().toISOString() })
+      setSubmissionBlocked(true)
       setRecoveryRevision((current) => current + 1)
       const response = await client.submit(operationInput, command, request.signal)
       await reconcileCommand(response, request.signal)
@@ -474,7 +513,7 @@ export function StudioProduct(props: Readonly<{
     onCancel={(operation) => void action("control", async (request) => {
       const command = createMediaCommandIdentity()
       const recovery = recoveryStore()
-      recovery.remember({ kind: "cancel", command, createdAt: new Date().toISOString() })
+      recovery.remember({ kind: "cancel", command, operationRef: operation.mediaOperationRef, createdAt: new Date().toISOString() })
       setRecoveryRevision((current) => current + 1)
       const response = await client.cancel(operation.mediaOperationRef, { expectedOwnerVersion: operation.ownerVersion }, command, request.signal)
       await reconcileCommand(response, request.signal)

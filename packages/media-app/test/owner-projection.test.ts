@@ -41,6 +41,7 @@ describe("Platform owner projections", () => {
       mediaOperationRef: "operation-1",
       definitionRef: "image.text_to_image",
       definitionRevisionRef: "image.text_to_image@1",
+      modelOptionRevisionRef: "image.safe@1",
       ownerVersion: "7",
       progressBps: 10_000,
       candidates: [{
@@ -55,6 +56,31 @@ describe("Platform owner projections", () => {
       state: "completed",
       outcomeClass: "canonical",
     })
+  })
+
+  test.each([
+    ["duplicate candidate refs", [
+      { candidateRef: "candidate-1", ordinal: 0, ownerVersion: "1", state: "producing" as const },
+      { candidateRef: "candidate-1", ordinal: 1, ownerVersion: "1", state: "producing" as const },
+    ]],
+    ["non-canonical candidate order", [
+      { candidateRef: "candidate-2", ordinal: 1, ownerVersion: "1", state: "producing" as const },
+      { candidateRef: "candidate-1", ordinal: 0, ownerVersion: "1", state: "producing" as const },
+    ]],
+  ] as const)("rejects %s before creating browser owner state", (_name, candidates) => {
+    expect(() => projectPlatformMediaOperationOwnerState({
+      operationRef: "operation-1",
+      definitionRef: "image.text_to_image",
+      definitionRevisionRef: "image.text_to_image@1",
+      modelOptionRevisionRef: "image.safe@1",
+      ownerVersion: "1",
+      progressBps: 100,
+      candidates: [...candidates],
+      costProjection: null,
+      createdAt: "2026-07-31T00:00:00.000Z",
+      updatedAt: "2026-07-31T00:00:00.000Z",
+      state: "active",
+    })).toThrow(/candidate identity/u)
   })
 
   test.each([

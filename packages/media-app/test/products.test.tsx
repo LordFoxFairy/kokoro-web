@@ -56,6 +56,7 @@ describe("Site media product views", () => {
       }]}
       quote={{ amount: "12", creditUnit: "credits", expiresAt: "2099-07-31T00:05:00.000Z", inputRevision: 0 }}
       busy={false}
+      submissionBlocked={false}
       error={null}
       onQuote={vi.fn()}
       onSubmit={vi.fn()}
@@ -105,6 +106,25 @@ describe("Site media product views", () => {
     expect(createStudioOperationInput({ ...base, candidateCount: 1.5 })).toBeNull()
     expect(createStudioOperationInput({ ...base, candidateCount: 0 })).toBeNull()
     expect(createStudioOperationInput({ ...base, candidateCount: 3 })).toBeNull()
+    expect(createStudioOperationInput({ ...base, candidateCount: 1, prompt: "bad\ud800text" })).toBeNull()
+  })
+
+  test("disables creation while a prior submit command still needs reconciliation", () => {
+    const html = renderToStaticMarkup(<StudioView
+      brandName="Fox Site"
+      definitions={[]}
+      options={[]}
+      operations={[]}
+      quote={null}
+      busy={false}
+      submissionBlocked
+      error={null}
+      onQuote={vi.fn()}
+      onSubmit={vi.fn()}
+      onCancel={vi.fn()}
+      onRefresh={vi.fn()}
+    />)
+    expect(html).toContain("Recovering a previous creation")
   })
 
   test("atomically reconciles all revision-bound controls when the publication changes", () => {

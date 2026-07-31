@@ -37,6 +37,10 @@ export interface PlatformPublicRequest<Operation extends PlatformPublicOperation
   readonly security: Readonly<{
     readonly receiptRecoveryCapability?: string;
   }>;
+  /** Caller-owned cancellation; transports must terminate in-flight upstream I/O. */
+  readonly signal?: AbortSignal;
+  /** Relative upper bound for this call. The transport may apply a stricter configured limit. */
+  readonly deadlineMs?: number;
 }
 
 /** Site-server transport that resolves a registered binding; it never accepts a raw Platform URL. */
@@ -62,7 +66,7 @@ export class PlatformPublicInputError extends TypeError {
 
   constructor(
     readonly operationId: PlatformPublicOperationId,
-    readonly component: "data" | "body" | "headers" | "path" | "query" | "security",
+    readonly component: "data" | "body" | "deadline" | "headers" | "path" | "query" | "security" | "signal",
   ) {
     super(`Platform Public request is invalid for ${operationId}:${component}`);
     this.name = "PlatformPublicInputError";
@@ -198,11 +202,19 @@ export function createPlatformPublicClient(options: PlatformPublicClientOptions)
     readonly receiptRecoveryCapability?: string;
     /** Generated canonical caller-intent digest, accepted only by media submission. */
     readonly callerRequestFingerprint?: string;
+    readonly signal?: AbortSignal;
+    readonly deadlineMs?: number;
   }): Promise<PlatformPublicOperationResponseMap[Operation]> {
     const definition = PLATFORM_PUBLIC_OPERATIONS[input.operationId];
     assertDataShape(input.operationId, input.data);
     if (input.callerRequestFingerprint !== undefined && input.operationId !== "submitMediaOperation") {
       throw new PlatformPublicInputError(input.operationId, "headers");
+    }
+    if (input.signal !== undefined && !(input.signal instanceof AbortSignal)) {
+      throw new PlatformPublicInputError(input.operationId, "signal");
+    }
+    if (input.deadlineMs !== undefined && (!Number.isInteger(input.deadlineMs) || input.deadlineMs < 1 || input.deadlineMs > 300_000)) {
+      throw new PlatformPublicInputError(input.operationId, "deadline");
     }
     const headers: Record<string, string> = {
       "Kokoro-Contract-Version": PLATFORM_PUBLIC_CONTRACT_METADATA.contractVersion,
@@ -270,6 +282,8 @@ export function createPlatformPublicClient(options: PlatformPublicClientOptions)
       security: Object.freeze({
         ...(capability === undefined ? {} : { receiptRecoveryCapability: capability }),
       }),
+      ...(input.signal === undefined ? {} : { signal: input.signal }),
+      ...(input.deadlineMs === undefined ? {} : { deadlineMs: input.deadlineMs }),
     });
     if (!Number.isInteger(response.status) || response.status < 100 || response.status > 599) {
       throw new PlatformPublicProtocolError(input.operationId, "transport_status", response.status);

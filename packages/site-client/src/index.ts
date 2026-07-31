@@ -17,18 +17,25 @@ export type {
   PlatformPublicOperationId,
   PlatformPublicOperationResponseMap,
 } from "./generated/platform-public/operations.gen.js";
-// Browser-safe runtime validators for the public read model. These remain generated
+// Browser-safe runtime validators for public inputs, references, and read models. These remain generated
 // contract authority; consumers must not maintain parallel hand-written schemas.
 export {
   zArtifactPage,
+  zArtifactRef,
   zArtifactResponse,
+  zArtifactVersionRef,
   zArtifactVersionPage,
   zArtifactVersionResponse,
+  zCommandIdentity,
   zMediaDefinitionModelOptionPage,
+  zMediaDefinitionRef,
+  zMediaOperationCancelInput,
   zMediaOperationCommandResponse,
   zMediaOperationDefinitionPage,
   zMediaOperationDefinitionResponse,
   zMediaOperationPage,
+  zMediaOperationInput,
+  zMediaOperationRef,
   zMediaOperationQuoteResponse,
   zMediaOperationResponse,
 } from "./generated/platform-public/zod.gen.js";

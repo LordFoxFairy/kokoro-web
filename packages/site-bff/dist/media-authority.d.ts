@@ -4,23 +4,27 @@ export type SiteMediaPageQuery = Readonly<{
     cursor?: string;
     limit?: number;
 }>;
+export type SiteMediaRequestOptions = Readonly<{
+    signal: AbortSignal;
+    deadlineMs: number;
+}>;
 export interface SiteMediaAuthority {
-    listDefinitions(query: SiteMediaPageQuery): Promise<MediaOperationDefinitionPage>;
-    getDefinition(definitionRef: string): Promise<MediaOperationDefinitionResponse>;
-    listModelOptions(definitionRef: string, query: SiteMediaPageQuery): Promise<MediaDefinitionModelOptionPage>;
-    quote(input: MediaOperationInput, command: PublicCommandContext): Promise<MediaOperationQuoteResponse>;
-    listOperations(query: SiteMediaPageQuery): Promise<MediaOperationPage>;
-    submit(input: MediaOperationInput, command: PublicCommandContext): Promise<MediaOperationCommandResponse>;
-    getOperation(operationRef: string): Promise<MediaOperationResponse>;
+    listDefinitions(query: SiteMediaPageQuery, options: SiteMediaRequestOptions): Promise<MediaOperationDefinitionPage>;
+    getDefinition(definitionRef: string, options: SiteMediaRequestOptions): Promise<MediaOperationDefinitionResponse>;
+    listModelOptions(definitionRef: string, query: SiteMediaPageQuery, options: SiteMediaRequestOptions): Promise<MediaDefinitionModelOptionPage>;
+    quote(input: MediaOperationInput, command: PublicCommandContext, options: SiteMediaRequestOptions): Promise<MediaOperationQuoteResponse>;
+    listOperations(query: SiteMediaPageQuery, options: SiteMediaRequestOptions): Promise<MediaOperationPage>;
+    submit(input: MediaOperationInput, command: PublicCommandContext, options: SiteMediaRequestOptions): Promise<MediaOperationCommandResponse>;
+    getOperation(operationRef: string, options: SiteMediaRequestOptions): Promise<MediaOperationResponse>;
     cancel(operationRef: string, input: Readonly<{
         expectedOwnerVersion: string;
         reason?: string;
-    }>, command: PublicCommandContext): Promise<MediaOperationCommandResponse>;
-    recoverCommand(commandId: string): Promise<MediaOperationCommandResponse>;
-    listArtifacts(query: SiteMediaPageQuery): Promise<ArtifactPage>;
-    getArtifact(artifactRef: string): Promise<ArtifactResponse>;
-    listArtifactVersions(artifactRef: string, query: SiteMediaPageQuery): Promise<ArtifactVersionPage>;
-    getArtifactVersion(artifactRef: string, artifactVersionRef: string): Promise<ArtifactVersionResponse>;
+    }>, command: PublicCommandContext, options: SiteMediaRequestOptions): Promise<MediaOperationCommandResponse>;
+    recoverCommand(commandId: string, options: SiteMediaRequestOptions): Promise<MediaOperationCommandResponse>;
+    listArtifacts(query: SiteMediaPageQuery, options: SiteMediaRequestOptions): Promise<ArtifactPage>;
+    getArtifact(artifactRef: string, options: SiteMediaRequestOptions): Promise<ArtifactResponse>;
+    listArtifactVersions(artifactRef: string, query: SiteMediaPageQuery, options: SiteMediaRequestOptions): Promise<ArtifactVersionPage>;
+    getArtifactVersion(artifactRef: string, artifactVersionRef: string, options: SiteMediaRequestOptions): Promise<ArtifactVersionResponse>;
     artifactContent(artifactRef: string, artifactVersionRef: string, delivery: ArtifactDeliveryAuthorizationInput, options: Readonly<{
         signal: AbortSignal;
         deadlineMs: number;

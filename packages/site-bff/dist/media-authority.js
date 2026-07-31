@@ -1,4 +1,4 @@
-import { createArtifactDeliveryClient, mediaCallerRequestFingerprintSha256, } from "@kokoro/site-client/server";
+import { createArtifactDeliveryClient, mediaCallerRequestFingerprintSha256, PlatformPublicProtocolError, } from "@kokoro/site-client/server";
 const IMAGE_MEDIA_TYPES = Object.freeze({
     png: "image/png",
     jpeg: "image/jpeg",
@@ -32,72 +32,92 @@ function nonReady(version) {
 export function createSiteMediaAuthority(input) {
     const path = { projectRef: input.projectRef };
     const authority = {
-        listDefinitions: (query) => input.platform.execute({
+        listDefinitions: (query, options) => input.platform.execute({
             operationId: "listMediaOperationDefinitions",
             data: { path, query: queryData(query) },
+            ...options,
         }),
-        getDefinition: (definitionRef) => input.platform.execute({
+        getDefinition: (definitionRef, options) => input.platform.execute({
             operationId: "getMediaOperationDefinition",
             data: { path: { ...path, definitionRef } },
+            ...options,
         }),
-        listModelOptions: (definitionRef, query) => input.platform.execute({
+        listModelOptions: (definitionRef, query, options) => input.platform.execute({
             operationId: "listMediaOperationModelOptions",
             data: { path: { ...path, definitionRef }, query: queryData(query) },
+            ...options,
         }),
-        quote: (operationInput, command) => input.platform.execute({
+        quote: (operationInput, command, options) => input.platform.execute({
             operationId: "quoteMediaOperation",
             data: { path, body: operationInput },
             command,
+            ...options,
         }),
-        listOperations: (query) => input.platform.execute({
+        listOperations: (query, options) => input.platform.execute({
             operationId: "listMediaOperations",
             data: { path, query: queryData(query) },
+            ...options,
         }),
-        async submit(operationInput, command) {
+        async submit(operationInput, command, options) {
             const callerRequestFingerprint = await mediaCallerRequestFingerprintSha256({
                 contractMajor: 1,
                 ...operationInput,
             });
-            return input.platform.execute({
+            const response = await input.platform.execute({
                 operationId: "submitMediaOperation",
                 data: { path, body: operationInput },
                 command,
                 callerRequestFingerprint,
+                ...options,
             });
+            if (!response.receipt.receiptKind.startsWith("submit_") ||
+                !("callerRequestFingerprint" in response.receipt) ||
+                response.receipt.callerRequestFingerprint !== callerRequestFingerprint)
+                throw new PlatformPublicProtocolError("submitMediaOperation", "success_response", 202);
+            return response;
         },
-        getOperation: (operationRef) => input.platform.execute({
+        getOperation: (operationRef, options) => input.platform.execute({
             operationId: "getMediaOperation",
             data: { path: { ...path, operationRef } },
+            ...options,
         }),
-        cancel: (operationRef, cancellation, command) => input.platform.execute({
+        cancel: (operationRef, cancellation, command, options) => input.platform.execute({
             operationId: "cancelMediaOperation",
             data: { path: { ...path, operationRef }, body: cancellation },
             command,
+            ...options,
         }),
-        recoverCommand: (commandId) => input.platform.execute({
+        recoverCommand: (commandId, options) => input.platform.execute({
             operationId: "recoverMediaOperationCommand",
             data: { path: { ...path, commandId } },
+            ...options,
         }),
-        listArtifacts: (query) => input.platform.execute({
+        listArtifacts: (query, options) => input.platform.execute({
             operationId: "listArtifacts",
             data: { path, query: queryData(query) },
+            ...options,
         }),
-        getArtifact: (artifactRef) => input.platform.execute({
+        getArtifact: (artifactRef, options) => input.platform.execute({
             operationId: "getArtifact",
             data: { path: { ...path, artifactRef } },
+            ...options,
         }),
-        listArtifactVersions: (artifactRef, query) => input.platform.execute({
+        listArtifactVersions: (artifactRef, query, options) => input.platform.execute({
             operationId: "listArtifactVersions",
             data: { path: { ...path, artifactRef }, query: queryData(query) },
+            ...options,
         }),
-        getArtifactVersion: (artifactRef, artifactVersionRef) => input.platform.execute({
+        getArtifactVersion: (artifactRef, artifactVersionRef, options) => input.platform.execute({
             operationId: "getArtifactVersion",
             data: { path: { ...path, artifactRef, artifactVersionRef } },
+            ...options,
         }),
         async artifactContent(artifactRef, artifactVersionRef, delivery, options) {
             const owner = await input.platform.execute({
                 operationId: "getArtifactVersion",
                 data: { path: { ...path, artifactRef, artifactVersionRef } },
+                signal: options.signal,
+                deadlineMs: options.deadlineMs,
             });
             if (owner.version.artifactRef !== artifactRef ||
                 owner.version.artifactVersionRef !== artifactVersionRef)
@@ -107,6 +127,8 @@ export function createSiteMediaAuthority(input) {
             const issued = await input.platform.execute({
                 operationId: "issueArtifactDeliveryAuthorization",
                 data: { path: { ...path, artifactRef, artifactVersionRef }, body: delivery },
+                signal: options.signal,
+                deadlineMs: options.deadlineMs,
             });
             if (issued.authorization.artifactRef !== artifactRef ||
                 issued.authorization.artifactVersionRef !== artifactVersionRef ||

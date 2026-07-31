@@ -4,9 +4,17 @@ import type {
   ArtifactDeliveryAuthorizationInput,
   ArtifactSummary,
   ArtifactVersion,
-  ImageAspectRatio,
-  ImageOutputFormat,
   MediaOperationInput,
+} from "@kokoro/site-client"
+import {
+  canonicalMediaOperationInputV1Bytes,
+  zArtifactRef,
+  zArtifactVersionRef,
+  zCommandIdentity,
+  zMediaDefinitionRef,
+  zMediaOperationCancelInput,
+  zMediaOperationInput,
+  zMediaOperationRef,
 } from "@kokoro/site-client"
 import {
   ArtifactDeliveryError,
@@ -14,6 +22,7 @@ import {
   ArtifactDeliveryProtocolError,
   PlatformPublicError,
   PlatformPublicInputError,
+  PlatformPublicProtocolError,
 } from "@kokoro/site-client/server"
 import type { ArtifactDeliveryByteRange } from "@kokoro/site-client/server"
 import type { OpaqueAuthSession } from "@kokoro/bff-runtime"
@@ -22,13 +31,7 @@ import type { SiteBffRuntime } from "./index.js"
 import { SiteArtifactAvailabilityError, type SiteMediaPageQuery } from "./media-authority.js"
 
 const MAXIMUM_CONTROL_BODY_BYTES = 65_536
-const REFERENCE = /^[A-Za-z0-9][A-Za-z0-9._:@-]{2,255}$/u
-const COMMAND_ID = /^(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/u
 const IDEMPOTENCY_KEY = /^\S{16,191}$/u
-const ASPECT_RATIOS = new Set<ImageAspectRatio>([
-  "square_1_1", "landscape_4_3", "landscape_16_9", "portrait_3_4", "portrait_9_16",
-])
-const OUTPUT_FORMATS = new Set<ImageOutputFormat>(["png", "jpeg", "webp"])
 
 function problem(status: number, code: string, message: string): Response {
   return Response.json({ error: { code, message } }, {
@@ -87,41 +90,23 @@ function text(value: unknown, maximum = 2_048): string {
   return value
 }
 
-function utf8Text(value: unknown, maximumBytes: number): string {
-  if (typeof value !== "string" || value.length < 1 || new TextEncoder().encode(value).byteLength > maximumBytes) {
-    throw new SyntaxError("utf8 text")
-  }
-  return value
-}
-
 function command(value: unknown): Readonly<{ commandId: string; idempotencyKey: string }> {
   const input = record(value, ["commandId", "idempotencyKey"])
   const commandId = text(input.commandId, 64)
   const idempotencyKey = text(input.idempotencyKey, 191)
-  if (!COMMAND_ID.test(commandId) || !IDEMPOTENCY_KEY.test(idempotencyKey)) throw new SyntaxError("command")
+  if (!zCommandIdentity.safeParse(commandId).success || !IDEMPOTENCY_KEY.test(idempotencyKey)) throw new SyntaxError("command")
   return Object.freeze({ commandId, idempotencyKey })
 }
 
 function mediaInput(value: unknown): MediaOperationInput {
-  const input = record(value, [
-    "kind", "definitionRevisionRef", "promptIntent", "aspectRatio", "candidateCount",
-    "modelOptionRevisionRef", "outputFormat",
-  ])
-  const aspectRatio = text(input.aspectRatio, 32) as ImageAspectRatio
-  const outputFormat = text(input.outputFormat, 16) as ImageOutputFormat
-  if (
-    input.kind !== "image_text_to_image" || !ASPECT_RATIOS.has(aspectRatio) || !OUTPUT_FORMATS.has(outputFormat) ||
-    !Number.isInteger(input.candidateCount) || (input.candidateCount as number) < 1 || (input.candidateCount as number) > 4
-  ) throw new SyntaxError("media input")
-  return Object.freeze({
-    kind: "image_text_to_image",
-    definitionRevisionRef: text(input.definitionRevisionRef, 256),
-    promptIntent: utf8Text(input.promptIntent, 32_768),
-    aspectRatio,
-    candidateCount: input.candidateCount as number,
-    modelOptionRevisionRef: text(input.modelOptionRevisionRef, 256),
-    outputFormat,
-  })
+  const parsed = zMediaOperationInput.safeParse(value)
+  if (!parsed.success) throw new SyntaxError("media input")
+  try {
+    canonicalMediaOperationInputV1Bytes({ contractMajor: 1, ...parsed.data })
+  } catch {
+    throw new SyntaxError("media canonical input")
+  }
+  return Object.freeze(parsed.data)
 }
 
 function commandInput(value: unknown): Readonly<{
@@ -137,13 +122,14 @@ function cancellationInput(value: unknown): Readonly<{
   cancellation: Readonly<{ expectedOwnerVersion: string; reason?: string }>
 }> {
   const input = record(value, ["command", "expectedOwnerVersion"], ["reason"])
-  const reason = input.reason === undefined ? undefined : text(input.reason, 512)
+  const parsedCancellation = zMediaOperationCancelInput.safeParse({
+    expectedOwnerVersion: input.expectedOwnerVersion,
+    ...(input.reason === undefined ? {} : { reason: input.reason }),
+  })
+  if (!parsedCancellation.success) throw new SyntaxError("cancellation")
   return Object.freeze({
     command: command(input.command),
-    cancellation: Object.freeze({
-      expectedOwnerVersion: text(input.expectedOwnerVersion, 20),
-      ...(reason === undefined ? {} : { reason }),
-    }),
+    cancellation: Object.freeze(parsedCancellation.data),
   })
 }
 
@@ -222,8 +208,10 @@ function range(value: string | null): ArtifactDeliveryByteRange | undefined {
   throw new ArtifactDeliveryError("ARTIFACT_DELIVERY_RANGE_INVALID")
 }
 
-function reference(value: string | undefined): value is string {
-  return value !== undefined && REFERENCE.test(value)
+type ReferenceSchema = Readonly<{ safeParse(value: unknown): Readonly<{ success: boolean }> }>
+
+function reference(schema: ReferenceSchema, value: string | undefined): value is string {
+  return value !== undefined && schema.safeParse(value).success
 }
 
 export interface SiteMediaApi {
@@ -252,60 +240,60 @@ export function createSiteMediaApi(input: Readonly<{
         const auth = await input.readAuthSession()
         if (auth === null) return problem(401, "AUTH_REQUIRED", "Sign in again")
         const media = await input.runtime.media(auth)
+        const requestOptions = Object.freeze({ signal: request.signal, deadlineMs: 30_000 })
 
         if (request.method === "GET" && path.length === 1 && path[0] === "definitions") {
-          return Response.json(await media.listDefinitions(pageQuery(url)), { headers: { "cache-control": "no-store" } })
+          return Response.json(await media.listDefinitions(pageQuery(url), requestOptions), { headers: { "cache-control": "no-store" } })
         }
-        if (request.method === "GET" && path.length === 2 && path[0] === "definitions" && reference(path[1])) {
-          return Response.json(await media.getDefinition(path[1]), { headers: { "cache-control": "no-store" } })
+        if (request.method === "GET" && path.length === 2 && path[0] === "definitions" && reference(zMediaDefinitionRef, path[1])) {
+          return Response.json(await media.getDefinition(path[1], requestOptions), { headers: { "cache-control": "no-store" } })
         }
-        if (request.method === "GET" && path.length === 3 && path[0] === "definitions" && reference(path[1]) && path[2] === "model-options") {
-          return Response.json(await media.listModelOptions(path[1], pageQuery(url)), { headers: { "cache-control": "no-store" } })
+        if (request.method === "GET" && path.length === 3 && path[0] === "definitions" && reference(zMediaDefinitionRef, path[1]) && path[2] === "model-options") {
+          return Response.json(await media.listModelOptions(path[1], pageQuery(url), requestOptions), { headers: { "cache-control": "no-store" } })
         }
         if (request.method === "POST" && path.length === 1 && path[0] === "quotes") {
           const parsed = commandInput(await boundedJson(request))
-          return Response.json(await media.quote(parsed.input, parsed.command), { headers: { "cache-control": "no-store" } })
+          return Response.json(await media.quote(parsed.input, parsed.command, requestOptions), { headers: { "cache-control": "no-store" } })
         }
         if (request.method === "GET" && path.length === 1 && path[0] === "operations") {
-          return Response.json(await media.listOperations(pageQuery(url)), { headers: { "cache-control": "no-store" } })
+          return Response.json(await media.listOperations(pageQuery(url), requestOptions), { headers: { "cache-control": "no-store" } })
         }
         if (request.method === "POST" && path.length === 1 && path[0] === "operations") {
           const parsed = commandInput(await boundedJson(request))
-          return Response.json(await media.submit(parsed.input, parsed.command), { status: 202, headers: { "cache-control": "no-store" } })
+          return Response.json(await media.submit(parsed.input, parsed.command, requestOptions), { status: 202, headers: { "cache-control": "no-store" } })
         }
-        if (request.method === "GET" && path.length === 2 && path[0] === "operations" && reference(path[1])) {
-          return Response.json(await media.getOperation(path[1]), { headers: { "cache-control": "no-store" } })
+        if (request.method === "GET" && path.length === 2 && path[0] === "operations" && reference(zMediaOperationRef, path[1])) {
+          return Response.json(await media.getOperation(path[1], requestOptions), { headers: { "cache-control": "no-store" } })
         }
-        if (request.method === "POST" && path.length === 3 && path[0] === "operations" && reference(path[1]) && path[2] === "cancel") {
+        if (request.method === "POST" && path.length === 3 && path[0] === "operations" && reference(zMediaOperationRef, path[1]) && path[2] === "cancel") {
           const parsed = cancellationInput(await boundedJson(request))
-          return Response.json(await media.cancel(path[1], parsed.cancellation, parsed.command), { status: 202, headers: { "cache-control": "no-store" } })
+          return Response.json(await media.cancel(path[1], parsed.cancellation, parsed.command, requestOptions), { status: 202, headers: { "cache-control": "no-store" } })
         }
-        if (request.method === "GET" && path.length === 2 && path[0] === "commands" && reference(path[1])) {
+        if (request.method === "GET" && path.length === 2 && path[0] === "commands" && reference(zCommandIdentity, path[1])) {
           if (url.search !== "") throw new SyntaxError("query")
-          return Response.json(await media.recoverCommand(path[1]), { headers: { "cache-control": "no-store" } })
+          return Response.json(await media.recoverCommand(path[1], requestOptions), { headers: { "cache-control": "no-store" } })
         }
         if (request.method === "GET" && path.length === 1 && path[0] === "artifacts") {
-          const page = await media.listArtifacts(pageQuery(url))
+          const page = await media.listArtifacts(pageQuery(url), requestOptions)
           return Response.json({ ...page, items: page.items.map(artifactProjection) }, { headers: { "cache-control": "no-store" } })
         }
-        if (request.method === "GET" && path.length === 2 && path[0] === "artifacts" && reference(path[1])) {
+        if (request.method === "GET" && path.length === 2 && path[0] === "artifacts" && reference(zArtifactRef, path[1])) {
           if (url.search !== "") throw new SyntaxError("query")
-          const response = await media.getArtifact(path[1])
+          const response = await media.getArtifact(path[1], requestOptions)
           return Response.json({ artifact: artifactProjection(response.artifact) }, { headers: { "cache-control": "no-store" } })
         }
-        if (request.method === "GET" && path.length === 3 && path[0] === "artifacts" && reference(path[1]) && path[2] === "versions") {
-          const page = await media.listArtifactVersions(path[1], pageQuery(url))
+        if (request.method === "GET" && path.length === 3 && path[0] === "artifacts" && reference(zArtifactRef, path[1]) && path[2] === "versions") {
+          const page = await media.listArtifactVersions(path[1], pageQuery(url), requestOptions)
           return Response.json({ ...page, items: page.items.map(versionProjection) }, { headers: { "cache-control": "no-store" } })
         }
-        if (request.method === "GET" && path.length === 4 && path[0] === "artifacts" && reference(path[1]) && path[2] === "versions" && reference(path[3])) {
+        if (request.method === "GET" && path.length === 4 && path[0] === "artifacts" && reference(zArtifactRef, path[1]) && path[2] === "versions" && reference(zArtifactVersionRef, path[3])) {
           if (url.search !== "") throw new SyntaxError("query")
-          const response = await media.getArtifactVersion(path[1], path[3])
+          const response = await media.getArtifactVersion(path[1], path[3], requestOptions)
           return Response.json({ version: versionProjection(response.version) }, { headers: { "cache-control": "no-store" } })
         }
-        if (request.method === "GET" && path.length === 5 && path[0] === "artifacts" && reference(path[1]) && path[2] === "versions" && reference(path[3]) && path[4] === "content") {
+        if (request.method === "GET" && path.length === 5 && path[0] === "artifacts" && reference(zArtifactRef, path[1]) && path[2] === "versions" && reference(zArtifactVersionRef, path[3]) && path[4] === "content") {
           const response = await media.artifactContent(path[1], path[3], delivery(url), {
-            signal: request.signal,
-            deadlineMs: 30_000,
+            ...requestOptions,
             ...(request.headers.get("range") === null ? {} : { range: range(request.headers.get("range")) }),
           })
           const headers = new Headers(response.headers)
@@ -323,6 +311,7 @@ export function createSiteMediaApi(input: Readonly<{
           return problem(400, "REQUEST_INVALID", "Media request was invalid")
         }
         if (error instanceof PlatformPublicError) return problem(error.status, error.detail.code, error.detail.safeMessage)
+        if (error instanceof PlatformPublicProtocolError) return problem(502, error.code, "Media upstream response was invalid")
         if (error instanceof ArtifactDeliveryProtocolError) return problem(502, error.code, "Artifact stream was rejected")
         return problem(503, "INTERNAL_UNAVAILABLE", "Media service is temporarily unavailable")
       }

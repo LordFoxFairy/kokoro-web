@@ -67,7 +67,23 @@ describe("Site media browser API", () => {
 
     const accepted = await api.handle(request("/definitions?limit=20"), ["definitions"])
     expect(accepted.status).toBe(200)
-    expect(listDefinitions).toHaveBeenCalledWith({ limit: 20 })
+    expect(listDefinitions).toHaveBeenCalledWith(
+      { limit: 20 },
+      expect.objectContaining({ signal: expect.any(AbortSignal), deadlineMs: 30_000 }),
+    )
+  })
+
+  test("accepts the generated one-character definition reference boundary", async () => {
+    const getDefinition = vi.fn(() => Promise.resolve({ definition: {} as never }))
+    const api = createSiteMediaApi({ runtime: runtime(authority({ getDefinition })), readAuthSession: () => auth })
+    const definitionRequest = request("/definitions/x")
+    const response = await api.handle(definitionRequest, ["definitions", "x"])
+
+    expect(response.status).toBe(200)
+    expect(getDefinition).toHaveBeenCalledWith("x", expect.objectContaining({
+      signal: definitionRequest.signal,
+      deadlineMs: 30_000,
+    }))
   })
 
   test("routes submit with command identity while leaving canonical fingerprinting server-side", async () => {
@@ -98,6 +114,7 @@ describe("Site media browser API", () => {
     expect(submit).toHaveBeenCalledWith(
       expect.objectContaining({ promptIntent: "A fox beneath the moon" }),
       { commandId: "1".repeat(32), idempotencyKey: "i".repeat(24) },
+      expect.objectContaining({ signal: expect.any(AbortSignal), deadlineMs: 30_000 }),
     )
   })
 
@@ -125,6 +142,10 @@ describe("Site media browser API", () => {
     const rejected = await submitPrompt("🦊".repeat(8_193))
     expect(rejected.status).toBe(400)
     await expect(rejected.json()).resolves.toMatchObject({ error: { code: "REQUEST_INVALID" } })
+    expect(submit).toHaveBeenCalledTimes(1)
+
+    const invalidUnicode = await submitPrompt("bad\ud800text")
+    expect(invalidUnicode.status).toBe(400)
     expect(submit).toHaveBeenCalledTimes(1)
   })
 

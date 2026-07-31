@@ -16,15 +16,21 @@ import type {
   MediaOperationResponse,
 } from "@kokoro/site-client"
 import {
+  mediaCallerRequestFingerprintSha256,
   zArtifactPage,
+  zArtifactRef,
   zArtifactResponse,
   zArtifactVersionPage,
+  zArtifactVersionRef,
   zArtifactVersionResponse,
+  zCommandIdentity,
   zMediaDefinitionModelOptionPage,
+  zMediaDefinitionRef,
   zMediaOperationCommandResponse,
   zMediaOperationDefinitionPage,
   zMediaOperationDefinitionResponse,
   zMediaOperationPage,
+  zMediaOperationRef,
   zMediaOperationQuoteResponse,
   zMediaOperationResponse,
 } from "@kokoro/site-client"
@@ -199,8 +205,15 @@ function commandResponse(
   response: MediaOperationCommandResponse,
   expectedCommandId: string,
   expectedOperationRef?: string,
+  expectation?: MediaCommandRecoveryExpectation,
 ): MediaOperationCommandResponse {
   assertEqual(response.receipt.commandId, expectedCommandId)
+  if (expectation?.kind === "submit") {
+    if (!response.receipt.receiptKind.startsWith("submit_") || !("callerRequestFingerprint" in response.receipt)) protocol()
+    assertEqual(response.receipt.callerRequestFingerprint, expectation.callerRequestFingerprint)
+  } else if (expectation?.kind === "cancel" && !response.receipt.receiptKind.startsWith("cancel_")) {
+    protocol()
+  }
   if ("operationRef" in response.receipt && expectedOperationRef !== undefined) {
     assertEqual(response.receipt.operationRef, expectedOperationRef)
   }
@@ -212,8 +225,8 @@ function commandResponse(
   return response
 }
 
-function reference(value: string): string {
-  if (!/^[A-Za-z0-9][A-Za-z0-9._:@-]{2,255}$/u.test(value)) throw new TypeError("invalid media reference")
+function reference(schema: RuntimeSchema<unknown>, value: string): string {
+  if (!schema.safeParse(value).success) throw new TypeError("invalid media reference")
   return encodeURIComponent(value)
 }
 
@@ -252,12 +265,12 @@ export function createMediaBrowserClient(input: Readonly<{
       return response
     },
     async getDefinition(definitionRef: string, signal?: AbortSignal): Promise<MediaOperationDefinitionResponse> {
-      const response = await read(`/definitions/${reference(definitionRef)}`, zMediaOperationDefinitionResponse, signal)
+      const response = await read(`/definitions/${reference(zMediaDefinitionRef, definitionRef)}`, zMediaOperationDefinitionResponse, signal)
       assertEqual(response.definition.definitionRef, definitionRef)
       return response
     },
     async listModelOptions(definitionRef: string, expectedDefinitionRevisionRef: string, page: MediaPageQuery, signal?: AbortSignal): Promise<MediaDefinitionModelOptionPage> {
-      const response = await read(`/definitions/${reference(definitionRef)}/model-options${query(page)}`, zMediaDefinitionModelOptionPage, signal)
+      const response = await read(`/definitions/${reference(zMediaDefinitionRef, definitionRef)}/model-options${query(page)}`, zMediaDefinitionModelOptionPage, signal)
       assertEqual(response.definitionRevisionRef, expectedDefinitionRevisionRef)
       assertUnique(response.items.map(({ modelOptionRevisionRef }) => modelOptionRevisionRef))
       return response
@@ -274,11 +287,12 @@ export function createMediaBrowserClient(input: Readonly<{
       return response
     },
     async submit(operationInput: MediaOperationInput, command: MediaCommandIdentity, signal?: AbortSignal): Promise<MediaOperationCommandResponse> {
+      const callerRequestFingerprint = await mediaCallerRequestFingerprintSha256({ contractMajor: 1, ...operationInput })
       const response = await control("/operations", { command, input: operationInput }, zMediaOperationCommandResponse, signal)
-      return commandResponse(response, command.commandId)
+      return commandResponse(response, command.commandId, undefined, { kind: "submit", callerRequestFingerprint })
     },
     async getOperation(operationRef: string, signal?: AbortSignal): Promise<MediaOperationResponse> {
-      const response = await read(`/operations/${reference(operationRef)}`, zMediaOperationResponse, signal)
+      const response = await read(`/operations/${reference(zMediaOperationRef, operationRef)}`, zMediaOperationResponse, signal)
       assertEqual(response.operation.operationRef, operationRef)
       return response
     },
@@ -288,26 +302,26 @@ export function createMediaBrowserClient(input: Readonly<{
       command: MediaCommandIdentity,
       signal?: AbortSignal,
     ): Promise<MediaOperationCommandResponse> {
-      const response = await control(`/operations/${reference(operationRef)}/cancel`, { command, ...cancellation }, zMediaOperationCommandResponse, signal)
-      return commandResponse(response, command.commandId, operationRef)
+      const response = await control(`/operations/${reference(zMediaOperationRef, operationRef)}/cancel`, { command, ...cancellation }, zMediaOperationCommandResponse, signal)
+      return commandResponse(response, command.commandId, operationRef, { kind: "cancel", operationRef })
     },
-    async recoverCommand(commandId: string, signal?: AbortSignal): Promise<MediaOperationCommandResponse> {
-      const response = await read(`/commands/${reference(commandId)}`, zMediaOperationCommandResponse, signal)
-      return commandResponse(response, commandId)
+    async recoverCommand(commandId: string, expectation: MediaCommandRecoveryExpectation, signal?: AbortSignal): Promise<MediaOperationCommandResponse> {
+      const response = await read(`/commands/${reference(zCommandIdentity, commandId)}`, zMediaOperationCommandResponse, signal)
+      return commandResponse(response, commandId, expectation?.kind === "cancel" ? expectation.operationRef : undefined, expectation)
     },
     async listArtifacts(page: MediaPageQuery, signal?: AbortSignal): Promise<BrowserArtifactPage> {
       return artifactPage(await readProjected(`/artifacts${query(page)}`, signal))
     },
     async getArtifact(artifactRef: string, signal?: AbortSignal): Promise<BrowserArtifactResponse> {
-      const response = artifactResponse(await readProjected(`/artifacts/${reference(artifactRef)}`, signal))
+      const response = artifactResponse(await readProjected(`/artifacts/${reference(zArtifactRef, artifactRef)}`, signal))
       assertEqual(response.artifact.artifactRef, artifactRef)
       return response
     },
     async listArtifactVersions(artifactRef: string, page: MediaPageQuery, signal?: AbortSignal): Promise<BrowserArtifactVersionPage> {
-      return artifactVersionPage(await readProjected(`/artifacts/${reference(artifactRef)}/versions${query(page)}`, signal), artifactRef)
+      return artifactVersionPage(await readProjected(`/artifacts/${reference(zArtifactRef, artifactRef)}/versions${query(page)}`, signal), artifactRef)
     },
     async getArtifactVersion(artifactRef: string, artifactVersionRef: string, signal?: AbortSignal): Promise<BrowserArtifactVersionResponse> {
-      return artifactVersionResponse(await readProjected(`/artifacts/${reference(artifactRef)}/versions/${reference(artifactVersionRef)}`, signal), artifactRef, artifactVersionRef)
+      return artifactVersionResponse(await readProjected(`/artifacts/${reference(zArtifactRef, artifactRef)}/versions/${reference(zArtifactVersionRef, artifactVersionRef)}`, signal), artifactRef, artifactVersionRef)
     },
   })
 }
@@ -326,13 +340,18 @@ export function createMediaCommandIdentity(randomBytes: (length: number) => Uint
   return Object.freeze({ commandId: hex(randomBytes(16)), idempotencyKey: hex(randomBytes(24)) })
 }
 
+export type MediaCommandRecoveryExpectation =
+  | Readonly<{ kind: "submit"; callerRequestFingerprint: string }>
+  | Readonly<{ kind: "cancel"; operationRef: string }>
+
 export type MediaCommandRecoveryRecord = Readonly<{
-  kind: "submit" | "cancel"
   command: MediaCommandIdentity
   createdAt: string
-}>
+}> & MediaCommandRecoveryExpectation
 
 export interface MediaCommandStorage {
+  readonly length: number
+  key(index: number): string | null
   getItem(key: string): string | null
   setItem(key: string, value: string): void
   removeItem(key: string): void
@@ -348,6 +367,14 @@ export class MediaCommandRecoveryStorageError extends Error {
   }
 }
 
+export class MediaCommandRecoveryCapacityError extends Error {
+  readonly code = "MEDIA_RECOVERY_CAPACITY_REACHED" as const
+  constructor() {
+    super("Too many media commands still need reconciliation. Wait for recovery before creating another operation.")
+    this.name = "MediaCommandRecoveryCapacityError"
+  }
+}
+
 function recoveryRecord(value: unknown): MediaCommandRecoveryRecord | null {
   const input = record(value)
   const command = record(input?.command)
@@ -358,8 +385,16 @@ function recoveryRecord(value: unknown): MediaCommandRecoveryRecord | null {
   ) return null
   const createdAt = Date.parse(input.createdAt)
   if (!Number.isFinite(createdAt) || new Date(createdAt).toISOString() !== input.createdAt) return null
+  const expectation = input.kind === "submit"
+    ? (typeof input.callerRequestFingerprint === "string" && /^[0-9a-f]{64}$/u.test(input.callerRequestFingerprint)
+      ? { kind: input.kind, callerRequestFingerprint: input.callerRequestFingerprint } as const
+      : null)
+    : (typeof input.operationRef === "string" && zMediaOperationRef.safeParse(input.operationRef).success
+      ? { kind: input.kind, operationRef: input.operationRef } as const
+      : null)
+  if (expectation === null) return null
   return Object.freeze({
-    kind: input.kind,
+    ...expectation,
     command: Object.freeze({ commandId: command.commandId, idempotencyKey: command.idempotencyKey }),
     createdAt: input.createdAt,
   })
@@ -370,7 +405,7 @@ export function createMediaCommandRecoveryStore(input: Readonly<{
   scope: string
   now?: () => number
 }>) {
-  const key = `kokoro.media.commands.v1:${encodeURIComponent(input.scope)}`
+  const prefix = `kokoro.media.command.v2:${encodeURIComponent(input.scope)}:`
   const now = input.now ?? Date.now
   const storage = <Value>(operation: () => Value): Value => {
     try {
@@ -379,40 +414,49 @@ export function createMediaCommandRecoveryStore(input: Readonly<{
       throw new MediaCommandRecoveryStorageError({ cause })
     }
   }
-  const write = (records: readonly MediaCommandRecoveryRecord[]) => storage(() => {
-    if (records.length === 0) input.storage.removeItem(key)
-    else input.storage.setItem(key, JSON.stringify(records.slice(-20)))
-  })
   const list = (): readonly MediaCommandRecoveryRecord[] => {
-    const raw = storage(() => input.storage.getItem(key))
-    if (raw === null) return []
-    let records: readonly MediaCommandRecoveryRecord[] = []
-    try {
-      const parsed = JSON.parse(raw) as unknown
-      if (Array.isArray(parsed)) {
-        const current = now()
-        records = parsed.slice(-20).map(recoveryRecord).filter((item): item is MediaCommandRecoveryRecord => {
-          if (item === null) return false
-          const age = current - Date.parse(item.createdAt)
-          return age >= 0 && age <= MEDIA_COMMAND_RECOVERY_TTL_MS
-        })
+    const keys = storage(() => Array.from({ length: input.storage.length }, (_, index) => input.storage.key(index))
+      .filter((candidate): candidate is string => candidate?.startsWith(prefix) ?? false))
+    const current = now()
+    const records: MediaCommandRecoveryRecord[] = []
+    for (const key of keys) {
+      const raw = storage(() => input.storage.getItem(key))
+      let parsed: MediaCommandRecoveryRecord | null = null
+      try {
+        parsed = raw === null ? null : recoveryRecord(JSON.parse(raw) as unknown)
+      } catch {
+        parsed = null
       }
-    } catch {
-      records = []
+      const age = parsed === null ? Number.NaN : current - Date.parse(parsed.createdAt)
+      if (
+        parsed === null || age < 0 || age > MEDIA_COMMAND_RECOVERY_TTL_MS ||
+        key !== `${prefix}${parsed.command.commandId}`
+      ) {
+        storage(() => {
+          // Do not delete a record another tab repaired after this tab read it.
+          if (input.storage.getItem(key) === raw) input.storage.removeItem(key)
+        })
+      } else {
+        records.push(parsed)
+      }
     }
-    const frozen = Object.freeze(records)
-    if (JSON.stringify(frozen) !== raw) write(frozen)
-    return frozen
+    records.sort((left, right) => left.createdAt.localeCompare(right.createdAt) || left.command.commandId.localeCompare(right.command.commandId))
+    return Object.freeze(records)
   }
   return Object.freeze({
     list,
     remember(recordInput: MediaCommandRecoveryRecord) {
       const valid = recoveryRecord(recordInput)
       if (valid === null) throw new TypeError("invalid media recovery record")
-      write([...list().filter(({ command }) => command.commandId !== valid.command.commandId), valid])
+      const key = `${prefix}${valid.command.commandId}`
+      const existing = list()
+      if (!existing.some(({ command }) => command.commandId === valid.command.commandId) && existing.length >= 20) {
+        throw new MediaCommandRecoveryCapacityError()
+      }
+      storage(() => input.storage.setItem(key, JSON.stringify(valid)))
     },
     forget(commandId: string) {
-      write(list().filter(({ command }) => command.commandId !== commandId))
+      storage(() => input.storage.removeItem(`${prefix}${commandId}`))
     },
   })
 }

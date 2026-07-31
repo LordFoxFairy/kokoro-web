@@ -261,11 +261,20 @@ function openHttps(input: Readonly<{
   });
 }
 
-async function boundedJson(response: IncomingMessage, timeoutMs: number): Promise<unknown> {
+async function boundedJson(response: IncomingMessage, timeoutMs: number, signal?: AbortSignal): Promise<unknown> {
   const chunks: Buffer[] = [];
   let size = 0;
   const timer = setTimeout(() => response.destroy(new NodeSiteRuntimeError("UPSTREAM_TIMEOUT")), timeoutMs);
   timer.unref();
+  const abortError = () => {
+    if (signal?.reason instanceof Error) return signal.reason;
+    const error = new Error("Upstream request aborted", { cause: signal?.reason });
+    error.name = "AbortError";
+    return error;
+  };
+  const abort = () => response.destroy(abortError());
+  if (signal?.aborted === true) abort();
+  else signal?.addEventListener("abort", abort, { once: true });
   try {
     for await (const raw of response) {
       const chunk = Buffer.isBuffer(raw) ? raw : Buffer.from(raw as Uint8Array);
@@ -279,9 +288,11 @@ async function boundedJson(response: IncomingMessage, timeoutMs: number): Promis
     return JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown;
   } catch (error) {
     if (error instanceof NodeSiteRuntimeError) throw error;
+    if (signal?.aborted === true) throw abortError();
     throw new NodeSiteRuntimeError("UPSTREAM_PROTOCOL_INVALID");
   } finally {
     clearTimeout(timer);
+    signal?.removeEventListener("abort", abort);
   }
 }
 
@@ -357,6 +368,9 @@ export function createNodeSiteRuntimeProvider(input: Readonly<{
           if (!request.path.startsWith("/") || request.path.startsWith("//")) {
             throw new NodeSiteRuntimeError("UPSTREAM_PROTOCOL_INVALID");
           }
+          if (request.deadlineMs !== undefined && (!Number.isInteger(request.deadlineMs) || request.deadlineMs < 1)) {
+            throw new NodeSiteRuntimeError("UPSTREAM_PROTOCOL_INVALID");
+          }
           const body = request.body === undefined ? null : JSON.stringify(request.body);
           const headers: Record<string, string> = {
             ...request.headers,
@@ -367,6 +381,8 @@ export function createNodeSiteRuntimeProvider(input: Readonly<{
               "x-kokoro-receipt-recovery-capability": request.security.receiptRecoveryCapability,
             }),
           };
+          const maximumDurationMs = Math.min(input.config.upstreamTimeoutMs, request.deadlineMs ?? input.config.upstreamTimeoutMs);
+          const startedAt = Date.now();
           const response = await openHttps({
             origin: input.config.platformOrigin,
             agent,
@@ -374,10 +390,19 @@ export function createNodeSiteRuntimeProvider(input: Readonly<{
             path: `${request.path}${queryString(request.query)}`,
             headers,
             body,
-            timeoutMs: input.config.upstreamTimeoutMs,
+            ...(request.signal === undefined ? {} : { signal: request.signal }),
+            timeoutMs: maximumDurationMs,
           });
           assertPlatformMediaType(response);
-          return Object.freeze({ status: response.statusCode ?? 502, body: await boundedJson(response, input.config.upstreamTimeoutMs) });
+          const remainingMs = maximumDurationMs - (Date.now() - startedAt);
+          if (remainingMs < 1) {
+            response.destroy(new NodeSiteRuntimeError("UPSTREAM_TIMEOUT"));
+            throw new NodeSiteRuntimeError("UPSTREAM_TIMEOUT");
+          }
+          return Object.freeze({
+            status: response.statusCode ?? 502,
+            body: await boundedJson(response, remainingMs, request.signal),
+          });
         },
       }) as PlatformPublicTransport;
     },

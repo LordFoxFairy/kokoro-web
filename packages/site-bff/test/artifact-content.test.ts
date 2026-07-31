@@ -1,5 +1,6 @@
 import { describe, expect, test, vi } from "vitest"
 
+import { PlatformPublicProtocolError } from "@kokoro/site-client/server"
 import type { ArtifactDeliveryTransport, PlatformPublicOperationId } from "@kokoro/site-client/server"
 
 import { createSiteMediaAuthority, SiteArtifactAvailabilityError } from "../src/media-authority.js"
@@ -17,6 +18,40 @@ const readyVersion = {
 } as const
 
 describe("Site media artifact authority", () => {
+  test("propagates request control and rejects a mismatched submit fingerprint", async () => {
+    const execute = vi.fn(() => Promise.resolve({
+      receipt: {
+        receiptKind: "submit_rejected",
+        commandId: "1".repeat(32),
+        callerRequestFingerprint: "0".repeat(64),
+        receiptVersion: "1",
+        updatedAt: "2026-07-31T00:00:00.000Z",
+        safeFailure: { code: "input_rejected", retryClass: "never", safeMessage: "Rejected." },
+      },
+      operation: null,
+    }))
+    const media = createSiteMediaAuthority({
+      projectRef: "server-project",
+      platform: { execute } as never,
+      deliveryTransport: { redeem: vi.fn() },
+    })
+    const signal = new AbortController().signal
+
+    await expect(media.submit({
+      kind: "image_text_to_image",
+      definitionRevisionRef: "image.text_to_image@1",
+      promptIntent: "A fox",
+      aspectRatio: "square_1_1",
+      candidateCount: 1,
+      modelOptionRevisionRef: "image.safe@1",
+      outputFormat: "png",
+    }, { commandId: "1".repeat(32), idempotencyKey: "i".repeat(24) }, {
+      signal,
+      deadlineMs: 30_000,
+    })).rejects.toBeInstanceOf(PlatformPublicProtocolError)
+    expect(execute).toHaveBeenCalledWith(expect.objectContaining({ signal, deadlineMs: 30_000 }))
+  })
+
   test("checks the exact ready owner version then issues and immediately redeems a server-only capability", async () => {
     const operations: PlatformPublicOperationId[] = []
     const execute = vi.fn((input: { operationId: PlatformPublicOperationId }) => {

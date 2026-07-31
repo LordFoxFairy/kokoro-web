@@ -12,6 +12,7 @@ import {
   createScopedRequestCoordinator,
   type ScopedRequestHandle,
 } from "./scoped-requests"
+import { createVisibilityAwarePoller, type VisibilityAwarePoller } from "./visibility-poller"
 import styles from "./media-product.module.css"
 
 function downloadUrl(contentUrl: string): string {
@@ -76,6 +77,9 @@ export function LibraryProduct(props: Readonly<{
   const [stateScope, setStateScope] = useState(scope)
   const [artifacts, setArtifacts] = useState<readonly BrowserArtifactSummary[]>([])
   const [versions, setVersions] = useState<readonly BrowserArtifactVersion[]>([])
+  const [selectedArtifactRef, setSelectedArtifactRef] = useState<string | null>(null)
+  const selectedArtifactRefSnapshot = useRef<string | null>(null)
+  const versionPoller = useRef<VisibilityAwarePoller | null>(null)
   const [busy, setBusy] = useState(true)
   const [error, setError] = useState<string | null>(null)
   useEffect(() => {
@@ -85,6 +89,8 @@ export function LibraryProduct(props: Readonly<{
     setStateScope(scope)
     setArtifacts(Object.freeze([]))
     setVersions(Object.freeze([]))
+    setSelectedArtifactRef(null)
+    selectedArtifactRefSnapshot.current = null
     setBusy(true)
     setError(null)
     return () => coordinator.invalidate(scope)
@@ -94,8 +100,20 @@ export function LibraryProduct(props: Readonly<{
     return () => coordinator?.stop()
   }, [])
   const refresh = async (request: ScopedRequestHandle) => {
-    const page = await client.listArtifacts({ limit: 50 }, request.signal)
-    if (request.isCurrent()) setArtifacts(page.items)
+    const selected = selectedArtifactRefSnapshot.current
+    const [page, versionPage] = await Promise.all([
+      client.listArtifacts({ limit: 50 }, request.signal),
+      selected === null ? Promise.resolve(null) : client.listArtifactVersions(selected, { limit: 50 }, request.signal),
+    ])
+    if (!request.isCurrent()) return
+    setArtifacts(page.items)
+    if (selected !== null && !page.items.some(({ artifactRef }) => artifactRef === selected)) {
+      selectedArtifactRefSnapshot.current = null
+      setSelectedArtifactRef(null)
+      setVersions(Object.freeze([]))
+    } else if (versionPage !== null && selectedArtifactRefSnapshot.current === selected) {
+      setVersions(versionPage.items)
+    }
   }
   const action = async (slot: string, run: (request: ScopedRequestHandle) => Promise<void>) => {
     const coordinator = requests.current
@@ -129,6 +147,34 @@ export function LibraryProduct(props: Readonly<{
     })()
     return () => request.abort("Library bootstrap changed")
   }, [client, scope])
+  useEffect(() => {
+    const poller = createVisibilityAwarePoller({
+      fetchValue: async (artifactRef, signal) => Object.freeze({
+        artifactRef,
+        page: await client.listArtifactVersions(artifactRef, { limit: 50 }, signal),
+      }),
+      onValues(values) {
+        const selected = selectedArtifactRefSnapshot.current
+        const value = values.find(({ artifactRef }) => artifactRef === selected)
+        if (value === undefined || !requests.current?.isScopeCurrent(scope)) return false
+        setVersions(value.page.items)
+        return true
+      },
+      onFailure: () => {
+        if (requests.current?.isScopeCurrent(scope)) setError("Live artifact versions are temporarily delayed.")
+      },
+      initialDelayMs: 1_500,
+      maximumDelayMs: 24_000,
+    })
+    versionPoller.current = poller
+    return () => {
+      poller.stop()
+      if (versionPoller.current === poller) versionPoller.current = null
+    }
+  }, [client, scope])
+  useEffect(() => {
+    versionPoller.current?.setKeys(selectedArtifactRef === null ? [] : [selectedArtifactRef])
+  }, [selectedArtifactRef])
   const visible = stateScope === scope && requests.current.isScopeCurrent(scope)
   return <LibraryView
     brandName={props.brandName}
@@ -138,9 +184,11 @@ export function LibraryProduct(props: Readonly<{
     error={visible ? error : null}
     onRefresh={() => void action("refresh", refresh)}
     onSelectArtifact={(artifact) => void action("selection", async (request) => {
+      selectedArtifactRefSnapshot.current = artifact.artifactRef
+      setSelectedArtifactRef(artifact.artifactRef)
       setVersions(Object.freeze([]))
       const page = await client.listArtifactVersions(artifact.artifactRef, { limit: 50 }, request.signal)
-      if (request.isCurrent()) setVersions(page.items)
+      if (request.isCurrent() && selectedArtifactRefSnapshot.current === artifact.artifactRef) setVersions(page.items)
     })}
   />
 }

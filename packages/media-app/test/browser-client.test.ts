@@ -1,10 +1,11 @@
 import { describe, expect, test, vi } from "vitest"
+import { mediaCallerRequestFingerprintSha256 } from "@kokoro/site-client"
 
 import {
   createMediaBrowserClient,
   createMediaCommandIdentity,
   createMediaCommandRecoveryStore,
-  MEDIA_COMMAND_RECOVERY_TTL_MS,
+  MediaCommandRecoveryCapacityError,
   MediaCommandRecoveryStorageError,
 } from "../src/browser-client"
 
@@ -46,6 +47,26 @@ function activeOperation(operationRef = "operation-1") {
   }
 }
 
+function memoryStorage(values = new Map<string, string>()) {
+  return {
+    get length() { return values.size },
+    key: (index: number) => [...values.keys()][index] ?? null,
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => { values.set(key, value) },
+    removeItem: (key: string) => { values.delete(key) },
+  }
+}
+
+const operationInput = {
+  kind: "image_text_to_image" as const,
+  definitionRevisionRef: "image.text_to_image@1",
+  promptIntent: "A fox beneath the moon",
+  aspectRatio: "square_1_1" as const,
+  candidateCount: 1,
+  modelOptionRevisionRef: "image.safe@1",
+  outputFormat: "png" as const,
+}
+
 describe("Site media browser client", () => {
   test("calls only the exact same-origin media BFF paths and sends browser CSRF on controls", async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = []
@@ -62,9 +83,10 @@ describe("Site media browser client", () => {
       "/api/media/operations",
     ])
 
+    const fingerprint = await mediaCallerRequestFingerprintSha256({ contractMajor: 1, ...operationInput })
     fetch.mockResolvedValueOnce(jsonResponse({
       receipt: {
-        callerRequestFingerprint: "f".repeat(64),
+        callerRequestFingerprint: fingerprint,
         commandId: "1".repeat(32),
         receiptKind: "submit_rejected",
         receiptVersion: "1",
@@ -73,15 +95,7 @@ describe("Site media browser client", () => {
       },
       operation: null,
     }, 202))
-    await client.submit({
-      kind: "image_text_to_image",
-      definitionRevisionRef: "image.text_to_image@1",
-      promptIntent: "A fox beneath the moon",
-      aspectRatio: "square_1_1",
-      candidateCount: 1,
-      modelOptionRevisionRef: "image.safe@1",
-      outputFormat: "png",
-    }, { commandId: "1".repeat(32), idempotencyKey: "i".repeat(24) })
+    await client.submit(operationInput, { commandId: "1".repeat(32), idempotencyKey: "i".repeat(24) })
 
     expect(fetch.mock.calls[2]).toEqual([
       "/api/media/operations",
@@ -99,6 +113,7 @@ describe("Site media browser client", () => {
   })
 
   test("forwards cancellation to both read and control requests", async () => {
+    const fingerprint = await mediaCallerRequestFingerprintSha256({ contractMajor: 1, ...operationInput })
     const fetch = vi.fn((input: string | URL | Request, init?: RequestInit) => {
       const path = String(input)
       if (path === "/api/media/quotes") return Promise.resolve(jsonResponse({ quote: {
@@ -111,7 +126,7 @@ describe("Site media browser client", () => {
       } }))
       if (path === "/api/media/operations" && init?.method === "POST") return Promise.resolve(jsonResponse({
         receipt: {
-          callerRequestFingerprint: "f".repeat(64), commandId: "1".repeat(32), receiptKind: "submit_rejected",
+          callerRequestFingerprint: fingerprint, commandId: "1".repeat(32), receiptKind: "submit_rejected",
           receiptVersion: "1", safeFailure, updatedAt: at,
         },
         operation: null,
@@ -127,16 +142,6 @@ describe("Site media browser client", () => {
     const client = createMediaBrowserClient({ fetch, csrfToken: "browser-csrf" })
     const controller = new AbortController()
     const command = { commandId: "1".repeat(32), idempotencyKey: "i".repeat(24) }
-    const operationInput = {
-      kind: "image_text_to_image" as const,
-      definitionRevisionRef: "image.text_to_image@1",
-      promptIntent: "A fox beneath the moon",
-      aspectRatio: "square_1_1" as const,
-      candidateCount: 1,
-      modelOptionRevisionRef: "image.safe@1",
-      outputFormat: "png" as const,
-    }
-
     await client.listDefinitions({ limit: 20 }, controller.signal)
     await client.quote(operationInput, command, controller.signal)
     await client.submit(operationInput, command, controller.signal)
@@ -197,6 +202,27 @@ describe("Site media browser client", () => {
       operation: null,
     }, 202))
     await expect(client.submit(operationInput, command)).rejects.toMatchObject({ code: "BFF_PROTOCOL_INVALID" })
+
+    fetch.mockResolvedValueOnce(jsonResponse({
+      receipt: {
+        callerRequestFingerprint: "0".repeat(64), commandId: command.commandId, receiptKind: "submit_rejected",
+        receiptVersion: "1", safeFailure, updatedAt: at,
+      },
+      operation: null,
+    }, 202))
+    await expect(client.submit(operationInput, command)).rejects.toMatchObject({ code: "BFF_PROTOCOL_INVALID" })
+
+    fetch.mockResolvedValueOnce(jsonResponse({
+      receipt: {
+        callerRequestFingerprint: "0".repeat(64), commandId: command.commandId, receiptKind: "submit_rejected",
+        receiptVersion: "1", safeFailure, updatedAt: at,
+      },
+      operation: null,
+    }))
+    await expect(client.recoverCommand(command.commandId, {
+      kind: "submit",
+      callerRequestFingerprint: "f".repeat(64),
+    })).rejects.toMatchObject({ code: "BFF_PROTOCOL_INVALID" })
   })
 
   test("accepts only exact same-origin ready artifact content URLs correlated to owner refs", async () => {
@@ -233,54 +259,87 @@ describe("Site media browser client", () => {
     await expect(client.listArtifactVersions("artifact-1", {})).rejects.toMatchObject({ code: "BFF_PROTOCOL_INVALID" })
   })
 
-  test("persists only command identity for owner recovery", () => {
+  test("persists only the exact command and caller identity needed for recovery", () => {
     const values = new Map<string, string>()
-    const storage = {
-      getItem: (key: string) => values.get(key) ?? null,
-      setItem: (key: string, value: string) => { values.set(key, value) },
-      removeItem: (key: string) => { values.delete(key) },
-    }
+    const storage = memoryStorage(values)
     const store = createMediaCommandRecoveryStore({ storage, scope: "site:user:project", now: () => Date.parse("2026-07-31T00:00:01.000Z") })
     const command = { commandId: "1".repeat(32), idempotencyKey: "i".repeat(24) }
-    store.remember({ kind: "submit", command, createdAt: "2026-07-31T00:00:00.000Z" })
+    const callerRequestFingerprint = "f".repeat(64)
+    store.remember({ kind: "submit", command, callerRequestFingerprint, createdAt: "2026-07-31T00:00:00.000Z" })
 
-    expect(store.list()).toEqual([{ kind: "submit", command, createdAt: "2026-07-31T00:00:00.000Z" }])
+    expect(store.list()).toEqual([{ kind: "submit", command, callerRequestFingerprint, createdAt: "2026-07-31T00:00:00.000Z" }])
     expect([...values.values()][0]).not.toMatch(/operation|artifact|ownerVersion/u)
     store.forget(command.commandId)
     expect(store.list()).toEqual([])
   })
 
-  test("keeps only canonical, non-expired command records and compacts persisted state", () => {
+  test("uses independent per-command keys so tabs cannot overwrite unresolved commands", () => {
     const values = new Map<string, string>()
-    const storage = {
-      getItem: (key: string) => values.get(key) ?? null,
-      setItem: (key: string, value: string) => { values.set(key, value) },
-      removeItem: (key: string) => { values.delete(key) },
-    }
+    const storage = memoryStorage(values)
     const scope = "site:user:project"
-    const key = `kokoro.media.commands.v1:${encodeURIComponent(scope)}`
     const now = Date.parse("2026-07-31T12:00:00.000Z")
     const command = { commandId: "1".repeat(32), idempotencyKey: "i".repeat(24) }
-    values.set(key, JSON.stringify([
-      { kind: "submit", command, createdAt: new Date(now - MEDIA_COMMAND_RECOVERY_TTL_MS - 1).toISOString() },
-      { kind: "submit", command: { ...command, commandId: "2".repeat(32) }, createdAt: "2026-07-31T11:00:00Z" },
-      { kind: "cancel", command: { ...command, commandId: "3".repeat(32) }, createdAt: "2026-07-31T11:00:00.000Z" },
-      { kind: "cancel", command: { ...command, commandId: "4".repeat(32) }, createdAt: "2026-08-01T00:00:00.000Z" },
-    ]))
-
-    const store = createMediaCommandRecoveryStore({ storage, scope, now: () => now })
-    expect(store.list()).toEqual([{
+    const first = createMediaCommandRecoveryStore({ storage, scope, now: () => now })
+    const second = createMediaCommandRecoveryStore({ storage, scope, now: () => now })
+    first.remember({ kind: "submit", command, callerRequestFingerprint: "a".repeat(64), createdAt: "2026-07-31T11:00:00.000Z" })
+    second.remember({
       kind: "cancel",
       command: { ...command, commandId: "3".repeat(32) },
+      operationRef: "operation-3",
       createdAt: "2026-07-31T11:00:00.000Z",
-    }])
-    expect(JSON.parse(values.get(key) ?? "[]")).toHaveLength(1)
+    })
+
+    expect(first.list()).toHaveLength(2)
+    expect([...values.keys()]).toEqual(expect.arrayContaining([
+      expect.stringContaining(command.commandId),
+      expect.stringContaining("3".repeat(32)),
+    ]))
+    expect([...values.keys()].every((key) => key.startsWith(`kokoro.media.command.v2:${encodeURIComponent(scope)}:`))).toBe(true)
+  })
+
+  test("removes expired or malformed per-command recovery records independently", () => {
+    const values = new Map<string, string>()
+    const scope = "site:user:project"
+    const prefix = `kokoro.media.command.v2:${encodeURIComponent(scope)}:`
+    const now = Date.parse("2026-07-31T12:00:00.000Z")
+    const expiredId = "1".repeat(32)
+    values.set(`${prefix}${expiredId}`, JSON.stringify({
+      kind: "submit",
+      command: { commandId: expiredId, idempotencyKey: "i".repeat(24) },
+      callerRequestFingerprint: "f".repeat(64),
+      createdAt: "2026-07-30T11:59:59.999Z",
+    }))
+    values.set(`${prefix}${"2".repeat(32)}`, "not-json")
+
+    const store = createMediaCommandRecoveryStore({ storage: memoryStorage(values), scope, now: () => now })
+    expect(store.list()).toEqual([])
+    expect(values.size).toBe(0)
+  })
+
+  test("fails closed at recovery capacity without evicting unresolved commands", () => {
+    const values = new Map<string, string>()
+    const store = createMediaCommandRecoveryStore({ storage: memoryStorage(values), scope: "site:user:project" })
+    for (let index = 0; index < 20; index += 1) {
+      store.remember({
+        kind: "submit",
+        command: { commandId: index.toString(16).padStart(32, "0"), idempotencyKey: "i".repeat(24) },
+        callerRequestFingerprint: index.toString(16).padStart(64, "0"),
+        createdAt: new Date(Date.now() - index).toISOString(),
+      })
+    }
+    expect(() => store.remember({
+      kind: "submit",
+      command: { commandId: "f".repeat(32), idempotencyKey: "i".repeat(24) },
+      callerRequestFingerprint: "f".repeat(64),
+      createdAt: new Date().toISOString(),
+    })).toThrow(MediaCommandRecoveryCapacityError)
+    expect(store.list()).toHaveLength(20)
   })
 
   test("fails closed with a recoverable error when browser storage is denied", () => {
     const denied = () => { throw Object.assign(new Error("denied"), { name: "SecurityError" }) }
     const store = createMediaCommandRecoveryStore({
-      storage: { getItem: denied, setItem: denied, removeItem: denied },
+      storage: { get length() { return denied() }, key: denied, getItem: denied, setItem: denied, removeItem: denied },
       scope: "site:user:project",
     })
 
@@ -288,6 +347,7 @@ describe("Site media browser client", () => {
     expect(() => store.remember({
       kind: "submit",
       command: { commandId: "1".repeat(32), idempotencyKey: "i".repeat(24) },
+      callerRequestFingerprint: "f".repeat(64),
       createdAt: "2026-07-31T00:00:00.000Z",
     })).toThrowError(expect.objectContaining({ code: "MEDIA_RECOVERY_STORAGE_UNAVAILABLE" }))
   })

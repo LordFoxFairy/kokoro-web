@@ -39,6 +39,7 @@ describe("media owner refresh", () => {
     mediaOperationRef: "operation-1",
     definitionRef: "image.text_to_image",
     definitionRevisionRef: "image.text_to_image@1",
+    modelOptionRevisionRef: "image.safe@1",
     ownerVersion: "2",
     progressBps: 2000,
     candidates: [],
@@ -68,6 +69,15 @@ describe("media owner refresh", () => {
       progressBps: 8000,
       updatedAt: "2026-07-31T00:00:04.000Z",
     }])).toEqual([completed])
+  })
+
+  test("never changes the immutable model option identity at a higher owner version", () => {
+    expect(mergeMediaOperationOwnerStates([current], [{
+      ...current,
+      modelOptionRevisionRef: "image.other@2",
+      ownerVersion: "3",
+      updatedAt: "2026-07-31T00:00:03.000Z",
+    }])).toEqual([current])
   })
 })
 
