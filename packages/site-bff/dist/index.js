@@ -3,11 +3,13 @@ import { randomUUID } from "node:crypto";
 import { bootstrapSiteRuntimeFromOpaqueSession, createOriginCsrfBrowserRequestVerifier, createSessionBrowserV3Proxy, createSessionBrowserV3Transport, loadSiteDeploymentBinding, ProductContextManager, SessionAccessManager, publicSiteBootstrap, } from "@kokoro/bff-runtime";
 import { createPlatformPublicClient, } from "@kokoro/site-client/server";
 import { createSiteMediaAuthority } from "./media-authority.js";
+import { createSiteMemoryAuthority } from "./memory-api.js";
 import { waitWithinBudget } from "./request-budget.js";
 export { createLaunchStateVault } from "./launch-state.js";
 export { createSiteLaunchApi, SITE_LAUNCH_STATE_COOKIE } from "./launch-api.js";
 export { createSiteAssetApi } from "./asset-api.js";
 export { createSiteMediaApi } from "./media-api.js";
+export { createSiteMemoryApi } from "./memory-api.js";
 export { SiteArtifactAvailabilityError, } from "./media-authority.js";
 export { createSiteSessionApi } from "./session-api.js";
 export class SiteBffError extends Error {
@@ -346,6 +348,10 @@ export function createSiteBffRuntime(input) {
                 projectRef,
                 deliveryTransport: input.provider.artifactDeliveryTransport({ binding: input.binding }),
             });
+        },
+        async memory(authSession, budget) {
+            const { platform } = await projectAuthority(authSession, budget);
+            return createSiteMemoryAuthority({ platform });
         },
         accountProducts(authSession) {
             return authenticatedClient(authSession).execute({ operationId: "listAccountProducts", data: {} });

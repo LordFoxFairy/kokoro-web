@@ -13,7 +13,7 @@ Provides Root-generated Platform Public v1 types/metadata plus a contract-bound,
 
 ## Public boundary
 
-- `@kokoro/site-client` exports safe generated types, immutable contract metadata, and the generated browser-safe request/reference/response validators used at the Site BFF trust boundary.
+- `@kokoro/site-client` exports safe generated types, immutable contract metadata, and the generated browser-safe request/reference/response validators used at the Site BFF trust boundary, including the closed explicit-Memory inputs and references consumed by `@kokoro/site-bff`.
 - `@kokoro/site-client/server` is guarded by `server-only` and exports the credential-bearing client/transport boundary.
 - Media submit accepts the generated canonical caller fingerprint only on `submitMediaOperation`. The typed artifact-delivery client delegates Range/deadline construction to generated code, validates exact owner byte length and 200/206/416 metadata, cancels invalid or unsatisfied upstream streams, and exposes successful bodies as a backpressured counting stream rather than a buffered Blob.
 - `@kokoro/site-client/asset-data-plane` is the browser-safe generated upload protocol mirror. It contains no endpoint, Site identity, provider fact, or backend credential.

@@ -42,6 +42,7 @@ import type {
 } from "@kokoro/site-client"
 import type { NodeSiteRuntimeProvider } from "@kokoro/site-runtime-node"
 import { createSiteMediaAuthority, type SiteMediaAuthority } from "./media-authority.js"
+import { createSiteMemoryAuthority, type SiteMemoryAuthority } from "./memory-api.js"
 import { waitWithinBudget, type SiteRequestBudget } from "./request-budget.js"
 
 export { createLaunchStateVault } from "./launch-state.js"
@@ -50,6 +51,7 @@ export { createSiteLaunchApi, SITE_LAUNCH_STATE_COOKIE } from "./launch-api.js"
 export type { SiteLaunchApi } from "./launch-api.js"
 export { createSiteAssetApi } from "./asset-api.js"
 export { createSiteMediaApi, type SiteMediaApi } from "./media-api.js"
+export { createSiteMemoryApi, type SiteMemoryApi } from "./memory-api.js"
 export type { SiteRequestBudget } from "./request-budget.js"
 export {
   SiteArtifactAvailabilityError,
@@ -148,6 +150,7 @@ export interface SiteBffRuntime {
   getAssetUploadStatus(auth: OpaqueAuthSession, intentRef: string): Promise<AssetUploadStatusResponse>
   recoverAssetUploadCommand(auth: OpaqueAuthSession, commandId: string): Promise<AssetUploadCommandResponse>
   media(auth: OpaqueAuthSession, budget: SiteRequestBudget): Promise<SiteMediaAuthority>
+  memory(auth: OpaqueAuthSession, budget: SiteRequestBudget): Promise<SiteMemoryAuthority>
   accountProducts(auth: OpaqueAuthSession): Promise<AccountProductsResponse>
   creditSummary(auth: OpaqueAuthSession): Promise<CreditSummaryResponse>
   commandReceipt(auth: OpaqueAuthSession | null, commandId: string, receiptRecoveryCapability?: string): Promise<PublicCommandReceiptResponse>
@@ -537,6 +540,10 @@ export function createSiteBffRuntime(input: Readonly<{
         projectRef,
         deliveryTransport: input.provider.artifactDeliveryTransport({ binding: input.binding }),
       })
+    },
+    async memory(authSession: OpaqueAuthSession, budget: SiteRequestBudget) {
+      const { platform } = await projectAuthority(authSession, budget)
+      return createSiteMemoryAuthority({ platform })
     },
     accountProducts(authSession: OpaqueAuthSession) {
       return authenticatedClient(authSession).execute({ operationId: "listAccountProducts", data: {} })

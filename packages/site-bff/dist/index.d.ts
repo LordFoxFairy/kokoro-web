@@ -4,6 +4,7 @@ import { type PublicCommandContext, type SecretPublicCommandContext, type Platfo
 import type { AccountProductsResponse, AssetUploadCommandResponse, AssetUploadIntentInput, AssetUploadIntentResponse, AssetUploadStatusResponse, CommandReceiptResponse, CreditSummaryResponse, EmailVerificationTransactionResponse, IdentitySessionList, PublicCommandReceiptResponse, ReauthenticationResponse, RecoveryCodeSetResponse, RedemptionCommandResponse, RedemptionPreviewResponse, TotpEnrollmentTransactionResponse, VerificationActivationResponse } from "@kokoro/site-client";
 import type { NodeSiteRuntimeProvider } from "@kokoro/site-runtime-node";
 import { type SiteMediaAuthority } from "./media-authority.js";
+import { type SiteMemoryAuthority } from "./memory-api.js";
 import { type SiteRequestBudget } from "./request-budget.js";
 export { createLaunchStateVault } from "./launch-state.js";
 export type { LaunchCommandState, LaunchOperation, LaunchStateBinding, LaunchStateVault, SecurityLaunchState } from "./launch-state.js";
@@ -11,6 +12,7 @@ export { createSiteLaunchApi, SITE_LAUNCH_STATE_COOKIE } from "./launch-api.js";
 export type { SiteLaunchApi } from "./launch-api.js";
 export { createSiteAssetApi } from "./asset-api.js";
 export { createSiteMediaApi, type SiteMediaApi } from "./media-api.js";
+export { createSiteMemoryApi, type SiteMemoryApi } from "./memory-api.js";
 export type { SiteRequestBudget } from "./request-budget.js";
 export { SiteArtifactAvailabilityError, type SiteMediaAuthority, type SiteMediaPageQuery, } from "./media-authority.js";
 export { createSiteSessionApi, type SiteSessionApi, type SiteSessionApiRuntime } from "./session-api.js";
@@ -132,6 +134,7 @@ export interface SiteBffRuntime {
     getAssetUploadStatus(auth: OpaqueAuthSession, intentRef: string): Promise<AssetUploadStatusResponse>;
     recoverAssetUploadCommand(auth: OpaqueAuthSession, commandId: string): Promise<AssetUploadCommandResponse>;
     media(auth: OpaqueAuthSession, budget: SiteRequestBudget): Promise<SiteMediaAuthority>;
+    memory(auth: OpaqueAuthSession, budget: SiteRequestBudget): Promise<SiteMemoryAuthority>;
     accountProducts(auth: OpaqueAuthSession): Promise<AccountProductsResponse>;
     creditSummary(auth: OpaqueAuthSession): Promise<CreditSummaryResponse>;
     commandReceipt(auth: OpaqueAuthSession | null, commandId: string, receiptRecoveryCapability?: string): Promise<PublicCommandReceiptResponse>;
