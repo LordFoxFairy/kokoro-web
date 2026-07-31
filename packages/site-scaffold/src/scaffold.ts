@@ -4,7 +4,7 @@ import { copyFile, lstat, mkdir, mkdtemp, readFile, readdir, rename, rm, writeFi
 import { basename, dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import type { SiteContractFloor, SiteDomainBinding } from "@kokoro/site-app-kit";
+import type { SiteContractFloor, SiteDomainBinding, SiteProductId } from "@kokoro/site-app-kit";
 import { list as listTar } from "tar";
 
 const TEMPLATE_ROOT = fileURLToPath(new URL("../templates/site/", import.meta.url));
@@ -24,7 +24,8 @@ export interface ImmutablePackageArtifact {
     | "@kokoro/chat-app"
     | "@kokoro/site-bff"
     | "@kokoro/account-app"
-    | "@kokoro/media-app";
+    | "@kokoro/media-app"
+    | "@kokoro/memory-app";
   readonly version: string;
   readonly archivePath: string;
   readonly sha256: string;
@@ -47,19 +48,8 @@ export interface CreateSiteProjectInput {
   readonly domains: readonly SiteDomainBinding[];
   readonly deployment: SiteDeploymentTarget;
   readonly contractFloor: SiteContractFloor;
-  readonly packages: readonly [
-    ImmutablePackageArtifact,
-    ImmutablePackageArtifact,
-    ImmutablePackageArtifact,
-    ImmutablePackageArtifact,
-    ImmutablePackageArtifact,
-    ImmutablePackageArtifact,
-    ImmutablePackageArtifact,
-    ImmutablePackageArtifact,
-    ImmutablePackageArtifact,
-    ImmutablePackageArtifact,
-    ImmutablePackageArtifact,
-  ];
+  readonly enabledProductIds: readonly SiteProductId[];
+  readonly packages: readonly ImmutablePackageArtifact[];
 }
 
 export interface CreatedSiteProject {
@@ -231,7 +221,12 @@ export async function createSiteProject(input: CreateSiteProjectInput): Promise<
   if (!SHA256_PATTERN.test(input.artifactSha256)) {
     throw new TypeError("artifactSha256 must be lowercase SHA-256");
   }
-  const requiredArtifacts = [
+  if (
+    new Set(input.enabledProductIds).size !== input.enabledProductIds.length ||
+    input.enabledProductIds.some((productId) => productId !== "memory")
+  ) throw new TypeError("enabledProductIds must be a unique closed product set");
+  const memoryEnabled = input.enabledProductIds.includes("memory");
+  const baseArtifacts = [
     "@kokoro/site-app-kit",
     "@kokoro/site-client",
     "@kokoro/session-client",
@@ -244,6 +239,9 @@ export async function createSiteProject(input: CreateSiteProjectInput): Promise<
     "@kokoro/account-app",
     "@kokoro/media-app",
   ] as const;
+  const requiredArtifacts: readonly ImmutablePackageArtifact["name"][] = memoryEnabled
+    ? [...baseArtifacts, "@kokoro/memory-app"]
+    : baseArtifacts;
   if (
     input.packages.length !== requiredArtifacts.length ||
     requiredArtifacts.some((name) => input.packages.filter((artifact) => artifact.name === name).length !== 1)
@@ -271,6 +269,7 @@ export async function createSiteProject(input: CreateSiteProjectInput): Promise<
     const siteBff = artifact("@kokoro/site-bff");
     const accountApp = artifact("@kokoro/account-app");
     const mediaApp = artifact("@kokoro/media-app");
+    const memoryApp = memoryEnabled ? artifact("@kokoro/memory-app") : undefined;
 
     const replacements = {
       __PACKAGE_NAME_JSON__: JSON.stringify(input.packageName),
@@ -304,9 +303,22 @@ export async function createSiteProject(input: CreateSiteProjectInput): Promise<
       __ACCOUNT_APP_SHA256_JSON__: JSON.stringify(accountApp.sha256),
       __MEDIA_APP_VERSION_JSON__: JSON.stringify(mediaApp.version),
       __MEDIA_APP_SHA256_JSON__: JSON.stringify(mediaApp.sha256),
+      __ENABLED_PRODUCT_IDS_JSON__: JSON.stringify(input.enabledProductIds, null, 2),
+      __TRANSPILE_PACKAGES_JSON__: JSON.stringify(memoryEnabled
+        ? ["@kokoro/account-app", "@kokoro/asset-client", "@kokoro/chat-app", "@kokoro/media-app", "@kokoro/memory-app"]
+        : ["@kokoro/account-app", "@kokoro/asset-client", "@kokoro/chat-app", "@kokoro/media-app"]),
+      __MEMORY_DEPENDENCY_FRAGMENT__: memoryApp === undefined ? "" : `,\n    "@kokoro/memory-app": "file:vendor/memory-app.tgz"`,
+      __MEMORY_OVERRIDE_FRAGMENT__: memoryApp === undefined ? "" : `\n  "@kokoro/memory-app": "file:vendor/memory-app.tgz"`,
+      __MEMORY_ARTIFACT_FRAGMENT__: memoryApp === undefined ? "" : `,\n    "@kokoro/memory-app": {\n      "version": ${JSON.stringify(memoryApp.version)},\n      "sha256": ${JSON.stringify(memoryApp.sha256)}\n    }`,
+      __MEMORY_NAV_FRAGMENT__: memoryEnabled ? `<nav aria-label="Site products" className="site-product-nav"><a href="/memory">Memory</a></nav>` : "",
     } as const;
 
-    const templateFiles = await listTemplateFiles(TEMPLATE_ROOT);
+    const memoryOnlyFiles = new Set([
+      "src/app/memory/page.tsx",
+      "src/app/api/memory/[[...path]]/route.ts",
+    ]);
+    const templateFiles = (await listTemplateFiles(TEMPLATE_ROOT))
+      .filter((relative) => memoryEnabled || !memoryOnlyFiles.has(relative));
     for (const relative of templateFiles) {
       const destination = join(staging, relative);
       await mkdir(dirname(destination), { recursive: true });
@@ -327,6 +339,7 @@ export async function createSiteProject(input: CreateSiteProjectInput): Promise<
     const copiedSiteBff = join(staging, "vendor", "site-bff.tgz");
     const copiedAccountApp = join(staging, "vendor", "account-app.tgz");
     const copiedMediaApp = join(staging, "vendor", "media-app.tgz");
+    const copiedMemoryApp = join(staging, "vendor", "memory-app.tgz");
     for (const [artifact, destination] of [
       [appKit, copiedAppKit],
       [client, copiedClient],
@@ -339,6 +352,7 @@ export async function createSiteProject(input: CreateSiteProjectInput): Promise<
       [siteBff, copiedSiteBff],
       [accountApp, copiedAccountApp],
       [mediaApp, copiedMediaApp],
+      ...(memoryApp === undefined ? [] : [[memoryApp, copiedMemoryApp] as const]),
     ] as const) {
       await copyFile(artifact.archivePath, destination, constants.COPYFILE_EXCL);
       await verifyCopiedPackageArtifact(artifact, destination);
@@ -362,6 +376,7 @@ export async function createSiteProject(input: CreateSiteProjectInput): Promise<
         [siteBff.name]: siteBff.sha256,
         [accountApp.name]: accountApp.sha256,
         [mediaApp.name]: mediaApp.sha256,
+        ...(memoryApp === undefined ? {} : { [memoryApp.name]: memoryApp.sha256 }),
       }),
       generatedFiles: Object.freeze([
         ...templateFiles,
@@ -376,6 +391,7 @@ export async function createSiteProject(input: CreateSiteProjectInput): Promise<
         "vendor/site-bff.tgz",
         "vendor/account-app.tgz",
         "vendor/media-app.tgz",
+        ...(memoryApp === undefined ? [] : ["vendor/memory-app.tgz"]),
       ]),
     });
   } catch (error) {

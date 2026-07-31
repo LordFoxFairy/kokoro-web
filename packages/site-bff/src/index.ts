@@ -150,7 +150,7 @@ export interface SiteBffRuntime {
   getAssetUploadStatus(auth: OpaqueAuthSession, intentRef: string): Promise<AssetUploadStatusResponse>
   recoverAssetUploadCommand(auth: OpaqueAuthSession, commandId: string): Promise<AssetUploadCommandResponse>
   media(auth: OpaqueAuthSession, budget: SiteRequestBudget): Promise<SiteMediaAuthority>
-  memory(auth: OpaqueAuthSession, budget: SiteRequestBudget): Promise<SiteMemoryAuthority>
+  memory(auth: OpaqueAuthSession, budget: SiteRequestBudget): Promise<SiteMemoryAuthority | null>
   accountProducts(auth: OpaqueAuthSession): Promise<AccountProductsResponse>
   creditSummary(auth: OpaqueAuthSession): Promise<CreditSummaryResponse>
   commandReceipt(auth: OpaqueAuthSession | null, commandId: string, receiptRecoveryCapability?: string): Promise<PublicCommandReceiptResponse>
@@ -322,11 +322,13 @@ export function createSiteBffRuntime(input: Readonly<{
   const projectAuthority = async (authSession: OpaqueAuthSession, budget?: SiteRequestBudget): Promise<Readonly<{
     platform: ReturnType<typeof createPlatformPublicClient>
     projectRef: string
+    enabledSurfaceIds: readonly string[]
   }>> => {
     const resolved = await resolveSite(authSession, budget)
     return Object.freeze({
       platform: authenticatedClient(authSession),
       projectRef: resolved.bootstrap.defaultProjectRef,
+      enabledSurfaceIds: Object.freeze([...resolved.bootstrap.enabledSurfaceIds]),
     })
   }
 
@@ -542,7 +544,8 @@ export function createSiteBffRuntime(input: Readonly<{
       })
     },
     async memory(authSession: OpaqueAuthSession, budget: SiteRequestBudget) {
-      const { platform } = await projectAuthority(authSession, budget)
+      const { enabledSurfaceIds, platform } = await projectAuthority(authSession, budget)
+      if (!enabledSurfaceIds.includes("memory")) return null
       return createSiteMemoryAuthority({ platform })
     },
     accountProducts(authSession: OpaqueAuthSession) {

@@ -1,6 +1,7 @@
 {
   "releaseId": __RELEASE_ID_JSON__,
   "sourceArtifactSha256": __ARTIFACT_SHA256_JSON__,
+  "enabledProductIds": __ENABLED_PRODUCT_IDS_JSON__,
   "packages": {
     "@kokoro/site-app-kit": {
       "version": __APP_KIT_VERSION_JSON__,
@@ -45,6 +46,6 @@
     "@kokoro/media-app": {
       "version": __MEDIA_APP_VERSION_JSON__,
       "sha256": __MEDIA_APP_SHA256_JSON__
-    }
+    }__MEMORY_ARTIFACT_FRAGMENT__
   }
 }

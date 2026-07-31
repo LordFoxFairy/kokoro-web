@@ -90,7 +90,7 @@ export interface SiteMemoryAuthority {
 export interface SiteMemoryApiRuntime {
   readonly publicOrigin: string
   verifyBrowserMutation(input: Readonly<{ operationId: string; token: string }>): boolean
-  memory(auth: OpaqueAuthSession, budget: SiteRequestBudget): Promise<SiteMemoryAuthority>
+  memory(auth: OpaqueAuthSession, budget: SiteRequestBudget): Promise<SiteMemoryAuthority | null>
 }
 
 export interface SiteMemoryApi {
@@ -154,6 +154,20 @@ function outcomeUnknown(commandId: string): Response {
       method: "GET",
     },
   }, 503)
+}
+
+function projectExportDelivery(response: MemoryExportResponse): unknown {
+  const request = response.export.artifactDownloadRequest
+  if (response.export.state !== "ready" || request === null) return response
+  return Object.freeze({
+    export: Object.freeze({
+      ...response.export,
+      artifactDownloadRequest: Object.freeze({
+        ...request,
+        deliveryUrl: `/api/media/artifacts/${encodeURIComponent(request.artifactRef)}/versions/${encodeURIComponent(request.artifactVersionRef)}/content?purpose=export&exportIntentRef=${encodeURIComponent(request.deliveryRequestRef)}`,
+      }),
+    }),
+  })
 }
 
 async function boundedJson(request: Request): Promise<unknown> {
@@ -377,6 +391,7 @@ export function createSiteMemoryApi(input: Readonly<{
         const auth = await waitWithinBudget(Promise.resolve(input.readAuthSession(budget)), budget)
         if (auth === null) return problem(401, "AUTH_REQUIRED", "Sign in again")
         const memory = await waitWithinBudget(input.runtime.memory(auth, budget), budget)
+        if (memory === null) return problem(404, "NOT_FOUND", "Memory operation was not found")
 
         if (request.method === "GET" && path.length === 1 && path[0] === "settings") {
           noQuery(url)
@@ -461,7 +476,7 @@ export function createSiteMemoryApi(input: Readonly<{
         if (request.method === "GET" && path.length === 2 && path[0] === "exports") {
           noQuery(url)
           const exportRef = reference(zMemoryExportRef, path[1])
-          return boundedResponse(await callWithinBudget(budget, (options) => memory.getExport(exportRef, options)))
+          return boundedResponse(projectExportDelivery(await callWithinBudget(budget, (options) => memory.getExport(exportRef, options))))
         }
         if (request.method === "POST" && path.length === 1 && path[0] === "imports") {
           noQuery(url)

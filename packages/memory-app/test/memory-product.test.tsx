@@ -2,7 +2,7 @@ import type { MemoryEntryActiveView, MemoryRevisionView, MemorySettings } from "
 import { renderToStaticMarkup } from "react-dom/server"
 import { describe, expect, test, vi } from "vitest"
 
-import { MEMORY_REDUCED_MOTION_MEDIA, MemoryView, destructiveConfirmation, restoreConflictMessage } from "../src/memory-product"
+import { MAXIMUM_MEMORY_UTF8_BYTES, MEMORY_REDUCED_MOTION_MEDIA, MemoryView, createMemoryRuntimeScopeFence, destructiveConfirmation, memoryUtf8Bytes, restoreConflictMessage, safeMemoryImportLabel } from "../src/memory-product"
 
 const settings: MemorySettings = {
   automaticLearning: { availability: "unavailable_until_memory_m3", effective: false, policyReason: null, requested: false },
@@ -52,6 +52,8 @@ describe("Memory product", () => {
       exports={[{ artifactDownloadRequest: null, expiresAt: null, exportRef: "export-1", failureCode: null, format: "kokoro_memory_export_v1", requestedAt: "2026-07-31T00:00:00.000Z", state: "running", updatedAt: "2026-07-31T00:00:01.000Z" }]}
       history={history}
       historyNextCursor={null}
+      importProgress={null}
+      importSource={{ safeLabel: "memory-export.json" }}
       imports={[{ acceptedEntryCount: 0, assetRef: "asset-1", assetVersionRef: "asset-version-1", format: "kokoro_memory_export_v1", importRef: "import-1", rejectedEntryCount: 0, requestedAt: "2026-07-31T00:00:00.000Z", safeStatusCode: "awaiting_review", state: "quarantined", updatedAt: "2026-07-31T00:00:01.000Z" }]}
       nextCursor={null}
       onCorrect={vi.fn()}
@@ -60,6 +62,7 @@ describe("Memory product", () => {
       onExport={vi.fn()}
       onForget={vi.fn()}
       onImport={vi.fn()}
+      onChooseImportFile={vi.fn()}
       onLoadMore={vi.fn()}
       onLoadMoreHistory={vi.fn()}
       onPrioritize={vi.fn()}
@@ -83,6 +86,7 @@ describe("Memory product", () => {
     expect(html).toContain("Restore as a new revision")
     expect(html).toContain("Deletion in progress")
     expect(html).toContain("Awaiting review")
+    expect(html).not.toContain("<nav")
     expect(html).not.toContain("<script")
   })
 
@@ -103,6 +107,8 @@ describe("Memory product", () => {
       exports={[]}
       history={[]}
       historyNextCursor={null}
+      importProgress={null}
+      importSource={null}
       imports={[]}
       nextCursor={null}
       onCorrect={vi.fn()}
@@ -111,6 +117,7 @@ describe("Memory product", () => {
       onExport={vi.fn()}
       onForget={vi.fn()}
       onImport={vi.fn()}
+      onChooseImportFile={vi.fn()}
       onLoadMore={vi.fn()}
       onLoadMoreHistory={vi.fn()}
       onPrioritize={vi.fn()}
@@ -127,5 +134,32 @@ describe("Memory product", () => {
     expect(html).toContain("<button")
     expect(html).toContain("<label")
     expect(html).toContain("role=\"status\"")
+  })
+
+  test("budgets canonical content by UTF-8 bytes rather than UTF-16 characters", () => {
+    expect(memoryUtf8Bytes("🦊")).toBe(4)
+    expect(memoryUtf8Bytes("a".repeat(MAXIMUM_MEMORY_UTF8_BYTES))).toBe(MAXIMUM_MEMORY_UTF8_BYTES)
+    expect(memoryUtf8Bytes("\ud800")).toBeNull()
+    expect(safeMemoryImportLabel("  memory\u202e\nexport.json  ")).toBe("memory export.json")
+    expect(Array.from(safeMemoryImportLabel("🦊".repeat(200)))).toHaveLength(160)
+  })
+
+  test("suppresses a deferred old-Site result after a scope rerender, including A to B to A", async () => {
+    const fence = createMemoryRuntimeScopeFence("site-a:user-1")
+    const oldScope = fence.capture()
+    let release!: (value: string) => void
+    const deferred = new Promise<string>((resolve) => { release = resolve })
+    let committed = "current"
+    const settlement = deferred.then((value) => {
+      if (fence.isCurrent(oldScope)) committed = value
+    })
+
+    fence.commit("site-b:user-1")
+    fence.commit("site-a:user-1")
+    release("stale")
+    await settlement
+
+    expect(committed).toBe("current")
+    expect(fence.isCurrent(oldScope)).toBe(false)
   })
 })

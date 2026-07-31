@@ -1,6 +1,7 @@
 import { defineSiteAppManifest } from "@kokoro/site-app-kit";
 
 export const site = defineSiteAppManifest({
+  enabledProductIds: __ENABLED_PRODUCT_IDS_JSON__,
   packageName: __PACKAGE_NAME_JSON__,
   siteKey: __SITE_KEY_JSON__,
   displayName: __DISPLAY_NAME_JSON__,

@@ -8,8 +8,8 @@ import type {
   MemoryEntryPage,
   MemoryEntryResponse,
   MemoryEntryView,
+  MemoryArtifactDownloadRequest,
   MemoryExportInput,
-  MemoryExportResponse,
   MemoryExportStatus,
   MemoryForgetInput,
   MemoryImportInput,
@@ -46,6 +46,11 @@ export type MemoryPageQuery = Readonly<{
   cursor?: string
   limit?: number
 }>
+export type BrowserMemoryArtifactDownloadRequest = MemoryArtifactDownloadRequest & Readonly<{ deliveryUrl?: string }>
+export type BrowserMemoryExportStatus = Omit<MemoryExportStatus, "artifactDownloadRequest"> & Readonly<{
+  artifactDownloadRequest: BrowserMemoryArtifactDownloadRequest | null
+}>
+export type BrowserMemoryExportResponse = Readonly<{ export: BrowserMemoryExportStatus }>
 
 export class MemoryBrowserError extends Error {
   constructor(readonly status: number, readonly code: string, message: string) {
@@ -119,6 +124,32 @@ function historyQuery(input: Readonly<{ cursor?: string; limit?: number }>): str
 function unique<Value>(items: readonly Value[], identity: (value: Value) => string): void {
   const refs = items.map(identity)
   if (new Set(refs).size !== refs.length) protocol()
+}
+
+function projectedExportResponse(value: unknown): BrowserMemoryExportResponse {
+  const root = record(value)
+  const rawExport = record(root?.export)
+  const rawRequest = record(rawExport?.artifactDownloadRequest)
+  const deliveryUrl = rawRequest?.deliveryUrl
+  const sanitizedRequest = rawRequest === null ? rawExport?.artifactDownloadRequest : (() => {
+    const request = { ...rawRequest }
+    delete request.deliveryUrl
+    return request
+  })()
+  const parsed = zMemoryExportResponse.safeParse(root === null || rawExport === null ? value : {
+    ...root,
+    export: { ...rawExport, artifactDownloadRequest: sanitizedRequest },
+  })
+  if (!parsed.success) protocol()
+  if (deliveryUrl === undefined) return parsed.data
+  const request = parsed.data.export.artifactDownloadRequest
+  if (parsed.data.export.state !== "ready" || request === null || typeof deliveryUrl !== "string") protocol()
+  const expected = `/api/media/artifacts/${encodeURIComponent(request.artifactRef)}/versions/${encodeURIComponent(request.artifactVersionRef)}/content?purpose=export&exportIntentRef=${encodeURIComponent(request.deliveryRequestRef)}`
+  if (deliveryUrl !== expected) protocol()
+  return Object.freeze({ export: Object.freeze({
+    ...parsed.data.export,
+    artifactDownloadRequest: Object.freeze({ ...request, deliveryUrl }),
+  }) })
 }
 
 function bytes(length: number): Uint8Array {
@@ -219,8 +250,14 @@ export function createMemoryBrowserClient(input: Readonly<{
     async requestExport(body: MemoryExportInput, command = createMemoryCommandIdentity(), signal?: AbortSignal) {
       return sameCommand(await mutate("POST", "/exports", command, body, zMemoryCommandResponse, signal), command.commandId)
     },
-    getExport(exportRef: string, signal?: AbortSignal): Promise<MemoryExportResponse> {
-      return read(`/exports/${encodedReference(zMemoryExportRef, exportRef)}`, zMemoryExportResponse, signal)
+    async getExport(exportRef: string, signal?: AbortSignal): Promise<BrowserMemoryExportResponse> {
+      const response = await fetcher(`/api/memory/exports/${encodedReference(zMemoryExportRef, exportRef)}`, {
+        method: "GET",
+        credentials: "same-origin",
+        headers: { accept: "application/json" },
+        ...(signal === undefined ? {} : { signal }),
+      })
+      return projectedExportResponse(await responseJson(response))
     },
     async requestImport(body: MemoryImportInput, command = createMemoryCommandIdentity(), signal?: AbortSignal) {
       return sameCommand(await mutate("POST", "/imports", command, body, zMemoryCommandResponse, signal), command.commandId)
@@ -252,7 +289,7 @@ export type MemoryControllerState = Readonly<{
   selectedEntry: MemoryEntryView | null
   history: readonly MemoryRevisionView[]
   historyNextCursor: string | null
-  exports: readonly MemoryExportStatus[]
+  exports: readonly BrowserMemoryExportStatus[]
   imports: readonly MemoryImportStatus[]
   pendingCommands: readonly PendingMemoryCommand[]
 }>
@@ -332,7 +369,7 @@ export function settleMemorySelection(
   return Object.freeze({ ...state, selectedEntry, history: mergeMemoryHistory([], history) })
 }
 
-function replaceExport(current: readonly MemoryExportStatus[], incoming: MemoryExportStatus): readonly MemoryExportStatus[] {
+function replaceExport(current: readonly BrowserMemoryExportStatus[], incoming: MemoryExportStatus): readonly BrowserMemoryExportStatus[] {
   return Object.freeze([incoming, ...current.filter(({ exportRef }) => exportRef !== incoming.exportRef)])
 }
 

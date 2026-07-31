@@ -57,6 +57,8 @@ export interface SiteReleaseIdentity {
   readonly profileRevision: string;
 }
 
+export type SiteProductId = "memory";
+
 export interface SiteAppManifest {
   readonly packageName: string;
   readonly siteKey: string;
@@ -64,6 +66,7 @@ export interface SiteAppManifest {
   readonly domains: readonly SiteDomainBinding[];
   readonly release: SiteReleaseIdentity;
   readonly contractFloor: SiteContractFloor;
+  readonly enabledProductIds: readonly SiteProductId[];
 }
 
 /**
@@ -159,6 +162,12 @@ export function defineSiteAppManifest(input: SiteAppManifest): Readonly<SiteAppM
   if (input.domains.length === 0) {
     throw new TypeError("at least one domain binding is required");
   }
+  if (
+    new Set(input.enabledProductIds).size !== input.enabledProductIds.length ||
+    input.enabledProductIds.some((productId) => productId !== "memory")
+  ) {
+    throw new TypeError("enabledProductIds must be a unique closed product set");
+  }
 
   const seen = new Set<string>();
   const domains = input.domains.map((domain) => {
@@ -186,5 +195,6 @@ export function defineSiteAppManifest(input: SiteAppManifest): Readonly<SiteAppM
       signature: requireText(input.contractFloor.signature, "contractFloor.signature"),
       signingKeyId: requireText(input.contractFloor.signingKeyId, "contractFloor.signingKeyId"),
     }),
+    enabledProductIds: Object.freeze([...input.enabledProductIds]),
   });
 }

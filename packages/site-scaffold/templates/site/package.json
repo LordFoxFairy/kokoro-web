@@ -27,7 +27,7 @@
     "@kokoro/chat-app": "file:vendor/chat-app.tgz",
     "@kokoro/site-bff": "file:vendor/site-bff.tgz",
     "@kokoro/account-app": "file:vendor/account-app.tgz",
-    "@kokoro/media-app": "file:vendor/media-app.tgz",
+    "@kokoro/media-app": "file:vendor/media-app.tgz"__MEMORY_DEPENDENCY_FRAGMENT__,
     "next": "16.2.12",
     "next-auth": "5.0.0-beta.32",
     "react": "19.2.8",

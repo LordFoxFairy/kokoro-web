@@ -27,7 +27,8 @@ async function createPackageArtifact(
     | "@kokoro/chat-app"
     | "@kokoro/site-bff"
     | "@kokoro/account-app"
-    | "@kokoro/media-app",
+    | "@kokoro/media-app"
+    | "@kokoro/memory-app",
 ) {
   const source = join(root, `${archiveName}-source`);
   await mkdir(join(source, "package"), { recursive: true });
@@ -49,7 +50,7 @@ describe("independent Site project scaffold", () => {
   it("materializes product-named projects with separate release, domain, CI and deploy authority", async () => {
     const root = await mkdtemp(join(tmpdir(), "site-scaffold-test-"));
     temporaryDirectories.push(root);
-    const packages = [
+    const basePackages = [
       await createPackageArtifact(root, "app-kit", "@kokoro/site-app-kit"),
       await createPackageArtifact(root, "client", "@kokoro/site-client"),
       await createPackageArtifact(root, "session-client", "@kokoro/session-client"),
@@ -62,6 +63,7 @@ describe("independent Site project scaffold", () => {
       await createPackageArtifact(root, "account-app", "@kokoro/account-app"),
       await createPackageArtifact(root, "media-app", "@kokoro/media-app"),
     ] as const;
+    const memoryPackage = await createPackageArtifact(root, "memory-app", "@kokoro/memory-app");
     const floor = {
       contract: "platform-public-v1" as const,
       version: "1" as const,
@@ -81,7 +83,8 @@ describe("independent Site project scaffold", () => {
       domains: [{ hostname: "alpha.external.invalid", environment: "production" }],
       deployment: { provider: "external", projectRef: "external/alpha", region: "us-east" },
       contractFloor: floor,
-      packages,
+      enabledProductIds: ["memory"],
+      packages: [...basePackages, memoryPackage],
     });
     const beta = await createSiteProject({
       directory: join(root, "beta"),
@@ -94,7 +97,8 @@ describe("independent Site project scaffold", () => {
       domains: [{ hostname: "beta.external.invalid", environment: "production" }],
       deployment: { provider: "external", projectRef: "external/beta", region: "us-west" },
       contractFloor: floor,
-      packages,
+      enabledProductIds: [],
+      packages: basePackages,
     });
 
     expect(alpha.directory).not.toBe(beta.directory);
@@ -118,7 +122,41 @@ describe("independent Site project scaffold", () => {
     expect(alpha.generatedFiles).toContain("src/app/studio/page.tsx");
     expect(alpha.generatedFiles).toContain("src/app/library/page.tsx");
     expect(alpha.generatedFiles).toContain("vendor/media-app.tgz");
+    expect(alpha.generatedFiles).toContain("vendor/memory-app.tgz");
+    expect(alpha.generatedFiles).toContain("src/app/memory/page.tsx");
+    expect(alpha.generatedFiles).toContain("src/app/api/memory/[[...path]]/route.ts");
+    expect(beta.generatedFiles).not.toContain("vendor/memory-app.tgz");
+    expect(beta.generatedFiles).not.toContain("src/app/memory/page.tsx");
+    expect(beta.generatedFiles).not.toContain("src/app/api/memory/[[...path]]/route.ts");
     expect(beta.generatedFiles).toContain("deploy/artifact-manifest.json");
+
+    const alphaManifest = JSON.parse(await readFile(join(alpha.directory, "deploy/artifact-manifest.json"), "utf8"));
+    const betaManifest = JSON.parse(await readFile(join(beta.directory, "deploy/artifact-manifest.json"), "utf8"));
+    const alphaSite = await readFile(join(alpha.directory, "src/site-bootstrap.ts"), "utf8");
+    const betaSite = await readFile(join(beta.directory, "src/site-bootstrap.ts"), "utf8");
+    const alphaLayout = await readFile(join(alpha.directory, "src/app/layout.tsx"), "utf8");
+    const betaLayout = await readFile(join(beta.directory, "src/app/layout.tsx"), "utf8");
+    const alphaNextConfig = await readFile(join(alpha.directory, "next.config.ts"), "utf8");
+    const betaNextConfig = await readFile(join(beta.directory, "next.config.ts"), "utf8");
+    const alphaWorkspace = await readFile(join(alpha.directory, "pnpm-workspace.yaml"), "utf8");
+    const betaWorkspace = await readFile(join(beta.directory, "pnpm-workspace.yaml"), "utf8");
+    expect(alphaManifest.enabledProductIds).toEqual(["memory"]);
+    expect(alphaManifest.packages).toHaveProperty("@kokoro/memory-app");
+    expect(alphaSite).toContain('enabledProductIds: [\n  "memory"\n]');
+    expect(alphaLayout).toContain('href="/memory"');
+    expect(alphaNextConfig).toContain("@kokoro/memory-app");
+    expect(alphaWorkspace).toContain("@kokoro/memory-app");
+    expect(betaManifest.enabledProductIds).toEqual([]);
+    expect(betaManifest.packages).not.toHaveProperty("@kokoro/memory-app");
+    expect(betaSite).not.toContain('"memory"');
+    expect(betaLayout).not.toContain('href="/memory"');
+    expect(betaNextConfig).not.toContain("@kokoro/memory-app");
+    expect(betaWorkspace).not.toContain("@kokoro/memory-app");
+    await expect(readFile(join(beta.directory, "vendor/memory-app.tgz"))).rejects.toThrow();
+    await expect(readFile(join(beta.directory, "src/app/memory/page.tsx"))).rejects.toThrow();
+    await expect(readFile(join(beta.directory, "src/app/api/memory/[[...path]]/route.ts"))).rejects.toThrow();
+    const betaPackage = JSON.parse(await readFile(join(beta.directory, "package.json"), "utf8"));
+    expect(betaPackage.dependencies).not.toHaveProperty("@kokoro/memory-app");
 
     const occupied = join(root, "occupied");
     await mkdir(occupied);
@@ -134,7 +172,8 @@ describe("independent Site project scaffold", () => {
       domains: [{ hostname: "occupied.external.invalid", environment: "production" }],
       deployment: { provider: "external", projectRef: "external/occupied", region: "us-east" },
       contractFloor: floor,
-      packages,
+      enabledProductIds: [],
+      packages: basePackages,
     })).rejects.toThrow("refusing to overwrite existing Site target");
     expect(await readFile(join(occupied, "owner.txt"), "utf8")).toBe("existing owner\n");
 

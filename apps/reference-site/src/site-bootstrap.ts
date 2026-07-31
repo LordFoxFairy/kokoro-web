@@ -3,6 +3,7 @@ import { PLATFORM_PUBLIC_CONTRACT_METADATA } from "@kokoro/site-client";
 
 /** Contract/E2E fixture only. Production Sites are generated into independent repositories. */
 export const referenceSite = defineSiteAppManifest({
+  enabledProductIds: [],
   packageName: "@kokoro/reference-site",
   siteKey: "reference-site",
   displayName: "Reference AI Workspace",

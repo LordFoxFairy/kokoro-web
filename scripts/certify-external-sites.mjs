@@ -112,6 +112,7 @@ async function main() {
     await run(pnpm, ["--filter", "@kokoro/site-bff", "build"], webRoot);
     await run(pnpm, ["--filter", "@kokoro/account-app", "build"], webRoot);
     await run(pnpm, ["--filter", "@kokoro/media-app", "build"], webRoot);
+    await run(pnpm, ["--filter", "@kokoro/memory-app", "build"], webRoot);
     await run(pnpm, ["--filter", "@kokoro/site-scaffold", "build"], webRoot);
     const packages = await Promise.all([
       pack("@kokoro/site-app-kit", packageDirectory),
@@ -125,8 +126,8 @@ async function main() {
       pack("@kokoro/site-bff", packageDirectory),
       pack("@kokoro/account-app", packageDirectory),
       pack("@kokoro/media-app", packageDirectory),
+      pack("@kokoro/memory-app", packageDirectory),
     ]);
-    const packageArtifacts = Object.fromEntries(packages.map((entry) => [entry.name, entry.sha256]));
 
     const metadataModule = await import(
       pathToFileURL(resolve(webRoot, "packages/site-client/dist/generated/platform-public/contract-metadata.js"))
@@ -162,6 +163,7 @@ async function main() {
         releaseId: "alpha.2026.07.28.001",
         hostname: "alpha.external.invalid",
         projectRef: "external/site-alpha",
+        enabledProductIds: ["memory"],
       },
       {
         reportName: "site-beta.json",
@@ -171,6 +173,7 @@ async function main() {
         releaseId: "beta.2026.07.28.001",
         hostname: "beta.external.invalid",
         projectRef: "external/site-beta",
+        enabledProductIds: [],
       },
     ];
 
@@ -180,6 +183,10 @@ async function main() {
     const reports = [];
     for (const definition of definitions) {
       const directory = join(projectsDirectory, definition.siteKey);
+      const sitePackages = packages.filter((entry) =>
+        entry.name !== "@kokoro/memory-app" || definition.enabledProductIds.includes("memory")
+      );
+      const packageArtifacts = Object.fromEntries(sitePackages.map((entry) => [entry.name, entry.sha256]));
       const artifactSha256 = sourceArtifact(
         definition.siteKey,
         definition.releaseId,
@@ -196,7 +203,8 @@ async function main() {
         domains: [{ hostname: definition.hostname, environment: "production" }],
         deployment: { provider: "external", projectRef: definition.projectRef, region: "us-east" },
         contractFloor,
-        packages,
+        enabledProductIds: definition.enabledProductIds,
+        packages: sitePackages,
       });
       const verification = await verifyProject(directory, fixtureKeyringJson, `https://${definition.hostname}`);
       reports.push({
@@ -206,6 +214,7 @@ async function main() {
         siteKey: definition.siteKey,
         packageName: definition.packageName,
         releaseId: definition.releaseId,
+        enabledProductIds: definition.enabledProductIds,
         domainBindings: [definition.hostname],
         contractFloor: {
           schemaSha256: contractFloor.schemaSha256,
@@ -268,6 +277,7 @@ async function main() {
         siteKey: report.siteKey,
         packageName: report.packageName,
         releaseId: report.releaseId,
+        enabledProductIds: report.enabledProductIds,
         sourceCommit: report.sourceCommit,
         lockSha256: report.lockSha256,
         buildSha256: report.buildSha256,

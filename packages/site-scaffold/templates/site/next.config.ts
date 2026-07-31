@@ -3,7 +3,7 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   output: "standalone",
   poweredByHeader: false,
-  transpilePackages: ["@kokoro/account-app", "@kokoro/asset-client", "@kokoro/chat-app", "@kokoro/media-app"],
+  transpilePackages: __TRANSPILE_PACKAGES_JSON__,
   async headers() {
     return [{
       source: "/:path*",

@@ -26,6 +26,12 @@ The generated project is now a complete app composition: Auth.js password/TOTP c
 Platform-owned bootstrap, exact generated Session Browser v3 proxy, shared capability-scoped Asset upload client, shared Chat product, and Site-local Studio/Library routes from the brand-neutral media factory. Platform catalog publication remains
 the fail-closed source of enabled surfaces. Live activation, auth journey, cookie isolation, deploy and rollback evidence are still required.
 
+Optional product composition is physical and fail-closed. A release with `enabledProductIds: ["memory"]` carries the Memory tgz,
+dependency, page, Site-shell navigation, bootstrap declaration and exact same-origin BFF route; a release without it carries none
+of those bytes or operations. Even an included page/BFF remains unavailable unless the resolved Platform bootstrap also enables
+the `memory` surface. `scripts/certify-external-sites.mjs` builds one enabled and one disabled independent artifact and records each
+exact package closure.
+
 ## Verification
 
 - `pnpm --filter @kokoro/site-scaffold typecheck`

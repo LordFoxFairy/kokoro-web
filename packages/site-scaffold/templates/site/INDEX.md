@@ -21,6 +21,11 @@ browser-safe labels/HTTPS or same-origin links. Browser input can accept the pub
 
 When Platform publishes the `image` surface and catalog, this independent Site also renders its own `/studio` creation work area and `/library` artifact browser through `@kokoro/media-app`. Both call only the Site's same-origin allowlisted media BFF. A Studio ready candidate deep-links by opaque Artifact ref; Library validates the ref and resolves it within the authenticated owner list before loading versions. Library emits a content URL only for `ready`; processing, restricted, unavailable, and deleted remain typed owner states. Content authorization is issued and redeemed server-side and streamed without revealing the capability or Platform endpoint.
 
+Memory is an optional signed-release product. Only an artifact whose `enabledProductIds` contains `memory` includes
+`@kokoro/memory-app`, `/memory`, its Site-shell navigation entry and the exact `/api/memory` BFF route. Runtime rendering also
+requires Platform to publish the `memory` surface. A disabled artifact contains none of those package, route, navigation or
+bootstrap identifiers even when the shared backend supports Memory.
+
 The Node instrumentation validates the complete local runtime configuration before serving traffic. `/api/health/live` is process-only;
 `/api/health/ready` verifies the registered Platform product context and any enabled account/legal configuration without exposing policy. The standalone container runs as a
 non-root user, and deployment metadata declares the exact health probes. Root Web has no runnable shared-user fallback.

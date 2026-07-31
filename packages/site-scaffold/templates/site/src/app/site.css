@@ -3,6 +3,14 @@
   font-family: Inter, ui-sans-serif, system-ui, sans-serif;
   background: #0b0d12;
   color: #f7f8fb;
+  --kokoro-page-background: #0b0d12;
+  --kokoro-page-foreground: #f7f8fb;
+  --kokoro-panel-background: #141722;
+  --kokoro-panel-border: #34394a;
+  --kokoro-accent: #6f7cff;
+  --kokoro-accent-border: #7e89ff;
+  --kokoro-accent-muted: #9ca7ff;
+  --kokoro-text-muted: #afb4c3;
 }
 
 body { margin: 0; }
@@ -15,3 +23,5 @@ label { display: grid; gap: 0.4rem; color: #afb4c3; }
 input, button { border: 1px solid #34394a; border-radius: 0.75rem; padding: 0.8rem 1rem; font: inherit; }
 input { background: #141722; color: #f7f8fb; }
 button { background: #6f7cff; color: white; cursor: pointer; }
+.site-product-nav { position: relative; z-index: 10; display: flex; justify-content: flex-end; padding: 1rem 2rem 0; }
+.site-product-nav a { border: 1px solid var(--kokoro-panel-border); border-radius: 999px; color: var(--kokoro-page-foreground); padding: .65rem .9rem; text-decoration: none; }

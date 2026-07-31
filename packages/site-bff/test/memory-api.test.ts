@@ -190,6 +190,51 @@ describe("Site Memory browser API", () => {
     expect(getSettings).not.toHaveBeenCalled()
   })
 
+  test("returns no Memory operation when the resolved Platform surface is disabled", async () => {
+    const getSettings = vi.fn(() => Promise.resolve(settings))
+    const memory = authority({ getSettings })
+    const surface = api(memory, { memory: () => Promise.resolve(null) })
+
+    const response = await surface.handle(browserRequest("/settings"), ["settings"])
+
+    expect(response.status).toBe(404)
+    await expect(response.json()).resolves.toEqual({
+      error: { code: "NOT_FOUND", message: "Memory operation was not found" },
+    })
+    expect(getSettings).not.toHaveBeenCalled()
+  })
+
+  test("projects a ready export only to the exact same-origin Artifact delivery route", async () => {
+    const getExport = vi.fn(() => Promise.resolve({
+      export: {
+        artifactDownloadRequest: {
+          artifactRef: "artifact:memory-1",
+          artifactVersionRef: "version:memory-1",
+          deliveryRequestRef: "delivery:memory-1",
+          purpose: "export" as const,
+        },
+        expiresAt: "2026-08-01T00:00:00.000Z",
+        exportRef: "export-1",
+        failureCode: null,
+        format: "kokoro_memory_export_v1" as const,
+        requestedAt: "2026-07-31T00:00:00.000Z",
+        state: "ready" as const,
+        updatedAt: "2026-07-31T00:00:01.000Z",
+      },
+    }))
+    const response = await api(authority({ getExport })).handle(browserRequest("/exports/export-1"), ["exports", "export-1"])
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toMatchObject({
+      export: {
+        artifactDownloadRequest: {
+          deliveryUrl: "/api/media/artifacts/artifact%3Amemory-1/versions/version%3Amemory-1/content?purpose=export&exportIntentRef=delivery%3Amemory-1",
+          purpose: "export",
+        },
+      },
+    })
+  })
+
   test("rejects duplicate, unknown and browser-supplied authority query axes", async () => {
     const listEntries = vi.fn(() => Promise.resolve({ items: [], pageInfo: { nextCursor: null } }))
     const surface = api(authority({ listEntries }))

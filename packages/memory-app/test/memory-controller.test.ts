@@ -3,6 +3,7 @@ import { describe, expect, test } from "vitest"
 
 import {
   beginMemorySelection,
+  createMemoryBrowserClient,
   createMemoryCommandJournal,
   mergeMemoryEntries,
   mergeMemoryHistory,
@@ -127,5 +128,35 @@ describe("Memory controller", () => {
     expect(journal.list()).toEqual([record])
     journal.resolve(record.commandId)
     expect(journal.list()).toEqual([])
+  })
+
+  test("accepts only the exact BFF-projected Artifact export delivery path", async () => {
+    const response = (deliveryUrl: string) => Response.json({
+      export: {
+        artifactDownloadRequest: {
+          artifactRef: "artifact:memory-1",
+          artifactVersionRef: "version:memory-1",
+          deliveryRequestRef: "delivery:memory-1",
+          deliveryUrl,
+          purpose: "export",
+        },
+        expiresAt: "2026-08-01T00:00:00.000Z",
+        exportRef: "export-1",
+        failureCode: null,
+        format: "kokoro_memory_export_v1",
+        requestedAt: "2026-07-31T00:00:00.000Z",
+        state: "ready",
+        updatedAt: "2026-07-31T00:00:01.000Z",
+      },
+    })
+    const expected = "/api/media/artifacts/artifact%3Amemory-1/versions/version%3Amemory-1/content?purpose=export&exportIntentRef=delivery%3Amemory-1"
+    const accepted = createMemoryBrowserClient({ csrfToken: "csrf", fetch: () => Promise.resolve(response(expected)) })
+
+    await expect(accepted.getExport("export-1")).resolves.toMatchObject({
+      export: { artifactDownloadRequest: { deliveryUrl: expected } },
+    })
+
+    const malicious = createMemoryBrowserClient({ csrfToken: "csrf", fetch: () => Promise.resolve(response("https://attacker.invalid/export")) })
+    await expect(malicious.getExport("export-1")).rejects.toMatchObject({ code: "BFF_PROTOCOL_INVALID" })
   })
 })
