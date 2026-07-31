@@ -67,6 +67,49 @@ function stateLabel(state: MediaOperationOwnerState["state"]): string {
   }
 }
 
+function operationDescription(operation: MediaOperationOwnerState): string {
+  switch (operation.state) {
+    case "admission_pending": return "The owner is checking Site policy, model access, and credit admission."
+    case "authorized": return "Admission is committed and the operation is waiting to enter the execution queue."
+    case "queued": return "The operation is queued. Closing this page will not cancel it."
+    case "active": return "The owner is creating the requested candidates."
+    case "finalizing": return "Outputs are being validated, policy-checked, and finalized into Artifact versions."
+    case "cancel_requested": return "Cancellation was requested. Submitted provider effects may still need reconciliation."
+    case "reconciling": return "Owner is reconciling an uncertain outcome. Do not submit the same creation again."
+    case "completed": return operation.outcomeClass === "canonical"
+      ? "All required outputs are finalized."
+      : "Outputs are closed, but the outcome could not be fully confirmed."
+    case "partial": return operation.outcomeClass === "canonical"
+      ? "Some outputs are ready; the remaining candidates were closed by owner policy."
+      : "Some outputs are ready. Outcome could not be fully confirmed for the remaining candidates."
+    case "failed": return operation.failure.safeMessage ?? (operation.outcomeClass === "irreconcilable"
+      ? "Outcome could not be fully confirmed."
+      : "The media owner closed this operation as failed.")
+    case "canceled": return operation.outcomeClass === "canonical"
+      ? "Cancellation is confirmed by the media owner."
+      : "Cancellation is closed. Outcome could not be fully confirmed."
+  }
+}
+
+function candidateDescription(candidate: MediaOperationOwnerState["candidates"][number]): string {
+  switch (candidate.state) {
+    case "allocated": return "Output slot allocated"
+    case "producing": return "Creating output"
+    case "output_received": return "Output received"
+    case "validating": return "Validating output"
+    case "unknown": return "Outcome unknown · owner reconciliation required"
+    case "cancel_requested": return "Cancellation requested"
+    case "canceled": return "Canceled"
+    case "ready": return "Ready in Library"
+    case "restricted": return candidate.failure.safeMessage ?? "Restricted by policy"
+    case "failed": return candidate.failure.safeMessage ?? "Candidate failed"
+  }
+}
+
+const CANCELLABLE_OPERATION_STATES = new Set<MediaOperationOwnerState["state"]>([
+  "admission_pending", "authorized", "queued", "active", "finalizing",
+])
+
 export function createStudioOperationInput(input: Readonly<{
   definition: OperationDefinition | undefined
   options: readonly PublishedModelOption[]
@@ -215,7 +258,7 @@ export function StudioView(props: Readonly<{
     const input = operationInput()
     if (input !== null) props.onQuote(input, draft.inputRevision)
   }
-  return <main className={styles.productShell}>
+  return <main aria-busy={props.busy} className={styles.productShell}>
     <header className={styles.productHeader}>
       <div><span className={styles.eyebrow}>Independent Site workspace</span><h1>{props.brandName} Studio</h1></div>
       <nav aria-label="Media products"><a href="/">Chat</a><a href="/library">Library</a></nav>
@@ -243,13 +286,27 @@ export function StudioView(props: Readonly<{
           <div><button disabled={props.busy || operationInput() === null} type="submit">Get quote</button><button disabled={props.busy || props.submissionBlocked || activeQuote === null || operationInput() === null} type="button" onClick={() => { const input = operationInput(); if (input !== null && isStudioQuoteActive(activeQuote, draft.inputRevision)) props.onSubmit(input, draft.inputRevision) }}>Create</button></div>
         </div>
       </form>
-      <section className={styles.activityPanel} aria-labelledby="studio-activity">
+      <section className={styles.activityPanel} aria-labelledby="studio-activity" aria-live="polite">
         <div className={styles.sectionHeading}><div><span className={styles.eyebrow}>Owner projection</span><h2 id="studio-activity">Recent operations</h2></div><button disabled={props.busy} type="button" onClick={props.onRefresh}>Refresh</button></div>
         {props.operations.length === 0 ? <p className={styles.empty}>No media operations yet.</p> : <ul className={styles.operationList}>{props.operations.map((operation) => <li key={operation.mediaOperationRef} data-state={operation.state}>
           <div><strong>{stateLabel(operation.state)}</strong><code>{operation.definitionRevisionRef}</code></div>
-          <div className={styles.progress} aria-label={`${operation.progressBps / 100}% complete`}><span style={{ width: `${operation.progressBps / 100}%` }} /></div>
+          <div
+            aria-label={`${operation.progressBps / 100}% complete`}
+            aria-valuemax={100}
+            aria-valuemin={0}
+            aria-valuenow={operation.progressBps / 100}
+            className={styles.progress}
+            role="progressbar"
+          ><span style={{ width: `${operation.progressBps / 100}%` }} /></div>
           <p>{operation.progressBps / 100}% · owner v{operation.ownerVersion} · {operation.candidates.length} candidate{operation.candidates.length === 1 ? "" : "s"}</p>
-          {["admission_pending", "authorized", "queued", "active", "finalizing"].includes(operation.state) ? <button type="button" disabled={props.busy} onClick={() => props.onCancel(operation)}>Cancel</button> : null}
+          <p className={styles.operationDescription}>{operationDescription(operation)}</p>
+          {operation.candidates.length === 0 ? null : <ol className={styles.candidateList} aria-label="Candidate outcomes">{operation.candidates.map((candidate) => <li key={candidate.candidateRef} data-candidate-state={candidate.state}>
+            <span>Candidate {candidate.ordinal + 1}</span>
+            {candidate.state === "ready"
+              ? <a href={`/library?artifact=${encodeURIComponent(candidate.artifactRef)}`}>{candidateDescription(candidate)}</a>
+              : <strong>{candidateDescription(candidate)}</strong>}
+          </li>)}</ol>}
+          {CANCELLABLE_OPERATION_STATES.has(operation.state) ? <button type="button" disabled={props.busy} onClick={() => props.onCancel(operation)}>Request cancellation</button> : null}
         </li>)}</ul>}
       </section>
     </div>

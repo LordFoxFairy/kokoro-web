@@ -100,6 +100,57 @@ describe("Site media artifact authority", () => {
     expect(JSON.stringify(response)).not.toContain("deliveryCapability")
   })
 
+  test("spends one total deadline across owner read, authorization issue, and byte redemption", async () => {
+    let elapsedMs = 0
+    const deadlines: number[] = []
+    const execute = vi.fn((input: { operationId: PlatformPublicOperationId; deadlineMs?: number }) => {
+      deadlines.push(input.deadlineMs ?? 0)
+      if (input.operationId === "getArtifactVersion") {
+        elapsedMs = 40
+        return Promise.resolve({ version: readyVersion })
+      }
+      if (input.operationId === "issueArtifactDeliveryAuthorization") {
+        elapsedMs = 70
+        return Promise.resolve({ authorization: {
+          artifactRef: "artifact-1",
+          artifactVersionRef: "artifact-version-1",
+          audience: "site-bff.artifact-delivery",
+          authorizationRef: "authorization-1",
+          deliveryCapability: "d".repeat(64),
+          expiresAt: "2026-07-31T00:05:00.000Z",
+          issuedAt: "2026-07-31T00:00:00.000Z",
+          purpose: "preview",
+        } })
+      }
+      throw new Error("unexpected operation")
+    })
+    const redeem = vi.fn<ArtifactDeliveryTransport["redeem"]>(() => Promise.resolve({
+      status: 200,
+      headers: new Headers({ "content-type": "image/png", "content-length": "4" }),
+      body: new ReadableStream<Uint8Array>({
+        start(controller) { controller.enqueue(Uint8Array.of(1, 2, 3, 4)); controller.close() },
+      }),
+    }))
+    const media = createSiteMediaAuthority({
+      projectRef: "server-project",
+      platform: { execute } as never,
+      deliveryTransport: { redeem },
+      now: () => elapsedMs,
+    })
+
+    await media.artifactContent(
+      "artifact-1",
+      "artifact-version-1",
+      { purpose: "preview", viewportClass: "thumbnail" },
+      { signal: new AbortController().signal, deadlineMs: 100 },
+    )
+
+    expect(deadlines).toEqual([100, 60])
+    expect(redeem).toHaveBeenCalledWith(expect.objectContaining({
+      headers: expect.objectContaining({ "X-Kokoro-Request-Deadline-Ms": "30" }),
+    }))
+  })
+
   test("returns typed non-ready availability without minting delivery authority", async () => {
     const execute = vi.fn(() => Promise.resolve({ version: {
       ...readyVersion,

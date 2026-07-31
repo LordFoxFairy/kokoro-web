@@ -113,11 +113,19 @@ export function createSiteMediaAuthority(input) {
             ...options,
         }),
         async artifactContent(artifactRef, artifactVersionRef, delivery, options) {
+            const clock = input.now ?? Date.now;
+            const startedAt = clock();
+            const remainingDeadlineMs = () => {
+                const remaining = options.deadlineMs - Math.max(0, clock() - startedAt);
+                if (!Number.isFinite(remaining) || remaining < 1)
+                    throw new Error("Artifact delivery deadline exhausted");
+                return Math.max(1, Math.floor(remaining));
+            };
             const owner = await input.platform.execute({
                 operationId: "getArtifactVersion",
                 data: { path: { ...path, artifactRef, artifactVersionRef } },
                 signal: options.signal,
-                deadlineMs: options.deadlineMs,
+                deadlineMs: remainingDeadlineMs(),
             });
             if (owner.version.artifactRef !== artifactRef ||
                 owner.version.artifactVersionRef !== artifactVersionRef)
@@ -128,7 +136,7 @@ export function createSiteMediaAuthority(input) {
                 operationId: "issueArtifactDeliveryAuthorization",
                 data: { path: { ...path, artifactRef, artifactVersionRef }, body: delivery },
                 signal: options.signal,
-                deadlineMs: options.deadlineMs,
+                deadlineMs: remainingDeadlineMs(),
             });
             if (issued.authorization.artifactRef !== artifactRef ||
                 issued.authorization.artifactVersionRef !== artifactVersionRef ||
@@ -138,7 +146,7 @@ export function createSiteMediaAuthority(input) {
                 authorizationRef: issued.authorization.authorizationRef,
                 deliveryCapability: issued.authorization.deliveryCapability,
                 signal: options.signal,
-                deadlineMs: options.deadlineMs,
+                deadlineMs: remainingDeadlineMs(),
                 expectedByteSize: BigInt(owner.version.display.byteSize),
                 expectedMediaType: IMAGE_MEDIA_TYPES[owner.version.display.format],
                 ...(options.range === undefined ? {} : { range: options.range }),

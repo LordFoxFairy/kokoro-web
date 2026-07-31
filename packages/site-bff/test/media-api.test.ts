@@ -183,6 +183,8 @@ describe("Site media browser API", () => {
     expect(response.status).toBe(206)
     expect(response.headers.get("content-range")).toBe("bytes 0-1/4")
     expect(response.headers.get("cache-control")).toBe("private, no-store")
+    expect(response.headers.get("x-content-type-options")).toBe("nosniff")
+    expect(response.headers.get("cross-origin-resource-policy")).toBe("same-origin")
     expect(artifactContent).toHaveBeenCalledWith(
       "artifact-1",
       "artifact-v1",

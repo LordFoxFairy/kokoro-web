@@ -22,7 +22,15 @@ export function mergeMediaOperationOwnerStates(
       continue
     }
     const existing = result[index]
-    if (existing === undefined || validateMediaOperationTransition(existing, update) !== undefined) continue
+    if (existing === undefined) continue
+    const conflict = validateMediaOperationTransition(existing, update)
+    if (
+      conflict === "owner_version_regression" ||
+      conflict === "candidate_owner_version_regression"
+    ) continue
+    if (conflict !== undefined) {
+      throw new TypeError(`Media owner ${conflict.replaceAll("_", " ")}`)
+    }
     if (BigInt(existing.ownerVersion) === BigInt(update.ownerVersion)) continue
     result[index] = update
     changed = true

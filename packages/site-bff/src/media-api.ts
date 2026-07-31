@@ -36,7 +36,7 @@ const IDEMPOTENCY_KEY = /^\S{16,191}$/u
 function problem(status: number, code: string, message: string): Response {
   return Response.json({ error: { code, message } }, {
     status,
-    headers: { "cache-control": "no-store" },
+    headers: { "cache-control": "no-store", "x-content-type-options": "nosniff" },
   })
 }
 
@@ -298,6 +298,8 @@ export function createSiteMediaApi(input: Readonly<{
           })
           const headers = new Headers(response.headers)
           headers.set("cache-control", "private, no-store")
+          headers.set("cross-origin-resource-policy", "same-origin")
+          headers.set("x-content-type-options", "nosniff")
           return new Response(response.body, { status: response.status, headers })
         }
         return problem(404, "NOT_FOUND", "Media operation was not found")

@@ -50,6 +50,7 @@ export declare function createSiteMediaAuthority(input: Readonly<{
     projectRef: string;
     platform: PlatformClient;
     deliveryTransport: ArtifactDeliveryTransport;
+    now?: () => number;
 }>): SiteMediaAuthority;
 export {};
 //# sourceMappingURL=media-authority.d.ts.map

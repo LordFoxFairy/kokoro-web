@@ -7,7 +7,7 @@ const IDEMPOTENCY_KEY = /^\S{16,191}$/u;
 function problem(status, code, message) {
     return Response.json({ error: { code, message } }, {
         status,
-        headers: { "cache-control": "no-store" },
+        headers: { "cache-control": "no-store", "x-content-type-options": "nosniff" },
     });
 }
 async function boundedJson(request) {
@@ -266,6 +266,8 @@ export function createSiteMediaApi(input) {
                     });
                     const headers = new Headers(response.headers);
                     headers.set("cache-control", "private, no-store");
+                    headers.set("cross-origin-resource-policy", "same-origin");
+                    headers.set("x-content-type-options", "nosniff");
                     return new Response(response.body, { status: response.status, headers });
                 }
                 return problem(404, "NOT_FOUND", "Media operation was not found");

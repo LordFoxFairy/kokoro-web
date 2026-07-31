@@ -63,21 +63,28 @@ describe("media owner refresh", () => {
       outcomeClass: "canonical" as const,
     }
     expect(mergeMediaOperationOwnerStates([current], [completed])).toEqual([completed])
-    expect(mergeMediaOperationOwnerStates([completed], [{
+    expect(() => mergeMediaOperationOwnerStates([completed], [{
       ...current,
       ownerVersion: "4",
       progressBps: 8000,
       updatedAt: "2026-07-31T00:00:04.000Z",
-    }])).toEqual([completed])
+    }])).toThrow(/terminal state conflict/u)
   })
 
-  test("never changes the immutable model option identity at a higher owner version", () => {
-    expect(mergeMediaOperationOwnerStates([current], [{
+  test("fails loud when a higher owner version changes immutable operation identity", () => {
+    expect(() => mergeMediaOperationOwnerStates([current], [{
       ...current,
       modelOptionRevisionRef: "image.other@2",
       ownerVersion: "3",
       updatedAt: "2026-07-31T00:00:03.000Z",
-    }])).toEqual([current])
+    }])).toThrow(/owner identity conflict/u)
+  })
+
+  test("fails loud when the same owner version carries different facts", () => {
+    expect(() => mergeMediaOperationOwnerStates([current], [{
+      ...current,
+      progressBps: 3000,
+    }])).toThrow(/owner version conflict/u)
   })
 })
 
