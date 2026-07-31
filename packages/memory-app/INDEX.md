@@ -18,4 +18,16 @@ or after same-scope auth/transport client rotation; abort remains resource clean
 
 The package does not own Memory persistence, Session history, GA context use, Asset/Artifact bytes or Site feature enablement. `@kokoro/site-scaffold` is the build-time authority that either includes the complete package/page/BFF route in one Site artifact or omits them entirely.
 
+## M0.1 contract boundary
+
+M0.1 does not claim protected-category confirmation or navigable source actions. The current public contract exposes only a
+non-navigable source summary (`sourceKind`, `safeLabel`, `state`), so this UI renders source provenance as text and never
+turns an owner reference or arbitrary URL into a link. A successor Root contract must provide an opaque source-action
+handle or closed same-origin path whose BFF exchange reauthorizes the current Site workload and user session.
+
+The current remember/correct command contract also has no sensitivity classification, protected-category marker or
+confirmation receipt. Platform policy remains the enforcement authority; Web must not infer protected content from text
+or invent browser-only fields. A successor Root contract must define the protected-memory confirmation command sequence,
+receipt lifecycle and safe rejection projection before Web can expose that flow.
+
 Verification: `pnpm --filter @kokoro/memory-app lint && pnpm --filter @kokoro/memory-app typecheck && pnpm --filter @kokoro/memory-app test && pnpm --filter @kokoro/memory-app build`.

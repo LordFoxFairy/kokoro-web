@@ -19,7 +19,8 @@
     "prepack": "pnpm run build",
     "lint": "eslint src test",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "verify:dist": "pnpm run build && git diff --exit-code -- dist"
   },
   "publishConfig": { "access": "public", "provenance": true },
   "dependencies": {

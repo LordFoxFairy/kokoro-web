@@ -29,6 +29,8 @@ jobs:
         run: pnpm test
       - name: build Site factory and reference fixture
         run: pnpm run build:site
+      - name: verify tracked Site BFF import artifact
+        run: pnpm --filter @kokoro/site-bff verify:dist
       - name: build admin console
         run: pnpm run build:admin
         env:

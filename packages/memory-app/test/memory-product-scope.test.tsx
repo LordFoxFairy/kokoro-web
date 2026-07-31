@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 
-import type { MemoryBrowserFetch } from "../src/memory-controller"
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react"
+import { createMemoryCommandJournal, type MemoryBrowserFetch } from "../src/memory-controller"
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, describe, expect, test, vi } from "vitest"
 
 import { MemoryProduct } from "../src/memory-product"
@@ -47,6 +47,34 @@ function responseFor(input: string | URL | Request, content: string): Response {
 
 function immediateFetch(content: string): MemoryBrowserFetch {
   return (input) => Promise.resolve(responseFor(input, content))
+}
+
+function entryValue(entryRef: string, content: string, overrides: Readonly<Record<string, unknown>> = {}) {
+  return {
+    category: "preference",
+    content,
+    createdAt: "2026-07-31T00:00:00.000Z",
+    currentRevisionRef: `${entryRef}-revision-1`,
+    entryRef,
+    entryVersion: "1",
+    prioritized: false,
+    revision: 1,
+    scopeKind: "user",
+    source: { safeLabel: "Saved by you", sourceKind: "explicit", state: "current" },
+    state: "active",
+    updatedAt: "2026-07-31T00:00:00.000Z",
+    validFrom: null,
+    validTo: null,
+    ...overrides,
+  }
+}
+
+function entryResponse(entryRef: string, content: string, overrides: Readonly<Record<string, unknown>> = {}): Response {
+  return Response.json({ entry: entryValue(entryRef, content, overrides) })
+}
+
+function historyResponse(entryRef: string): Response {
+  return Response.json({ entryRef, items: [], pageInfo: { hasMore: false, nextCursor: null } })
 }
 
 describe("Memory product runtime scope", () => {
@@ -118,5 +146,241 @@ describe("Memory product runtime scope", () => {
     expect(screen.queryByText("Stale auth client memory")).toBeNull()
     expect(screen.getByText("Current auth client memory")).toBeTruthy()
     expect(screen.queryByRole("alert")).toBeNull()
+  })
+
+  test("ignores a deferred deep-link A result after same-scope A to B to A navigation", async () => {
+    const releases: Array<() => void> = []
+    let aEntryCalls = 0
+    let aHistoryCalls = 0
+    const fetcher = vi.fn<MemoryBrowserFetch>((input) => {
+      const path = String(input)
+      if (path.endsWith("/settings")) return Promise.resolve(Response.json(settings))
+      if (path.includes("/entries?")) {
+        return Promise.resolve(Response.json({ items: [], pageInfo: { hasMore: false, nextCursor: null } }))
+      }
+      if (path.includes("/entries/entry-a/history")) {
+        aHistoryCalls += 1
+        if (aHistoryCalls === 1) {
+          return new Promise<Response>((resolve) => releases.push(() => resolve(historyResponse("entry-a"))))
+        }
+        return Promise.resolve(historyResponse("entry-a"))
+      }
+      if (path.endsWith("/entries/entry-a")) {
+        aEntryCalls += 1
+        if (aEntryCalls === 1) {
+          return new Promise<Response>((resolve) => releases.push(() => resolve(entryResponse("entry-a", "Stale deep-link A"))))
+        }
+        return Promise.resolve(entryResponse("entry-a", "Current deep-link A"))
+      }
+      if (path.includes("/entries/entry-b/history")) return Promise.resolve(historyResponse("entry-b"))
+      if (path.endsWith("/entries/entry-b")) return Promise.resolve(entryResponse("entry-b", "Current deep-link B"))
+      throw new Error(`Unexpected Memory request: ${path}`)
+    })
+    const rendered = render(<MemoryProduct
+      brandName="Site A"
+      browserRuntimeScope="site-a:user-1:release-1"
+      csrfToken="csrf-stable"
+      fetch={fetcher}
+      initialEntryRef="entry-a"
+    />)
+    await waitFor(() => expect(releases).toHaveLength(2))
+
+    rendered.rerender(<MemoryProduct
+      brandName="Site A"
+      browserRuntimeScope="site-a:user-1:release-1"
+      csrfToken="csrf-stable"
+      fetch={fetcher}
+      initialEntryRef="entry-b"
+    />)
+    expect(await screen.findByText("Current deep-link B")).toBeTruthy()
+
+    rendered.rerender(<MemoryProduct
+      brandName="Site A"
+      browserRuntimeScope="site-a:user-1:release-1"
+      csrfToken="csrf-stable"
+      fetch={fetcher}
+      initialEntryRef="entry-a"
+    />)
+    expect(await screen.findByText("Current deep-link A")).toBeTruthy()
+    await act(async () => {
+      for (const release of releases) release()
+      await Promise.resolve()
+    })
+
+    expect(screen.queryByText("Stale deep-link A")).toBeNull()
+    expect(screen.getByText("Current deep-link A")).toBeTruthy()
+  })
+
+  test("reports an exact recovered rejection and removes its completed journal record", async () => {
+    const scope = "site-a:user-1:release-1"
+    const commandId = "d".repeat(32)
+    createMemoryCommandJournal({ storage: window.localStorage, scope }).remember({
+      commandId,
+      commandKind: "resetMemorySpace",
+      createdAt: new Date().toISOString(),
+      targetRef: null,
+    })
+    const fetcher = vi.fn<MemoryBrowserFetch>((input) => {
+      const path = String(input)
+      if (path.endsWith(`/commands/${commandId}`)) {
+        return Promise.resolve(Response.json({
+          command: {
+            commandId,
+            commandKind: "resetMemorySpace",
+            receiptRef: "receipt-reset-1",
+            receivedAt: "2026-07-31T00:00:00.000Z",
+            updatedAt: "2026-07-31T00:00:01.000Z",
+          },
+          rejection: {
+            code: "policy_rejected",
+            retryAfter: null,
+            retryClass: "after_user_action",
+          },
+          state: "rejected",
+        }))
+      }
+      return Promise.resolve(responseFor(input, "Current memory"))
+    })
+    render(<MemoryProduct
+      brandName="Site A"
+      browserRuntimeScope={scope}
+      csrfToken="csrf-stable"
+      fetch={fetcher}
+    />)
+
+    fireEvent.click(await screen.findByRole("button", { name: "Recover outcome" }))
+
+    expect((await screen.findByRole("alert")).textContent).toContain("policy_rejected")
+    expect(screen.queryByText("Command recovery is still pending")).toBeNull()
+    expect(createMemoryCommandJournal({ storage: window.localStorage, scope }).list()).toEqual([])
+  })
+
+  test("does not regress a confirmed priority version when its refresh page is stale", async () => {
+    let listCalls = 0
+    const stale = entryValue("entry-1", "Priority memory", {
+      currentRevisionRef: "revision-2",
+      entryVersion: "2",
+      revision: 2,
+    })
+    const fetcher = vi.fn<MemoryBrowserFetch>((input, init) => {
+      const path = String(input)
+      if (path.endsWith("/settings")) return Promise.resolve(Response.json(settings))
+      if (path.includes("/entries?")) {
+        listCalls += 1
+        return Promise.resolve(Response.json({ items: [stale], pageInfo: { hasMore: false, nextCursor: null } }))
+      }
+      if (path.endsWith("/entries/entry-1")) return Promise.resolve(Response.json({ entry: stale }))
+      if (path.includes("/entries/entry-1/history")) return Promise.resolve(historyResponse("entry-1"))
+      if (path.endsWith("/entries/entry-1/prioritize")) {
+        const body = JSON.parse(String(init?.body)) as { command: { commandId: string } }
+        return Promise.resolve(Response.json({
+          command: {
+            commandId: body.command.commandId,
+            commandKind: "prioritizeMemoryEntry",
+            receiptRef: "receipt-priority-1",
+            receivedAt: "2026-07-31T00:00:00.000Z",
+            updatedAt: "2026-07-31T00:00:01.000Z",
+          },
+          result: {
+            entry: entryValue("entry-1", "Priority memory", {
+              currentRevisionRef: "revision-2",
+              entryVersion: "3",
+              prioritized: true,
+              revision: 2,
+            }),
+            resultKind: "entry",
+          },
+          state: "succeeded",
+        }))
+      }
+      throw new Error(`Unexpected Memory request: ${path}`)
+    })
+    render(<MemoryProduct
+      brandName="Site A"
+      browserRuntimeScope="site-a:user-1:release-1"
+      csrfToken="csrf-stable"
+      fetch={fetcher}
+      initialEntryRef="entry-1"
+    />)
+
+    fireEvent.click(await screen.findByRole("button", { name: "Prioritize" }))
+    await waitFor(() => expect(listCalls).toBe(2))
+
+    expect(screen.getByRole("button", { name: "Remove priority" })).toBeTruthy()
+    expect(screen.getByRole("button", { name: /Preference · Priority.*Priority memory/ })).toBeTruthy()
+  })
+
+  test("shows the reset purge receipt and keeps exact recovery while physical purge is pending", async () => {
+    let resetCommandId = ""
+    const scope = "site-a:user-1:release-1"
+    const fetcher = vi.fn<MemoryBrowserFetch>((input, init) => {
+      const path = String(input)
+      if (path.endsWith("/settings")) return Promise.resolve(Response.json(settings))
+      if (path.includes("/entries?")) return Promise.resolve(Response.json({ items: [], pageInfo: { hasMore: false, nextCursor: null } }))
+      if (path.endsWith("/reset")) {
+        const body = JSON.parse(String(init?.body)) as { command: { commandId: string } }
+        resetCommandId = body.command.commandId
+        return Promise.resolve(Response.json({
+          command: {
+            commandId: resetCommandId,
+            commandKind: "resetMemorySpace",
+            receiptRef: "receipt-reset-1",
+            receivedAt: "2026-07-31T00:00:00.000Z",
+            updatedAt: "2026-07-31T00:00:01.000Z",
+          },
+          result: {
+            effectiveAt: "2026-07-31T00:00:01.000Z",
+            entryRef: null,
+            purgeReceiptRef: "purge-space-1",
+            purgeScope: "space",
+            purgeState: "revoked_purge_pending",
+            resultKind: "purge",
+          },
+          state: "succeeded",
+        }))
+      }
+      throw new Error(`Unexpected Memory request: ${path}`)
+    })
+    render(<MemoryProduct
+      brandName="Site A"
+      browserRuntimeScope={scope}
+      csrfToken="csrf-stable"
+      fetch={fetcher}
+    />)
+
+    const confirmation = await screen.findByRole("textbox", { name: "Type RESET ALL MEMORY" })
+    fireEvent.change(confirmation, { target: { value: "RESET ALL MEMORY" } })
+    fireEvent.click(screen.getByRole("button", { name: "Reset all memory" }))
+
+    expect(await screen.findByText("purge-space-1")).toBeTruthy()
+    expect(screen.getByText("Physical purge is still in progress")).toBeTruthy()
+    expect(screen.getByRole("button", { name: "Recover outcome" })).toBeTruthy()
+    expect(createMemoryCommandJournal({ storage: window.localStorage, scope }).list()).toMatchObject([{ commandId: resetCommandId }])
+  })
+
+  test("moves focus from the keyboard-native memory control to the loaded detail region", async () => {
+    const selected = entryValue("entry-1", "Keyboard focus memory")
+    const fetcher = vi.fn<MemoryBrowserFetch>((input) => {
+      const path = String(input)
+      if (path.endsWith("/settings")) return Promise.resolve(Response.json(settings))
+      if (path.includes("/entries?")) return Promise.resolve(Response.json({ items: [selected], pageInfo: { hasMore: false, nextCursor: null } }))
+      if (path.endsWith("/entries/entry-1")) return Promise.resolve(Response.json({ entry: selected }))
+      if (path.includes("/entries/entry-1/history")) return Promise.resolve(historyResponse("entry-1"))
+      throw new Error(`Unexpected Memory request: ${path}`)
+    })
+    render(<MemoryProduct
+      brandName="Site A"
+      browserRuntimeScope="site-a:user-1:release-1"
+      csrfToken="csrf-stable"
+      fetch={fetcher}
+    />)
+
+    const memoryButton = await screen.findByRole("button", { name: /Keyboard focus memory/ })
+    memoryButton.focus()
+    expect(document.activeElement).toBe(memoryButton)
+    fireEvent.click(memoryButton)
+
+    const detail = await screen.findByRole("region", { name: "Memory detail" })
+    await waitFor(() => expect(document.activeElement).toBe(detail))
   })
 })

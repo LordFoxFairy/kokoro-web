@@ -5,6 +5,7 @@ import {
   beginMemorySelection,
   createMemoryBrowserClient,
   createMemoryCommandJournal,
+  memoryCommandRequiresRecovery,
   mergeMemoryEntries,
   mergeMemoryHistory,
   projectMemoryCommand,
@@ -46,10 +47,44 @@ function controllerState(): MemoryControllerState {
     exports: [],
     imports: [],
     pendingCommands: [],
+    spacePurge: null,
   }
 }
 
 describe("Memory controller", () => {
+  test("classifies every command lifecycle state before resolving the recovery journal", () => {
+    const cursor = {
+      commandId: "f".repeat(32),
+      commandKind: "resetMemorySpace" as const,
+      receiptRef: "receipt-lifecycle-1",
+      receivedAt: "2026-07-31T00:00:00.000Z",
+      updatedAt: "2026-07-31T00:00:01.000Z",
+    }
+    const pending = (["accepted", "executing", "outcome_unknown"] as const).map((state) => ({
+      command: cursor,
+      retryAfter: "2026-07-31T00:01:00.000Z",
+      state,
+    } satisfies MemoryCommandResponse))
+    const succeeded = {
+      command: cursor,
+      result: { resultKind: "entry", entry: entry() },
+      state: "succeeded",
+    } satisfies MemoryCommandResponse
+    const purge = (purgeState: "revoked_purge_pending" | "purged") => ({
+      command: cursor,
+      result: { resultKind: "purge", effectiveAt: "2026-07-31T00:00:01.000Z", entryRef: null, purgeReceiptRef: "purge-space-1", purgeScope: "space", purgeState },
+      state: "succeeded",
+    }) satisfies MemoryCommandResponse
+    const rejected = {
+      command: cursor,
+      rejection: { code: "policy_rejected", retryAfter: null, retryClass: "never" },
+      state: "rejected",
+    } satisfies MemoryCommandResponse
+
+    expect([...pending, succeeded, purge("revoked_purge_pending"), purge("purged"), rejected].map(memoryCommandRequiresRecovery))
+      .toEqual([true, true, true, false, true, false, false])
+  })
+
   test("merges cursor pages monotonically and rejects same-version owner conflicts", () => {
     expect(mergeMemoryEntries([entry()], [entry({ entryVersion: "2", revision: 2, currentRevisionRef: "revision-2", content: "Prefer direct answers" }), entry({ entryRef: "entry-2" })]))
       .toEqual([
@@ -113,6 +148,31 @@ describe("Memory controller", () => {
     expect(projectMemoryCommand(forgotten, exportResult).exports[0]?.state).toBe("queued")
   })
 
+  test("keeps a reset recovery receipt until the owner confirms physical space purge", () => {
+    const commandId = "e".repeat(32)
+    const pending = {
+      ...controllerState(),
+      pendingCommands: [{ commandId, commandKind: "resetMemorySpace" as const, createdAt: "2026-07-31T00:00:00.000Z", targetRef: null }],
+    }
+    const response = (purgeState: "revoked_purge_pending" | "purged") => ({
+      state: "succeeded",
+      command: { commandId, commandKind: "resetMemorySpace", receiptRef: "receipt-reset-1", receivedAt: "2026-07-31T00:00:00.000Z", updatedAt: "2026-07-31T00:00:01.000Z" },
+      result: { resultKind: "purge", effectiveAt: "2026-07-31T00:00:01.000Z", entryRef: null, purgeReceiptRef: "purge-space-1", purgeScope: "space", purgeState },
+    }) satisfies MemoryCommandResponse
+
+    const revoked = projectMemoryCommand(pending, response("revoked_purge_pending"))
+    expect(revoked.pendingCommands).toHaveLength(1)
+    expect((revoked as unknown as { spacePurge: unknown }).spacePurge).toEqual({
+      effectiveAt: "2026-07-31T00:00:01.000Z",
+      purgeReceiptRef: "purge-space-1",
+      purgeState: "revoked_purge_pending",
+    })
+
+    const purged = projectMemoryCommand(revoked, response("purged"))
+    expect(purged.pendingCommands).toEqual([])
+    expect((purged as unknown as { spacePurge: unknown }).spacePurge).toMatchObject({ purgeState: "purged" })
+  })
+
   test("journals ambiguous commands by Site scope and recovers without changing identity", () => {
     const values = new Map<string, string>()
     const storage: MemoryStorage = {
@@ -158,5 +218,27 @@ describe("Memory controller", () => {
 
     const malicious = createMemoryBrowserClient({ csrfToken: "csrf", fetch: () => Promise.resolve(response("https://attacker.invalid/export")) })
     await expect(malicious.getExport("export-1")).rejects.toMatchObject({ code: "BFF_PROTOCOL_INVALID" })
+  })
+
+  test("rejects a recovery response for a different command identity", async () => {
+    const requestedCommandId = "a".repeat(32)
+    const client = createMemoryBrowserClient({
+      csrfToken: "csrf",
+      fetch: () => Promise.resolve(Response.json({
+        command: {
+          commandId: "b".repeat(32),
+          commandKind: "rememberMemoryEntry",
+          receiptRef: "receipt-1",
+          receivedAt: "2026-07-31T00:00:00.000Z",
+          updatedAt: "2026-07-31T00:00:01.000Z",
+        },
+        retryAfter: "2026-07-31T00:00:02.000Z",
+        state: "accepted",
+      })),
+    })
+
+    await expect(client.recover(requestedCommandId)).rejects.toMatchObject({
+      code: "BFF_PROTOCOL_INVALID",
+    })
   })
 })

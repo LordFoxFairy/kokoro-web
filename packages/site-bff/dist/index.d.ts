@@ -134,7 +134,7 @@ export interface SiteBffRuntime {
     getAssetUploadStatus(auth: OpaqueAuthSession, intentRef: string): Promise<AssetUploadStatusResponse>;
     recoverAssetUploadCommand(auth: OpaqueAuthSession, commandId: string): Promise<AssetUploadCommandResponse>;
     media(auth: OpaqueAuthSession, budget: SiteRequestBudget): Promise<SiteMediaAuthority>;
-    memory(auth: OpaqueAuthSession, budget: SiteRequestBudget): Promise<SiteMemoryAuthority>;
+    memory(auth: OpaqueAuthSession, budget: SiteRequestBudget): Promise<SiteMemoryAuthority | null>;
     accountProducts(auth: OpaqueAuthSession): Promise<AccountProductsResponse>;
     creditSummary(auth: OpaqueAuthSession): Promise<CreditSummaryResponse>;
     commandReceipt(auth: OpaqueAuthSession | null, commandId: string, receiptRecoveryCapability?: string): Promise<PublicCommandReceiptResponse>;

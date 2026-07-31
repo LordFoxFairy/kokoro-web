@@ -23,14 +23,18 @@ import {
   createMemoryCommandIdentity,
   createMemoryCommandJournal,
   MemoryBrowserError,
+  memoryCommandRequiresRecovery,
+  memorySpacePurgeIsPending,
   mergeMemoryEntries,
   mergeMemoryHistory,
   projectMemoryCommand,
+  reconcileMemoryEntryPage,
   settleMemorySelection,
   type MemoryBrowserFetch,
   type BrowserMemoryExportStatus,
   type MemoryControllerState,
   type PendingMemoryCommand,
+  type MemorySpacePurgeView,
 } from "./memory-controller"
 import styles from "./memory-product.module.css"
 
@@ -121,19 +125,26 @@ function SettingsCard(props: Readonly<{
   description: string
   availability: string
   effective: boolean
+  policyReason: string | null
   requested: boolean
   disabled: boolean
   onChange?(value: boolean): void
 }>) {
   return <article className={styles.settingCard}>
     <div><h3>{props.title}</h3><p>{props.description}</p></div>
+    <div className={styles.settingState}>
+      <span>Requested: {props.requested ? "On" : "Off"}</span>
+      <span>Effective: {props.effective ? "On" : "Off"}</span>
+    </div>
+    {props.policyReason === null ? null : <p className={styles.policyReason}><strong>Policy:</strong> {props.policyReason}</p>}
     {props.availability === "available" && props.onChange !== undefined
       ? <label className={styles.toggle}><input
+        aria-label={`Request ${props.title}`}
         checked={props.requested}
         disabled={props.disabled}
         onChange={(event) => props.onChange?.(event.currentTarget.checked)}
         type="checkbox"
-      /><span>{props.effective ? "On" : "Off"}</span></label>
+      /><span>Change requested setting</span></label>
       : <p className={styles.unavailable}>{availabilityLabel(props.availability)}</p>}
   </article>
 }
@@ -163,6 +174,7 @@ export type MemoryViewProps = Readonly<{
   exports: readonly BrowserMemoryExportStatus[]
   imports: readonly MemoryImportStatus[]
   pendingCommands: readonly PendingMemoryCommand[]
+  spacePurge: MemorySpacePurgeView | null
   importSource: Readonly<{ safeLabel: string }> | null
   importProgress: AssetUploadProgress | null
   status: string
@@ -188,6 +200,8 @@ export type MemoryViewProps = Readonly<{
 }>
 
 export function MemoryView(props: MemoryViewProps) {
+  const detailRef = useRef<HTMLElement | null>(null)
+  const lastFocusedEntryRef = useRef<string | null>(null)
   const [createContent, setCreateContent] = useState("")
   const [createCategory, setCreateCategory] = useState<MemoryCategory>("preference")
   const [correctContent, setCorrectContent] = useState("")
@@ -204,6 +218,15 @@ export function MemoryView(props: MemoryViewProps) {
     event.preventDefault()
     if (correctContent.trim() !== "" && correctBytes !== null && correctBytes <= MAXIMUM_MEMORY_UTF8_BYTES) props.onCorrect(correctContent)
   }
+  useEffect(() => {
+    if (props.selectedEntryRef === null) {
+      lastFocusedEntryRef.current = null
+      return
+    }
+    if (props.selectedEntry === null || lastFocusedEntryRef.current === props.selectedEntryRef) return
+    detailRef.current?.focus()
+    lastFocusedEntryRef.current = props.selectedEntryRef
+  }, [props.selectedEntry, props.selectedEntryRef])
 
   return <main aria-busy={props.busy} className={styles.productShell}>
     <header className={styles.productHeader}>
@@ -223,6 +246,7 @@ export function MemoryView(props: MemoryViewProps) {
           disabled={props.busy}
           effective={props.settings.savedMemoryUse.effective}
           onChange={props.onToggleSavedUse}
+          policyReason={props.settings.savedMemoryUse.policyReason}
           requested={props.settings.savedMemoryUse.requested}
           title="Saved memory"
         />
@@ -231,6 +255,7 @@ export function MemoryView(props: MemoryViewProps) {
           description="Cited retrieval from conversations remains owned by Session."
           disabled
           effective={props.settings.pastChatReference.effective}
+          policyReason={props.settings.pastChatReference.policyReason}
           requested={props.settings.pastChatReference.requested}
           title="Past chats"
         />
@@ -239,6 +264,7 @@ export function MemoryView(props: MemoryViewProps) {
           description="Inference from conversations is a later opt-in capability."
           disabled
           effective={props.settings.automaticLearning.effective}
+          policyReason={props.settings.automaticLearning.policyReason}
           requested={props.settings.automaticLearning.requested}
           title="Automatic learning"
         />
@@ -268,7 +294,7 @@ export function MemoryView(props: MemoryViewProps) {
         {props.nextCursor === null ? null : <button disabled={props.busy} onClick={props.onLoadMore} type="button">Load more memories</button>}
       </section>
 
-      <section aria-label="Memory detail" className={styles.detailColumn}>
+      <section aria-label="Memory detail" className={styles.detailColumn} ref={detailRef} tabIndex={-1}>
         {props.selectedEntry === null ? <p className={styles.empty}>Choose a memory to inspect its exact revision history.</p>
           : props.selectedEntry.state !== "active" ? <PurgeState busy={props.busy} entry={props.selectedEntry} onRefresh={() => props.onRefreshSelected?.()} />
             : <>
@@ -318,6 +344,14 @@ export function MemoryView(props: MemoryViewProps) {
         <ul>{props.imports.map((item) => <li key={item.importRef}><strong>{importLabel(item)}</strong><span>{item.acceptedEntryCount} accepted · {item.rejectedEntryCount} rejected</span>{props.onRefreshImport === undefined || ["completed", "rejected", "failed"].includes(item.state) ? null : <button disabled={props.busy} onClick={() => props.onRefreshImport?.(item.importRef)} type="button">Refresh import</button>}</li>)}</ul></article>
     </section>
 
+    {props.spacePurge === null ? null : <section className={styles.recovery} aria-labelledby="space-purge-title" aria-live="polite">
+      <span className={styles.eyebrow}>Reset receipt</span>
+      <h2 id="space-purge-title">All saved memory is revoked</h2>
+      <p>{props.spacePurge.purgeState === "purged" ? "Physical purge is complete" : "Physical purge is still in progress"}</p>
+      <code>{props.spacePurge.purgeReceiptRef}</code>
+      <time dateTime={props.spacePurge.effectiveAt}>Effective {props.spacePurge.effectiveAt}</time>
+    </section>}
+
     {props.pendingCommands.length === 0 ? null : <section className={styles.recovery} aria-labelledby="recovery-title"><h2 id="recovery-title">Commands awaiting owner recovery</h2><ul>{props.pendingCommands.map((command) => <li key={command.commandId}><span>{command.commandKind}</span><code>{command.commandId}</code>{props.onRecover === undefined ? null : <button disabled={props.busy} onClick={() => props.onRecover?.(command.commandId)} type="button">Recover outcome</button>}</li>)}</ul></section>}
 
     <details className={styles.resetCard}><summary>Reset all saved memory</summary><p>This immediately revokes every active saved memory and begins receipt-backed purge. It cannot be undone.</p><label>Type RESET ALL MEMORY<input onChange={(event) => setResetPhrase(event.currentTarget.value)} value={resetPhrase} /></label><button disabled={props.busy || !destructiveConfirmation("reset", resetPhrase)} onClick={() => props.onReset(resetPhrase)} type="button">Reset all memory</button></details>
@@ -336,6 +370,7 @@ const EMPTY_STATE: MemoryControllerState = Object.freeze({
   exports: Object.freeze([]),
   imports: Object.freeze([]),
   pendingCommands: Object.freeze([]),
+  spacePurge: null,
 })
 
 function errorMessage(error: unknown): string {
@@ -403,7 +438,7 @@ export function MemoryProduct(props: Readonly<{
     assetUploadGenerationRef.current += 1
     for (const controller of controllers.current) controller.abort("Memory runtime scope changed")
     controllers.current.clear()
-  }, [client, props.browserRuntimeScope])
+  }, [client, props.browserRuntimeScope, props.initialEntryRef])
 
   const request = useCallback(async <Value,>(operation: (signal: AbortSignal) => Promise<Value>): Promise<Value> => {
     const controller = new AbortController()
@@ -528,16 +563,22 @@ export function MemoryProduct(props: Readonly<{
       if (response.state === "succeeded" && (commandKind === "prioritizeMemoryEntry" || commandKind === "deprioritizeMemoryEntry")) {
         const page = await request((signal) => client.listEntries({ limit: 50 }, signal))
         if (!scopeFenceRef.current.isCurrent(expectedScope)) return
-        setState((current) => Object.freeze({ ...current, entries: page.items, nextCursor: page.pageInfo.nextCursor }))
+        setState((current) => Object.freeze({
+          ...current,
+          entries: reconcileMemoryEntryPage(current.entries, page.items),
+          nextCursor: page.pageInfo.nextCursor,
+        }))
       }
       if (!scopeFenceRef.current.isCurrent(expectedScope)) return
-      if (response.state === "succeeded" || response.state === "rejected") journal.resolve(command.commandId)
+      if (!memoryCommandRequiresRecovery(response)) journal.resolve(command.commandId)
       if (response.state === "rejected") {
         setError(response.rejection.code === "version_conflict"
           ? "This memory changed. Review its current revision before retrying."
           : `Memory owner rejected this command: ${response.rejection.code}`)
       } else {
-        setStatus(response.state === "succeeded" ? "Memory owner confirmed the change" : "Memory command is being reconciled")
+        setStatus(memorySpacePurgeIsPending(response)
+          ? "Memory is revoked; physical purge is still being reconciled"
+          : response.state === "succeeded" ? "Memory owner confirmed the change" : "Memory command is being reconciled")
       }
     } catch (cause) {
       if (scopeFenceRef.current.isCurrent(expectedScope)) setError(errorMessage(cause))
@@ -615,10 +656,17 @@ export function MemoryProduct(props: Readonly<{
     void request((signal) => client.recover(commandId, signal)).then((response) => {
       if (!scopeFenceRef.current.isCurrent(expectedScope)) return
       setState((current) => projectMemoryCommand(current, response))
-      if (response.state === "succeeded" || response.state === "rejected") {
+      if (!memoryCommandRequiresRecovery(response)) {
         createMemoryCommandJournal({ storage: localStorage, scope: expectedScope.browserRuntimeScope }).resolve(commandId)
       }
-      setStatus(response.state === "succeeded" ? "Recovered the exact Memory command outcome" : "Command recovery is still pending")
+      if (response.state === "rejected") {
+        setError(`Memory owner rejected this command: ${response.rejection.code}`)
+        setStatus("Recovered the exact rejected Memory command outcome")
+      } else {
+        setStatus(memorySpacePurgeIsPending(response)
+          ? "Recovered the reset receipt; physical purge is still in progress"
+          : response.state === "succeeded" ? "Recovered the exact Memory command outcome" : "Command recovery is still pending")
+      }
     }).catch((cause: unknown) => { if (scopeFenceRef.current.isCurrent(expectedScope)) setError(errorMessage(cause)) })
   }, [client, request])
 
@@ -706,6 +754,7 @@ export function MemoryProduct(props: Readonly<{
     onSelect={select}
     onToggleSavedUse={commandHandlers.toggle}
     pendingCommands={state.pendingCommands}
+    spacePurge={state.spacePurge}
     selectedEntry={state.selectedEntry}
     selectedEntryRef={state.selectedEntryRef}
     settings={state.settings}

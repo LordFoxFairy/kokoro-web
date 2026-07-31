@@ -6,7 +6,10 @@ export {
   MemoryBrowserError,
   mergeMemoryEntries,
   mergeMemoryHistory,
+  memoryCommandRequiresRecovery,
+  memorySpacePurgeIsPending,
   projectMemoryCommand,
+  reconcileMemoryEntryPage,
   settleMemorySelection,
 } from "./memory-controller"
 export type {
@@ -19,6 +22,7 @@ export type {
   MemoryPageQuery,
   MemoryStorage,
   PendingMemoryCommand,
+  MemorySpacePurgeView,
 } from "./memory-controller"
 export { destructiveConfirmation, MAXIMUM_MEMORY_UTF8_BYTES, MEMORY_REDUCED_MOTION_MEDIA, MemoryProduct, MemoryView, memoryUtf8Bytes, restoreConflictMessage, safeMemoryImportLabel } from "./memory-product"
 export type { MemoryViewProps } from "./memory-product"

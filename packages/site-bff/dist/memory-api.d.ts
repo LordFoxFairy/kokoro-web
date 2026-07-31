@@ -43,7 +43,7 @@ export interface SiteMemoryApiRuntime {
         operationId: string;
         token: string;
     }>): boolean;
-    memory(auth: OpaqueAuthSession, budget: SiteRequestBudget): Promise<SiteMemoryAuthority>;
+    memory(auth: OpaqueAuthSession, budget: SiteRequestBudget): Promise<SiteMemoryAuthority | null>;
 }
 export interface SiteMemoryApi {
     handle(request: Request, path: readonly string[]): Promise<Response>;

@@ -55,6 +55,20 @@ function outcomeUnknown(commandId) {
         },
     }, 503);
 }
+function projectExportDelivery(response) {
+    const request = response.export.artifactDownloadRequest;
+    if (response.export.state !== "ready" || request === null)
+        return response;
+    return Object.freeze({
+        export: Object.freeze({
+            ...response.export,
+            artifactDownloadRequest: Object.freeze({
+                ...request,
+                deliveryUrl: `/api/media/artifacts/${encodeURIComponent(request.artifactRef)}/versions/${encodeURIComponent(request.artifactVersionRef)}/content?purpose=export&exportIntentRef=${encodeURIComponent(request.deliveryRequestRef)}`,
+            }),
+        }),
+    });
+}
 async function boundedJson(request) {
     const contentType = request.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase();
     if (contentType !== "application/json")
@@ -262,6 +276,8 @@ export function createSiteMemoryApi(input) {
                 if (auth === null)
                     return problem(401, "AUTH_REQUIRED", "Sign in again");
                 const memory = await waitWithinBudget(input.runtime.memory(auth, budget), budget);
+                if (memory === null)
+                    return problem(404, "NOT_FOUND", "Memory operation was not found");
                 if (request.method === "GET" && path.length === 1 && path[0] === "settings") {
                     noQuery(url);
                     return boundedResponse(await callWithinBudget(budget, (options) => memory.getSettings(options)));
@@ -345,7 +361,7 @@ export function createSiteMemoryApi(input) {
                 if (request.method === "GET" && path.length === 2 && path[0] === "exports") {
                     noQuery(url);
                     const exportRef = reference(zMemoryExportRef, path[1]);
-                    return boundedResponse(await callWithinBudget(budget, (options) => memory.getExport(exportRef, options)));
+                    return boundedResponse(projectExportDelivery(await callWithinBudget(budget, (options) => memory.getExport(exportRef, options))));
                 }
                 if (request.method === "POST" && path.length === 1 && path[0] === "imports") {
                     noQuery(url);

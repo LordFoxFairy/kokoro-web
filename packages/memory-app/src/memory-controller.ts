@@ -16,6 +16,7 @@ import type {
   MemoryImportResponse,
   MemoryImportStatus,
   MemoryPriorityInput,
+  MemoryPurgeCommandResult,
   MemoryRememberInput,
   MemoryResetInput,
   MemoryRestoreInput,
@@ -265,10 +266,11 @@ export function createMemoryBrowserClient(input: Readonly<{
     getImport(importRef: string, signal?: AbortSignal): Promise<MemoryImportResponse> {
       return read(`/imports/${encodedReference(zMemoryImportRef, importRef)}`, zMemoryImportResponse, signal)
     },
-    recover(commandId: string, signal?: AbortSignal) {
-      return read(`/commands/${encodedReference({ safeParse: (value) => /^[0-9a-f]{32}$/u.test(String(value))
+    async recover(commandId: string, signal?: AbortSignal) {
+      const response = await read(`/commands/${encodedReference({ safeParse: (value) => /^[0-9a-f]{32}$/u.test(String(value))
         ? { success: true as const, data: String(value) }
         : { success: false as const } }, commandId)}`, zMemoryCommandResponse, signal)
+      return sameCommand(response, commandId)
     },
   })
 }
@@ -279,6 +281,11 @@ export type PendingMemoryCommand = Readonly<{
   createdAt: string
   targetRef: string | null
 }>
+
+export type MemorySpacePurgeView = Readonly<Pick<
+  MemoryPurgeCommandResult,
+  "effectiveAt" | "purgeReceiptRef" | "purgeState"
+>>
 
 export type MemoryControllerState = Readonly<{
   generation: number
@@ -292,6 +299,7 @@ export type MemoryControllerState = Readonly<{
   exports: readonly BrowserMemoryExportStatus[]
   imports: readonly MemoryImportStatus[]
   pendingCommands: readonly PendingMemoryCommand[]
+  spacePurge: MemorySpacePurgeView | null
 }>
 
 function sameSource(left: MemoryEntryActiveView, right: MemoryEntryActiveView): boolean {
@@ -329,6 +337,17 @@ export function mergeMemoryEntries(
     entries.set(candidate.entryRef, candidate)
   }
   return Object.freeze([...entries.values()])
+}
+
+export function reconcileMemoryEntryPage(
+  current: readonly MemoryEntryActiveView[],
+  incoming: readonly MemoryEntryActiveView[],
+): readonly MemoryEntryActiveView[] {
+  const currentByRef = new Map(current.map((entry) => [entry.entryRef, entry]))
+  return Object.freeze(incoming.map((candidate) => {
+    const existing = currentByRef.get(candidate.entryRef)
+    return existing === undefined ? candidate : mergeMemoryEntries([existing], [candidate])[0] ?? candidate
+  }))
 }
 
 function sameRevision(left: MemoryRevisionView, right: MemoryRevisionView): boolean {
@@ -386,7 +405,14 @@ export function projectMemoryCommand(state: MemoryControllerState, response: Mem
         : state.pendingCommands,
     })
   }
-  const base = { ...state, pendingCommands: state.pendingCommands.filter(({ commandId }) => commandId !== response.command.commandId) }
+  const awaitingSpacePurge = response.result.resultKind === "purge" &&
+    response.result.purgeScope === "space" && response.result.purgeState === "revoked_purge_pending"
+  const base = {
+    ...state,
+    pendingCommands: awaitingSpacePurge
+      ? state.pendingCommands
+      : state.pendingCommands.filter(({ commandId }) => commandId !== response.command.commandId),
+  }
   switch (response.result.resultKind) {
     case "settings":
       return Object.freeze({ ...base, settings: response.result.settings })
@@ -421,7 +447,17 @@ export function projectMemoryCommand(state: MemoryControllerState, response: Mem
         ? { entryRef: purge.entryRef, purgeReceiptRef: purge.purgeReceiptRef, purgedAt: purge.effectiveAt, state: "purged" }
         : { entryRef: purge.entryRef, purgeReceiptRef: purge.purgeReceiptRef, revokedAt: purge.effectiveAt, state: "revoked_purge_pending" }
       if (purge.purgeScope === "space") {
-        return Object.freeze({ ...base, entries: Object.freeze([]), selectedEntry: null, history: Object.freeze([]) })
+        return Object.freeze({
+          ...base,
+          entries: Object.freeze([]),
+          selectedEntry: null,
+          history: Object.freeze([]),
+          spacePurge: Object.freeze({
+            effectiveAt: purge.effectiveAt,
+            purgeReceiptRef: purge.purgeReceiptRef,
+            purgeState: purge.purgeState,
+          }),
+        })
       }
       return Object.freeze({
         ...base,
@@ -430,6 +466,18 @@ export function projectMemoryCommand(state: MemoryControllerState, response: Mem
       })
     }
   }
+}
+
+export function memorySpacePurgeIsPending(response: MemoryCommandResponse): boolean {
+  return response.state === "succeeded" &&
+    response.result.resultKind === "purge" &&
+    response.result.purgeScope === "space" &&
+    response.result.purgeState === "revoked_purge_pending"
+}
+
+export function memoryCommandRequiresRecovery(response: MemoryCommandResponse): boolean {
+  if (response.state !== "succeeded") return response.state !== "rejected"
+  return memorySpacePurgeIsPending(response)
 }
 
 export interface MemoryStorage {

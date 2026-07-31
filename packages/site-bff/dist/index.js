@@ -180,6 +180,7 @@ export function createSiteBffRuntime(input) {
         return Object.freeze({
             platform: authenticatedClient(authSession),
             projectRef: resolved.bootstrap.defaultProjectRef,
+            enabledSurfaceIds: Object.freeze([...resolved.bootstrap.enabledSurfaceIds]),
         });
     };
     return Object.freeze({
@@ -350,7 +351,9 @@ export function createSiteBffRuntime(input) {
             });
         },
         async memory(authSession, budget) {
-            const { platform } = await projectAuthority(authSession, budget);
+            const { enabledSurfaceIds, platform } = await projectAuthority(authSession, budget);
+            if (!enabledSurfaceIds.includes("memory"))
+                return null;
             return createSiteMemoryAuthority({ platform });
         },
         accountProducts(authSession) {

@@ -9,7 +9,7 @@ const settings: MemorySettings = {
   observedAt: "2026-07-31T00:00:00.000Z",
   pastChatReference: { availability: "unavailable_until_session_m1a", effective: false, policyReason: null, requested: false },
   revision: "1",
-  savedMemoryUse: { availability: "available", effective: true, policyReason: null, requested: true },
+  savedMemoryUse: { availability: "available", effective: false, policyReason: "Disabled by this Site policy.", requested: true },
 }
 
 const entry: MemoryEntryActiveView = {
@@ -74,12 +74,16 @@ describe("Memory product", () => {
       selectedEntry={entry}
       selectedEntryRef="entry-1"
       settings={settings}
+      spacePurge={null}
       status="Memory is current"
     />)
     expect(html).toContain("Fox Site Memory")
     expect(html).toContain("Saved memory")
     expect(html).toContain("Past chats")
     expect(html).toContain("Automatic learning")
+    expect(html).toContain("Requested: On")
+    expect(html).toContain("Effective: Off")
+    expect(html).toContain("Disabled by this Site policy.")
     expect(html).toContain("not available in this release")
     expect(html).toContain("aria-live=\"polite\"")
     expect(html).toContain("aria-current=\"true\"")
@@ -129,6 +133,7 @@ describe("Memory product", () => {
       selectedEntry={null}
       selectedEntryRef={null}
       settings={settings}
+      spacePurge={null}
       status=""
     />)
     expect(html).toContain("<button")
