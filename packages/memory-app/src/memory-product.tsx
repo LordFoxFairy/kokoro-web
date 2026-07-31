@@ -1,0 +1,554 @@
+"use client"
+
+import type {
+  MemoryCategory,
+  MemoryCommandKind,
+  MemoryCommandResponse,
+  MemoryEntryActiveView,
+  MemoryEntryView,
+  MemoryExportStatus,
+  MemoryImportStatus,
+  MemoryRevisionView,
+  MemorySettings,
+} from "@kokoro/site-client"
+import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react"
+
+import {
+  beginMemorySelection,
+  createMemoryBrowserClient,
+  createMemoryCommandIdentity,
+  createMemoryCommandJournal,
+  MemoryBrowserError,
+  mergeMemoryEntries,
+  mergeMemoryHistory,
+  projectMemoryCommand,
+  settleMemorySelection,
+  type MemoryBrowserFetch,
+  type MemoryControllerState,
+  type PendingMemoryCommand,
+} from "./memory-controller"
+import styles from "./memory-product.module.css"
+
+export const MEMORY_REDUCED_MOTION_MEDIA = "(prefers-reduced-motion: reduce)" as const
+
+export function destructiveConfirmation(kind: "forget" | "reset", value: string): boolean {
+  return value === (kind === "forget" ? "FORGET" : "RESET ALL MEMORY")
+}
+
+export function restoreConflictMessage(input: Readonly<{ expectedRevision: number; currentRevision: number }>): string {
+  return `This memory changed from revision ${input.expectedRevision} to ${input.currentRevision}. Review the current memory before restoring.`
+}
+
+function availabilityLabel(availability: string): string {
+  switch (availability) {
+    case "available": return "Available"
+    case "unavailable_until_session_m1a": return "Past-chat reference is not available in this release."
+    case "unavailable_until_memory_m3": return "Automatic learning is not available in this release."
+    default: return "Unavailable"
+  }
+}
+
+function categoryLabel(category: MemoryCategory): string {
+  switch (category) {
+    case "profile": return "Profile"
+    case "preference": return "Preference"
+    case "fact": return "Fact"
+    case "project_fact": return "Project fact"
+  }
+}
+
+function exportLabel(item: MemoryExportStatus): string {
+  switch (item.state) {
+    case "queued": return "Queued"
+    case "running": return "Preparing export"
+    case "ready": return "Ready for authorized delivery"
+    case "failed": return "Export failed"
+    case "expired": return "Export expired"
+    case "purged": return "Export purged"
+  }
+}
+
+function importLabel(item: MemoryImportStatus): string {
+  if (item.safeStatusCode === "awaiting_review") return "Awaiting review"
+  switch (item.state) {
+    case "queued": return "Queued"
+    case "validating": return "Validating"
+    case "quarantined": return "Quarantined"
+    case "applying": return "Applying"
+    case "completed": return "Completed"
+    case "rejected": return "Rejected"
+    case "failed": return "Failed"
+  }
+}
+
+function SettingsCard(props: Readonly<{
+  title: string
+  description: string
+  availability: string
+  effective: boolean
+  requested: boolean
+  disabled: boolean
+  onChange?(value: boolean): void
+}>) {
+  return <article className={styles.settingCard}>
+    <div><h3>{props.title}</h3><p>{props.description}</p></div>
+    {props.availability === "available" && props.onChange !== undefined
+      ? <label className={styles.toggle}><input
+        checked={props.requested}
+        disabled={props.disabled}
+        onChange={(event) => props.onChange?.(event.currentTarget.checked)}
+        type="checkbox"
+      /><span>{props.effective ? "On" : "Off"}</span></label>
+      : <p className={styles.unavailable}>{availabilityLabel(props.availability)}</p>}
+  </article>
+}
+
+function PurgeState(props: Readonly<{ entry: Exclude<MemoryEntryView, MemoryEntryActiveView>; busy: boolean; onRefresh(): void }>) {
+  return <section className={styles.detailCard} aria-live="polite">
+    <span className={styles.eyebrow}>Deletion receipt</span>
+    <h2>{props.entry.state === "purged" ? "Memory purged" : "Deletion in progress"}</h2>
+    <p>{props.entry.state === "purged"
+      ? "The owner reports that content purge is complete. This historical identity cannot be restored."
+      : "This memory stopped being available immediately. Physical purge participants are still completing."}</p>
+    <code>{props.entry.purgeReceiptRef}</code>
+    {props.entry.state === "purged" ? null : <button disabled={props.busy} onClick={props.onRefresh} type="button">Verify purge state</button>}
+  </section>
+}
+
+export type MemoryViewProps = Readonly<{
+  brandName: string
+  busy: boolean
+  settings: MemorySettings | null
+  entries: readonly MemoryEntryActiveView[]
+  nextCursor: string | null
+  selectedEntryRef: string | null
+  selectedEntry: MemoryEntryView | null
+  history: readonly MemoryRevisionView[]
+  historyNextCursor: string | null
+  exports: readonly MemoryExportStatus[]
+  imports: readonly MemoryImportStatus[]
+  pendingCommands: readonly PendingMemoryCommand[]
+  status: string
+  error: string | null
+  onToggleSavedUse(value: boolean): void
+  onCreate(input: Readonly<{ category: MemoryCategory; content: string }>): void
+  onSelect(entryRef: string): void
+  onLoadMore(): void
+  onLoadMoreHistory(): void
+  onCorrect(content: string): void
+  onRestore(revision: MemoryRevisionView): void
+  onPrioritize(): void
+  onDeprioritize(): void
+  onForget(confirmation: string): void
+  onReset(confirmation: string): void
+  onExport(includeHistory: boolean): void
+  onImport(input: Readonly<{ assetRef: string; assetVersionRef: string }>): void
+  onRefreshExport?(exportRef: string): void
+  onRefreshImport?(importRef: string): void
+  onRefreshSelected?(): void
+  onRecover?(commandId: string): void
+}>
+
+export function MemoryView(props: MemoryViewProps) {
+  const [createContent, setCreateContent] = useState("")
+  const [createCategory, setCreateCategory] = useState<MemoryCategory>("preference")
+  const [correctContent, setCorrectContent] = useState("")
+  const [forgetPhrase, setForgetPhrase] = useState("")
+  const [resetPhrase, setResetPhrase] = useState("")
+  const [assetRef, setAssetRef] = useState("")
+  const [assetVersionRef, setAssetVersionRef] = useState("")
+  const create = (event: FormEvent) => {
+    event.preventDefault()
+    if (createContent.trim() === "") return
+    props.onCreate({ category: createCategory, content: createContent })
+  }
+  const correct = (event: FormEvent) => {
+    event.preventDefault()
+    if (correctContent.trim() !== "") props.onCorrect(correctContent)
+  }
+  const importMemory = (event: FormEvent) => {
+    event.preventDefault()
+    if (assetRef.trim() !== "" && assetVersionRef.trim() !== "") props.onImport({ assetRef, assetVersionRef })
+  }
+
+  return <main aria-busy={props.busy} className={styles.productShell}>
+    <header className={styles.productHeader}>
+      <div><span className={styles.eyebrow}>Personalization you control</span><h1>{props.brandName} Memory</h1></div>
+      <nav aria-label="Workspace"><a href="/">Chat</a><a href="/studio">Studio</a><a aria-current="page" href="/memory">Memory</a></nav>
+    </header>
+
+    <p className={styles.intro}>Saved facts and preferences are separate from instructions and past-chat history. Every change is owned, versioned, and recoverable.</p>
+    <div className={styles.liveRegion} aria-atomic="true" aria-live="polite" role="status">{props.status}</div>
+    {props.error === null ? null : <p className={styles.error} role="alert">{props.error}</p>}
+
+    <section aria-labelledby="memory-controls" className={styles.settingsGrid}>
+      <div className={styles.sectionHeading}><div><span className={styles.eyebrow}>Independent controls</span><h2 id="memory-controls">What can be used</h2></div></div>
+      {props.settings === null ? <p>Loading controls…</p> : <div className={styles.cards}>
+        <SettingsCard
+          availability={props.settings.savedMemoryUse.availability}
+          description="Facts and preferences that you explicitly saved or imported."
+          disabled={props.busy}
+          effective={props.settings.savedMemoryUse.effective}
+          onChange={props.onToggleSavedUse}
+          requested={props.settings.savedMemoryUse.requested}
+          title="Saved memory"
+        />
+        <SettingsCard
+          availability={props.settings.pastChatReference.availability}
+          description="Cited retrieval from conversations remains owned by Session."
+          disabled
+          effective={props.settings.pastChatReference.effective}
+          requested={props.settings.pastChatReference.requested}
+          title="Past chats"
+        />
+        <SettingsCard
+          availability={props.settings.automaticLearning.availability}
+          description="Inference from conversations is a later opt-in capability."
+          disabled
+          effective={props.settings.automaticLearning.effective}
+          requested={props.settings.automaticLearning.requested}
+          title="Automatic learning"
+        />
+      </div>}
+    </section>
+
+    <section className={styles.createCard} aria-labelledby="remember-title">
+      <div><span className={styles.eyebrow}>Explicit command</span><h2 id="remember-title">Remember something</h2></div>
+      <form onSubmit={create}>
+        <label>Category<select disabled={props.busy} onChange={(event) => setCreateCategory(event.currentTarget.value as MemoryCategory)} value={createCategory}>
+          <option value="profile">Profile</option><option value="preference">Preference</option><option value="fact">Fact</option><option value="project_fact">Project fact</option>
+        </select></label>
+        <label>Memory<textarea maxLength={16_384} onChange={(event) => setCreateContent(event.currentTarget.value)} required value={createContent} /></label>
+        <button disabled={props.busy || createContent.trim() === ""} type="submit">Save memory</button>
+      </form>
+    </section>
+
+    <div className={styles.memoryGrid}>
+      <section aria-labelledby="saved-list" className={styles.memoryRail}>
+        <div className={styles.sectionHeading}><div><span className={styles.eyebrow}>Current owner view</span><h2 id="saved-list">Saved memories</h2></div></div>
+        {props.entries.length === 0 ? <p className={styles.empty}>No saved memories are active.</p> : <ul>{props.entries.map((entry) => <li key={entry.entryRef}>
+          <button aria-current={props.selectedEntryRef === entry.entryRef ? "true" : undefined} data-selected={props.selectedEntryRef === entry.entryRef} onClick={() => props.onSelect(entry.entryRef)} type="button">
+            <span>{categoryLabel(entry.category)}{entry.prioritized ? " · Priority" : ""}</span><strong>{entry.content}</strong><small>{entry.source.safeLabel} · revision {entry.revision}</small>
+          </button>
+        </li>)}</ul>}
+        {props.nextCursor === null ? null : <button disabled={props.busy} onClick={props.onLoadMore} type="button">Load more memories</button>}
+      </section>
+
+      <section aria-label="Memory detail" className={styles.detailColumn}>
+        {props.selectedEntry === null ? <p className={styles.empty}>Choose a memory to inspect its exact revision history.</p>
+          : props.selectedEntry.state !== "active" ? <PurgeState busy={props.busy} entry={props.selectedEntry} onRefresh={() => props.onRefreshSelected?.()} />
+            : <>
+              <article className={styles.detailCard}>
+                <div className={styles.detailHeading}><div><span className={styles.eyebrow}>{categoryLabel(props.selectedEntry.category)}</span><h2>Revision {props.selectedEntry.revision}</h2></div><span>{props.selectedEntry.scopeKind}</span></div>
+                <p className={styles.memoryContent}>{props.selectedEntry.content}</p>
+                <p>{props.selectedEntry.source.safeLabel} · {props.selectedEntry.source.state}</p>
+                <div className={styles.actions}>
+                  {props.selectedEntry.prioritized
+                    ? <button disabled={props.busy} onClick={props.onDeprioritize} type="button">Remove priority</button>
+                    : <button disabled={props.busy} onClick={props.onPrioritize} type="button">Prioritize</button>}
+                </div>
+                <form onSubmit={correct}>
+                  <label>Correct this memory<textarea maxLength={16_384} onChange={(event) => setCorrectContent(event.currentTarget.value)} required value={correctContent} /></label>
+                  <button disabled={props.busy || correctContent.trim() === ""} type="submit">Create corrected revision</button>
+                </form>
+                <details className={styles.danger}>
+                  <summary>Forget this memory</summary>
+                  <p>Deletion in progress starts with immediate logical revoke, then verifies physical purge.</p>
+                  <label>Type FORGET<input onChange={(event) => setForgetPhrase(event.currentTarget.value)} value={forgetPhrase} /></label>
+                  <button disabled={props.busy || !destructiveConfirmation("forget", forgetPhrase)} onClick={() => props.onForget(forgetPhrase)} type="button">Forget permanently</button>
+                </details>
+              </article>
+              <section aria-labelledby="history-title" className={styles.historyCard}>
+                <h2 id="history-title">Revision history</h2>
+                {props.history.length === 0 ? <p>No prior revisions.</p> : <ol>{props.history.map((revision) => <li key={revision.revisionRef}>
+                  <div><strong>Revision {revision.revision}</strong><span>{revision.reason}</span></div>
+                  {revision.state === "available" ? <p>{revision.content}</p> : <p>Purged content</p>}
+                  <button disabled={props.busy || !revision.restorable || revision.state !== "available"} onClick={() => props.onRestore(revision)} type="button">Restore as a new revision</button>
+                </li>)}</ol>}
+                {props.historyNextCursor === null ? null : <button disabled={props.busy} onClick={props.onLoadMoreHistory} type="button">Load more history</button>}
+              </section>
+            </>}
+      </section>
+    </div>
+
+    <section className={styles.transferGrid} aria-labelledby="data-title">
+      <div className={styles.sectionHeading}><div><span className={styles.eyebrow}>Data rights</span><h2 id="data-title">Import and export</h2></div></div>
+      <article><h3>Export</h3><p>Creates a versioned, expiring Artifact delivery request. This page never receives ciphertext or a permanent URL.</p><button disabled={props.busy} onClick={() => props.onExport(true)} type="button">Request export with history</button>
+        <ul>{props.exports.map((item) => <li key={item.exportRef}><strong>{exportLabel(item)}</strong><span>{item.exportRef}</span>{props.onRefreshExport === undefined || ["ready", "failed", "expired", "purged"].includes(item.state) ? null : <button disabled={props.busy} onClick={() => props.onRefreshExport?.(item.exportRef)} type="button">Refresh export</button>}</li>)}</ul>
+      </article>
+      <article><h3>Import</h3><p>Imports only from an already authorized quarantined Asset version. Imported entries remain externally sourced.</p><form onSubmit={importMemory}>
+        <label>Asset reference<input onChange={(event) => setAssetRef(event.currentTarget.value)} required value={assetRef} /></label>
+        <label>Asset version reference<input onChange={(event) => setAssetVersionRef(event.currentTarget.value)} required value={assetVersionRef} /></label>
+        <button disabled={props.busy || assetRef.trim() === "" || assetVersionRef.trim() === ""} type="submit">Request quarantined import</button>
+      </form><ul>{props.imports.map((item) => <li key={item.importRef}><strong>{importLabel(item)}</strong><span>{item.acceptedEntryCount} accepted · {item.rejectedEntryCount} rejected</span>{props.onRefreshImport === undefined || ["completed", "rejected", "failed"].includes(item.state) ? null : <button disabled={props.busy} onClick={() => props.onRefreshImport?.(item.importRef)} type="button">Refresh import</button>}</li>)}</ul></article>
+    </section>
+
+    {props.pendingCommands.length === 0 ? null : <section className={styles.recovery} aria-labelledby="recovery-title"><h2 id="recovery-title">Commands awaiting owner recovery</h2><ul>{props.pendingCommands.map((command) => <li key={command.commandId}><span>{command.commandKind}</span><code>{command.commandId}</code>{props.onRecover === undefined ? null : <button disabled={props.busy} onClick={() => props.onRecover?.(command.commandId)} type="button">Recover outcome</button>}</li>)}</ul></section>}
+
+    <details className={styles.resetCard}><summary>Reset all saved memory</summary><p>This immediately revokes every active saved memory and begins receipt-backed purge. It cannot be undone.</p><label>Type RESET ALL MEMORY<input onChange={(event) => setResetPhrase(event.currentTarget.value)} value={resetPhrase} /></label><button disabled={props.busy || !destructiveConfirmation("reset", resetPhrase)} onClick={() => props.onReset(resetPhrase)} type="button">Reset all memory</button></details>
+  </main>
+}
+
+const EMPTY_STATE: MemoryControllerState = Object.freeze({
+  generation: 0,
+  settings: null,
+  entries: Object.freeze([]),
+  nextCursor: null,
+  selectedEntryRef: null,
+  selectedEntry: null,
+  history: Object.freeze([]),
+  historyNextCursor: null,
+  exports: Object.freeze([]),
+  imports: Object.freeze([]),
+  pendingCommands: Object.freeze([]),
+})
+
+function errorMessage(error: unknown): string {
+  if (error instanceof MemoryBrowserError) {
+    if (error.code === "VERSION_CONFLICT" || error.code === "version_conflict") return "This memory changed. Refresh the current revision before retrying."
+    if (error.code === "OUTCOME_UNKNOWN") return "The command outcome is unknown. Recover the existing command instead of submitting it again."
+    return error.message
+  }
+  return error instanceof Error ? error.message : "Memory is unavailable"
+}
+
+type MemoryClient = ReturnType<typeof createMemoryBrowserClient>
+
+export function MemoryProduct(props: Readonly<{
+  brandName: string
+  browserRuntimeScope: string
+  csrfToken: string
+  initialEntryRef?: string
+  fetch?: MemoryBrowserFetch
+}>) {
+  const [state, setState] = useState<MemoryControllerState>(EMPTY_STATE)
+  const [busy, setBusy] = useState(false)
+  const [status, setStatus] = useState("")
+  const [error, setError] = useState<string | null>(null)
+  const stateRef = useRef(state)
+  const controllers = useRef(new Set<AbortController>())
+  const scopeRef = useRef(props.browserRuntimeScope)
+  const client = useMemo(() => createMemoryBrowserClient({ csrfToken: props.csrfToken, fetch: props.fetch }), [props.csrfToken, props.fetch])
+  stateRef.current = state
+
+  const request = useCallback(async <Value,>(operation: (signal: AbortSignal) => Promise<Value>): Promise<Value> => {
+    const controller = new AbortController()
+    controllers.current.add(controller)
+    try {
+      return await operation(controller.signal)
+    } finally {
+      controllers.current.delete(controller)
+    }
+  }, [])
+
+  useEffect(() => {
+    for (const controller of controllers.current) controller.abort("Memory runtime scope changed")
+    controllers.current.clear()
+    scopeRef.current = props.browserRuntimeScope
+    setState(EMPTY_STATE)
+    setBusy(true)
+    setError(null)
+    const expectedScope = props.browserRuntimeScope
+    void request(async (signal) => {
+      const [settings, page] = await Promise.all([client.getSettings(signal), client.listEntries({ limit: 50 }, signal)])
+      if (scopeRef.current !== expectedScope) return
+      const pendingCommands = createMemoryCommandJournal({ storage: localStorage, scope: expectedScope }).list()
+      let next: MemoryControllerState = Object.freeze({ ...EMPTY_STATE, settings, entries: page.items, nextCursor: page.pageInfo.nextCursor, pendingCommands })
+      const initial = props.initialEntryRef
+      if (initial !== undefined) {
+        next = beginMemorySelection(next, initial)
+        setState(next)
+        const generation = next.generation
+        const [entryResponse, history] = await Promise.all([client.getEntry(initial, signal), client.listHistory(initial, { limit: 50 }, signal)])
+        if (scopeRef.current !== expectedScope) return
+        next = Object.freeze({ ...settleMemorySelection(next, generation, entryResponse.entry, history.items), historyNextCursor: history.pageInfo.nextCursor })
+      }
+      setState(next)
+      setStatus("Memory controls are current")
+    }).catch((cause: unknown) => {
+      if (scopeRef.current === expectedScope && !(cause instanceof DOMException && cause.name === "AbortError")) setError(errorMessage(cause))
+    }).finally(() => { if (scopeRef.current === expectedScope) setBusy(false) })
+    return () => {
+      for (const controller of controllers.current) controller.abort("Memory product unmounted")
+      controllers.current.clear()
+    }
+  }, [client, props.browserRuntimeScope, props.initialEntryRef, request])
+
+  const select = useCallback((entryRef: string) => {
+    const expectedScope = scopeRef.current
+    const loading = beginMemorySelection(stateRef.current, entryRef)
+    const generation = loading.generation
+    setState(loading)
+    setBusy(true)
+    setError(null)
+    void request(async (signal) => {
+      const [entryResponse, history] = await Promise.all([client.getEntry(entryRef, signal), client.listHistory(entryRef, { limit: 50 }, signal)])
+      if (scopeRef.current !== expectedScope) return
+      setState((current) => Object.freeze({
+        ...settleMemorySelection(current, generation, entryResponse.entry, history.items),
+        historyNextCursor: history.pageInfo.nextCursor,
+      }))
+      setStatus(`Opened memory revision ${entryResponse.entry.state === "active" ? entryResponse.entry.revision : "receipt"}`)
+    }).catch((cause: unknown) => { if (scopeRef.current === expectedScope) setError(errorMessage(cause)) })
+      .finally(() => { if (scopeRef.current === expectedScope) setBusy(false) })
+  }, [client, request])
+
+  const execute = useCallback(async (
+    commandKind: MemoryCommandKind,
+    targetRef: string | null,
+    operation: (client: MemoryClient, command: ReturnType<typeof createMemoryCommandIdentity>, signal: AbortSignal) => Promise<MemoryCommandResponse>,
+  ) => {
+    const command = createMemoryCommandIdentity()
+    const pending: PendingMemoryCommand = Object.freeze({ commandId: command.commandId, commandKind, targetRef, createdAt: new Date().toISOString() })
+    let journal: ReturnType<typeof createMemoryCommandJournal> | null = null
+    try {
+      journal = createMemoryCommandJournal({ storage: localStorage, scope: scopeRef.current })
+      journal.remember(pending)
+    } catch (cause) {
+      setError(errorMessage(cause))
+      return
+    }
+    setState((current) => Object.freeze({ ...current, pendingCommands: Object.freeze([...current.pendingCommands.filter(({ commandId }) => commandId !== pending.commandId), pending]) }))
+    setBusy(true)
+    setError(null)
+    try {
+      const response = await request((signal) => operation(client, command, signal))
+      setState((current) => projectMemoryCommand(current, response))
+      if (response.state === "succeeded" || response.state === "rejected") journal.resolve(command.commandId)
+      if (response.state === "rejected") {
+        setError(response.rejection.code === "version_conflict"
+          ? "This memory changed. Review its current revision before retrying."
+          : `Memory owner rejected this command: ${response.rejection.code}`)
+      } else {
+        setStatus(response.state === "succeeded" ? "Memory owner confirmed the change" : "Memory command is being reconciled")
+      }
+    } catch (cause) {
+      setError(errorMessage(cause))
+    } finally {
+      setBusy(false)
+    }
+  }, [request])
+
+  const active = state.selectedEntry?.state === "active" ? state.selectedEntry : null
+  const commandHandlers = {
+    toggle: (value: boolean) => {
+      if (state.settings === null) return
+      void execute("updateMemorySettings", null, (activeClient, command, signal) => activeClient.updateSettings({ expectedRevision: state.settings!.revision, savedMemoryUseRequested: value }, command, signal))
+    },
+    create: (input: Readonly<{ category: MemoryCategory; content: string }>) => void execute("rememberMemoryEntry", null, (activeClient, command, signal) => activeClient.remember({ category: input.category, content: input.content, validFrom: null, validTo: null }, command, signal)),
+    correct: (content: string) => {
+      if (active === null) return
+      void execute("correctMemoryEntry", active.entryRef, (activeClient, command, signal) => activeClient.correct(active.entryRef, { content, expectedRevision: active.revision, validFrom: active.validFrom, validTo: active.validTo }, command, signal))
+    },
+    restore: (revision: MemoryRevisionView) => {
+      if (active === null || revision.state !== "available") return
+      void execute("restoreMemoryEntryRevision", active.entryRef, (activeClient, command, signal) => activeClient.restore(active.entryRef, revision.revisionRef, { expectedRevision: active.revision }, command, signal))
+    },
+    priority: (prioritized: boolean) => {
+      if (active === null) return
+      const kind = prioritized ? "prioritizeMemoryEntry" : "deprioritizeMemoryEntry"
+      void execute(kind, active.entryRef, (activeClient, command, signal) => prioritized
+        ? activeClient.prioritize(active.entryRef, { expectedEntryVersion: active.entryVersion }, command, signal)
+        : activeClient.deprioritize(active.entryRef, { expectedEntryVersion: active.entryVersion }, command, signal))
+    },
+    forget: (confirmation: string) => {
+      if (active === null || !destructiveConfirmation("forget", confirmation)) return
+      void execute("forgetMemoryEntry", active.entryRef, (activeClient, command, signal) => activeClient.forget(active.entryRef, { acknowledgeIrreversiblePurge: true, expectedEntryVersion: active.entryVersion }, command, signal))
+    },
+    reset: (confirmation: string) => {
+      if (!destructiveConfirmation("reset", confirmation)) return
+      void execute("resetMemorySpace", null, (activeClient, command, signal) => activeClient.reset({ acknowledgeIrreversiblePurge: true }, command, signal))
+    },
+    exportMemory: (includeHistory: boolean) => void execute("requestMemoryExport", null, (activeClient, command, signal) => activeClient.requestExport({ format: "kokoro_memory_export_v1", includeHistory }, command, signal)),
+    importMemory: (input: Readonly<{ assetRef: string; assetVersionRef: string }>) => void execute("requestMemoryImport", input.assetRef, (activeClient, command, signal) => activeClient.requestImport({ ...input, conflictPolicy: "quarantine", format: "kokoro_memory_export_v1" }, command, signal)),
+  }
+
+  const loadMore = useCallback(() => {
+    const cursor = stateRef.current.nextCursor
+    if (cursor === null) return
+    setBusy(true)
+    void request((signal) => client.listEntries({ cursor, limit: 50 }, signal)).then((page) => {
+      setState((current) => Object.freeze({ ...current, entries: mergeMemoryEntries(current.entries, page.items), nextCursor: page.pageInfo.nextCursor }))
+      setStatus("Loaded more saved memories")
+    }).catch((cause: unknown) => setError(errorMessage(cause))).finally(() => setBusy(false))
+  }, [client, request])
+
+  const loadMoreHistory = useCallback(() => {
+    const current = stateRef.current
+    if (current.selectedEntryRef === null || current.historyNextCursor === null) return
+    const entryRef = current.selectedEntryRef
+    const cursor = current.historyNextCursor
+    const generation = current.generation
+    setBusy(true)
+    void request((signal) => client.listHistory(entryRef, { cursor, limit: 50 }, signal)).then((page) => {
+      setState((latest) => latest.generation !== generation || latest.selectedEntryRef !== entryRef ? latest : Object.freeze({ ...latest, history: mergeMemoryHistory(latest.history, page.items), historyNextCursor: page.pageInfo.nextCursor }))
+      setStatus("Loaded more revision history")
+    }).catch((cause: unknown) => setError(errorMessage(cause))).finally(() => setBusy(false))
+  }, [client, request])
+
+  const recover = useCallback((commandId: string) => {
+    setBusy(true)
+    void request((signal) => client.recover(commandId, signal)).then((response) => {
+      setState((current) => projectMemoryCommand(current, response))
+      if (response.state === "succeeded" || response.state === "rejected") {
+        createMemoryCommandJournal({ storage: localStorage, scope: scopeRef.current }).resolve(commandId)
+      }
+      setStatus(response.state === "succeeded" ? "Recovered the exact Memory command outcome" : "Command recovery is still pending")
+    }).catch((cause: unknown) => setError(errorMessage(cause))).finally(() => setBusy(false))
+  }, [client, request])
+
+  const refreshSelected = useCallback(() => {
+    const entryRef = stateRef.current.selectedEntryRef
+    if (entryRef !== null) select(entryRef)
+  }, [select])
+
+  const refreshExport = useCallback((exportRef: string) => {
+    setBusy(true)
+    void request((signal) => client.getExport(exportRef, signal)).then(({ export: item }) => {
+      setState((current) => Object.freeze({ ...current, exports: Object.freeze([item, ...current.exports.filter((candidate) => candidate.exportRef !== item.exportRef)]) }))
+      setStatus(`Export is ${exportLabel(item).toLowerCase()}`)
+    }).catch((cause: unknown) => setError(errorMessage(cause))).finally(() => setBusy(false))
+  }, [client, request])
+
+  const refreshImport = useCallback((importRef: string) => {
+    setBusy(true)
+    void request((signal) => client.getImport(importRef, signal)).then(({ import: item }) => {
+      setState((current) => Object.freeze({ ...current, imports: Object.freeze([item, ...current.imports.filter((candidate) => candidate.importRef !== item.importRef)]) }))
+      setStatus(`Import is ${importLabel(item).toLowerCase()}`)
+    }).catch((cause: unknown) => setError(errorMessage(cause))).finally(() => setBusy(false))
+  }, [client, request])
+
+  return <MemoryView
+    brandName={props.brandName}
+    busy={busy}
+    entries={state.entries}
+    error={error}
+    exports={state.exports}
+    history={state.history}
+    historyNextCursor={state.historyNextCursor}
+    imports={state.imports}
+    nextCursor={state.nextCursor}
+    onCorrect={commandHandlers.correct}
+    onCreate={commandHandlers.create}
+    onDeprioritize={() => commandHandlers.priority(false)}
+    onExport={commandHandlers.exportMemory}
+    onForget={commandHandlers.forget}
+    onImport={commandHandlers.importMemory}
+    onLoadMore={loadMore}
+    onLoadMoreHistory={loadMoreHistory}
+    onPrioritize={() => commandHandlers.priority(true)}
+    onRecover={recover}
+    onRefreshExport={refreshExport}
+    onRefreshImport={refreshImport}
+    onRefreshSelected={refreshSelected}
+    onReset={commandHandlers.reset}
+    onRestore={commandHandlers.restore}
+    onSelect={select}
+    onToggleSavedUse={commandHandlers.toggle}
+    pendingCommands={state.pendingCommands}
+    selectedEntry={state.selectedEntry}
+    selectedEntryRef={state.selectedEntryRef}
+    settings={state.settings}
+    status={status}
+  />
+}

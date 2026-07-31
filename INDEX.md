@@ -23,6 +23,7 @@ packages/
   chat-app/      @kokoro/chat-app      brand-neutral Chat 产品。
   account-app/   @kokoro/account-app   brand-neutral Account 产品。
   media-app/     @kokoro/media-app     每个独立 Site 的 brand-neutral Studio/Library 产品工厂。
+  memory-app/    @kokoro/memory-app    每个独立 Site 可选装的 saved-memory 设置、历史、恢复和数据权利产品面。
   tsconfig/ @kokoro/tsconfig   共享 TS 基线 base.json（app 各自 extends，只留 app 专属）。
   i18n/     @kokoro/i18n       framework-agnostic i18n 引擎（createI18n：negotiate/translate/interpolate）。见其 INDEX。
   session-client/              Root contract-bound Session HTTP/SSE client；只收 path transport，不收 URL/凭据/Site。
