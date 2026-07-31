@@ -137,6 +137,24 @@ function appendArtifactSummaries(
   return Object.freeze([...current, ...incoming.filter(({ artifactRef }) => !refs.has(artifactRef))])
 }
 
+export function beginLibraryOwnerLoad(generation: number): Readonly<{
+  generation: number
+  artifacts: readonly BrowserArtifactSummary[]
+  artifactNextCursor: null
+  versions: readonly BrowserArtifactVersion[]
+  versionNextCursor: null
+  selectedArtifactRef: null
+}> {
+  return Object.freeze({
+    generation: generation + 1,
+    artifacts: Object.freeze([]),
+    artifactNextCursor: null,
+    versions: Object.freeze([]),
+    versionNextCursor: null,
+    selectedArtifactRef: null,
+  })
+}
+
 /** Refreshes the leading cursor page without discarding exact or later-page Artifacts. */
 export function mergeRefreshedArtifactSummaries(
   current: readonly BrowserArtifactSummary[],
@@ -327,17 +345,28 @@ export function LibraryProduct(props: Readonly<{
     const coordinator = requests.current
     if (coordinator === null || !coordinator.isScopeCurrent(scope)) return
     const request = coordinator.begin("bootstrap", scope)
+    const reset = beginLibraryOwnerLoad(selectedGeneration.current)
+    selectedGeneration.current = reset.generation
+    selectedArtifactRefSnapshot.current = reset.selectedArtifactRef
+    versionsSnapshot.current = reset.versions
+    setArtifacts(reset.artifacts)
+    setArtifactNextCursor(reset.artifactNextCursor)
+    setVersions(reset.versions)
+    setVersionNextCursor(reset.versionNextCursor)
+    setSelectedArtifactRef(reset.selectedArtifactRef)
+    setBusy(true)
+    setError(null)
+    setLiveVersionError(null)
     void (async () => {
       try {
         const loaded = await loadInitialLibraryOwner(client, props.initialArtifactRef, request.signal)
-        if (!request.isCurrent()) return
+        if (!request.isCurrent() || selectedGeneration.current !== reset.generation) return
         const selectedArtifact = loaded.selectedArtifact
         setArtifacts(selectedArtifact === null
           ? loaded.artifactPage.items
           : appendArtifactSummaries([selectedArtifact], loaded.artifactPage.items))
         setArtifactNextCursor(loaded.artifactPage.pageInfo.nextCursor)
         if (selectedArtifact !== null && loaded.versionPage !== null) {
-          selectedGeneration.current += 1
           selectedArtifactRefSnapshot.current = selectedArtifact.artifactRef
           setSelectedArtifactRef(selectedArtifact.artifactRef)
           mergeVersions(loaded.versionPage.items)

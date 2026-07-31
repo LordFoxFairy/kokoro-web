@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server"
 import { describe, expect, test, vi } from "vitest"
 
-import { LibraryView } from "../src/library-product"
+import { beginLibraryOwnerLoad, LibraryView } from "../src/library-product"
 import {
   createStudioOperationInput,
   isStudioQuoteActive,
@@ -10,6 +10,17 @@ import {
 } from "../src/studio-product"
 
 describe("Site media product views", () => {
+  test("clears a prior owner immediately when a same-scope deep link starts loading", () => {
+    expect(beginLibraryOwnerLoad(7)).toEqual({
+      generation: 8,
+      artifacts: [],
+      artifactNextCursor: null,
+      versions: [],
+      versionNextCursor: null,
+      selectedArtifactRef: null,
+    })
+  })
+
   test("binds a quote to one input revision and its expiry", () => {
     const quote = { amount: "12", creditUnit: "credits", expiresAt: "2026-07-31T00:05:00.000Z", inputRevision: 4 }
     expect(isStudioQuoteActive(quote, 4, Date.parse("2026-07-31T00:04:59.000Z"))).toBe(true)

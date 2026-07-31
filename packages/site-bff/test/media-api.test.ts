@@ -41,6 +41,23 @@ function authority(overrides: Partial<SiteMediaAuthority> = {}): SiteMediaAuthor
 }
 
 describe("Site media browser API", () => {
+  test("settles immediately when the browser aborts during auth-session resolution", async () => {
+    const controller = new AbortController()
+    const api = createSiteMediaApi({
+      runtime: runtime(authority()),
+      readAuthSession: () => new Promise(() => undefined),
+    })
+    const response = api.handle(request("/definitions", { signal: controller.signal }), ["definitions"])
+
+    controller.abort("browser disconnected")
+
+    const outcome = await Promise.race([
+      response.then(({ status }) => status),
+      new Promise<"still_pending">((resolve) => setTimeout(() => resolve("still_pending"), 25)),
+    ])
+    expect(outcome).toBe(503)
+  })
+
   test("spends one monotonic request budget across authority resolution and the owner call", async () => {
     let elapsedMs = 0
     const listDefinitions = vi.fn(() => Promise.resolve({ items: [], pageInfo: { nextCursor: null } }))
@@ -60,16 +77,19 @@ describe("Site media browser API", () => {
       media,
     } as unknown as SiteBffRuntime
     const controller = new AbortController()
+    const browserRequest = request("/definitions", { signal: controller.signal })
     const api = createSiteMediaApi({
       runtime: runtimeWithResolution,
-      readAuthSession: () => {
+      readAuthSession: (budget) => {
+        expect(budget.signal).toBe(browserRequest.signal)
+        expect(budget.remainingDeadlineMs()).toBe(30_000)
         elapsedMs = 5
         return auth
       },
       monotonicNow: () => elapsedMs,
     })
 
-    const response = await api.handle(request("/definitions", { signal: controller.signal }), ["definitions"])
+    const response = await api.handle(browserRequest, ["definitions"])
 
     expect(response.status).toBe(200)
     expect(listDefinitions).toHaveBeenCalledWith(

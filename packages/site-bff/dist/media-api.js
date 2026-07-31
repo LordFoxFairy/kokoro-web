@@ -2,6 +2,7 @@ import "server-only";
 import { canonicalMediaOperationInputV1Bytes, zArtifactRef, zArtifactVersionRef, zCommandIdentity, zMediaDefinitionRef, zMediaOperationCancelInput, zMediaOperationInput, zMediaOperationRef, } from "@kokoro/site-client";
 import { ArtifactDeliveryError, ArtifactDeliveryInputError, ArtifactDeliveryProtocolError, PlatformPublicError, PlatformPublicInputError, PlatformPublicProtocolError, } from "@kokoro/site-client/server";
 import { SiteArtifactAvailabilityError } from "./media-authority.js";
+import { waitWithinBudget } from "./request-budget.js";
 const MAXIMUM_CONTROL_BODY_BYTES = 65_536;
 const MEDIA_REQUEST_DEADLINE_MS = 30_000;
 const IDEMPOTENCY_KEY = /^\S{16,191}$/u;
@@ -217,7 +218,7 @@ export function createSiteMediaApi(input) {
                         token: request.headers.get("x-kokoro-browser-csrf") ?? "",
                     })))
                     return problem(403, "REQUEST_REJECTED", "Browser request was rejected");
-                const auth = await input.readAuthSession();
+                const auth = await waitWithinBudget(Promise.resolve(input.readAuthSession(budget)), budget);
                 if (auth === null)
                     return problem(401, "AUTH_REQUIRED", "Sign in again");
                 const media = await input.runtime.media(auth, budget);

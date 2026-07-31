@@ -42,6 +42,7 @@ import type {
 } from "@kokoro/site-client"
 import type { NodeSiteRuntimeProvider } from "@kokoro/site-runtime-node"
 import { createSiteMediaAuthority, type SiteMediaAuthority } from "./media-authority.js"
+import { waitWithinBudget, type SiteRequestBudget } from "./request-budget.js"
 
 export { createLaunchStateVault } from "./launch-state.js"
 export type { LaunchCommandState, LaunchOperation, LaunchStateBinding, LaunchStateVault, SecurityLaunchState } from "./launch-state.js"
@@ -49,6 +50,7 @@ export { createSiteLaunchApi, SITE_LAUNCH_STATE_COOKIE } from "./launch-api.js"
 export type { SiteLaunchApi } from "./launch-api.js"
 export { createSiteAssetApi } from "./asset-api.js"
 export { createSiteMediaApi, type SiteMediaApi } from "./media-api.js"
+export type { SiteRequestBudget } from "./request-budget.js"
 export {
   SiteArtifactAvailabilityError,
   type SiteMediaAuthority,
@@ -118,34 +120,6 @@ export type SiteSessionRuntime = Readonly<{
   publicBootstrap: Readonly<PublicSiteBootstrap>
   proxy: ReturnType<typeof createSessionBrowserV3Proxy>
 }>
-
-export interface SiteRequestBudget {
-  readonly signal: AbortSignal
-  remainingDeadlineMs(): number
-}
-
-function waitWithinBudget<Value>(promise: Promise<Value>, budget: SiteRequestBudget): Promise<Value> {
-  const timeoutMs = budget.remainingDeadlineMs()
-  return new Promise<Value>((resolve, reject) => {
-    let settled = false
-    const finish = (run: () => void) => {
-      if (settled) return
-      settled = true
-      clearTimeout(timer)
-      budget.signal.removeEventListener("abort", abort)
-      run()
-    }
-    const abort = () => finish(() => reject(budget.signal.reason ?? new Error("Site request aborted")))
-    const timer = setTimeout(() => finish(() => reject(new Error("Site request deadline exhausted"))), timeoutMs)
-    timer.unref()
-    budget.signal.addEventListener("abort", abort, { once: true })
-    if (budget.signal.aborted) abort()
-    promise.then(
-      (value) => finish(() => resolve(value)),
-      (error: unknown) => finish(() => reject(error)),
-    )
-  })
-}
 
 export interface SiteBffRuntime {
   readonly publicOrigin: string
@@ -274,10 +248,11 @@ export function createSiteBffRuntime(input: Readonly<{
     binding: input.binding,
     commandFactory: { create: () => ({ commandRef: randomUUID(), ...command(anonymousPlatform) }) },
     authority: {
-      exchangeProductContext: ({ commandRef, command: commandIdentity }) => anonymousPlatform.execute({
+      exchangeProductContext: ({ commandRef, command: commandIdentity }, request) => anonymousPlatform.execute({
         operationId: "exchangeProductContext",
         data: { body: { commandRef } },
         command: commandIdentity,
+        ...request,
       }),
     },
   })
@@ -302,6 +277,12 @@ export function createSiteBffRuntime(input: Readonly<{
           }),
         }),
       },
+      ...(budget === undefined ? {} : {
+        productContextRequest: {
+          signal: budget.signal,
+          deadlineMs: budget.remainingDeadlineMs(),
+        },
+      }),
     })
     return budget === undefined ? resolution : waitWithinBudget(resolution, budget)
   }

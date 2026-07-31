@@ -119,6 +119,9 @@ describe("one-time Platform identity delivery", () => {
     }, { signal: controller.signal, remainingDeadlineMs })
 
     const personalRequest = requests.find(({ operationId }) => operationId === "getPersonalContext")
+    const productRequest = requests.find(({ operationId }) => operationId === "exchangeProductContext")
+    expect(productRequest?.signal).toBe(controller.signal)
+    expect(productRequest?.deadlineMs).toBe(1_234)
     expect(personalRequest?.signal).toBe(controller.signal)
     expect(personalRequest?.deadlineMs).toBe(1_234)
   })

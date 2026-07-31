@@ -13,6 +13,7 @@ import {
   type OpaqueAuthSession,
   type SiteCredentialPair,
   type SiteDeliveryAttempt,
+  type SiteRequestBudget,
 } from "@kokoro/site-bff";
 
 import { siteBff } from "./bff";
@@ -413,10 +414,20 @@ export function authRouteAllowed(request: Request): boolean {
   return request.headers.get("origin") === expectedOrigin && request.headers.get("sec-fetch-site") === "same-origin";
 }
 
-export async function readOpaqueAuthSession(): Promise<OpaqueAuthSession | null> {
-  const sealed = assembleChunkedCookie((await cookies()).getAll(), SITE_SESSION_COOKIE);
+function assertAuthReadBudget(request: SiteRequestBudget | undefined): void {
+  if (request === undefined) return;
+  request.remainingDeadlineMs();
+  if (request.signal.aborted) throw request.signal.reason ?? new Error("Site auth read aborted");
+}
+
+export async function readOpaqueAuthSession(request?: SiteRequestBudget): Promise<OpaqueAuthSession | null> {
+  assertAuthReadBudget(request);
+  const cookieStore = await cookies();
+  assertAuthReadBudget(request);
+  const sealed = assembleChunkedCookie(cookieStore.getAll(), SITE_SESSION_COOKIE);
   if (!sealed) return null;
   const token = await decode({ token: sealed, secret: siteAuthSecret(), salt: SITE_SESSION_COOKIE });
+  assertAuthReadBudget(request);
   const pair = token === null ? null : pairFromToken(token as SiteJwt);
   if (pair === null || !credentialIsActive(pair.sessionCredentialExpiresAt)) return null;
   return Object.freeze({

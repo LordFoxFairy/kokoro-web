@@ -29,6 +29,8 @@ import type { OpaqueAuthSession } from "@kokoro/bff-runtime"
 
 import type { SiteBffRuntime } from "./index.js"
 import { SiteArtifactAvailabilityError, type SiteMediaPageQuery } from "./media-authority.js"
+import { waitWithinBudget } from "./request-budget.js"
+import type { SiteRequestBudget } from "./request-budget.js"
 
 const MAXIMUM_CONTROL_BODY_BYTES = 65_536
 const MEDIA_REQUEST_DEADLINE_MS = 30_000
@@ -238,7 +240,7 @@ export interface SiteMediaApi {
 /** Exact Site media/artifact composition. This is deliberately not a generic Platform proxy. */
 export function createSiteMediaApi(input: Readonly<{
   runtime: SiteBffRuntime
-  readAuthSession(): Promise<OpaqueAuthSession | null> | OpaqueAuthSession | null
+  readAuthSession(budget: SiteRequestBudget): Promise<OpaqueAuthSession | null> | OpaqueAuthSession | null
   monotonicNow?: () => number
 }>): SiteMediaApi {
   const api: SiteMediaApi = {
@@ -256,7 +258,7 @@ export function createSiteMediaApi(input: Readonly<{
             token: request.headers.get("x-kokoro-browser-csrf") ?? "",
           })
         )) return problem(403, "REQUEST_REJECTED", "Browser request was rejected")
-        const auth = await input.readAuthSession()
+        const auth = await waitWithinBudget(Promise.resolve(input.readAuthSession(budget)), budget)
         if (auth === null) return problem(401, "AUTH_REQUIRED", "Sign in again")
         const media = await input.runtime.media(auth, budget)
         const requestOptions = () => Object.freeze({

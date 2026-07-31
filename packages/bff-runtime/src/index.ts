@@ -19,6 +19,7 @@ export type {
   ProductContext,
   ProductContextCommandFactoryPort,
   ProductContextManagerOptions,
+  ProductContextRequestOptions,
   ProjectSummary,
   PublishedModelOption,
   PublicSiteBootstrap,

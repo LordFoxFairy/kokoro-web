@@ -1,0 +1,1 @@
+{"version":3,"file":"request-budget.d.ts","sourceRoot":"","sources":["../src/request-budget.ts"],"names":[],"mappings":"AAAA,MAAM,WAAW,iBAAiB;IAChC,QAAQ,CAAC,MAAM,EAAE,WAAW,CAAA;IAC5B,mBAAmB,IAAI,MAAM,CAAA;CAC9B;AAED,uGAAuG;AACvG,wBAAgB,gBAAgB,CAAC,KAAK,EAAE,OAAO,EAAE,OAAO,CAAC,KAAK,CAAC,EAAE,MAAM,EAAE,iBAAiB,GAAG,OAAO,CAAC,KAAK,CAAC,CAqB1G"}

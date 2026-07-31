@@ -314,7 +314,12 @@ export interface PlatformProductContextPort {
     readonly binding: SiteDeploymentBinding;
     readonly commandRef: string;
     readonly command: Readonly<{ commandId: string; idempotencyKey: string }>;
-  }): Promise<unknown>;
+  }, request?: ProductContextRequestOptions): Promise<unknown>;
+}
+
+export interface ProductContextRequestOptions {
+  readonly signal: AbortSignal;
+  readonly deadlineMs: number;
 }
 
 export interface ProductContextCommandFactoryPort {
@@ -404,7 +409,10 @@ export class ProductContextManager {
     this.#cachedAt = 0;
   }
 
-  async acquire(forceRefresh = false): Promise<ProductContext> {
+  async acquire(
+    forceRefresh = false,
+    request?: ProductContextRequestOptions,
+  ): Promise<ProductContext> {
     const now = this.#now().getTime();
     if (
       !forceRefresh &&
@@ -416,6 +424,12 @@ export class ProductContextManager {
     ) {
       return this.#cached;
     }
+    if (request !== undefined) {
+      const context = await this.#exchange(now, request);
+      this.#cached = context;
+      this.#cachedAt = now;
+      return context;
+    }
     if (this.#inFlight !== undefined) return this.#inFlight;
     this.#inFlight = this.#exchange(now).finally(() => {
       this.#inFlight = undefined;
@@ -426,7 +440,7 @@ export class ProductContextManager {
     return context;
   }
 
-  async #exchange(now: number): Promise<ProductContext> {
+  async #exchange(now: number, request?: ProductContextRequestOptions): Promise<ProductContext> {
     const commandResult = productContextCommandSchema.safeParse(this.#commandFactory.create());
     if (!commandResult.success) throw new SiteBindingError("PRODUCT_CONTEXT_INVALID");
     const command = commandResult.data;
@@ -444,7 +458,7 @@ export class ProductContextManager {
       binding: this.#binding,
       commandRef: command.commandRef,
       command: { commandId: command.commandId, idempotencyKey: command.idempotencyKey },
-    });
+    }, request);
     const parsedResponse = productContextExchangeResponseSchema.safeParse(response);
     if (!parsedResponse.success || parsedResponse.data.receipt.commandId !== command.commandId) {
       throw new SiteBindingError("PRODUCT_CONTEXT_INVALID");
@@ -629,6 +643,7 @@ export async function bootstrapSiteRuntimeFromOpaqueSession(input: {
   readonly personalAuthority: PlatformPersonalContextPort;
   readonly now?: () => Date;
   readonly maximumPersonalContextLifetimeMs?: number;
+  readonly productContextRequest?: ProductContextRequestOptions;
 }): Promise<ResolvedSiteRuntime> {
   const now = (input.now ?? (() => new Date()))().getTime();
   const maximumLifetimeMs = input.maximumPersonalContextLifetimeMs ?? 300_000;
@@ -638,7 +653,7 @@ export async function bootstrapSiteRuntimeFromOpaqueSession(input: {
   const authSession = validatedOpaqueAuthSession(input.authSession);
   const authExpiresAt = millis(authSession.expiresAt, "AUTH_SESSION_INVALID");
   if (authExpiresAt <= now) throw new SiteBindingError("AUTH_SESSION_INVALID");
-  const product = await input.productContexts.acquire();
+  const product = await input.productContexts.acquire(false, input.productContextRequest);
   const personalResult = personalContextSchema.safeParse(await input.personalAuthority.getPersonalContext({
     productContextRef: product.productContextRef,
     authSessionRef: authSession.sessionRef,

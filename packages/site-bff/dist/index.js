@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { bootstrapSiteRuntimeFromOpaqueSession, createOriginCsrfBrowserRequestVerifier, createSessionBrowserV3Proxy, createSessionBrowserV3Transport, loadSiteDeploymentBinding, ProductContextManager, SessionAccessManager, publicSiteBootstrap, } from "@kokoro/bff-runtime";
 import { createPlatformPublicClient, } from "@kokoro/site-client/server";
 import { createSiteMediaAuthority } from "./media-authority.js";
+import { waitWithinBudget } from "./request-budget.js";
 export { createLaunchStateVault } from "./launch-state.js";
 export { createSiteLaunchApi, SITE_LAUNCH_STATE_COOKIE } from "./launch-api.js";
 export { createSiteAssetApi } from "./asset-api.js";
@@ -25,27 +26,6 @@ export function supersedeSiteDelivery(prior, fresh) {
             receiptRecoveryCapability: prior.command.receiptRecoveryCapability,
         }),
         priorCommandId: prior.command.commandId,
-    });
-}
-function waitWithinBudget(promise, budget) {
-    const timeoutMs = budget.remainingDeadlineMs();
-    return new Promise((resolve, reject) => {
-        let settled = false;
-        const finish = (run) => {
-            if (settled)
-                return;
-            settled = true;
-            clearTimeout(timer);
-            budget.signal.removeEventListener("abort", abort);
-            run();
-        };
-        const abort = () => finish(() => reject(budget.signal.reason ?? new Error("Site request aborted")));
-        const timer = setTimeout(() => finish(() => reject(new Error("Site request deadline exhausted"))), timeoutMs);
-        timer.unref();
-        budget.signal.addEventListener("abort", abort, { once: true });
-        if (budget.signal.aborted)
-            abort();
-        promise.then((value) => finish(() => resolve(value)), (error) => finish(() => reject(error)));
     });
 }
 function required(env, name) {
@@ -129,10 +109,11 @@ export function createSiteBffRuntime(input) {
         binding: input.binding,
         commandFactory: { create: () => ({ commandRef: randomUUID(), ...command(anonymousPlatform) }) },
         authority: {
-            exchangeProductContext: ({ commandRef, command: commandIdentity }) => anonymousPlatform.execute({
+            exchangeProductContext: ({ commandRef, command: commandIdentity }, request) => anonymousPlatform.execute({
                 operationId: "exchangeProductContext",
                 data: { body: { commandRef } },
                 command: commandIdentity,
+                ...request,
             }),
         },
     });
@@ -155,6 +136,12 @@ export function createSiteBffRuntime(input) {
                     }),
                 }),
             },
+            ...(budget === undefined ? {} : {
+                productContextRequest: {
+                    signal: budget.signal,
+                    deadlineMs: budget.remainingDeadlineMs(),
+                },
+            }),
         });
         return budget === undefined ? resolution : waitWithinBudget(resolution, budget);
     };

@@ -31,7 +31,8 @@ authority material to a browser.
 
 Root owns `exchangeProductContext`, `getPersonalContext`, and `issueSessionAccessGrant`. Consumers inject narrow adapters for those
 generated operations; adapters must not introduce hand-written URLs, headers, or duplicate wire DTOs. ProductContext transport retries
-reuse one command identity, while each cache refresh creates a new command/idempotency identity. `SessionProxyTransportPort` adapts the
+reuse one command identity, while each cache refresh creates a new command/idempotency identity. Request-scoped ProductContext reads
+propagate the caller AbortSignal/deadline and do not join an unscoped single-flight request. `SessionProxyTransportPort` adapts the
 Root-generated Session browser v3 client by operation id; browser-provided arbitrary paths are structurally impossible.
 
 ## Security and runtime rules
