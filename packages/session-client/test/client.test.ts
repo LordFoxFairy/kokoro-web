@@ -24,6 +24,7 @@ function snapshot() {
       project_ref: "project-12345678",
       title: "Thread",
       lifecycle: "active",
+      context_policy: "standard",
       active_branch_id: "branch-12345678",
       version: 1,
       created_at: "2026-07-28T00:00:00.000Z",

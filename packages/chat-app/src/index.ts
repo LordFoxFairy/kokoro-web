@@ -34,3 +34,4 @@ export type {
   SessionOrganizerState,
 } from "./session-organizer"
 export { SessionRail } from "./session-rail"
+export type { SessionContextPolicy } from "./session-context-policy"

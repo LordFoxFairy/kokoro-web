@@ -1,6 +1,8 @@
 export type ChatProductCopy = Readonly<{
   workspaceLabel: string
   newChat: string
+  temporaryChat: string
+  temporaryChatDescription: string
   creatingChat: string
   startTitle: string
   startDescription: string
@@ -117,6 +119,8 @@ export type ChatProductCopy = Readonly<{
 export const DEFAULT_CHAT_COPY: ChatProductCopy = Object.freeze({
   workspaceLabel: "AI workspace",
   newChat: "New chat",
+  temporaryChat: "Temporary chat",
+  temporaryChatDescription: "This conversation is excluded from ordinary chat history. Site retention, safety, and legal-hold rules still apply.",
   creatingChat: "Creating…",
   startTitle: "What would you like to work on?",
   startDescription: "Start with a question or open one of your recent conversations.",

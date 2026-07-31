@@ -10,6 +10,7 @@ import {
   createCommandIdentity,
   reconcileCommandReceipt,
 } from "./command"
+import { sessionBrowserPersistence } from "./session-context-policy"
 
 export type SessionEntry = Readonly<{
   sessionId: string
@@ -197,7 +198,9 @@ export function createSessionOrganizer(options: {
       ...(cursor ? { cursor } : {}),
     })
     return {
-      sessions: Object.freeze(page.sessions.map(sessionEntry)),
+      sessions: Object.freeze(page.sessions
+        .filter(({ session }) => sessionBrowserPersistence(session.context_policy).ordinaryHistory)
+        .map(sessionEntry)),
       nextCursor: page.next_cursor ?? null,
     }
   }

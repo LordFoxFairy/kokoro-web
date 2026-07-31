@@ -19,6 +19,7 @@ import {
   memo,
   type ReactNode,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -48,6 +49,12 @@ import {
 } from "./message-render-policy"
 import { createSessionOrganizer } from "./session-organizer"
 import { SessionRail } from "./session-rail"
+import {
+  createEphemeralAssetRecoveryStore,
+  sessionBrowserPersistence,
+  type SessionContextPolicy,
+} from "./session-context-policy"
+import { TemporaryChatStatus } from "./temporary-chat"
 import styles from "./chat-product.module.css"
 
 function neverPart(part: never): never {
@@ -592,6 +599,7 @@ export function ChatView(props: {
   readonly draftStore?: ComposerDraftStore
   readonly assetUploader?: ReturnType<typeof createAssetUploader> | null
 }) {
+  const contextPolicy = props.state.snapshot?.session.context_policy ?? "standard"
   const [composer, setComposerState] = useState<ComposerDraft>(() => props.draftStore?.load(props.sessionId) ?? {
     schemaVersion: 1 as const,
     sessionId: props.sessionId,
@@ -745,6 +753,7 @@ export function ChatView(props: {
 
   return <main className={styles.shell}>
     <header className={styles.header}><div><span className={styles.eyebrow}>{props.copy.workspaceLabel}</span><h1>{props.state.snapshot?.session.title ?? props.brandName}</h1></div><nav className={styles.headerNav} aria-label="Workspace"><a href="/account">{props.copy.account}</a></nav></header>
+    {contextPolicy === "temporary" ? <TemporaryChatStatus copy={props.copy} /> : null}
     <section className={styles.runBand} data-run={props.state.projection.activeRunState ?? "idle"} aria-live="polite"><div><span className={styles.liveDot} aria-hidden /><strong>{runLabel(props.state, props.copy)}</strong><small>{connectionLabel(props.state, props.copy)}</small></div><div className={styles.branchControls}><label><span>{props.copy.branch}</span><select aria-label={props.copy.switchBranch} disabled={mutationDisabled} onChange={(event) => void props.controller.activateBranch(event.target.value)} value={props.state.projection.activeBranchId ?? ""}>{props.state.snapshot?.branches.map((candidate, index) => <option key={candidate.branch_id} value={candidate.branch_id}>{candidate.branch_id === props.state.projection.activeBranchId ? `${props.copy.currentBranch} · ` : ""}${candidate.origin} ${index + 1}</option>)}</select></label>{branch ? <button type="button" disabled={mutationDisabled} onClick={() => void props.controller.forkBranch(branch.branch_id)}>{props.copy.forkBranch}</button> : null}{activeRun ? <button type="button" className={styles.stop} onClick={() => void props.controller.cancel()} disabled={commandPending}>{props.copy.stop}</button> : null}</div></section>
     {props.state.failure ? <section className={styles.failure} role="alert"><strong>{props.state.failure.message}</strong>{["refetch_snapshot", "refresh_grant", "retry_same_cursor", "poll_or_stream", "reconcile_receipt"].includes(props.state.failure.action) ? <button type="button" onClick={() => void props.controller.recover()}>{props.copy.refreshConversation}</button> : null}</section> : null}
     {props.state.projection.repair.required ? <section className={styles.repair} role="status">{props.copy.repairRequired}</section> : null}
@@ -789,7 +798,8 @@ export type ChatProductProps = Readonly<{
   copy?: Partial<ChatProductCopy>
 }>
 
-export function ChatProduct(props: ChatProductProps) {
+function ChatProductRuntime(props: ChatProductProps) {
+  const temporaryCreationDescriptionId = useId()
   const copy = useMemo(() => resolveChatCopy(props.copy), [props.copy])
   const chatCatalog = props.bootstrap?.modelOptionCatalogs.find(({ surfaceId }) => surfaceId === "chat") ?? null
   const client = useMemo(() => createSessionClient({ transport: createBrowserSessionTransport({ csrfToken: props.csrfToken }) }), [props.csrfToken])
@@ -822,32 +832,44 @@ export function ChatProduct(props: ChatProductProps) {
   const organizer = useMemo(() => createSessionOrganizer({ client, projectRef: props.bootstrap?.defaultProjectRef ?? null }), [client, props.bootstrap?.defaultProjectRef])
   const organizerState = useSyncExternalStore(organizer.subscribe, organizer.getSnapshot, organizer.getSnapshot)
   const [assetUploader, setAssetUploader] = useState<ReturnType<typeof createAssetUploader> | null>(null)
+  const contextPolicy = state.phase === "ready" ? state.snapshot?.session.context_policy ?? null : null
+  const persistence = contextPolicy === null ? null : sessionBrowserPersistence(contextPolicy)
 
   useEffect(() => {
     const projectRef = props.bootstrap?.defaultProjectRef
-    if (props.csrfToken === undefined || projectRef === undefined) return
+    const sessionId = state.sessionId
+    if (props.csrfToken === undefined || projectRef === undefined || sessionId === null || contextPolicy === null) {
+      setAssetUploader(null)
+      return
+    }
     let uploader: ReturnType<typeof createAssetUploader> | null = null
     try {
       uploader = createAssetUploader({
         csrfToken: props.csrfToken,
-        store: createLocalAssetRecoveryStore({
-          storage: window.localStorage,
-          scope: `${props.browserRuntimeScope}:${projectRef}`,
-          pruneOtherScopes: true,
-        }),
+        store: persistence?.uploadRecovery === false
+          ? createEphemeralAssetRecoveryStore()
+          : createLocalAssetRecoveryStore({
+              storage: window.localStorage,
+              scope: `${props.browserRuntimeScope}:${projectRef}`,
+              pruneOtherScopes: true,
+            }),
       })
     } catch {
-      try {
-        uploader = createAssetUploader({
-          csrfToken: props.csrfToken,
-          store: createLocalAssetRecoveryStore({
-            storage: window.sessionStorage,
-            scope: `${props.browserRuntimeScope}:${projectRef}`,
-            pruneOtherScopes: true,
-          }),
-        })
-      } catch {
+      if (persistence?.uploadRecovery === false) {
         uploader = null
+      } else {
+        try {
+          uploader = createAssetUploader({
+            csrfToken: props.csrfToken,
+            store: createLocalAssetRecoveryStore({
+              storage: window.sessionStorage,
+              scope: `${props.browserRuntimeScope}:${projectRef}`,
+              pruneOtherScopes: true,
+            }),
+          })
+        } catch {
+          uploader = null
+        }
       }
     }
     setAssetUploader(uploader)
@@ -855,7 +877,7 @@ export function ChatProduct(props: ChatProductProps) {
       uploader?.dispose()
       setAssetUploader((current) => current === uploader ? null : current)
     }
-  }, [props.bootstrap?.defaultProjectRef, props.browserRuntimeScope, props.csrfToken])
+  }, [contextPolicy, persistence, props.bootstrap?.defaultProjectRef, props.browserRuntimeScope, props.csrfToken, state.sessionId])
 
   useEffect(() => {
     void (async () => {
@@ -873,8 +895,8 @@ export function ChatProduct(props: ChatProductProps) {
     window.history.replaceState(window.history.state, "", `/?session=${encodeURIComponent(sessionId)}`)
     void controller.open(sessionId)
   }
-  const createSession = (): void => {
-    void controller.create().then((sessionId) => {
+  const createSession = (requestedPolicy: SessionContextPolicy): void => {
+    void controller.create(requestedPolicy).then((sessionId) => {
       if (sessionId === null) return
       window.history.replaceState(window.history.state, "", `/?session=${encodeURIComponent(sessionId)}`)
       void organizer.refresh()
@@ -883,8 +905,12 @@ export function ChatProduct(props: ChatProductProps) {
   const productAvailable = props.bootstrap !== null && chatCatalog !== null
   const rail = <SessionRail activeSessionId={state.sessionId} available={productAvailable && state.projection.command.state !== "pending"} brandName={props.brandName} controller={organizer} copy={copy} onNew={createSession} onOpen={openSession} state={organizerState} />
 
-  if (state.phase === "idle") return <div className={styles.appShell}>{rail}<main className={styles.startShell}><span className={styles.startMark} aria-hidden>✦</span><span className={styles.eyebrow}>{props.brandName}</span><h1>{copy.startTitle}</h1><p>{copy.startDescription}</p><button type="button" disabled={!productAvailable || state.projection.command.state === "pending"} onClick={createSession}>{state.projection.command.state === "pending" ? copy.creatingChat : copy.newChat}</button>{!productAvailable ? <p className={styles.failure} role="status">{copy.unavailable}</p> : null}{state.failure ? <p className={styles.failure} role="alert">{state.failure.message}</p> : null}</main></div>
-  return <div className={styles.appShell}>{rail}<ChatView key={`${props.browserRuntimeScope}:${state.sessionId ?? "unavailable"}`} assetUploader={assetUploader} brandName={props.brandName} controller={controller} copy={copy} draftStore={draftStore} sessionId={state.sessionId ?? "unavailable"} state={state} /></div>
+  if (state.phase === "idle") return <div className={styles.appShell}>{rail}<main className={styles.startShell}><span className={styles.startMark} aria-hidden>✦</span><span className={styles.eyebrow}>{props.brandName}</span><h1>{copy.startTitle}</h1><p>{copy.startDescription}</p><div className={styles.creationActions}><button type="button" disabled={!productAvailable || state.projection.command.state === "pending"} onClick={() => createSession("standard")}>{state.projection.command.state === "pending" ? copy.creatingChat : copy.newChat}</button><button aria-describedby={temporaryCreationDescriptionId} type="button" disabled={!productAvailable || state.projection.command.state === "pending"} onClick={() => createSession("temporary")}>{copy.temporaryChat}</button></div><p className={styles.temporaryStartHint} id={temporaryCreationDescriptionId}>{copy.temporaryChatDescription}</p>{!productAvailable ? <p className={styles.failure} role="status">{copy.unavailable}</p> : null}{state.failure ? <p className={styles.failure} role="alert">{state.failure.message}</p> : null}</main></div>
+  return <div className={styles.appShell}>{rail}<ChatView key={`${props.browserRuntimeScope}:${state.sessionId ?? "unavailable"}:${contextPolicy ?? "unverified"}`} assetUploader={assetUploader} brandName={props.brandName} controller={controller} copy={copy} draftStore={persistence?.composerDraft === true ? draftStore : undefined} sessionId={state.sessionId ?? "unavailable"} state={state} /></div>
+}
+
+export function ChatProduct(props: ChatProductProps) {
+  return <ChatProductRuntime key={props.browserRuntimeScope} {...props} />
 }
 
 function ModelOptionSelector(props: {

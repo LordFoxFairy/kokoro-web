@@ -8,9 +8,11 @@ deployment bindings, or backend URLs; those remain in the same-origin Site BFF.
 Branding, published model catalogs, enabled surfaces, projects, and browser CSRF are injected via
 the browser-safe `PublicSiteBootstrap` projection. A Site that does not publish Chat does not render it.
 
-Composer drafts are isolated by browser runtime scope and Session. The browser persists only bounded text,
-product-level model/effort refs, and an opaque local revision in tab-scoped storage; attachment grants and
-command payloads remain memory-only.
+Standard-Session composer drafts are isolated by browser runtime scope and Session. The browser persists only
+bounded text, product-level model/effort refs, and an opaque local revision in tab-scoped storage; attachment
+grants and command payloads remain memory-only. A Temporary Chat never uses composer, command, or upload
+recovery storage and never appears in the ordinary history/search rail. Its uploader uses a per-mounted-Session
+ephemeral recovery store that is discarded when the Session or browser runtime scope changes.
 An active Run keeps the next-turn draft editable but cannot submit or become `run.steer`. A reconciled submit
 clears only the exact local revision bound to its receipt, never text entered while that receipt was pending.
 
@@ -58,3 +60,10 @@ remain non-submittable.
 Both command recovery and upload recovery are scoped by a server-derived opaque browser runtime scope that rotates with the Site
 identity session. A scope change aborts active uploads, closes Session/SSE controllers, prunes prior recovery records, and remounts
 the composer so ready attachment grants cannot cross an account switch.
+
+`standard|temporary` is an explicit create intent and an immutable Session-owner fact, not an in-place UI
+toggle. The controller requires the create receipt and hydrated snapshot to echo the requested policy before
+exposing the Session. A directly authorized Temporary Chat can still hydrate and reconnect by its exact URL,
+but the product only promises exclusion from ordinary history; the persistent badge states that Site
+retention, safety, and legal-hold rules still apply. Saved Memory and Admission suppression remain backend
+owner responsibilities and are not inferred or advertised by this package.

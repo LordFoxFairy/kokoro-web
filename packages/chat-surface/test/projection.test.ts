@@ -42,6 +42,7 @@ function snapshot(): SessionSnapshot {
       project_ref: "project-12345678",
       title: "Thread",
       lifecycle: "active",
+      context_policy: "standard",
       active_branch_id: "branch-12345678",
       active_leaf_message_id: "message-assistant-12345678",
       version: 2,

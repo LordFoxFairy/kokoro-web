@@ -30,6 +30,10 @@ import type {
   SessionCommandRecoveryRecord,
   SessionCommandRecoveryStore,
 } from "./command-recovery"
+import {
+  sessionBrowserPersistence,
+  type SessionContextPolicy,
+} from "./session-context-policy"
 
 const commandIdentity = createCommandIdentity
 
@@ -94,6 +98,7 @@ const FAILURE_COPY: Partial<Record<StableCode, string>> = {
   ADMISSION_DENIED: "This run was not admitted.",
   ADMISSION_OUTCOME_UNKNOWN: "Run admission is still being reconciled.",
   RUN_OUTCOME_UNKNOWN: "The run outcome is still being reconciled.",
+  CLIENT_CONTRACT_UPGRADE_REQUIRED: "This chat needs a compatible client before it can be opened safely.",
   INTERNAL_UNAVAILABLE: "Chat is temporarily unavailable.",
 }
 
@@ -171,7 +176,7 @@ function deniedFailure(response: SessionCommandResponse): ChatFailure | null {
 export type ChatController = Readonly<{
   getSnapshot(): ChatState
   subscribe(listener: () => void): () => void
-  create(): Promise<string | null>
+  create(contextPolicy: SessionContextPolicy): Promise<string | null>
   open(sessionId: string): Promise<void>
   submit(
     content: string,
@@ -223,6 +228,7 @@ export function createChatController(options: {
   let stream: EventStreamHandle | null = null
   let repairTask: Readonly<{ generation: number; task: Promise<boolean> }> | null = null
   let pendingCommand = options.commandRecoveryStore?.load() ?? null
+  let pendingCommandPersisted = pendingCommand !== null
   let generation = 0
   let selectionSessionId: string | null = null
   const runProjectionVersions = new Map<string, number>()
@@ -282,6 +288,15 @@ export function createChatController(options: {
   }
 
   const attach = (sessionId: string, snapshot: SessionSnapshot, currentGeneration: number): void => {
+    if (snapshot.session.context_policy === "temporary" && pendingCommandPersisted) {
+      // A standard Session recovery identity remains in browser storage, but it must not become
+      // an active journal inside a directly opened temporary conversation.
+      pendingCommand = null
+      pendingCommandPersisted = false
+    } else if (snapshot.session.context_policy === "standard" && pendingCommand === null) {
+      pendingCommand = options.commandRecoveryStore?.load() ?? null
+      pendingCommandPersisted = pendingCommand !== null
+    }
     runProjectionVersions.clear()
     runProjectionFingerprints.clear()
     launchVersions.clear()
@@ -504,6 +519,7 @@ export function createChatController(options: {
     targets: Readonly<Record<string, string>>,
     command: CommandIdentity,
     clientDraftRevision?: string,
+    persistAcrossReload = true,
   ): void => {
     const record: SessionCommandRecoveryRecord = Object.freeze({
       schemaVersion: 1,
@@ -514,12 +530,15 @@ export function createChatController(options: {
       createdAt: Date.now(),
     })
     pendingCommand = record
-    options.commandRecoveryStore?.save(record)
+    pendingCommandPersisted = persistAcrossReload
+    if (persistAcrossReload) options.commandRecoveryStore?.save(record)
   }
 
   const forgetCommand = (commandId: string): void => {
-    if (pendingCommand?.command.command_id === commandId) pendingCommand = null
-    options.commandRecoveryStore?.clear(commandId)
+    if (pendingCommand?.command.command_id !== commandId) return
+    pendingCommand = null
+    if (pendingCommandPersisted) options.commandRecoveryStore?.clear(commandId)
+    pendingCommandPersisted = false
   }
 
   const sendCommand = async (
@@ -529,6 +548,8 @@ export function createChatController(options: {
     pendingCode: StableCode,
     sender: (command: CommandIdentity) => Promise<SessionCommandResponse>,
     clientDraftRevision?: string,
+    persistAcrossReload = state.snapshot === null ||
+      sessionBrowserPersistence(state.snapshot.session.context_policy).commandRecovery,
   ): Promise<SessionCommandResponse | null> => {
     const commandGeneration = generation
     const failIfCurrent = (failure: ChatFailure): void => {
@@ -544,7 +565,7 @@ export function createChatController(options: {
     }
     const command = await commandIdentity({ operation, targets, effect })
     if (commandGeneration !== generation) return null
-    rememberCommand(operation, targets, command, clientDraftRevision)
+    rememberCommand(operation, targets, command, clientDraftRevision, persistAcrossReload)
     let response: SessionCommandResponse
     try {
       response = await sender(command)
@@ -591,6 +612,7 @@ export function createChatController(options: {
   const resumePendingCommand = async (): Promise<boolean> => {
     const pending = pendingCommand
     if (pending === null) return false
+    if (state.snapshot?.session.context_policy === "temporary") return false
     project({ type: "command", state: "pending" })
     let response: SessionCommandResponse
     try {
@@ -723,29 +745,63 @@ export function createChatController(options: {
     return false
   }
 
-  const create = async (): Promise<string | null> => {
+  const create = async (contextPolicy: SessionContextPolicy): Promise<string | null> => {
     const projectRef = options.defaultProjectRef
     if (projectRef === null) {
       fail(describeSessionFailure({ stableCode: "SESSION_SCOPE_MISMATCH", action: "stop", retryClass: "never" }))
       return null
     }
-    const effect = { project_ref: projectRef }
+    const createGeneration = generation
+    const effect = { project_ref: projectRef, context_policy: contextPolicy }
     project({ type: "command", state: "pending" })
     try {
-      const response = await sendCommand("create_session", {}, effect, "INTERNAL_UNAVAILABLE", (command) =>
-        options.client.createSession({ command, ...effect }))
+      const response = await sendCommand(
+        "create_session",
+        {},
+        effect,
+        "INTERNAL_UNAVAILABLE",
+        (command) => options.client.createSession({ command, ...effect }),
+        undefined,
+        sessionBrowserPersistence(contextPolicy).commandRecovery,
+      )
       if (response === null) return null
+      if (generation !== createGeneration) return null
       const receipt = response.command_receipt
       if (
         (receipt.status !== "accepted" && receipt.status !== "applied") ||
-        receipt.payload.kind !== "session-created"
+        receipt.payload.kind !== "session-created" ||
+        receipt.payload.payload.context_policy !== contextPolicy
       ) {
-        fail(describeSessionFailure({ stableCode: "INTERNAL_UNAVAILABLE", action: "reconcile_receipt", retryClass: "reconcile_receipt" }))
+        fail(describeSessionFailure({ stableCode: "CLIENT_CONTRACT_UPGRADE_REQUIRED", action: "upgrade_client", retryClass: "after_user_action" }))
         return null
       }
       const sessionId = receipt.payload.payload.session_id
       await open(sessionId)
-      return state.phase === "ready" && state.sessionId === sessionId ? sessionId : null
+      if (
+        state.phase === "ready" &&
+        state.sessionId === sessionId &&
+        state.snapshot?.session.context_policy === contextPolicy
+      ) return sessionId
+      if (state.sessionId === sessionId) {
+        const failure = describeSessionFailure({
+          stableCode: "CLIENT_CONTRACT_UPGRADE_REQUIRED",
+          action: "upgrade_client",
+          retryClass: "after_user_action",
+        })
+        generation += 1
+        stream?.close()
+        stream = null
+        projectionStore.reset()
+        publish({
+          ...state,
+          phase: "not_found",
+          sessionId: null,
+          snapshot: null,
+          projection: projectionStore.getSnapshot(),
+          failure,
+        })
+      }
+      return null
     } catch (error) {
       fail(failureFromError(error))
       return null

@@ -17,13 +17,19 @@ import type { SessionCommandRecoveryRecord, SessionCommandRecoveryStore } from "
 
 const NOW = "2026-07-29T00:00:00.000Z"
 
-function snapshot(branchId: string, cursor: string, durableSeq: string): SessionSnapshot {
+function snapshot(
+  branchId: string,
+  cursor: string,
+  durableSeq: string,
+  contextPolicy: "standard" | "temporary" = "standard",
+): SessionSnapshot {
   return {
     session: {
       session_id: "session-12345678",
       project_ref: "project-12345678",
       title: "Recovery",
       lifecycle: "active",
+      context_policy: contextPolicy,
       active_branch_id: branchId,
       version: Number(durableSeq),
       created_at: NOW,
@@ -92,6 +98,7 @@ function clientFixture(input: Readonly<{
   fetchSnapshot: SessionClient["fetchSnapshot"]
   hydrate?: SessionClient["hydrate"]
   getCommandReceipt?: SessionClient["getCommandReceipt"]
+  createSession?: SessionClient["createSession"]
   submitMessage?: SessionClient["submitMessage"]
 }>) {
   const streams: OpenEventsInput[] = []
@@ -107,7 +114,7 @@ function clientFixture(input: Readonly<{
       cursor: input.initial.snapshot_watermark.cursor as SessionCursor,
     })),
     listSessions: unavailable,
-    createSession: unavailable,
+    createSession: input.createSession ?? unavailable,
     submitMessage: input.submitMessage ?? unavailable,
     editMessage: unavailable,
     regenerateMessage: unavailable,
@@ -135,6 +142,167 @@ function clientFixture(input: Readonly<{
 }
 
 describe("Chat recovery controller", () => {
+  it("creates a temporary Session only when the receipt and owner snapshot confirm the requested policy", async () => {
+    const temporary = snapshot("branch-temporary-12345678", "signed.cursor.1", "1", "temporary")
+    const createSession = vi.fn<SessionClient["createSession"]>(async (body) => ({
+      command_receipt: {
+        operation: "create_session",
+        command_id: body.command.command_id,
+        idempotency_key: body.command.idempotency_key,
+        digest_algorithm: body.command.digest_algorithm,
+        request_digest: body.command.request_digest,
+        updated_at: NOW,
+        status: "applied",
+        payload: {
+          kind: "session-created",
+          payload: {
+            session_id: temporary.session.session_id,
+            initial_branch_id: temporary.session.active_branch_id,
+            session_version: temporary.session.version,
+            context_policy: "temporary",
+          },
+        },
+      },
+    }))
+    const { client } = clientFixture({
+      initial: temporary,
+      createSession,
+      fetchSnapshot: vi.fn(async () => temporary),
+    })
+    const controller = createChatController({
+      client,
+      trustedLocale: "en-US",
+      chatCatalog: null,
+      defaultProjectRef: "project-12345678",
+    })
+
+    await expect(controller.create("temporary")).resolves.toBe(temporary.session.session_id)
+
+    expect(createSession).toHaveBeenCalledWith(expect.objectContaining({
+      project_ref: "project-12345678",
+      context_policy: "temporary",
+    }))
+    expect(controller.getSnapshot().snapshot?.session.context_policy).toBe("temporary")
+    controller.close()
+  })
+
+  it("does not persist command recovery for a temporary Session", async () => {
+    const temporary = snapshot("branch-temporary-12345678", "signed.cursor.1", "1", "temporary")
+    const recoveryStore = {
+      load: () => null,
+      save: vi.fn(),
+      clear: vi.fn(),
+    } satisfies SessionCommandRecoveryStore
+    const submitMessage = vi.fn<SessionClient["submitMessage"]>(async () => {
+      throw new TypeError("response lost")
+    })
+    const getCommandReceipt = vi.fn<SessionClient["getCommandReceipt"]>(async () => {
+      throw new TypeError("receipt temporarily unavailable")
+    })
+    const { client } = clientFixture({
+      initial: temporary,
+      fetchSnapshot: vi.fn(async () => temporary),
+      getCommandReceipt,
+      submitMessage,
+    })
+    const controller = createChatController({
+      client,
+      trustedLocale: "en-US",
+      chatCatalog: {
+        surfaceId: "chat",
+        catalogRevisionRef: "catalog-12345678",
+        defaultModelOptionRevisionRef: "model-option-12345678",
+        publishedAt: NOW,
+        options: [{
+          modelOptionRevisionRef: "model-option-12345678",
+          optionKey: "standard",
+          label: "Standard",
+          inputModalities: ["text"],
+          outputModalities: ["text"],
+          supportedEfforts: [],
+          badges: [],
+          availability: "available",
+        }],
+      },
+      defaultProjectRef: "project-12345678",
+      commandRecoveryStore: recoveryStore,
+    })
+
+    await controller.open(temporary.session.session_id)
+    await expect(controller.submit("temporary content")).resolves.toBe(false)
+
+    expect(submitMessage).toHaveBeenCalledOnce()
+    expect(getCommandReceipt).toHaveBeenCalledOnce()
+    expect(recoveryStore.save).not.toHaveBeenCalled()
+    controller.close()
+  })
+
+  it("defers an unrelated standard recovery record while an exact temporary Session is open", async () => {
+    const temporary = snapshot("branch-temporary-12345678", "signed.cursor.1", "1", "temporary")
+    const persisted: SessionCommandRecoveryRecord = {
+      schemaVersion: 1,
+      operation: "submit_message",
+      command: {
+        command_id: "command-standard-12345678",
+        idempotency_key: "web:command-standard-12345678",
+        digest_algorithm: "SHA256_CANONICAL_JSON_V2",
+        request_digest: "a".repeat(64),
+      },
+      sessionId: "session-standard-12345678",
+      clientDraftRevision: "draft-standard-12345678",
+      createdAt: 1_000,
+    }
+    const recoveryStore = {
+      load: vi.fn(() => persisted),
+      save: vi.fn(),
+      clear: vi.fn(),
+    } satisfies SessionCommandRecoveryStore
+    const submitMessage = vi.fn<SessionClient["submitMessage"]>(async () => {
+      throw new TypeError("response lost")
+    })
+    const getCommandReceipt = vi.fn<SessionClient["getCommandReceipt"]>(async () => {
+      throw new TypeError("receipt temporarily unavailable")
+    })
+    const { client } = clientFixture({
+      initial: temporary,
+      fetchSnapshot: vi.fn(async () => temporary),
+      getCommandReceipt,
+      submitMessage,
+    })
+    const controller = createChatController({
+      client,
+      trustedLocale: "en-US",
+      chatCatalog: {
+        surfaceId: "chat",
+        catalogRevisionRef: "catalog-12345678",
+        defaultModelOptionRevisionRef: "model-option-12345678",
+        publishedAt: NOW,
+        options: [{
+          modelOptionRevisionRef: "model-option-12345678",
+          optionKey: "standard",
+          label: "Standard",
+          inputModalities: ["text"],
+          outputModalities: ["text"],
+          supportedEfforts: [],
+          badges: [],
+          availability: "available",
+        }],
+      },
+      defaultProjectRef: "project-12345678",
+      commandRecoveryStore: recoveryStore,
+    })
+
+    await controller.open(temporary.session.session_id)
+    await expect(controller.resumePendingCommand()).resolves.toBe(false)
+    await expect(controller.submit("temporary content")).resolves.toBe(false)
+
+    expect(submitMessage).toHaveBeenCalledOnce()
+    expect(getCommandReceipt).toHaveBeenCalledOnce()
+    expect(recoveryStore.save).not.toHaveBeenCalled()
+    expect(recoveryStore.clear).not.toHaveBeenCalled()
+    controller.close()
+  })
+
   it("does not carry one conversation's model draft selection into another conversation", async () => {
     const first = withAssistantText(snapshot("branch-first-12345678", "signed.cursor.1", "1"), "first session")
     const secondBase: SessionSnapshot = {

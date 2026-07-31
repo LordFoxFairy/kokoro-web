@@ -45,7 +45,7 @@ describe("SessionRail", () => {
       brandName="Kokoro"
       controller={controller}
       copy={DEFAULT_CHAT_COPY}
-      onNew={() => undefined}
+      onNew={(_contextPolicy) => undefined}
       onOpen={() => undefined}
       state={state}
     />)
@@ -55,5 +55,7 @@ describe("SessionRail", () => {
     expect(html).toContain("aria-expanded=\"false\"")
     expect(html).toContain("Open chat navigation")
     expect(html).toContain(`id="${navigationId}"`)
+    expect(html).toContain("New chat")
+    expect(html).toContain("Temporary chat")
   })
 })

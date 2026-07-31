@@ -7,6 +7,7 @@ import type {
   SessionOrganizerState,
 } from "./session-organizer"
 import type { ChatProductCopy } from "./chat-copy"
+import type { SessionContextPolicy } from "./session-context-policy"
 import styles from "./session-rail.module.css"
 
 export function SessionRail(props: {
@@ -15,7 +16,7 @@ export function SessionRail(props: {
   readonly brandName: string
   readonly controller: SessionOrganizer
   readonly copy: ChatProductCopy
-  readonly onNew: () => void
+  readonly onNew: (contextPolicy: SessionContextPolicy) => void
   readonly onOpen: (sessionId: string) => void
   readonly state: SessionOrganizerState
 }) {
@@ -29,6 +30,7 @@ export function SessionRail(props: {
   const [confirmTrashSessionId, setConfirmTrashSessionId] = useState<string | null>(null)
   const [mobileCollapsed, setMobileCollapsed] = useState(true)
   const navigationId = useId()
+  const temporaryDescriptionId = useId()
   const navigationRef = useRef<HTMLDivElement | null>(null)
   const disabled = !props.available || props.state.pendingAction !== null
 
@@ -72,9 +74,9 @@ export function SessionRail(props: {
       navigationRef.current?.querySelector<HTMLElement>("button:not(:disabled), input:not(:disabled)")?.focus()
     })
   }
-  const newChat = (): void => {
+  const newChat = (contextPolicy: SessionContextPolicy): void => {
     setMobileCollapsed(true)
-    props.onNew()
+    props.onNew(contextPolicy)
   }
   const openChat = (sessionId: string): void => {
     setMobileCollapsed(true)
@@ -105,9 +107,19 @@ export function SessionRail(props: {
         id={navigationId}
         ref={navigationRef}
       >
-      <button className={styles.newChat} type="button" onClick={newChat} disabled={disabled}>
-        <span aria-hidden>＋</span> {props.copy.newChat}
-      </button>
+      <div className={styles.newSessionActions}>
+        <button className={styles.newChat} type="button" onClick={() => newChat("standard")} disabled={disabled}>
+          <span aria-hidden>＋</span> {props.copy.newChat}
+        </button>
+        <button
+          aria-describedby={temporaryDescriptionId}
+          className={styles.temporaryChat}
+          disabled={disabled}
+          onClick={() => newChat("temporary")}
+          type="button"
+        >{props.copy.temporaryChat}</button>
+        <p id={temporaryDescriptionId}>{props.copy.temporaryChatDescription}</p>
+      </div>
 
       <form className={styles.search} role="search" onSubmit={submitSearch}>
         <input

@@ -17,7 +17,7 @@
 
 .shell {
   display: grid;
-  grid-template-rows: auto auto auto auto minmax(0, 1fr) auto;
+  grid-template-rows: auto auto auto auto auto minmax(0, 1fr) auto;
 }
 
 .startShell {
@@ -38,14 +38,14 @@
   letter-spacing: -0.035em;
 }
 
-.startShell > p:not(.failure) {
+.startShell > p:not(.failure, .temporaryStartHint) {
   max-width: 34rem;
   margin: 1rem 0 1.75rem;
   color: var(--k-text-secondary);
   line-height: 1.65;
 }
 
-.startShell > button,
+.creationActions button,
 .actions button,
 .branchControls button,
 .inlineEditor button {
@@ -58,12 +58,41 @@
   cursor: pointer;
 }
 
-.startShell > button,
+.creationActions button:first-child,
 .actions button:first-child {
   border-color: var(--k-brand);
   color: var(--k-brand-on);
   background: var(--k-brand);
 }
+
+.creationActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.65rem;
+}
+
+.creationActions button:last-child {
+  border-color: var(--k-border-strong);
+  color: var(--k-text-secondary);
+  background: var(--k-bg-container);
+}
+
+.temporaryStartHint {
+  max-width: 36rem;
+  margin: 0.85rem 0 0;
+  color: var(--k-text-tertiary);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.shell > .header { grid-row: 1; }
+.shell > .temporaryStatus { grid-row: 2; }
+.shell > .runBand { grid-row: 3; }
+.shell > .failure { grid-row: 4; }
+.shell > .repair { grid-row: 5; }
+.shell > .thread { grid-row: 6; }
+.shell > .composer { grid-row: 7; }
 
 .startMark {
   display: grid;
@@ -81,12 +110,37 @@
 
 .header,
 .runBand,
+.temporaryStatus,
 .thread,
 .composer,
 .failure,
 .repair {
   width: min(100%, 68rem);
   margin-inline: auto;
+}
+
+.temporaryStatus {
+  display: flex;
+  align-items: baseline;
+  gap: 0.65rem;
+  margin-bottom: 0.65rem;
+  padding: 0.65rem 1rem;
+  border: 1px solid var(--k-warning-border);
+  border-radius: 0.8rem;
+  color: var(--k-warning);
+  background: var(--k-warning-bg);
+}
+
+.temporaryStatus strong {
+  flex: none;
+  font-size: 0.82rem;
+}
+
+.temporaryStatus p {
+  margin: 0;
+  color: var(--k-text-secondary);
+  font-size: 0.78rem;
+  line-height: 1.45;
 }
 
 .header {

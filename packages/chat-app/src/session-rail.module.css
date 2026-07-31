@@ -56,6 +56,7 @@
 }
 
 .newChat,
+.temporaryChat,
 .search button,
 .addFolder button,
 .loadMore,
@@ -69,6 +70,26 @@
   color: var(--k-brand-on);
   background: var(--k-brand);
   cursor: pointer;
+}
+
+.newSessionActions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.4rem;
+}
+
+.newSessionActions p {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--k-text-tertiary);
+  font-size: 0.72rem;
+  line-height: 1.4;
+}
+
+.newSessionActions .temporaryChat {
+  border: 1px solid var(--k-border-strong);
+  color: var(--k-text-secondary);
+  background: var(--k-bg-base);
 }
 
 .search,
