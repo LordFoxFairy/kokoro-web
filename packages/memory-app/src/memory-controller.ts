@@ -325,6 +325,8 @@ export type PendingMemoryCommand = Readonly<{
   targetRef: string | null
 }>
 
+export type MemoryEntryVersionFence = Readonly<Pick<MemoryEntryActiveView, "entryRef" | "entryVersion">>
+
 export type MemorySpacePurgeView = Readonly<Pick<
   MemoryPurgeCommandResult,
   "effectiveAt" | "purgeReceiptRef" | "purgeState"
@@ -334,6 +336,7 @@ export type MemoryControllerState = Readonly<{
   generation: number
   settings: MemorySettings | null
   entries: readonly MemoryEntryActiveView[]
+  entryVersionFences: readonly MemoryEntryVersionFence[]
   nextCursor: string | null
   selectedEntryRef: string | null
   selectedEntry: MemoryEntryView | null
@@ -386,9 +389,11 @@ export function reconcileMemoryEntryPage(
   current: readonly MemoryEntryActiveView[],
   incoming: readonly MemoryEntryActiveView[],
   confirmedEntry: MemoryEntryActiveView,
+  requiredEntries: readonly MemoryEntryVersionFence[] = [],
 ): readonly MemoryEntryActiveView[] | null {
   const observed = incoming.find(({ entryRef }) => entryRef === confirmedEntry.entryRef)
   const currentByRef = new Map(current.map((entry) => [entry.entryRef, entry]))
+  const incomingByRef = new Map(incoming.map((entry) => [entry.entryRef, entry]))
   const currentTarget = currentByRef.get(confirmedEntry.entryRef)
   const minimumTargetVersion = currentTarget === undefined
     ? BigInt(confirmedEntry.entryVersion)
@@ -396,6 +401,14 @@ export function reconcileMemoryEntryPage(
       ? BigInt(currentTarget.entryVersion)
       : BigInt(confirmedEntry.entryVersion)
   if (observed === undefined || BigInt(observed.entryVersion) < minimumTargetVersion) return null
+  for (const candidate of incoming) {
+    const existing = currentByRef.get(candidate.entryRef)
+    if (existing !== undefined && BigInt(existing.entryVersion) > BigInt(candidate.entryVersion)) return null
+  }
+  for (const required of requiredEntries) {
+    const candidate = incomingByRef.get(required.entryRef)
+    if (candidate === undefined || BigInt(candidate.entryVersion) < BigInt(required.entryVersion)) return null
+  }
   return Object.freeze(incoming.map((candidate) => {
     const existing = currentByRef.get(candidate.entryRef)
     return existing === undefined ? candidate : mergeMemoryEntries([existing], [candidate])[0] ?? candidate
@@ -437,6 +450,16 @@ export function settleMemorySelection(
   history: readonly MemoryRevisionView[],
 ): MemoryControllerState {
   if (state.generation !== generation || state.selectedEntryRef !== selectedEntry.entryRef) return state
+  if (selectedEntry.state === "active") {
+    if (state.selectedEntry?.entryRef === selectedEntry.entryRef && state.selectedEntry.state !== "active") return state
+    const floor = currentActiveEntryFloor(state, selectedEntry.entryRef)
+    if (floor !== null) {
+      const incomingVersion = BigInt(selectedEntry.entryVersion)
+      const floorVersion = BigInt(floor.entryVersion)
+      if (incomingVersion < floorVersion) return state
+      if (incomingVersion === floorVersion) mergeMemoryEntries([floor], [selectedEntry])
+    }
+  }
   return Object.freeze({ ...state, selectedEntry, history: mergeMemoryHistory([], history) })
 }
 
@@ -454,6 +477,38 @@ function replaceExport(current: readonly BrowserMemoryExportStatus[], incoming: 
 
 function replaceImport(current: readonly MemoryImportStatus[], incoming: MemoryImportStatus): readonly MemoryImportStatus[] {
   return Object.freeze([incoming, ...current.filter(({ importRef }) => importRef !== incoming.importRef)])
+}
+
+function currentActiveEntryFloor(state: MemoryControllerState, entryRef: string): MemoryEntryActiveView | null {
+  const listed = state.entries.find((entry) => entry.entryRef === entryRef) ?? null
+  const selected = state.selectedEntry?.entryRef === entryRef && state.selectedEntry.state === "active"
+    ? state.selectedEntry
+    : null
+  if (listed === null) return selected
+  if (selected === null) return listed
+  return mergeMemoryEntries([listed], [selected])[0] ?? listed
+}
+
+function projectSelectedActiveEntry(
+  state: MemoryControllerState,
+  incoming: MemoryEntryActiveView,
+): MemoryEntryView | null {
+  if (state.selectedEntryRef !== incoming.entryRef) return state.selectedEntry
+  if (state.selectedEntry !== null && state.selectedEntry.state !== "active") return state.selectedEntry
+  const floor = currentActiveEntryFloor(state, incoming.entryRef)
+  return floor === null ? incoming : mergeMemoryEntries([floor], [incoming])[0] ?? floor
+}
+
+function advanceEntryVersionFence(
+  current: readonly MemoryEntryVersionFence[],
+  incoming: MemoryEntryActiveView,
+): readonly MemoryEntryVersionFence[] {
+  const fences = new Map(current.map((fence) => [fence.entryRef, fence]))
+  const existing = fences.get(incoming.entryRef)
+  if (existing === undefined || BigInt(incoming.entryVersion) > BigInt(existing.entryVersion)) {
+    fences.set(incoming.entryRef, Object.freeze({ entryRef: incoming.entryRef, entryVersion: incoming.entryVersion }))
+  }
+  return Object.freeze([...fences.values()])
 }
 
 export function projectMemoryCommand(state: MemoryControllerState, response: MemoryCommandResponse): MemoryControllerState {
@@ -483,22 +538,28 @@ export function projectMemoryCommand(state: MemoryControllerState, response: Mem
     case "restored":
       return Object.freeze({
         ...base,
+        generation: state.generation + 1,
         entries: mergeMemoryEntries(state.entries, [response.result.entry]),
-        selectedEntry: state.selectedEntryRef === response.result.entry.entryRef ? response.result.entry : state.selectedEntry,
+        entryVersionFences: advanceEntryVersionFence(state.entryVersionFences, response.result.entry),
+        selectedEntry: projectSelectedActiveEntry(state, response.result.entry),
       })
     case "entry": {
       const resultEntry = response.result.entry
       if (resultEntry.state !== "active") {
         return Object.freeze({
           ...base,
+          generation: state.generation + 1,
           entries: state.entries.filter(({ entryRef }) => entryRef !== resultEntry.entryRef),
+          entryVersionFences: state.entryVersionFences.filter(({ entryRef }) => entryRef !== resultEntry.entryRef),
           selectedEntry: state.selectedEntryRef === resultEntry.entryRef ? resultEntry : state.selectedEntry,
         })
       }
       return Object.freeze({
         ...base,
+        generation: state.generation + 1,
         entries: mergeMemoryEntries(state.entries, [resultEntry]),
-        selectedEntry: state.selectedEntryRef === resultEntry.entryRef ? resultEntry : state.selectedEntry,
+        entryVersionFences: advanceEntryVersionFence(state.entryVersionFences, resultEntry),
+        selectedEntry: projectSelectedActiveEntry(state, resultEntry),
       })
     }
     case "purge": {
@@ -511,6 +572,7 @@ export function projectMemoryCommand(state: MemoryControllerState, response: Mem
           ...base,
           generation: state.generation + 1,
           entries: Object.freeze([]),
+          entryVersionFences: Object.freeze([]),
           nextCursor: null,
           selectedEntryRef: null,
           selectedEntry: null,
@@ -527,6 +589,7 @@ export function projectMemoryCommand(state: MemoryControllerState, response: Mem
         ...base,
         generation: state.generation + 1,
         entries: state.entries.filter(({ entryRef }) => entryRef !== purge.entryRef),
+        entryVersionFences: state.entryVersionFences.filter(({ entryRef }) => entryRef !== purge.entryRef),
         nextCursor: null,
         selectedEntry: state.selectedEntryRef === purge.entryRef ? purgeView : state.selectedEntry,
         history: state.selectedEntryRef === purge.entryRef ? Object.freeze([]) : state.history,

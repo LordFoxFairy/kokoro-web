@@ -211,6 +211,112 @@ describe("Memory product runtime scope", () => {
     expect(screen.getByText("Current deep-link A")).toBeTruthy()
   })
 
+  test("does not project a stale selection error after a newer entry is selected", async () => {
+    let rejectEntryA!: () => void
+    const fetcher = vi.fn<MemoryBrowserFetch>((input) => {
+      const path = String(input)
+      if (path.endsWith("/settings")) return Promise.resolve(Response.json(settings))
+      if (path.includes("/entries?")) return Promise.resolve(Response.json({
+        items: [entryValue("entry-a", "Memory A"), entryValue("entry-b", "Memory B")],
+        pageInfo: { hasMore: false, nextCursor: null },
+      }))
+      if (path.includes("/entries/entry-a/history")) return Promise.resolve(historyResponse("entry-a"))
+      if (path.endsWith("/entries/entry-a")) {
+        return new Promise<Response>((_resolve, reject) => {
+          rejectEntryA = () => reject(new Error("stale entry A failure"))
+        })
+      }
+      if (path.includes("/entries/entry-b/history")) return Promise.resolve(historyResponse("entry-b"))
+      if (path.endsWith("/entries/entry-b")) return Promise.resolve(entryResponse("entry-b", "Current detail B", {
+        currentRevisionRef: "entry-b-revision-2",
+        entryVersion: "2",
+        revision: 2,
+        updatedAt: "2026-07-31T00:00:02.000Z",
+      }))
+      throw new Error(`Unexpected Memory request: ${path}`)
+    })
+    render(<MemoryProduct
+      brandName="Site A"
+      browserRuntimeScope="site-a:user-1:release-1"
+      csrfToken="csrf-stable"
+      fetch={fetcher}
+    />)
+    const entryA = await screen.findByRole("button", { name: /Memory A/ })
+    const entryB = screen.getByRole("button", { name: /Memory B/ })
+
+    act(() => {
+      entryA.click()
+      entryB.click()
+    })
+    expect(await screen.findByText("Current detail B")).toBeTruthy()
+    await act(async () => {
+      rejectEntryA()
+      await Promise.resolve()
+    })
+
+    expect(screen.getByText("Current detail B")).toBeTruthy()
+    expect(screen.queryByRole("alert")).toBeNull()
+  })
+
+  test("does not project a stale history-page error after selection advances", async () => {
+    let rejectHistoryA!: () => void
+    let historyACalls = 0
+    const fetcher = vi.fn<MemoryBrowserFetch>((input) => {
+      const path = String(input)
+      if (path.endsWith("/settings")) return Promise.resolve(Response.json(settings))
+      if (path.includes("/entries?")) return Promise.resolve(Response.json({
+        items: [entryValue("entry-a", "Memory A"), entryValue("entry-b", "Memory B")],
+        pageInfo: { hasMore: false, nextCursor: null },
+      }))
+      if (path.includes("/entries/entry-a/history")) {
+        historyACalls += 1
+        if (historyACalls === 1) return Promise.resolve(Response.json({
+          entryRef: "entry-a",
+          items: [],
+          pageInfo: { hasMore: true, nextCursor: "history-a-next" },
+        }))
+        return new Promise<Response>((_resolve, reject) => {
+          rejectHistoryA = () => reject(new Error("stale history A failure"))
+        })
+      }
+      if (path.endsWith("/entries/entry-a")) return Promise.resolve(entryResponse("entry-a", "Current detail A", {
+        currentRevisionRef: "entry-a-revision-2",
+        entryVersion: "2",
+        revision: 2,
+        updatedAt: "2026-07-31T00:00:02.000Z",
+      }))
+      if (path.includes("/entries/entry-b/history")) return Promise.resolve(historyResponse("entry-b"))
+      if (path.endsWith("/entries/entry-b")) return Promise.resolve(entryResponse("entry-b", "Current detail B", {
+        currentRevisionRef: "entry-b-revision-2",
+        entryVersion: "2",
+        revision: 2,
+        updatedAt: "2026-07-31T00:00:02.000Z",
+      }))
+      throw new Error(`Unexpected Memory request: ${path}`)
+    })
+    render(<MemoryProduct
+      brandName="Site A"
+      browserRuntimeScope="site-a:user-1:release-1"
+      csrfToken="csrf-stable"
+      fetch={fetcher}
+    />)
+    fireEvent.click(await screen.findByRole("button", { name: /Memory A/ }))
+    expect(await screen.findByText("Current detail A")).toBeTruthy()
+
+    act(() => {
+      screen.getByRole("button", { name: "Load more history" }).click()
+      screen.getByRole("button", { name: /Memory B/ }).click()
+    })
+    expect(await screen.findByText("Current detail B")).toBeTruthy()
+    await act(async () => {
+      rejectHistoryA()
+      await Promise.resolve()
+    })
+
+    expect(screen.getByText("Current detail B")).toBeTruthy()
+    expect(screen.queryByRole("alert")).toBeNull()
+  })
+
   test("reports an exact recovered rejection and removes its completed journal record", async () => {
     const scope = "site-a:user-1:release-1"
     const commandId = "d".repeat(32)
@@ -361,6 +467,66 @@ describe("Memory product runtime scope", () => {
 
     expect(screen.queryByText("Stale paged memory")).toBeNull()
     expect(screen.queryByRole("button", { name: "Load more memories" })).toBeNull()
+  })
+
+  test("does not project an old list error after reset advances the read epoch", async () => {
+    let rejectPage!: () => void
+    const fetcher = vi.fn<MemoryBrowserFetch>((input, init) => {
+      const path = String(input)
+      if (path.endsWith("/settings")) return Promise.resolve(Response.json(settings))
+      if (path.includes("cursor=cursor-before-reset-error")) {
+        return new Promise<Response>((_resolve, reject) => {
+          rejectPage = () => reject(new Error("stale list failure"))
+        })
+      }
+      if (path.includes("/entries?")) return Promise.resolve(Response.json({
+        items: [entryValue("entry-1", "Current memory")],
+        pageInfo: { hasMore: true, nextCursor: "cursor-before-reset-error" },
+      }))
+      if (path.endsWith("/reset")) {
+        const body = JSON.parse(String(init?.body)) as { command: { commandId: string } }
+        return Promise.resolve(Response.json({
+          command: {
+            commandId: body.command.commandId,
+            commandKind: "resetMemorySpace",
+            receiptRef: "receipt-reset-error",
+            receivedAt: "2026-07-31T00:00:00.000Z",
+            updatedAt: "2026-07-31T00:00:01.000Z",
+          },
+          result: {
+            effectiveAt: "2026-07-31T00:00:01.000Z",
+            entryRef: null,
+            purgeReceiptRef: "purge-reset-error",
+            purgeScope: "space",
+            purgeState: "revoked_purge_pending",
+            resultKind: "purge",
+          },
+          state: "succeeded",
+        }))
+      }
+      throw new Error(`Unexpected Memory request: ${path}`)
+    })
+    render(<MemoryProduct
+      brandName="Site A"
+      browserRuntimeScope="site-a:user-1:release-1"
+      csrfToken="csrf-stable"
+      fetch={fetcher}
+    />)
+    const confirmation = await screen.findByRole("textbox", { name: "Type RESET ALL MEMORY" })
+    fireEvent.change(confirmation, { target: { value: "RESET ALL MEMORY" } })
+
+    act(() => {
+      screen.getByRole("button", { name: "Load more memories" }).click()
+      screen.getByRole("button", { name: "Reset all memory" }).click()
+    })
+    expect(await screen.findByText("purge-reset-error")).toBeTruthy()
+    await act(async () => {
+      rejectPage()
+      await Promise.resolve()
+    })
+
+    expect(screen.getByText("purge-reset-error")).toBeTruthy()
+    expect(screen.queryByRole("alert")).toBeNull()
   })
 
   test("does not let old selected detail or history settle after reset commits", async () => {

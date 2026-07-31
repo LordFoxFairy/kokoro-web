@@ -41,6 +41,7 @@ function controllerState(): MemoryControllerState {
     generation: 4,
     settings: null,
     entries: [entry()],
+    entryVersionFences: [],
     nextCursor: "next-page",
     selectedEntryRef: "entry-1",
     selectedEntry: entry(),
@@ -97,6 +98,91 @@ describe("Memory controller", () => {
       .toThrow("Memory entry owner version conflict")
   })
 
+  test("keeps selected detail monotonic when an older succeeded command arrives last", () => {
+    const currentEntry = entry({
+      content: "Newest owner view",
+      currentRevisionRef: "revision-4",
+      entryVersion: "4",
+      revision: 4,
+      updatedAt: "2026-07-31T00:00:04.000Z",
+    })
+    const staleEntry = entry({
+      content: "Older owner view",
+      currentRevisionRef: "revision-3",
+      entryVersion: "3",
+      revision: 3,
+      updatedAt: "2026-07-31T00:00:03.000Z",
+    })
+    const current = { ...controllerState(), entries: [currentEntry], selectedEntry: currentEntry }
+    const projected = projectMemoryCommand(current, {
+      command: {
+        commandId: "7".repeat(32),
+        commandKind: "correctMemoryEntry",
+        receiptRef: "receipt-stale-correction",
+        receivedAt: "2026-07-31T00:00:02.000Z",
+        updatedAt: "2026-07-31T00:00:03.000Z",
+      },
+      result: { entry: staleEntry, resultKind: "entry" },
+      state: "succeeded",
+    })
+
+    expect(projected.generation).toBe(current.generation + 1)
+    expect(projected.entries[0]).toEqual(currentEntry)
+    expect(projected.selectedEntry).toEqual(currentEntry)
+  })
+
+  test("advances the read epoch for every succeeded entry or list owner mutation", () => {
+    const command = (commandKind: MemoryCommandResponse["command"]["commandKind"], suffix: string) => ({
+      commandId: suffix.repeat(32),
+      commandKind,
+      receiptRef: `receipt-${suffix}`,
+      receivedAt: "2026-07-31T00:00:00.000Z",
+      updatedAt: "2026-07-31T00:00:01.000Z",
+    })
+    const responses: readonly MemoryCommandResponse[] = [
+      ...(["rememberMemoryEntry", "correctMemoryEntry", "prioritizeMemoryEntry", "deprioritizeMemoryEntry"] as const)
+        .map((commandKind, index) => ({
+          command: command(commandKind, String(index + 1)),
+          result: { entry: entry({ entryVersion: String(index + 2) }), resultKind: "entry" as const },
+          state: "succeeded" as const,
+        })),
+      {
+        command: command("restoreMemoryEntryRevision", "5"),
+        result: {
+          entry: entry({ currentRevisionRef: "revision-2", entryVersion: "2", revision: 2 }),
+          newRevision: 2,
+          newRevisionRef: "revision-2",
+          restoredFromRevisionRef: "revision-1",
+          resultKind: "restored",
+        },
+        state: "succeeded",
+      },
+      {
+        command: command("forgetMemoryEntry", "6"),
+        result: {
+          effectiveAt: "2026-07-31T00:00:01.000Z",
+          entryRef: "entry-1",
+          purgeReceiptRef: "purge-entry-1",
+          purgeScope: "entry",
+          purgeState: "revoked_purge_pending",
+          resultKind: "purge",
+        },
+        state: "succeeded",
+      },
+    ]
+
+    expect(responses.map((response) => projectMemoryCommand(controllerState(), response).generation))
+      .toEqual(responses.map(() => controllerState().generation + 1))
+  })
+
+  test("does not settle a selected detail below the current list owner version", () => {
+    const currentEntry = entry({ entryVersion: "4", revision: 4, currentRevisionRef: "revision-4" })
+    const loading = { ...controllerState(), entries: [currentEntry], selectedEntry: null }
+    const staleDetail = entry({ entryVersion: "3", revision: 3, currentRevisionRef: "revision-3" })
+
+    expect(settleMemorySelection(loading, loading.generation, staleDetail, [])).toBe(loading)
+  })
+
   test("clears A synchronously and ignores A after a deep-link switch to B", () => {
     const loadingB = beginMemorySelection(controllerState(), "entry-2")
     expect(loadingB).toMatchObject({ generation: 5, selectedEntryRef: "entry-2", selectedEntry: null, history: [] })
@@ -142,7 +228,7 @@ describe("Memory controller", () => {
     expect(forgotten.entries).toEqual([])
     expect(forgotten.selectedEntry).toMatchObject({ state: "revoked_purge_pending", purgeReceiptRef: "purge-1" })
     expect(forgotten).toMatchObject({
-      generation: 5,
+      generation: prioritized.generation + 1,
       history: [],
       historyNextCursor: null,
       nextCursor: null,
@@ -428,6 +514,34 @@ describe("Memory controller", () => {
 
     expect(reconcileMemoryEntryPage([laterDepriority], oldPriorityPage, confirmedPriority)).toBeNull()
     expect(reconcileMemoryEntryPage([laterCorrection], oldPriorityPage, confirmedPriority)).toBeNull()
+  })
+
+  test("rejects priority ordering and cursor adoption when another entry is newer or omitted", () => {
+    const confirmedPriority = entry({ entryVersion: "3", prioritized: true, updatedAt: "2026-07-31T00:00:03.000Z" })
+    const newerOther = entry({
+      entryRef: "entry-2",
+      entryVersion: "4",
+      prioritized: true,
+      updatedAt: "2026-07-31T00:00:04.000Z",
+    })
+    const staleOther = entry({
+      entryRef: "entry-2",
+      entryVersion: "2",
+      prioritized: false,
+      updatedAt: "2026-07-31T00:00:02.000Z",
+    })
+
+    expect(reconcileMemoryEntryPage(
+      [newerOther, confirmedPriority],
+      [confirmedPriority, staleOther],
+      confirmedPriority,
+    )).toBeNull()
+    expect(reconcileMemoryEntryPage(
+      [newerOther, confirmedPriority],
+      [confirmedPriority],
+      confirmedPriority,
+      [newerOther],
+    )).toBeNull()
   })
 
   test("persists non-sensitive restore and import recovery semantics and rejects incomplete records", () => {

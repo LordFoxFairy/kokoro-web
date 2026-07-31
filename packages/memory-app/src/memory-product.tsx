@@ -363,6 +363,7 @@ const EMPTY_STATE: MemoryControllerState = Object.freeze({
   generation: 0,
   settings: null,
   entries: Object.freeze([]),
+  entryVersionFences: Object.freeze([]),
   nextCursor: null,
   selectedEntryRef: null,
   selectedEntry: null,
@@ -381,6 +382,10 @@ function errorMessage(error: unknown): string {
     return error.message
   }
   return error instanceof Error ? error.message : "Memory is unavailable"
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === "AbortError"
 }
 
 type MemoryClient = ReturnType<typeof createMemoryBrowserClient>
@@ -550,13 +555,19 @@ export function MemoryProduct(props: Readonly<{
         stateRef.current.generation !== generation ||
         stateRef.current.selectedEntryRef !== entryRef
       ) return
-      setState((current) => Object.freeze({
-        ...settleMemorySelection(current, generation, entryResponse.entry, history.items),
-        historyNextCursor: history.pageInfo.nextCursor,
-      }))
+      const settled = commitState((current) => {
+        const selected = settleMemorySelection(current, generation, entryResponse.entry, history.items)
+        return selected === current ? current : Object.freeze({ ...selected, historyNextCursor: history.pageInfo.nextCursor })
+      })
+      if (settled.selectedEntry !== entryResponse.entry) return
       setStatus(`Opened memory revision ${entryResponse.entry.state === "active" ? entryResponse.entry.revision : "receipt"}`)
-    }).catch((cause: unknown) => { if (scopeFenceRef.current.isCurrent(expectedScope)) setError(errorMessage(cause)) })
-  }, [client, request])
+    }).catch((cause: unknown) => {
+      if (
+        !isAbortError(cause) && scopeFenceRef.current.isCurrent(expectedScope) &&
+        stateRef.current.generation === generation && stateRef.current.selectedEntryRef === entryRef
+      ) setError(errorMessage(cause))
+    })
+  }, [client, commitState, request])
 
   const execute = useCallback(async (
     commandKind: MemoryCommandKind,
@@ -587,15 +598,29 @@ export function MemoryProduct(props: Readonly<{
       if (response.state === "succeeded" && (commandKind === "prioritizeMemoryEntry" || commandKind === "deprioritizeMemoryEntry")) {
         if (response.result.resultKind !== "entry" || response.result.entry.state !== "active") throw new MemoryBrowserError(502, "BFF_PROTOCOL_INVALID", "Memory response was invalid")
         const readGeneration = projected.generation
-        const page = await request((signal) => client.listEntries({ limit: 50 }, signal))
+        let page
+        try {
+          page = await request((signal) => client.listEntries({ limit: 50 }, signal))
+        } catch (cause) {
+          if (!isAbortError(cause) && scopeFenceRef.current.isCurrent(expectedScope) && stateRef.current.generation === readGeneration) {
+            setError(errorMessage(cause))
+          }
+          return
+        }
         if (!scopeFenceRef.current.isCurrent(expectedScope) || stateRef.current.generation !== readGeneration) return
-        const reconciled = reconcileMemoryEntryPage(stateRef.current.entries, page.items, response.result.entry)
+        const reconciled = reconcileMemoryEntryPage(
+          stateRef.current.entries,
+          page.items,
+          response.result.entry,
+          stateRef.current.entryVersionFences,
+        )
         if (reconciled === null) {
           priorityRefreshDeferred = true
         } else {
           commitState((current) => current.generation !== readGeneration ? current : Object.freeze({
             ...current,
             entries: reconciled,
+            entryVersionFences: Object.freeze([]),
             nextCursor: page.pageInfo.nextCursor,
           }))
         }
@@ -613,7 +638,7 @@ export function MemoryProduct(props: Readonly<{
           : response.state === "succeeded" ? "Memory owner confirmed the change" : "Memory command is being reconciled")
       }
     } catch (cause) {
-      if (scopeFenceRef.current.isCurrent(expectedScope)) setError(errorMessage(cause))
+      if (!isAbortError(cause) && scopeFenceRef.current.isCurrent(expectedScope)) setError(errorMessage(cause))
     } finally { /* request tokens own busy state */ }
   }, [client, commitState, request])
 
@@ -660,10 +685,18 @@ export function MemoryProduct(props: Readonly<{
     const generation = stateRef.current.generation
     if (cursor === null) return
     void request((signal) => client.listEntries({ cursor, limit: 50 }, signal)).then((page) => {
-      if (!scopeFenceRef.current.isCurrent(expectedScope) || stateRef.current.generation !== generation) return
+      if (
+        !scopeFenceRef.current.isCurrent(expectedScope) || stateRef.current.generation !== generation ||
+        stateRef.current.nextCursor !== cursor
+      ) return
       commitState((current) => current.generation !== generation ? current : Object.freeze({ ...current, entries: mergeMemoryEntries(current.entries, page.items), nextCursor: page.pageInfo.nextCursor }))
       setStatus("Loaded more saved memories")
-    }).catch((cause: unknown) => { if (scopeFenceRef.current.isCurrent(expectedScope)) setError(errorMessage(cause)) })
+    }).catch((cause: unknown) => {
+      if (
+        !isAbortError(cause) && scopeFenceRef.current.isCurrent(expectedScope) &&
+        stateRef.current.generation === generation && stateRef.current.nextCursor === cursor
+      ) setError(errorMessage(cause))
+    })
   }, [client, commitState, request])
 
   const loadMoreHistory = useCallback(() => {
@@ -677,11 +710,18 @@ export function MemoryProduct(props: Readonly<{
       if (
         !scopeFenceRef.current.isCurrent(expectedScope) ||
         stateRef.current.generation !== generation ||
-        stateRef.current.selectedEntryRef !== entryRef
+        stateRef.current.selectedEntryRef !== entryRef ||
+        stateRef.current.historyNextCursor !== cursor
       ) return
       commitState((latest) => latest.generation !== generation || latest.selectedEntryRef !== entryRef ? latest : Object.freeze({ ...latest, history: mergeMemoryHistory(latest.history, page.items), historyNextCursor: page.pageInfo.nextCursor }))
       setStatus("Loaded more revision history")
-    }).catch((cause: unknown) => { if (scopeFenceRef.current.isCurrent(expectedScope)) setError(errorMessage(cause)) })
+    }).catch((cause: unknown) => {
+      if (
+        !isAbortError(cause) && scopeFenceRef.current.isCurrent(expectedScope) &&
+        stateRef.current.generation === generation && stateRef.current.selectedEntryRef === entryRef &&
+        stateRef.current.historyNextCursor === cursor
+      ) setError(errorMessage(cause))
+    })
   }, [client, commitState, request])
 
   const recover = useCallback((commandId: string) => {
