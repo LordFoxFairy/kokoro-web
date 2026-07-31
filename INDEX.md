@@ -42,7 +42,7 @@ Web does not execute Agent graphs, own Session/Platform business persistence, or
 是 Web 仓发布的稳定构件。`apps/reference-site` 只验证 factory composition，不是共享用户站部署单元。
 
 **Site 与 Admin 信任边界不可混**：每个 Site 的同源 BFF 密封 cookie/credential，浏览器只见 HTTP/SSE；Admin
-使用 NextAuth，并通过本仓生成镜像调用 Platform Admin 私有 Connect 控制面。
+使用加密的 server-only authority session，并通过 Platform-owned OIDC 与本仓生成镜像调用 Platform 私有 Connect 控制面。
 
 ## Callers and dependencies
 
@@ -54,8 +54,9 @@ Browsers call each app. User BFF calls Session HTTP/SSE; Admin server code calls
 - `packages/bff-runtime` 是 brandless server-only trust kernel。它按 Root 的 ProductContext→PersonalContext→
   SessionAccessGrant 三段权威面组合 bootstrap；Session browser v3 adapter 只从生成 registry 构造相对路径和 schema，
   禁止手写 URL、浏览器提供 Site/凭据或重复 wire contract。
-- `apps/admin` 上游 `kokoro-platform`（platform-admin 网关）：`apps/admin/lib/generated/contracts/**` 是根仓 Buf
-  契约的生成镜像，必须提交且禁止手改；当前仅覆盖 `kokoro/platform/admin/v1` admin-auth，其余跨仓调用不走此路径。
+- `apps/admin` 上游是 `kokoro-platform`。`apps/admin/lib/generated/{admin-identity,admin-query-v2,admin-commerce,admin-credit,site-provisioning,model-control}/**`
+  是根仓生成的官方 consumer mirrors，必须提交且禁止手改；已退役的 `apps/admin/lib/generated/contracts/**`
+  Admin Auth mirror 不是当前运行时边界，不得为兼容检查恢复。
 
 ## Data ownership and events
 

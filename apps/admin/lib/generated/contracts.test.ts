@@ -42,7 +42,9 @@ describe("typed Admin control-plane mirrors", () => {
       "getOperatorSessionDelivery", "beginStepUp", "completeStepUp", "signOut"]);
     expect(Object.keys(AdminQueryService.method)).toContain("getCurrentOperator");
     expect(Object.keys(AdminQueryService.method)).toContain("listPendingApprovals");
-    expect(Object.keys(AdminCommerceService.method)).toEqual(["publishOffer", "listOffers", "getOffer",
+    expect(Object.keys(AdminCommerceService.method)).toEqual(["publishCreditProgramRevision",
+      "listCreditProgramRevisions", "getCreditProgramRevision", "publishEntitlementTemplateRevision",
+      "listEntitlementTemplateRevisions", "getEntitlementTemplateRevision", "publishOffer", "listOffers", "getOffer",
       "publishRedemptionProgram", "listRedemptionPrograms", "getRedemptionProgram", "issueCodeBatch",
       "listCodeBatches", "getCodeBatch", "approveCodeBatch", "activateCodeBatch", "abandonCodeBatch",
       "suspendCodeBatch", "revokeCodeBatch"]);
