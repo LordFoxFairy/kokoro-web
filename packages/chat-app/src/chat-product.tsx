@@ -1,8 +1,6 @@
 "use client"
 
 import {
-  createAssetUploader,
-  createLocalAssetRecoveryStore,
   type AssetAttachmentRef,
   type AssetUploadProgress,
 } from "@kokoro/asset-client"
@@ -50,7 +48,10 @@ import {
 import { createSessionOrganizer } from "./session-organizer"
 import { SessionRail } from "./session-rail"
 import {
-  createEphemeralAssetRecoveryStore,
+  type SessionAssetUploader,
+  useSessionAssetUploader,
+} from "./session-asset-uploader"
+import {
   sessionBrowserPersistence,
   type SessionContextPolicy,
 } from "./session-context-policy"
@@ -597,7 +598,7 @@ export function ChatView(props: {
   readonly copy: ChatProductCopy
   readonly sessionId: string
   readonly draftStore?: ComposerDraftStore
-  readonly assetUploader?: ReturnType<typeof createAssetUploader> | null
+  readonly assetUploader?: SessionAssetUploader | null
 }) {
   const contextPolicy = props.state.snapshot?.session.context_policy ?? "standard"
   const [composer, setComposerState] = useState<ComposerDraft>(() => props.draftStore?.load(props.sessionId) ?? {
@@ -831,53 +832,17 @@ function ChatProductRuntime(props: ChatProductProps) {
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot)
   const organizer = useMemo(() => createSessionOrganizer({ client, projectRef: props.bootstrap?.defaultProjectRef ?? null }), [client, props.bootstrap?.defaultProjectRef])
   const organizerState = useSyncExternalStore(organizer.subscribe, organizer.getSnapshot, organizer.getSnapshot)
-  const [assetUploader, setAssetUploader] = useState<ReturnType<typeof createAssetUploader> | null>(null)
   const contextPolicy = state.phase === "ready" ? state.snapshot?.session.context_policy ?? null : null
   const persistence = contextPolicy === null ? null : sessionBrowserPersistence(contextPolicy)
-
-  useEffect(() => {
-    const projectRef = props.bootstrap?.defaultProjectRef
-    const sessionId = state.sessionId
-    if (props.csrfToken === undefined || projectRef === undefined || sessionId === null || contextPolicy === null) {
-      setAssetUploader(null)
-      return
-    }
-    let uploader: ReturnType<typeof createAssetUploader> | null = null
-    try {
-      uploader = createAssetUploader({
-        csrfToken: props.csrfToken,
-        store: persistence?.uploadRecovery === false
-          ? createEphemeralAssetRecoveryStore()
-          : createLocalAssetRecoveryStore({
-              storage: window.localStorage,
-              scope: `${props.browserRuntimeScope}:${projectRef}`,
-              pruneOtherScopes: true,
-            }),
-      })
-    } catch {
-      if (persistence?.uploadRecovery === false) {
-        uploader = null
-      } else {
-        try {
-          uploader = createAssetUploader({
-            csrfToken: props.csrfToken,
-            store: createLocalAssetRecoveryStore({
-              storage: window.sessionStorage,
-              scope: `${props.browserRuntimeScope}:${projectRef}`,
-              pruneOtherScopes: true,
-            }),
-          })
-        } catch {
-          uploader = null
-        }
-      }
-    }
-    setAssetUploader(uploader)
-    return () => {
-      uploader?.dispose()
-      setAssetUploader((current) => current === uploader ? null : current)
-    }
-  }, [contextPolicy, persistence, props.bootstrap?.defaultProjectRef, props.browserRuntimeScope, props.csrfToken, state.sessionId])
+  const assetUploader = useSessionAssetUploader({
+    ...(props.csrfToken === undefined ? {} : { csrfToken: props.csrfToken }),
+    ...(props.bootstrap?.defaultProjectRef === undefined
+      ? {}
+      : { projectRef: props.bootstrap.defaultProjectRef }),
+    sessionId: state.sessionId,
+    contextPolicy,
+    browserRuntimeScope: props.browserRuntimeScope,
+  })
 
   useEffect(() => {
     void (async () => {

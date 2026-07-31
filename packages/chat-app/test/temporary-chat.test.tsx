@@ -7,6 +7,7 @@ import {
   createEphemeralAssetRecoveryStore,
   sessionBrowserPersistence,
 } from "../src/session-context-policy.js"
+import { createSessionAssetUploader } from "../src/session-asset-uploader.js"
 import { TemporaryChatStatus } from "../src/temporary-chat.js"
 
 function recoveryRecord(): AssetRecoveryRecord {
@@ -53,6 +54,53 @@ describe("Temporary Chat browser policy", () => {
     expect(await store.get(record.fingerprint)).toEqual(record)
     await store.delete(record.fingerprint)
     expect(await store.get(record.fingerprint)).toBeNull()
+  })
+
+  it("composes temporary upload recovery without touching browser storage", () => {
+    const unavailableStorage = {
+      get length(): number { throw new Error("browser storage must not be consulted") },
+    } as Storage
+
+    const uploader = createSessionAssetUploader({
+      csrfToken: "csrf-token-12345678",
+      contextPolicy: "temporary",
+      recoveryScope: "site-a:project-a",
+      localStorage: unavailableStorage,
+      sessionStorage: unavailableStorage,
+    })
+
+    expect(uploader).not.toBeNull()
+    uploader?.dispose()
+  })
+
+  it("falls back to session storage when durable upload recovery is unavailable", () => {
+    let sessionStorageObserved = false
+    const unavailableLocalStorage = {
+      get length(): number { throw new Error("local storage unavailable") },
+    } as Storage
+    const availableSessionStorage = {
+      get length(): number {
+        sessionStorageObserved = true
+        return 0
+      },
+      key: () => null,
+      getItem: () => null,
+      setItem: () => undefined,
+      removeItem: () => undefined,
+      clear: () => undefined,
+    } as Storage
+
+    const uploader = createSessionAssetUploader({
+      csrfToken: "csrf-token-12345678",
+      contextPolicy: "standard",
+      recoveryScope: "site-a:project-a",
+      localStorage: unavailableLocalStorage,
+      sessionStorage: availableSessionStorage,
+    })
+
+    expect(sessionStorageObserved).toBe(true)
+    expect(uploader).not.toBeNull()
+    uploader?.dispose()
   })
 
   it("states the bounded privacy behavior without claiming that the conversation leaves no trace", () => {

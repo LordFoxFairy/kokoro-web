@@ -7,6 +7,7 @@ import {
   type SessionHydration,
 } from "@kokoro/session-client"
 import type {
+  SessionCommandResponse,
   SessionEvent,
   SessionSnapshot,
 } from "@kokoro/session-client/contracts"
@@ -93,6 +94,75 @@ function branchActivated(branchId: string): SessionEvent {
   }
 }
 
+function sessionUpdated(contextPolicy: "standard" | "temporary"): SessionEvent {
+  const current = snapshot("branch-original-12345678", "signed.cursor.2", "2", contextPolicy)
+  return {
+    kind: "session.updated",
+    event_id: "event-session-updated-12345678",
+    cursor: "signed.cursor.2",
+    session_id: current.session.session_id,
+    stream_epoch: "epoch-12345678",
+    durable_seq: "2",
+    projection_version: 2,
+    schema_revision: 3,
+    recorded_at: NOW,
+    payload: { session: current.session },
+  }
+}
+
+function acceptedRunLaunch(command: SessionCommandRecoveryRecord["command"]): SessionCommandResponse {
+  return {
+    command_receipt: {
+      operation: "submit_message",
+      command_id: command.command_id,
+      idempotency_key: command.idempotency_key,
+      digest_algorithm: command.digest_algorithm,
+      request_digest: command.request_digest,
+      updated_at: NOW,
+      status: "accepted",
+      payload: {
+        kind: "run-launch-created",
+        payload: {
+          session_id: "session-12345678",
+          branch_id: "branch-temporary-12345678",
+          trigger_message_id: "message-user-12345678",
+          assistant_message_id: "message-assistant-12345678",
+          launch_id: "launch-12345678",
+          proposed_run_id: "run-12345678",
+          session_version: 2,
+          branch_version: 2,
+        },
+      },
+    },
+  }
+}
+
+function appliedSessionCreation(
+  command: SessionCommandRecoveryRecord["command"],
+  contextPolicy: "standard" | "temporary",
+): SessionCommandResponse {
+  return {
+    command_receipt: {
+      operation: "create_session",
+      command_id: command.command_id,
+      idempotency_key: command.idempotency_key,
+      digest_algorithm: command.digest_algorithm,
+      request_digest: command.request_digest,
+      updated_at: NOW,
+      status: "applied",
+      payload: {
+        kind: "session-created",
+        payload: {
+          session_id: "session-12345678",
+          initial_branch_id: "branch-temporary-12345678",
+          session_version: 1,
+          context_policy: contextPolicy,
+        },
+      },
+    },
+  }
+}
+
 function clientFixture(input: Readonly<{
   initial: SessionSnapshot
   fetchSnapshot: SessionClient["fetchSnapshot"]
@@ -102,6 +172,7 @@ function clientFixture(input: Readonly<{
   submitMessage?: SessionClient["submitMessage"]
 }>) {
   const streams: OpenEventsInput[] = []
+  const streamHandles: EventStreamHandle[] = []
   const unavailable = async (..._args: readonly unknown[]): Promise<never> => {
     throw new Error("operation is outside this fixture")
   }
@@ -135,10 +206,12 @@ function clientFixture(input: Readonly<{
     deleteFolder: unavailable,
     openEvents(eventInput: OpenEventsInput): EventStreamHandle {
       streams.push(eventInput)
-      return { ready: Promise.resolve(), close: vi.fn() }
+      const handle = { ready: Promise.resolve(), close: vi.fn() }
+      streamHandles.push(handle)
+      return handle
     },
   } satisfies SessionClient
-  return { client, streams }
+  return { client, streams, streamHandles }
 }
 
 describe("Chat recovery controller", () => {
@@ -183,6 +256,58 @@ describe("Chat recovery controller", () => {
       context_policy: "temporary",
     }))
     expect(controller.getSnapshot().snapshot?.session.context_policy).toBe("temporary")
+    controller.close()
+  })
+
+  it.each([
+    {
+      caseName: "network failure",
+      hydrate: vi.fn<SessionClient["hydrate"]>(async () => {
+        throw new SessionClientError("network", "offline")
+      }),
+      expectedPhase: "loading" as const,
+      expectedFailure: { code: "INTERNAL_UNAVAILABLE", action: "refetch_snapshot" },
+    },
+    {
+      caseName: "not found",
+      hydrate: vi.fn<SessionClient["hydrate"]>(async () => ({ kind: "not_found" })),
+      expectedPhase: "not_found" as const,
+      expectedFailure: null,
+    },
+    {
+      caseName: "snapshot repair",
+      hydrate: vi.fn<SessionClient["hydrate"]>(async () => ({
+        kind: "repair_required",
+        snapshot: snapshot("branch-temporary-12345678", "signed.cursor.1", "1", "temporary"),
+        reason: "cursor rejected",
+      })),
+      expectedPhase: "loading" as const,
+      expectedFailure: { code: "INTERNAL_UNAVAILABLE", action: "refetch_snapshot" },
+    },
+  ])("keeps the applied creation identity when first hydration ends in $caseName", async ({ hydrate, expectedPhase, expectedFailure }) => {
+    const temporary = snapshot("branch-temporary-12345678", "signed.cursor.1", "1", "temporary")
+    const createSession = vi.fn<SessionClient["createSession"]>(async (body) =>
+      appliedSessionCreation(body.command, "temporary"))
+    const { client } = clientFixture({
+      initial: temporary,
+      createSession,
+      fetchSnapshot: vi.fn(async () => temporary),
+      hydrate,
+    })
+    const controller = createChatController({
+      client,
+      trustedLocale: "en-US",
+      chatCatalog: null,
+      defaultProjectRef: "project-12345678",
+    })
+
+    await expect(controller.create("temporary")).resolves.toBe("session-12345678")
+
+    expect(controller.getSnapshot()).toMatchObject({
+      phase: expectedPhase,
+      sessionId: "session-12345678",
+      failure: expectedFailure,
+    })
     controller.close()
   })
 
@@ -300,6 +425,130 @@ describe("Chat recovery controller", () => {
     expect(getCommandReceipt).toHaveBeenCalledOnce()
     expect(recoveryStore.save).not.toHaveBeenCalled()
     expect(recoveryStore.clear).not.toHaveBeenCalled()
+    controller.close()
+  })
+
+  it("reconciles an ambiguous temporary mutation in memory with the exact command identity", async () => {
+    const temporary = snapshot("branch-temporary-12345678", "signed.cursor.1", "1", "temporary")
+    const refreshed = snapshot("branch-temporary-12345678", "signed.cursor.2", "2", "temporary")
+    const recoveryStore = {
+      load: () => null,
+      save: vi.fn(),
+      clear: vi.fn(),
+    } satisfies SessionCommandRecoveryStore
+    const submitMessage = vi.fn<SessionClient["submitMessage"]>(async () => {
+      throw new TypeError("response lost")
+    })
+    let submittedCommand: SessionCommandRecoveryRecord["command"] | null = null
+    submitMessage.mockImplementationOnce(async (_sessionId, body) => {
+      submittedCommand = body.command
+      throw new TypeError("response lost")
+    })
+    const getCommandReceipt = vi.fn<SessionClient["getCommandReceipt"]>()
+      .mockRejectedValueOnce(new TypeError("receipt temporarily unavailable"))
+      .mockImplementationOnce(async () => {
+        if (submittedCommand === null) throw new Error("missing submitted command")
+        return acceptedRunLaunch(submittedCommand)
+      })
+    const fetchSnapshot = vi.fn(async () => refreshed)
+    const { client } = clientFixture({ initial: temporary, fetchSnapshot, getCommandReceipt, submitMessage })
+    const controller = createChatController({
+      client,
+      trustedLocale: "en-US",
+      chatCatalog: {
+        surfaceId: "chat",
+        catalogRevisionRef: "catalog-12345678",
+        defaultModelOptionRevisionRef: "model-option-12345678",
+        publishedAt: NOW,
+        options: [{
+          modelOptionRevisionRef: "model-option-12345678",
+          optionKey: "standard",
+          label: "Standard",
+          inputModalities: ["text"],
+          outputModalities: ["text"],
+          supportedEfforts: [],
+          badges: [],
+          availability: "available",
+        }],
+      },
+      defaultProjectRef: "project-12345678",
+      commandRecoveryStore: recoveryStore,
+    })
+
+    await controller.open(temporary.session.session_id)
+    await expect(controller.submit("temporary content")).resolves.toBe(false)
+    await expect(controller.resumePendingCommand()).resolves.toBe(true)
+
+    expect(getCommandReceipt).toHaveBeenNthCalledWith(2, submittedCommand?.command_id, {
+      operation: "submit_message",
+      idempotency_key: submittedCommand?.idempotency_key,
+      digest_algorithm: submittedCommand?.digest_algorithm,
+      request_digest: submittedCommand?.request_digest,
+    })
+    expect(controller.getSnapshot().snapshot).toBe(refreshed)
+    expect(recoveryStore.save).not.toHaveBeenCalled()
+    expect(recoveryStore.clear).not.toHaveBeenCalled()
+    controller.close()
+  })
+
+  it("fails closed when an owner event changes a Session context policy", async () => {
+    const standard = withAssistantText(
+      snapshot("branch-original-12345678", "signed.cursor.1", "1", "standard"),
+      "sensitive plaintext",
+    )
+    const { client, streams, streamHandles } = clientFixture({
+      initial: standard,
+      fetchSnapshot: vi.fn(async () => standard),
+    })
+    const controller = createChatController({
+      client,
+      trustedLocale: "en-US",
+      chatCatalog: null,
+      defaultProjectRef: "project-12345678",
+    })
+
+    await controller.open(standard.session.session_id)
+    streams[0]?.onEvent(sessionUpdated("temporary"), "signed.cursor.2" as SessionCursor)
+
+    expect(streamHandles[0]?.close).toHaveBeenCalledOnce()
+    expect(controller.getSnapshot()).toMatchObject({
+      phase: "not_found",
+      sessionId: null,
+      snapshot: null,
+      projection: { messages: [] },
+      failure: { code: "CLIENT_CONTRACT_UPGRADE_REQUIRED", action: "upgrade_client" },
+    })
+    controller.close()
+  })
+
+  it("fails closed when snapshot repair changes a Session context policy", async () => {
+    const standard = withAssistantText(
+      snapshot("branch-original-12345678", "signed.cursor.1", "1", "standard"),
+      "sensitive plaintext",
+    )
+    const drifted = snapshot("branch-original-12345678", "signed.cursor.2", "2", "temporary")
+    const { client, streams, streamHandles } = clientFixture({
+      initial: standard,
+      fetchSnapshot: vi.fn(async () => drifted),
+    })
+    const controller = createChatController({
+      client,
+      trustedLocale: "en-US",
+      chatCatalog: null,
+      defaultProjectRef: "project-12345678",
+    })
+
+    await controller.open(standard.session.session_id)
+    streams[0]?.onConnection({ kind: "repair_required", recovery: { kind: "rehydrate", reason: "cursor_expired" } })
+    await vi.waitFor(() => expect(controller.getSnapshot().failure?.code).toBe("CLIENT_CONTRACT_UPGRADE_REQUIRED"))
+
+    expect(streamHandles[0]?.close).toHaveBeenCalledOnce()
+    expect(controller.getSnapshot()).toMatchObject({
+      phase: "not_found",
+      sessionId: null,
+      snapshot: null,
+      projection: { messages: [] },
+    })
     controller.close()
   })
 

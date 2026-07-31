@@ -30,10 +30,8 @@ import type {
   SessionCommandRecoveryRecord,
   SessionCommandRecoveryStore,
 } from "./command-recovery"
-import {
-  sessionBrowserPersistence,
-  type SessionContextPolicy,
-} from "./session-context-policy"
+import { createSessionContextCoordinator } from "./session-context-coordinator"
+import type { SessionContextPolicy } from "./session-context-policy"
 
 const commandIdentity = createCommandIdentity
 
@@ -227,8 +225,9 @@ export function createChatController(options: {
   }
   let stream: EventStreamHandle | null = null
   let repairTask: Readonly<{ generation: number; task: Promise<boolean> }> | null = null
-  let pendingCommand = options.commandRecoveryStore?.load() ?? null
-  let pendingCommandPersisted = pendingCommand !== null
+  const contextCoordinator = createSessionContextCoordinator({
+    ...(options.commandRecoveryStore === undefined ? {} : { commandRecoveryStore: options.commandRecoveryStore }),
+  })
   let generation = 0
   let selectionSessionId: string | null = null
   const runProjectionVersions = new Map<string, number>()
@@ -253,6 +252,42 @@ export function createChatController(options: {
       detail: failure.code,
     })
   }
+  const failClosedForOwnerContract = (): void => {
+    generation += 1
+    repairTask = null
+    const activeStream = stream
+    stream = null
+    activeStream?.close()
+    runProjectionVersions.clear()
+    runProjectionFingerprints.clear()
+    launchVersions.clear()
+    launchFingerprints.clear()
+    projectionStore.reset()
+    publish({
+      ...state,
+      phase: "not_found",
+      sessionId: null,
+      snapshot: null,
+      projection: projectionStore.getSnapshot(),
+      failure: describeSessionFailure({
+        stableCode: "CLIENT_CONTRACT_UPGRADE_REQUIRED",
+        action: "upgrade_client",
+        retryClass: "after_user_action",
+      }),
+    })
+  }
+
+  const observeOwnerPolicy = (
+    sessionId: string,
+    ownerSessionId: string,
+    contextPolicy: SessionContextPolicy,
+  ): boolean => {
+    if (ownerSessionId !== sessionId || contextCoordinator.observe(sessionId, contextPolicy).kind === "mismatch") {
+      failClosedForOwnerContract()
+      return false
+    }
+    return true
+  }
 
   const repairFromSnapshot = (expectedGeneration: number): Promise<boolean> => {
     if (repairTask?.generation === expectedGeneration) return repairTask.task
@@ -272,8 +307,7 @@ export function createChatController(options: {
           publish({ ...state, phase: "not_found", snapshot: null, failure: null })
           return false
         }
-        attach(sessionId, snapshot, expectedGeneration)
-        return true
+        return attach(sessionId, snapshot, expectedGeneration)
       } catch (error) {
         if (expectedGeneration === generation) fail(failureFromError(error))
         return false
@@ -287,16 +321,8 @@ export function createChatController(options: {
     return task
   }
 
-  const attach = (sessionId: string, snapshot: SessionSnapshot, currentGeneration: number): void => {
-    if (snapshot.session.context_policy === "temporary" && pendingCommandPersisted) {
-      // A standard Session recovery identity remains in browser storage, but it must not become
-      // an active journal inside a directly opened temporary conversation.
-      pendingCommand = null
-      pendingCommandPersisted = false
-    } else if (snapshot.session.context_policy === "standard" && pendingCommand === null) {
-      pendingCommand = options.commandRecoveryStore?.load() ?? null
-      pendingCommandPersisted = pendingCommand !== null
-    }
+  const attach = (sessionId: string, snapshot: SessionSnapshot, currentGeneration: number): boolean => {
+    if (!observeOwnerPolicy(sessionId, snapshot.session.session_id, snapshot.session.context_policy)) return false
     runProjectionVersions.clear()
     runProjectionFingerprints.clear()
     launchVersions.clear()
@@ -363,7 +389,13 @@ export function createChatController(options: {
       watermark: snapshot.snapshot_watermark,
       onEvent(event: SessionEvent) {
         if (!isCurrentStream()) return
-        if (event.kind === "run.view.updated") {
+        if (event.session_id !== sessionId) {
+          failClosedForOwnerContract()
+          return
+        }
+        if (event.kind === "session.updated") {
+          if (!observeOwnerPolicy(sessionId, event.payload.session.session_id, event.payload.session.context_policy)) return
+        } else if (event.kind === "run.view.updated") {
           const fingerprint = JSON.stringify(event.payload.run)
           const currentVersion = runProjectionVersions.get(event.payload.run.run_id)
           const currentFingerprint = runProjectionFingerprints.get(event.payload.run.run_id)
@@ -428,6 +460,7 @@ export function createChatController(options: {
     }).catch((error: unknown) => {
       if (currentGeneration === generation && stream === attachedStream) fail(failureFromError(error))
     })
+    return true
   }
 
   const open = async (sessionId: string): Promise<void> => {
@@ -460,7 +493,15 @@ export function createChatController(options: {
         publish({ ...state, phase: "not_found", failure: null })
         return
       }
-      if (hydration.kind !== "ready") {
+      if (hydration.kind === "repair_required") {
+        fail(describeSessionFailure({
+          stableCode: "INTERNAL_UNAVAILABLE",
+          action: "refetch_snapshot",
+          retryClass: "after_user_action",
+        }))
+        return
+      }
+      if (hydration.kind === "contract_incompatible") {
         fail(describeSessionFailure({
           stableCode: "CLIENT_CONTRACT_UPGRADE_REQUIRED",
           action: "upgrade_client",
@@ -482,8 +523,7 @@ export function createChatController(options: {
       generation !== expectedGeneration ||
       state.sessionId !== sessionId
     ) return false
-    attach(sessionId, snapshot, expectedGeneration)
-    return true
+    return attach(sessionId, snapshot, expectedGeneration)
   }
 
   const reconcileReceipt = (
@@ -519,7 +559,7 @@ export function createChatController(options: {
     targets: Readonly<Record<string, string>>,
     command: CommandIdentity,
     clientDraftRevision?: string,
-    persistAcrossReload = true,
+    contextPolicy: SessionContextPolicy | null = null,
   ): void => {
     const record: SessionCommandRecoveryRecord = Object.freeze({
       schemaVersion: 1,
@@ -529,16 +569,11 @@ export function createChatController(options: {
       ...(clientDraftRevision === undefined ? {} : { clientDraftRevision }),
       createdAt: Date.now(),
     })
-    pendingCommand = record
-    pendingCommandPersisted = persistAcrossReload
-    if (persistAcrossReload) options.commandRecoveryStore?.save(record)
+    contextCoordinator.remember(record, contextPolicy)
   }
 
   const forgetCommand = (commandId: string): void => {
-    if (pendingCommand?.command.command_id !== commandId) return
-    pendingCommand = null
-    if (pendingCommandPersisted) options.commandRecoveryStore?.clear(commandId)
-    pendingCommandPersisted = false
+    contextCoordinator.forget(commandId)
   }
 
   const sendCommand = async (
@@ -548,14 +583,13 @@ export function createChatController(options: {
     pendingCode: StableCode,
     sender: (command: CommandIdentity) => Promise<SessionCommandResponse>,
     clientDraftRevision?: string,
-    persistAcrossReload = state.snapshot === null ||
-      sessionBrowserPersistence(state.snapshot.session.context_policy).commandRecovery,
+    contextPolicy: SessionContextPolicy | null = state.snapshot?.session.context_policy ?? null,
   ): Promise<SessionCommandResponse | null> => {
     const commandGeneration = generation
     const failIfCurrent = (failure: ChatFailure): void => {
       if (commandGeneration === generation) fail(failure)
     }
-    if (pendingCommand !== null) {
+    if (contextCoordinator.getPendingCommand() !== null) {
       failIfCurrent(describeSessionFailure({
         stableCode: "RUN_OUTCOME_UNKNOWN",
         action: "reconcile_receipt",
@@ -565,7 +599,7 @@ export function createChatController(options: {
     }
     const command = await commandIdentity({ operation, targets, effect })
     if (commandGeneration !== generation) return null
-    rememberCommand(operation, targets, command, clientDraftRevision, persistAcrossReload)
+    rememberCommand(operation, targets, command, clientDraftRevision, contextPolicy)
     let response: SessionCommandResponse
     try {
       response = await sender(command)
@@ -610,9 +644,8 @@ export function createChatController(options: {
   }
 
   const resumePendingCommand = async (): Promise<boolean> => {
-    const pending = pendingCommand
+    const pending = contextCoordinator.getPendingCommand()
     if (pending === null) return false
-    if (state.snapshot?.session.context_policy === "temporary") return false
     project({ type: "command", state: "pending" })
     let response: SessionCommandResponse
     try {
@@ -762,7 +795,7 @@ export function createChatController(options: {
         "INTERNAL_UNAVAILABLE",
         (command) => options.client.createSession({ command, ...effect }),
         undefined,
-        sessionBrowserPersistence(contextPolicy).commandRecovery,
+        contextPolicy,
       )
       if (response === null) return null
       if (generation !== createGeneration) return null
@@ -772,36 +805,15 @@ export function createChatController(options: {
         receipt.payload.kind !== "session-created" ||
         receipt.payload.payload.context_policy !== contextPolicy
       ) {
-        fail(describeSessionFailure({ stableCode: "CLIENT_CONTRACT_UPGRADE_REQUIRED", action: "upgrade_client", retryClass: "after_user_action" }))
+        failClosedForOwnerContract()
         return null
       }
       const sessionId = receipt.payload.payload.session_id
+      if (!observeOwnerPolicy(sessionId, sessionId, receipt.payload.payload.context_policy)) return null
       await open(sessionId)
-      if (
-        state.phase === "ready" &&
-        state.sessionId === sessionId &&
-        state.snapshot?.session.context_policy === contextPolicy
-      ) return sessionId
-      if (state.sessionId === sessionId) {
-        const failure = describeSessionFailure({
-          stableCode: "CLIENT_CONTRACT_UPGRADE_REQUIRED",
-          action: "upgrade_client",
-          retryClass: "after_user_action",
-        })
-        generation += 1
-        stream?.close()
-        stream = null
-        projectionStore.reset()
-        publish({
-          ...state,
-          phase: "not_found",
-          sessionId: null,
-          snapshot: null,
-          projection: projectionStore.getSnapshot(),
-          failure,
-        })
-      }
-      return null
+      // The applied owner receipt makes this URL authoritative even when first hydration is
+      // unavailable or needs repair. Only a policy/identity mismatch clears the Session ID.
+      return state.sessionId === sessionId ? sessionId : null
     } catch (error) {
       fail(failureFromError(error))
       return null
