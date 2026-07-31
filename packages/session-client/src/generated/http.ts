@@ -6,7 +6,7 @@ import { z } from "zod"
 export const sessionHttpContractMetadata = Object.freeze({
   schemaId: "kokoro.session.browser.v3",
   schemaVersion: 3,
-  sourceDigestSha256: "290740c84c20fdc921e7d245508cefafde2e33e8e32d4d61a353372e6af1c7eb",
+  sourceDigestSha256: "a20433e4c48f119a45685d2c2879f1fe04612ed19cd5cf4f818a4abad7e86e73",
 })
 
 export const commandIdentitySchema = z
@@ -44,6 +44,7 @@ export const sessionCreatedCommandResultSchema = z
     session_id: z.string().min(1),
     initial_branch_id: z.string().min(1),
     session_version: z.number().int().positive(),
+    context_policy: z.enum(["standard", "temporary"]),
   })
   .strict()
 export type SessionCreatedCommandResult = z.infer<typeof sessionCreatedCommandResultSchema>
@@ -1192,6 +1193,7 @@ export const sessionMetadataSchema = z
     project_ref: z.string().min(1),
     title: z.string().min(1),
     lifecycle: z.enum(["active", "archived", "trashed"]),
+    context_policy: z.enum(["standard", "temporary"]),
     active_branch_id: z.string().min(1),
     active_leaf_message_id: z.string().min(1).optional(),
     version: z.number().int().positive(),
@@ -1358,6 +1360,7 @@ export const createSessionRequestSchema = z
   .object({
     project_ref: z.string().min(1).max(256),
     command: commandIdentitySchema,
+    context_policy: z.enum(["standard", "temporary"]),
     title: z.string().min(1).max(256).optional(),
   })
   .strict()
