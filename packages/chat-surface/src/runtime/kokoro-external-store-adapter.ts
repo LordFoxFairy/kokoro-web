@@ -7,6 +7,13 @@ import {
   type ThreadMessageLike,
 } from "@assistant-ui/react"
 
+import type {
+  ChatArtifactOwnerState,
+  ChatCostOwnerState,
+  ChatMediaCandidate,
+  ChatMediaFailure,
+  ChatMediaOperationOwnerState,
+} from "../projection/owner-state.js"
 import type { ChatPart, ChatProjection, ChatProjectionMessage } from "../projection/store.js"
 
 type ThreadMessagePartLike = Exclude<ThreadMessageLike["content"], string>[number]
@@ -37,6 +44,135 @@ function jsonObject(value: Record<string, unknown>): Record<string, JsonValue> {
 
 function unreachablePart(part: never): never {
   throw new Error(`Unsupported projected part: ${JSON.stringify(part)}`)
+}
+
+function ownerFailureData(failure: ChatMediaFailure): JsonValue {
+  return {
+    code: failure.code,
+    retryClass: failure.retryClass,
+    ...(failure.safeMessage === undefined ? {} : { safeMessage: failure.safeMessage }),
+  }
+}
+
+function mediaCandidateData(candidate: ChatMediaCandidate): JsonValue {
+  const base = {
+    candidateRef: candidate.candidateRef,
+    ordinal: candidate.ordinal,
+    ownerVersion: candidate.ownerVersion,
+  }
+  switch (candidate.state) {
+    case "allocated":
+    case "producing":
+    case "output_received":
+    case "validating":
+    case "unknown":
+    case "cancel_requested":
+    case "canceled":
+      return { ...base, state: candidate.state }
+    case "ready":
+      return {
+        ...base,
+        state: candidate.state,
+        artifactRef: candidate.artifactRef,
+        artifactVersionRef: candidate.artifactVersionRef,
+      }
+    case "restricted":
+    case "failed":
+      return { ...base, state: candidate.state, failure: ownerFailureData(candidate.failure) }
+    default:
+      return unreachablePart(candidate)
+  }
+}
+
+function mediaOperationData(part: ChatMediaOperationOwnerState): Record<string, JsonValue> {
+  const base = {
+    mediaOperationRef: part.mediaOperationRef,
+    definitionRef: part.definitionRef,
+    definitionRevisionRef: part.definitionRevisionRef,
+    ownerVersion: part.ownerVersion,
+    progressBps: part.progressBps,
+    candidates: part.candidates.map(mediaCandidateData),
+    ...(part.costProjection === undefined ? {} : {
+      costProjection: {
+        costProjectionRef: part.costProjection.costProjectionRef,
+        ownerVersion: part.costProjection.ownerVersion,
+      },
+    }),
+    updatedAt: part.updatedAt,
+  }
+  switch (part.state) {
+    case "admission_pending":
+    case "authorized":
+    case "queued":
+    case "active":
+    case "finalizing":
+    case "cancel_requested":
+    case "reconciling":
+      return { ...base, state: part.state }
+    case "completed":
+    case "partial":
+    case "canceled":
+      return { ...base, state: part.state, outcomeClass: part.outcomeClass }
+    case "failed":
+      return {
+        ...base,
+        state: part.state,
+        outcomeClass: part.outcomeClass,
+        failure: ownerFailureData(part.failure),
+      }
+    default:
+      return unreachablePart(part)
+  }
+}
+
+function artifactData(part: ChatArtifactOwnerState): Record<string, JsonValue> {
+  const base = {
+    artifactRef: part.artifactRef,
+    artifactVersionRef: part.artifactVersionRef,
+    ownerVersion: part.ownerVersion,
+    mediaClass: part.mediaClass,
+    updatedAt: part.updatedAt,
+  }
+  switch (part.availability) {
+    case "processing":
+    case "deleted":
+      return { ...base, availability: part.availability }
+    case "ready":
+      return { ...base, availability: part.availability, display: { ...part.display } }
+    case "restricted":
+    case "unavailable":
+      return { ...base, availability: part.availability, failure: ownerFailureData(part.failure) }
+    default:
+      return unreachablePart(part)
+  }
+}
+
+function costData(part: ChatCostOwnerState): Record<string, JsonValue> {
+  const base = {
+    mediaOperationRef: part.mediaOperationRef,
+    costProjectionRef: part.costProjectionRef,
+    ownerVersion: part.ownerVersion,
+    freshness: part.freshness,
+    updatedAt: part.updatedAt,
+  }
+  switch (part.state) {
+    case "pending":
+      return { ...base, state: part.state }
+    case "estimated":
+    case "final":
+      return { ...base, state: part.state, amount: { ...part.amount } }
+    case "corrected":
+      return {
+        ...base,
+        state: part.state,
+        amount: { ...part.amount },
+        correctsOwnerVersion: part.correctsOwnerVersion,
+      }
+    case "unavailable":
+      return { ...base, state: part.state, safeReason: part.safeReason }
+    default:
+      return unreachablePart(part)
+  }
 }
 
 function dataPart(part: Exclude<ChatPart, { kind: "text" | "reasoning-summary" | "tool" | "unsupported" }>): ThreadMessagePartLike {
@@ -84,29 +220,17 @@ function dataPart(part: Exclude<ChatPart, { kind: "text" | "reasoning-summary" |
     case "media-operation":
       return { type: "data" as const, name: "kokoro:media-operation", data: {
         ...common,
-        mediaOperationRef: part.mediaOperationRef,
-        capability: part.capability,
-        status: part.status,
-        safeMetadata: jsonObject({ ...part.safeMetadata }),
-        ...(part.progressBps === undefined ? {} : { progressBps: part.progressBps }),
-        ...(part.artifactRef === undefined ? {} : { artifactRef: part.artifactRef }),
+        ...mediaOperationData(part),
       } }
     case "artifact":
       return { type: "data" as const, name: "kokoro:artifact", data: {
         ...common,
-        artifactRef: part.artifactRef,
-        versionRef: part.versionRef,
-        ...(part.contentType === undefined ? {} : { contentType: part.contentType }),
-        safeMetadata: jsonObject({ ...part.safeMetadata }),
+        ...artifactData(part),
       } }
     case "cost":
       return { type: "data" as const, name: "kokoro:cost", data: {
         ...common,
-        costProjectionRef: part.costProjectionRef,
-        status: part.status,
-        freshness: part.freshness,
-        ...(part.amount === undefined ? {} : { amount: part.amount }),
-        ...(part.currencyOrCreditUnit === undefined ? {} : { currencyOrCreditUnit: part.currencyOrCreditUnit }),
+        ...costData(part),
       } }
     case "notice":
       return { type: "data" as const, name: "kokoro:notice", data: {

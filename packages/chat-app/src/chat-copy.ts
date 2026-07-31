@@ -53,14 +53,23 @@ export type ChatProductCopy = Readonly<{
   subagent: string
   mediaOperation: string
   mediaProgress: string
-  capability: string
+  definition: string
+  definitionRevision: string
+  ownerVersion: string
+  candidates: string
+  costProjection: string
+  outcome: string
   finalArtifact: string
   artifact: string
   artifactVersion: string
-  contentType: string
+  mediaClass: string
+  imageDetails: string
+  byteSize: string
   toolError: string
   toolResultTruncated: string
   cost: string
+  freshness: string
+  correction: string
   pending: string
   lastUpdated: string
   unsupportedPart: string
@@ -155,14 +164,23 @@ export const DEFAULT_CHAT_COPY: ChatProductCopy = Object.freeze({
   subagent: "Subagent",
   mediaOperation: "Media operation",
   mediaProgress: "Media operation progress",
-  capability: "Capability",
+  definition: "Definition",
+  definitionRevision: "Definition revision",
+  ownerVersion: "Owner version",
+  candidates: "Candidates",
+  costProjection: "Cost projection",
+  outcome: "Outcome",
   finalArtifact: "Final artifact",
   artifact: "Artifact",
   artifactVersion: "Version",
-  contentType: "Content type",
+  mediaClass: "Media class",
+  imageDetails: "Image details",
+  byteSize: "Byte size",
   toolError: "Tool error",
   toolResultTruncated: "Result preview truncated",
   cost: "Cost",
+  freshness: "Freshness",
+  correction: "Corrects owner version",
   pending: "Pending",
   lastUpdated: "Updated",
   unsupportedPart: "This content needs a newer client.",

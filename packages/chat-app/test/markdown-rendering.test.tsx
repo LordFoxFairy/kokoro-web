@@ -27,7 +27,7 @@ describe("Chat Markdown rendering", () => {
     expect(html).toContain("tracking pixel")
   })
 
-  it("renders plan progress, subagent, Media operation, and artifact projections as distinct cards", () => {
+  it("renders strict Media, Artifact, and Cost owner states without inventing delivery URLs", () => {
     const controller = {
       decideAction: async () => undefined,
       decidePlan: async () => undefined,
@@ -37,11 +37,14 @@ describe("Chat Markdown rendering", () => {
       { ...common, id: "reasoning-1", ordinal: 0, kind: "reasoning-summary", partRef: "reasoning-ref", text: "Compared safe alternatives" },
       { ...common, id: "plan-progress-1", ordinal: 1, kind: "plan-progress", planRef: "plan-ref", summary: "Building the result", steps: [{ stepRef: "step-1", label: "Render", status: "in_progress" }] },
       { ...common, id: "subagent-1", ordinal: 2, kind: "subagent", subagentRef: "subagent-ref", status: "running", summary: "Checking references" },
-      { ...common, id: "media-1", ordinal: 3, kind: "media-operation", mediaOperationRef: "media-ref", capability: "image.generate", status: "running", progressBps: 3750, artifactRef: "artifact-final", safeMetadata: { title: "Poster", stage: "render" } },
-      { ...common, id: "artifact-1", ordinal: 4, lifecycle: "completed", kind: "artifact", artifactRef: "artifact-final", versionRef: "artifact-v1", contentType: "image/png", safeMetadata: { title: "Poster" } },
-      { ...common, id: "notice-1", ordinal: 5, lifecycle: "completed", kind: "notice", noticeRef: "notice-ref", code: "WAIT", message: "Still working", severity: "warning" },
-      { ...common, id: "error-1", ordinal: 6, lifecycle: "failed", kind: "error", errorRef: "error-ref", code: "FAILED", message: "Stopped", retryClass: "never" },
-      { ...common, id: "tool-1", ordinal: 7, lifecycle: "completed", kind: "tool", toolCallId: "tool-call-1", name: "Search", args: {}, result: "Partial preview", status: "complete", isError: true, truncated: true },
+      { ...common, id: "media-1", ordinal: 3, kind: "media-operation", mediaOperationRef: "media-ref", definitionRef: "image.text_to_image", definitionRevisionRef: "image.text_to_image@1", ownerVersion: "7", state: "active", progressBps: 3750, candidates: [{ candidateRef: "candidate-producing", ordinal: 0, ownerVersion: "2", state: "producing" }, { candidateRef: "candidate-unknown", ordinal: 1, ownerVersion: "3", state: "unknown" }, { candidateRef: "candidate-restricted", ordinal: 2, ownerVersion: "4", state: "restricted", failure: { code: "artifact_restricted", retryClass: "never", safeMessage: "Not available for delivery." } }, { candidateRef: "candidate-ready", ordinal: 3, ownerVersion: "5", artifactRef: "artifact-final", artifactVersionRef: "artifact-v1", state: "ready" }], costProjection: { costProjectionRef: "cost-ref", ownerVersion: "2" }, updatedAt: "2026-07-28T00:00:00.000Z" },
+      { ...common, id: "artifact-1", ordinal: 4, lifecycle: "completed", kind: "artifact", artifactRef: "artifact-final", artifactVersionRef: "artifact-v1", ownerVersion: "11", mediaClass: "image", availability: "ready", display: { format: "png", width: 1024, height: 768, byteSize: "245760" }, updatedAt: "2026-07-28T00:00:00.000Z" },
+      { ...common, id: "artifact-2", ordinal: 5, lifecycle: "failed", kind: "artifact", artifactRef: "artifact-restricted", artifactVersionRef: "artifact-v2", ownerVersion: "12", mediaClass: "image", availability: "restricted", failure: { code: "artifact_restricted", retryClass: "never", safeMessage: "Restricted by policy." }, updatedAt: "2026-07-28T00:01:00.000Z" },
+      { ...common, id: "cost-1", ordinal: 6, lifecycle: "completed", kind: "cost", mediaOperationRef: "media-ref", costProjectionRef: "cost-ref", ownerVersion: "13", state: "corrected", freshness: "stale", amount: { amount: "125", creditUnit: "credits" }, correctsOwnerVersion: "12", updatedAt: "2026-07-28T00:02:00.000Z" },
+      { ...common, id: "cost-2", ordinal: 7, lifecycle: "failed", kind: "cost", mediaOperationRef: "media-ref", costProjectionRef: "cost-unavailable", ownerVersion: "14", state: "unavailable", freshness: "unavailable", safeReason: "Rating projection is temporarily unavailable.", updatedAt: "2026-07-28T00:03:00.000Z" },
+      { ...common, id: "notice-1", ordinal: 8, lifecycle: "completed", kind: "notice", noticeRef: "notice-ref", code: "WAIT", message: "Still working", severity: "warning" },
+      { ...common, id: "error-1", ordinal: 9, lifecycle: "failed", kind: "error", errorRef: "error-ref", code: "FAILED", message: "Stopped", retryClass: "never" },
+      { ...common, id: "tool-1", ordinal: 10, lifecycle: "completed", kind: "tool", toolCallId: "tool-call-1", name: "Search", args: {}, result: "Partial preview", status: "complete", isError: true, truncated: true },
     ]
     const html = parts.map((part) => renderToStaticMarkup(
       <ChatPartView controller={controller} copy={DEFAULT_CHAT_COPY} disabled={false} part={part} runId="run-12345678" />,
@@ -53,14 +56,24 @@ describe("Chat Markdown rendering", () => {
     expect(html).toContain("Subagent")
     expect(html).toContain("Checking references")
     expect(html).toContain("Media operation")
-    expect(html).toContain("image.generate")
-    expect(html).toContain("Poster")
-    expect(html).toContain("render")
+    expect(html).toContain("image.text_to_image@1")
+    expect(html).toContain("candidate-unknown")
+    expect(html).toContain("unknown")
+    expect(html).toContain("candidate-restricted")
+    expect(html).toContain("Not available for delivery.")
     expect(html).toContain("37.5%")
     expect(html).toContain("artifact-final")
     expect(html).toContain("Artifact")
     expect(html).toContain("artifact-v1")
-    expect(html).toContain("image/png")
+    expect(html).toContain("1024 × 768")
+    expect(html).toContain("245760")
+    expect(html).toContain("Restricted by policy.")
+    expect(html).toContain("125")
+    expect(html).toContain("credits")
+    expect(html).toContain("stale")
+    expect(html).toContain("Rating projection is temporarily unavailable.")
+    expect(html).not.toContain("<img")
+    expect(html).not.toContain("href=")
     expect(html).toContain("WAIT")
     expect(html).toContain("warning")
     expect(html).toContain("FAILED")
@@ -83,7 +96,7 @@ describe("Chat Markdown rendering", () => {
       failure: {
         code: "INTERNAL_UNAVAILABLE",
         action: "refetch_snapshot",
-        retryClass: "immediate",
+        retryClass: "after_user_action",
         message: "Chat is temporarily unavailable.",
       },
       chatCatalog: null,

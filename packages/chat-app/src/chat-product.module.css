@@ -616,6 +616,63 @@
   color: var(--k-text-tertiary);
 }
 
+.candidateList {
+  display: grid;
+  gap: 0.5rem;
+  margin: 1.4rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.candidateList > li {
+  border-left: 2px solid var(--k-border-strong);
+  padding: 0.55rem 0.65rem;
+  background: var(--k-bg-elevated);
+}
+
+.candidateList > li[data-state="ready"] { border-left-color: var(--k-brand); }
+
+.candidateList > li[data-state="restricted"],
+.candidateList > li[data-state="failed"] { border-left-color: var(--k-error-strong); }
+
+.candidateHeading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.candidateHeading span,
+.candidateList > li > small,
+.ownerFailure small {
+  color: var(--k-text-tertiary);
+  font-size: 0.76rem;
+}
+
+.candidateDetails {
+  display: grid;
+  gap: 0.2rem;
+  margin: 0.4rem 0 0;
+}
+
+.candidateDetails div {
+  display: flex;
+  gap: 0.45rem;
+}
+
+.candidateDetails dt { color: var(--k-text-tertiary); }
+.candidateDetails dd { margin: 0; }
+
+.ownerFailure {
+  margin: 0.55rem 0 0;
+  color: var(--k-error-strong);
+}
+
+.ownerFailure small {
+  display: block;
+  margin-top: 0.2rem;
+}
+
 .costAmount {
   margin-bottom: 0.2rem;
   font-family: var(--font-serif);

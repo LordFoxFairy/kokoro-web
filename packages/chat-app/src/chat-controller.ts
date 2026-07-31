@@ -78,9 +78,9 @@ export type ChatState = Readonly<{
 }>
 
 type FailureLike = Readonly<{
-  stableCode?: string
-  action?: string
-  retryClass?: string
+  stableCode?: StableCode
+  action?: StableAction
+  retryClass?: RetryClass
 }>
 
 const FAILURE_COPY: Partial<Record<StableCode, string>> = {
@@ -97,54 +97,12 @@ const FAILURE_COPY: Partial<Record<StableCode, string>> = {
   INTERNAL_UNAVAILABLE: "Chat is temporarily unavailable.",
 }
 
-const VALID_CODES = new Set<StableCode>([
-  "REQUEST_INVALID", "PAYLOAD_TOO_LARGE", "METHOD_NOT_ALLOWED", "UNSUPPORTED_MEDIA_TYPE",
-  "BFF_WORKLOAD_REQUIRED", "BFF_WORKLOAD_REVOKED", "SESSION_ACCESS_GRANT_REQUIRED",
-  "SESSION_ACCESS_GRANT_EXPIRED", "SESSION_ACCESS_GRANT_REVOKED", "SESSION_SCOPE_MISMATCH",
-  "SESSION_NOT_FOUND", "SESSION_VERSION_CONFLICT", "IDEMPOTENCY_CONFLICT", "ACTIVE_RUN_EXISTS",
-  "CAPABILITY_SNAPSHOT_LOCKED", "MODEL_OPTION_UNAVAILABLE", "ATTACHMENT_NOT_READY",
-  "ATTACHMENT_REVOKED", "ADMISSION_DENIED", "ADMISSION_OUTCOME_UNKNOWN", "LAUNCH_OUTCOME_UNKNOWN",
-  "RUN_CANCELLATION_PENDING", "RUN_OUTCOME_UNKNOWN", "CURSOR_INVALID", "CURSOR_CONFLICT",
-  "ACTION_NOT_FOUND", "ACTION_VERSION_CONFLICT", "ACTION_EXPIRED", "ACTION_NOT_ALLOWED",
-  "ACTION_DECISION_PENDING", "PLAN_NOT_FOUND", "PLAN_VERSION_CONFLICT", "PLAN_EXPIRED",
-  "PLAN_DECISION_PENDING",
-  "CURSOR_AHEAD", "SNAPSHOT_REQUIRED", "CURSOR_SCOPE_MISMATCH", "STREAM_EPOCH_MISMATCH",
-  "CLIENT_CONTRACT_UPGRADE_REQUIRED", "PART_SCHEMA_UNSUPPORTED", "INTERNAL_UNAVAILABLE",
-])
-const VALID_ACTIONS = new Set<StableAction>([
-  "retry_same_cursor", "refresh_grant", "reauthenticate", "refetch_snapshot", "upgrade_client",
-  "stop", "developer_error", "wait_or_cancel", "fork_new_session", "choose_model",
-  "wait_prerequisite", "remove_attachment", "show_reason", "reconcile_receipt", "poll_or_stream",
-  "render_unsupported",
-])
-const VALID_RETRY_CLASSES = new Set<RetryClass>([
-  "never", "immediate", "after_delay", "after_user_action", "reconcile_receipt",
-])
-
-function asStableCode(value: string | undefined): StableCode {
-  return value !== undefined && VALID_CODES.has(value as StableCode)
-    ? value as StableCode
-    : "INTERNAL_UNAVAILABLE"
-}
-
-function asStableAction(value: string | undefined): StableAction {
-  return value !== undefined && VALID_ACTIONS.has(value as StableAction)
-    ? value as StableAction
-    : "stop"
-}
-
-function asRetryClass(value: string | undefined): RetryClass {
-  return value !== undefined && VALID_RETRY_CLASSES.has(value as RetryClass)
-    ? value as RetryClass
-    : "never"
-}
-
 export function describeSessionFailure(input: FailureLike): ChatFailure {
-  const code = asStableCode(input.stableCode)
+  const code = input.stableCode ?? "INTERNAL_UNAVAILABLE"
   return {
     code,
-    action: asStableAction(input.action),
-    retryClass: asRetryClass(input.retryClass),
+    action: input.action ?? "stop",
+    retryClass: input.retryClass ?? "never",
     message: FAILURE_COPY[code] ?? "The session request could not be completed.",
   }
 }
@@ -156,11 +114,16 @@ function failureFromError(error: unknown): ChatFailure {
   }
   switch (error.kind) {
     case "network":
+      return describeSessionFailure({
+        stableCode: "INTERNAL_UNAVAILABLE",
+        action: "refetch_snapshot",
+        retryClass: "after_delay",
+      })
     case "repair_required":
       return describeSessionFailure({
         stableCode: "INTERNAL_UNAVAILABLE",
         action: "refetch_snapshot",
-        retryClass: "immediate",
+        retryClass: "after_user_action",
       })
     case "auth_required":
       return describeSessionFailure({
@@ -754,7 +717,7 @@ export function createChatController(options: {
       fail(describeSessionFailure({
         stableCode: "SNAPSHOT_REQUIRED",
         action: "refetch_snapshot",
-        retryClass: "immediate",
+        retryClass: "after_user_action",
       }))
     }
     return false
@@ -950,7 +913,7 @@ export function createChatController(options: {
       fail(describeSessionFailure({
         stableCode: "RUN_OUTCOME_UNKNOWN",
         action: "refetch_snapshot",
-        retryClass: "immediate",
+        retryClass: "after_user_action",
       }))
       return
     }

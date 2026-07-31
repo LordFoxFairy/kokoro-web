@@ -7,7 +7,7 @@ import {
   type AssetUploadProgress,
 } from "@kokoro/asset-client"
 import { createSessionClient } from "@kokoro/session-client"
-import type { ChatPart, ChatProjectionMessage } from "@kokoro/chat-surface"
+import type { ChatMediaCandidate, ChatMediaFailure, ChatPart, ChatProjectionMessage } from "@kokoro/chat-surface"
 import rehypeHighlight from "rehype-highlight"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
@@ -330,15 +330,136 @@ function MediaOperationCard(props: Readonly<{
   part: Extract<ChatPart, { kind: "media-operation" }>
   copy: ChatProductCopy
 }>) {
-  const percent = props.part.progressBps === undefined ? null : props.part.progressBps / 100
-  return <aside className={styles.productCard} data-kind="media-operation"><div className={styles.cardHeading}><strong>{props.copy.mediaOperation}</strong><span>{props.part.status}</span></div><dl className={styles.summaryList}><div><dt>{props.copy.capability}</dt><dd>{props.part.capability}</dd></div>{props.part.artifactRef === undefined ? null : <div><dt>{props.copy.finalArtifact}</dt><dd>{props.part.artifactRef}</dd></div>}</dl><SafeSummary metadata={props.part.safeMetadata} />{percent === null ? null : <div aria-label={props.copy.mediaProgress} aria-valuemax={100} aria-valuemin={0} aria-valuenow={percent} className={styles.progress} role="progressbar"><span style={{ width: `${percent}%` }} /><small>{percent}%</small></div>}</aside>
+  const percent = props.part.progressBps / 100
+  let terminal: ReactNode
+  switch (props.part.state) {
+    case "admission_pending":
+    case "authorized":
+    case "queued":
+    case "active":
+    case "finalizing":
+    case "cancel_requested":
+    case "reconciling":
+      terminal = null
+      break
+    case "completed":
+    case "partial":
+    case "canceled":
+      terminal = <p className={styles.quiet}>{props.copy.outcome}: {props.part.outcomeClass}</p>
+      break
+    case "failed":
+      terminal = <><p className={styles.quiet}>{props.copy.outcome}: {props.part.outcomeClass}</p><OwnerFailure failure={props.part.failure} /></>
+      break
+    default:
+      terminal = neverPart(props.part)
+  }
+  return <aside className={styles.productCard} data-kind="media-operation" data-state={props.part.state}>
+    <div className={styles.cardHeading}><strong>{props.copy.mediaOperation}</strong><span>{props.part.state}</span></div>
+    <dl className={styles.summaryList}>
+      <div><dt>{props.copy.definition}</dt><dd>{props.part.definitionRef}</dd></div>
+      <div><dt>{props.copy.definitionRevision}</dt><dd>{props.part.definitionRevisionRef}</dd></div>
+      <div><dt>{props.copy.ownerVersion}</dt><dd>{props.part.ownerVersion}</dd></div>
+      {props.part.costProjection === undefined ? null : <div><dt>{props.copy.costProjection}</dt><dd>{props.part.costProjection.costProjectionRef} · v{props.part.costProjection.ownerVersion}</dd></div>}
+    </dl>
+    <div aria-label={props.copy.mediaProgress} aria-valuemax={100} aria-valuemin={0} aria-valuenow={percent} className={styles.progress} role="progressbar"><span style={{ width: `${percent}%` }} /><small>{percent}%</small></div>
+    <ol aria-label={props.copy.candidates} className={styles.candidateList}>{props.part.candidates.map((candidate) => <MediaCandidateCard candidate={candidate} copy={props.copy} key={candidate.candidateRef} />)}</ol>
+    {terminal}
+    <p className={styles.quiet}>{props.copy.lastUpdated} <time dateTime={props.part.updatedAt}>{props.part.updatedAt}</time></p>
+  </aside>
+}
+
+function OwnerFailure(props: Readonly<{
+  failure: ChatMediaFailure
+}>) {
+  return <p className={styles.ownerFailure} role="status"><strong>{props.failure.code}</strong>{props.failure.safeMessage === undefined ? null : <> · {props.failure.safeMessage}</>}<small>{props.failure.retryClass}</small></p>
+}
+
+function MediaCandidateCard(props: Readonly<{ candidate: ChatMediaCandidate; copy: ChatProductCopy }>) {
+  const candidate = props.candidate
+  let detail: ReactNode
+  switch (candidate.state) {
+    case "allocated":
+    case "producing":
+    case "output_received":
+    case "validating":
+    case "unknown":
+    case "cancel_requested":
+    case "canceled":
+      detail = null
+      break
+    case "ready":
+      detail = <dl className={styles.candidateDetails}><div><dt>{props.copy.finalArtifact}</dt><dd>{candidate.artifactRef}</dd></div><div><dt>{props.copy.artifactVersion}</dt><dd>{candidate.artifactVersionRef}</dd></div></dl>
+      break
+    case "restricted":
+    case "failed":
+      detail = <OwnerFailure failure={candidate.failure} />
+      break
+    default:
+      detail = neverPart(candidate)
+  }
+  return <li data-state={candidate.state}>
+    <div className={styles.candidateHeading}><strong>{candidate.candidateRef}</strong><span>{candidate.state}</span></div>
+    <small>{props.copy.ownerVersion} {candidate.ownerVersion} · #{candidate.ordinal + 1}</small>
+    {detail}
+  </li>
 }
 
 function ArtifactCard(props: Readonly<{
   part: Extract<ChatPart, { kind: "artifact" }>
   copy: ChatProductCopy
 }>) {
-  return <aside className={styles.productCard} data-kind="artifact"><div className={styles.cardHeading}><strong>{props.copy.artifact}</strong><span>{props.part.lifecycle}</span></div><dl className={styles.summaryList}><div><dt>{props.copy.finalArtifact}</dt><dd>{props.part.artifactRef}</dd></div><div><dt>{props.copy.artifactVersion}</dt><dd>{props.part.versionRef}</dd></div>{props.part.contentType === undefined ? null : <div><dt>{props.copy.contentType}</dt><dd>{props.part.contentType}</dd></div>}</dl><SafeSummary metadata={props.part.safeMetadata} /></aside>
+  let availability: ReactNode
+  switch (props.part.availability) {
+    case "processing":
+    case "deleted":
+      availability = null
+      break
+    case "ready":
+      availability = <dl className={styles.summaryList}><div><dt>{props.copy.imageDetails}</dt><dd>{props.part.display.format} · {props.part.display.width} × {props.part.display.height}</dd></div><div><dt>{props.copy.byteSize}</dt><dd>{props.part.display.byteSize}</dd></div></dl>
+      break
+    case "restricted":
+    case "unavailable":
+      availability = <OwnerFailure failure={props.part.failure} />
+      break
+    default:
+      availability = neverPart(props.part)
+  }
+  return <aside className={styles.productCard} data-kind="artifact" data-state={props.part.availability}>
+    <div className={styles.cardHeading}><strong>{props.copy.artifact}</strong><span>{props.part.availability}</span></div>
+    <dl className={styles.summaryList}><div><dt>{props.copy.finalArtifact}</dt><dd>{props.part.artifactRef}</dd></div><div><dt>{props.copy.artifactVersion}</dt><dd>{props.part.artifactVersionRef}</dd></div><div><dt>{props.copy.ownerVersion}</dt><dd>{props.part.ownerVersion}</dd></div><div><dt>{props.copy.mediaClass}</dt><dd>{props.part.mediaClass}</dd></div></dl>
+    {availability}
+    <p className={styles.quiet}>{props.copy.lastUpdated} <time dateTime={props.part.updatedAt}>{props.part.updatedAt}</time></p>
+  </aside>
+}
+
+function CostCard(props: Readonly<{
+  part: Extract<ChatPart, { kind: "cost" }>
+  copy: ChatProductCopy
+}>) {
+  let cost: ReactNode
+  switch (props.part.state) {
+    case "pending":
+      cost = <p className={styles.costAmount}>{props.copy.pending}</p>
+      break
+    case "estimated":
+    case "final":
+      cost = <p className={styles.costAmount}>{props.part.amount.amount} {props.part.amount.creditUnit}</p>
+      break
+    case "corrected":
+      cost = <><p className={styles.costAmount}>{props.part.amount.amount} {props.part.amount.creditUnit}</p><p className={styles.quiet}>{props.copy.correction}: v{props.part.correctsOwnerVersion}</p></>
+      break
+    case "unavailable":
+      cost = <p className={styles.ownerFailure} role="status">{props.part.safeReason}</p>
+      break
+    default:
+      cost = neverPart(props.part)
+  }
+  return <aside className={styles.partCard} data-kind="cost" data-state={props.part.state}>
+    <div className={styles.cardHeading}><strong>{props.copy.cost}</strong><span>{props.part.state}</span></div>
+    {cost}
+    <dl className={styles.summaryList}><div><dt>{props.copy.costProjection}</dt><dd>{props.part.costProjectionRef}</dd></div><div><dt>{props.copy.ownerVersion}</dt><dd>{props.part.ownerVersion}</dd></div><div><dt>{props.copy.freshness}</dt><dd>{props.part.freshness}</dd></div><div><dt>{props.copy.mediaOperation}</dt><dd>{props.part.mediaOperationRef}</dd></div></dl>
+    <p className={styles.quiet}>{props.copy.lastUpdated} <time dateTime={props.part.updatedAt}>{props.part.updatedAt}</time></p>
+  </aside>
 }
 
 function ToolPartCard(props: Readonly<{
@@ -372,7 +493,7 @@ export function ChatPartView(props: {
     case "subagent": return <aside className={styles.partCard} data-kind="subagent"><div className={styles.cardHeading}><strong>{props.copy.subagent}</strong><span>{part.status}</span></div>{part.summary === undefined ? null : <p>{part.summary}</p>}</aside>
     case "media-operation": return <MediaOperationCard copy={props.copy} part={part} />
     case "artifact": return <ArtifactCard copy={props.copy} part={part} />
-    case "cost": return <aside className={styles.partCard}><div className={styles.cardHeading}><strong>{props.copy.cost}</strong><span>{part.status}</span></div><p className={styles.costAmount}>{part.amount ?? props.copy.pending} {part.currencyOrCreditUnit ?? ""}</p><p className={styles.quiet}>{props.copy.lastUpdated} {new Date(part.freshness).toLocaleString()}</p></aside>
+    case "cost": return <CostCard copy={props.copy} part={part} />
     case "notice": return <aside className={styles.partCard} data-severity={part.severity}><div className={styles.cardHeading}><strong>{part.code}</strong><span>{part.severity}</span></div><p>{part.message}</p>{part.retryClass === undefined ? null : <p className={styles.quiet}>{part.retryClass}</p>}</aside>
     case "error": return <aside className={styles.errorCard}><div className={styles.cardHeading}><strong>{part.code}</strong><span>{part.retryClass}</span></div><p>{part.message}</p></aside>
     case "unsupported": return <aside className={styles.errorCard}><strong>{props.copy.unsupportedPart}</strong><p>{part.safeFallback}</p></aside>

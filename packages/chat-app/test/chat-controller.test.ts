@@ -388,7 +388,7 @@ describe("Chat recovery controller", () => {
     await vi.waitFor(() => expect(controller.getSnapshot().failure).toMatchObject({
       code: "INTERNAL_UNAVAILABLE",
       action: "refetch_snapshot",
-      retryClass: "immediate",
+      retryClass: "after_delay",
     }))
 
     await expect(controller.recover()).resolves.toBe(true)

@@ -7,6 +7,19 @@ import type {
   SessionSnapshot,
 } from "@kokoro/session-client/contracts"
 
+import {
+  projectArtifactOwnerState,
+  projectCostOwnerState,
+  projectMediaOperationOwnerState,
+  validateArtifactTransition,
+  validateCostTransition,
+  validateMediaOperationTransition,
+  type ChatArtifactOwnerState,
+  type ChatCostOwnerState,
+  type ChatMediaOperationOwnerState,
+  type OwnerTransitionConflict,
+} from "./owner-state.js"
+
 type ChatPartBase = {
   readonly id: string
   readonly ordinal: number
@@ -79,30 +92,9 @@ export type ChatPart = ChatPartBase & (
       readonly status: PartPayload<"subagent">["status"]
       readonly summary?: string
     }
-  | {
-      readonly kind: "media-operation"
-      readonly mediaOperationRef: string
-      readonly capability: string
-      readonly status: PartPayload<"media-operation">["status"]
-      readonly safeMetadata: Readonly<Record<string, unknown>>
-      readonly progressBps?: number
-      readonly artifactRef?: string
-    }
-  | {
-      readonly kind: "artifact"
-      readonly artifactRef: string
-      readonly versionRef: string
-      readonly contentType?: string
-      readonly safeMetadata: Readonly<Record<string, unknown>>
-    }
-  | {
-      readonly kind: "cost"
-      readonly costProjectionRef: string
-      readonly status: PartPayload<"cost">["status"]
-      readonly amount?: string
-      readonly currencyOrCreditUnit?: string
-      readonly freshness: string
-    }
+  | ({ readonly kind: "media-operation" } & ChatMediaOperationOwnerState)
+  | ({ readonly kind: "artifact" } & ChatArtifactOwnerState)
+  | ({ readonly kind: "cost" } & ChatCostOwnerState)
   | {
       readonly kind: "notice"
       readonly noticeRef: string
@@ -186,8 +178,28 @@ const ACTIVE_LAUNCH_STATUSES = new Set([
   "outcome_unknown",
 ])
 
+function copyUnknown(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(copyUnknown)
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, nested]) => [key, copyUnknown(nested)]),
+    )
+  }
+  return value
+}
+
+function copyRecord(value: Readonly<Record<string, unknown>>): Record<string, unknown> {
+  return copyUnknown(value) as Record<string, unknown>
+}
+
+function deepFreeze<Value>(value: Value): Value {
+  if (value === null || typeof value !== "object" || Object.isFrozen(value)) return value
+  for (const nested of Object.values(value)) deepFreeze(nested)
+  return Object.freeze(value)
+}
+
 export function createChatProjection(): ChatProjection {
-  return {
+  return deepFreeze({
     messages: [],
     activeBranchId: null,
     activeRunId: null,
@@ -195,7 +207,7 @@ export function createChatProjection(): ChatProjection {
     connection: { kind: "idle" },
     command: { state: "idle" },
     repair: { required: false },
-  }
+  })
 }
 
 function messageStatus(lifecycle: MessageRecord["lifecycle"]): ChatProjectionMessage["status"] {
@@ -244,7 +256,7 @@ function projectPartView(part: MessagePartEnvelope): ChatPart {
         kind: "tool",
         toolCallId: part.payload.tool_call_id,
         name: part.payload.tool_label,
-        args: part.payload.input_summary ?? {},
+        args: copyRecord(part.payload.input_summary ?? {}),
         status: toolStatus(part),
         ...(part.payload.safe_result_preview === undefined ? {} : { result: part.payload.safe_result_preview }),
         ...(part.payload.is_error === undefined ? {} : { isError: part.payload.is_error }),
@@ -260,15 +272,15 @@ function projectPartView(part: MessagePartEnvelope): ChatPart {
         ownerRef: part.payload.owner_ref,
         expectedVersion: part.payload.expected_version,
         decisionGroupRef: part.payload.decision_group_ref,
-        requiredOwnerRefs: part.payload.required_owner_refs,
+        requiredOwnerRefs: [...part.payload.required_owner_refs],
         title: part.payload.title,
         description: part.payload.description,
-        allowedActions: part.payload.allowed_actions,
+        allowedActions: [...part.payload.allowed_actions],
         status: part.payload.status,
         ...(part.payload.risk_summary === undefined ? {} : { riskSummary: part.payload.risk_summary }),
-        ...(part.payload.safe_request_summary === undefined ? {} : { safeRequestSummary: part.payload.safe_request_summary }),
+        ...(part.payload.safe_request_summary === undefined ? {} : { safeRequestSummary: copyRecord(part.payload.safe_request_summary) }),
         ...(part.payload.input_schema_ref === undefined ? {} : { inputSchemaRef: part.payload.input_schema_ref }),
-        ...(part.payload.safe_input_schema === undefined ? {} : { safeInputSchema: part.payload.safe_input_schema }),
+        ...(part.payload.safe_input_schema === undefined ? {} : { safeInputSchema: copyRecord(part.payload.safe_input_schema) }),
         ...(part.payload.deadline === undefined ? {} : { deadline: part.payload.deadline }),
         ...(part.payload.receipt_ref === undefined ? {} : { receiptRef: part.payload.receipt_ref }),
       }
@@ -280,7 +292,7 @@ function projectPartView(part: MessagePartEnvelope): ChatPart {
         planVersion: part.payload.plan_version,
         summary: part.payload.summary,
         steps: part.payload.steps.map((step) => ({ stepRef: step.step_ref, label: step.label, status: step.status })),
-        allowedActions: part.payload.allowed_actions,
+        allowedActions: [...part.payload.allowed_actions],
         status: part.payload.status,
         ...(part.payload.deadline === undefined ? {} : { deadline: part.payload.deadline }),
         ...(part.payload.receipt_ref === undefined ? {} : { receiptRef: part.payload.receipt_ref }),
@@ -305,31 +317,19 @@ function projectPartView(part: MessagePartEnvelope): ChatPart {
       return {
         ...base,
         kind: "media-operation",
-        mediaOperationRef: part.payload.media_operation_ref,
-        capability: part.payload.capability,
-        status: part.payload.status,
-        safeMetadata: part.payload.safe_metadata,
-        ...(part.payload.progress_bps === undefined ? {} : { progressBps: part.payload.progress_bps }),
-        ...(part.payload.artifact_ref === undefined ? {} : { artifactRef: part.payload.artifact_ref }),
+        ...projectMediaOperationOwnerState(part.payload),
       }
     case "artifact":
       return {
         ...base,
         kind: "artifact",
-        artifactRef: part.payload.artifact_ref,
-        versionRef: part.payload.version_ref,
-        safeMetadata: part.payload.safe_metadata ?? {},
-        ...(part.payload.content_type === undefined ? {} : { contentType: part.payload.content_type }),
+        ...projectArtifactOwnerState(part.payload),
       }
     case "cost":
       return {
         ...base,
         kind: "cost",
-        costProjectionRef: part.payload.cost_projection_ref,
-        status: part.payload.status,
-        freshness: part.payload.freshness,
-        ...(part.payload.amount === undefined ? {} : { amount: part.payload.amount }),
-        ...(part.payload.currency_or_credit_unit === undefined ? {} : { currencyOrCreditUnit: part.payload.currency_or_credit_unit }),
+        ...projectCostOwnerState(part.payload),
       }
     case "notice":
       return {
@@ -364,7 +364,7 @@ function projectPartView(part: MessagePartEnvelope): ChatPart {
 }
 
 function projectPart(part: MessagePartEnvelope, fingerprints: PartEnvelopeFingerprints): ChatPart {
-  const projected = projectPartView(part)
+  const projected = deepFreeze(projectPartView(part))
   fingerprints.set(projected, stableStringify(part))
   return projected
 }
@@ -378,14 +378,14 @@ function projectMessage(
   fingerprints: PartEnvelopeFingerprints,
 ): ChatProjectionMessage | null {
   if (message.role === "system") return null
-  return {
+  return deepFreeze({
     id: message.message_id,
     runId: message.run_id ?? null,
     role: message.role,
     createdAt: message.created_at,
     parts: sortParts(message.parts.map((part) => projectPart(part, fingerprints))),
     status: messageStatus(message.lifecycle),
-  }
+  })
 }
 
 function upsertMessage(
@@ -410,6 +410,7 @@ function upsertPart(
     | "part_version_regression"
     | "part_version_conflict"
     | "part_version_gap"
+    | OwnerTransitionConflict
 } {
   const index = message.parts.findIndex((candidate) => candidate.id === part.id)
   if (index < 0) {
@@ -429,6 +430,14 @@ function upsertPart(
       : { message, conflict: "part_version_conflict" }
   }
   if (part.version !== current.version + 1) return { message, conflict: "part_version_gap" }
+  const ownerConflict = current.kind === "media-operation" && part.kind === "media-operation"
+    ? validateMediaOperationTransition(current, part)
+    : current.kind === "artifact" && part.kind === "artifact"
+      ? validateArtifactTransition(current, part)
+      : current.kind === "cost" && part.kind === "cost"
+        ? validateCostTransition(current, part)
+        : undefined
+  if (ownerConflict !== undefined) return { message, conflict: ownerConflict }
   const next = [...message.parts]
   next[index] = part
   return { message: { ...message, parts: sortParts(next) } }
@@ -607,7 +616,7 @@ function reduceChatProjection(
     case "event":
       return reduceEvent(state, action.event, fingerprints)
     case "connection":
-      return { ...state, connection: action.connection }
+      return { ...state, connection: copyUnknown(action.connection) as SessionConnectionState }
     case "command":
       return { ...state, command: { state: action.state, ...(action.detail ? { detail: action.detail } : {}) } }
     case "repair":
@@ -653,7 +662,7 @@ export function createChatProjectionStore(): ChatProjectionStore {
   const listeners = new Set<() => void>()
   const commit = (next: ChatProjection): void => {
     if (next === state) return
-    state = next
+    state = deepFreeze(next)
     for (const listener of listeners) listener()
   }
   return {

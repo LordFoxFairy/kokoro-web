@@ -26,11 +26,14 @@ type ProjectedPart<Kind extends ChatPart["kind"]> = Extract<ChatPart, { readonly
 
 const EXACT_ENUM_TYPES: readonly [
   Exact<ProjectedPart<"subagent">["status"], ContractPayload<"subagent">["status"]>,
-  Exact<ProjectedPart<"cost">["status"], ContractPayload<"cost">["status"]>,
+  Exact<ProjectedPart<"media-operation">["state"], ContractPayload<"media-operation">["state"]>,
+  Exact<ProjectedPart<"artifact">["availability"], ContractPayload<"artifact">["availability"]>,
+  Exact<ProjectedPart<"cost">["state"], ContractPayload<"cost">["state"]>,
+  Exact<ProjectedPart<"cost">["freshness"], ContractPayload<"cost">["freshness"]>,
   Exact<ProjectedPart<"notice">["severity"], ContractPayload<"notice">["severity"]>,
   Exact<ProjectedPart<"notice">["retryClass"], ContractPayload<"notice">["retry_class"]>,
   Exact<ProjectedPart<"error">["retryClass"], ContractPayload<"error">["retry_class"]>,
-] = [true, true, true, true, true]
+] = [true, true, true, true, true, true, true, true]
 
 function snapshot(): SessionSnapshot {
   return {
@@ -129,9 +132,19 @@ function event<Event extends SessionEvent>(value: Omit<Event, keyof SessionEvent
   } as Event
 }
 
+function snapshotWithAssistantParts(parts: readonly MessagePartEnvelope[]): SessionSnapshot {
+  const base = snapshot()
+  const assistant = base.messages[1]
+  if (assistant === undefined) throw new Error("assistant fixture missing")
+  return {
+    ...base,
+    messages: [base.messages[0] as SessionSnapshot["messages"][number], { ...assistant, parts: [...parts] }],
+  }
+}
+
 describe("Chat projection", () => {
   it("keeps generated enum fields exact instead of widening them to string", () => {
-    expect(EXACT_ENUM_TYPES).toEqual([true, true, true, true, true])
+    expect(EXACT_ENUM_TYPES).toEqual([true, true, true, true, true, true, true, true])
   })
 
   it("keeps reducer ownership inside a store and rejects cloned projection initial state", () => {
@@ -527,9 +540,9 @@ describe("Chat projection", () => {
           { part_id: "tool-1", message_id: assistant.message_id, ordinal: 5, version: 1, schema_version: 1, lifecycle: "streaming", kind: "tool-call", payload: { tool_call_id: "Tool/Call:Exact-01", tool_label: "Search", status: "started" } },
           { part_id: "plan-progress-1", message_id: assistant.message_id, ordinal: 6, version: 1, schema_version: 1, lifecycle: "streaming", kind: "plan-progress", payload: { plan_ref: "plan-progress-ref", safe_summary: "Building the result", steps: [{ step_ref: "step-progress-1", label: "Render", status: "in_progress" }] } },
           { part_id: "subagent-1", message_id: assistant.message_id, ordinal: 7, version: 1, schema_version: 1, lifecycle: "streaming", kind: "subagent", payload: { subagent_ref: "subagent-ref", status: "running", safe_summary: "Checking references" } },
-          { part_id: "media-1", message_id: assistant.message_id, ordinal: 8, version: 1, schema_version: 1, lifecycle: "streaming", kind: "media-operation", payload: { media_operation_ref: "media-ref", capability: "image.generate", status: "running", safe_metadata: { title: "Poster" }, progress_bps: 3750 } },
-          { part_id: "artifact-1", message_id: assistant.message_id, ordinal: 9, version: 1, schema_version: 1, lifecycle: "completed", kind: "artifact", payload: { artifact_ref: "artifact-ref", version_ref: "artifact-v1", content_type: "image/png", safe_metadata: { title: "Poster" } } },
-          { part_id: "cost-1", message_id: assistant.message_id, ordinal: 10, version: 1, schema_version: 1, lifecycle: "completed", kind: "cost", payload: { cost_projection_ref: "cost-ref", status: "settled", amount: "1.25", currency_or_credit_unit: "credits", freshness: NOW } },
+          { part_id: "media-1", message_id: assistant.message_id, ordinal: 8, version: 1, schema_version: 1, lifecycle: "streaming", kind: "media-operation", payload: { media_operation_ref: "media-ref", definition_ref: "image.text_to_image", definition_revision_ref: "image.text_to_image@1", owner_version: "7", progress_bps: 3750, candidates: [{ candidate_ref: "candidate-ready", ordinal: 0, owner_version: "5", artifact_ref: "artifact-ref", artifact_version_ref: "artifact-v1", state: "ready" }, { candidate_ref: "candidate-unknown", ordinal: 1, owner_version: "3", state: "unknown" }, { candidate_ref: "candidate-restricted", ordinal: 2, owner_version: "4", state: "restricted", safe_failure: { code: "artifact_restricted", retry_class: "never", safe_message: "Not available for delivery." } }], cost_projection: { cost_projection_ref: "cost-ref", owner_version: "2" }, updated_at: NOW, state: "active" } },
+          { part_id: "artifact-1", message_id: assistant.message_id, ordinal: 9, version: 1, schema_version: 1, lifecycle: "completed", kind: "artifact", payload: { artifact_ref: "artifact-ref", artifact_version_ref: "artifact-v1", owner_version: "11", media_class: "image", updated_at: NOW, availability: "ready", payload: { format: "png", width: 1024, height: 768, byte_size: "245760" } } },
+          { part_id: "cost-1", message_id: assistant.message_id, ordinal: 10, version: 1, schema_version: 1, lifecycle: "completed", kind: "cost", payload: { media_operation_ref: "media-ref", cost_projection_ref: "cost-ref", owner_version: "13", freshness: "stale", updated_at: NOW, corrects_owner_version: "12", state: "corrected", payload: { amount: "125", credit_unit: "credits" } } },
           { part_id: "notice-1", message_id: assistant.message_id, ordinal: 11, version: 1, schema_version: 1, lifecycle: "completed", kind: "notice", payload: { notice_ref: "notice-ref", code: "WAIT", message: "Still working", severity: "warning", support_correlation_ref: "support-1" } },
           { part_id: "error-1", message_id: assistant.message_id, ordinal: 12, version: 1, schema_version: 1, lifecycle: "failed", kind: "error", payload: { error_ref: "error-ref", code: "FAILED", message: "Stopped", retry_class: "never" } },
           { part_id: "unsupported-1", message_id: assistant.message_id, ordinal: 13, version: 1, schema_version: 1, lifecycle: "unsupported", kind: "unsupported", payload: { original_kind: "future-visual", original_schema_version: 2, safe_fallback: "A newer client can render this content." } },
@@ -550,9 +563,9 @@ describe("Chat projection", () => {
       expect.objectContaining({ kind: "tool", toolCallId: "Tool/Call:Exact-01", args: {} }),
       expect.objectContaining({ kind: "plan-progress", planRef: "plan-progress-ref", summary: "Building the result" }),
       expect.objectContaining({ kind: "subagent", subagentRef: "subagent-ref", status: "running" }),
-      expect.objectContaining({ kind: "media-operation", mediaOperationRef: "media-ref", capability: "image.generate", progressBps: 3750, safeMetadata: { title: "Poster" } }),
-      expect.objectContaining({ kind: "artifact", artifactRef: "artifact-ref", versionRef: "artifact-v1", contentType: "image/png" }),
-      expect.objectContaining({ kind: "cost", costProjectionRef: "cost-ref", amount: "1.25" }),
+      expect.objectContaining({ kind: "media-operation", mediaOperationRef: "media-ref", definitionRef: "image.text_to_image", definitionRevisionRef: "image.text_to_image@1", ownerVersion: "7", state: "active", progressBps: 3750, candidates: [expect.objectContaining({ state: "ready", artifactVersionRef: "artifact-v1" }), expect.objectContaining({ state: "unknown" }), expect.objectContaining({ state: "restricted", failure: { code: "artifact_restricted", retryClass: "never", safeMessage: "Not available for delivery." } })], costProjection: { costProjectionRef: "cost-ref", ownerVersion: "2" } }),
+      expect.objectContaining({ kind: "artifact", artifactRef: "artifact-ref", artifactVersionRef: "artifact-v1", ownerVersion: "11", mediaClass: "image", availability: "ready", display: { format: "png", width: 1024, height: 768, byteSize: "245760" } }),
+      expect.objectContaining({ kind: "cost", mediaOperationRef: "media-ref", costProjectionRef: "cost-ref", ownerVersion: "13", state: "corrected", freshness: "stale", correctsOwnerVersion: "12", amount: { amount: "125", creditUnit: "credits" } }),
       expect.objectContaining({ kind: "notice", noticeRef: "notice-ref", code: "WAIT", severity: "warning" }),
       expect.objectContaining({ kind: "error", errorRef: "error-ref", code: "FAILED", retryClass: "never" }),
       expect.objectContaining({ kind: "unsupported", originalKind: "future-visual", safeFallback: "A newer client can render this content." }),
@@ -566,9 +579,9 @@ describe("Chat projection", () => {
       expect.objectContaining({ type: "tool-call", toolCallId: "Tool/Call:Exact-01", args: {} }),
       expect.objectContaining({ type: "data", name: "kokoro:plan-progress", data: expect.objectContaining({ planRef: "plan-progress-ref" }) }),
       expect.objectContaining({ type: "data", name: "kokoro:subagent", data: expect.objectContaining({ subagentRef: "subagent-ref" }) }),
-      expect.objectContaining({ type: "data", name: "kokoro:media-operation", data: expect.objectContaining({ mediaOperationRef: "media-ref", progressBps: 3750 }) }),
-      expect.objectContaining({ type: "data", name: "kokoro:artifact", data: expect.objectContaining({ artifactRef: "artifact-ref", versionRef: "artifact-v1" }) }),
-      expect.objectContaining({ type: "data", name: "kokoro:cost", data: expect.objectContaining({ costProjectionRef: "cost-ref" }) }),
+      expect.objectContaining({ type: "data", name: "kokoro:media-operation", data: expect.objectContaining({ mediaOperationRef: "media-ref", definitionRevisionRef: "image.text_to_image@1", ownerVersion: "7", state: "active", progressBps: 3750, candidates: expect.arrayContaining([expect.objectContaining({ candidateRef: "candidate-unknown", state: "unknown" })]) }) }),
+      expect.objectContaining({ type: "data", name: "kokoro:artifact", data: expect.objectContaining({ artifactRef: "artifact-ref", artifactVersionRef: "artifact-v1", availability: "ready", display: { format: "png", width: 1024, height: 768, byteSize: "245760" } }) }),
+      expect.objectContaining({ type: "data", name: "kokoro:cost", data: expect.objectContaining({ costProjectionRef: "cost-ref", state: "corrected", freshness: "stale", amount: { amount: "125", creditUnit: "credits" } }) }),
       expect.objectContaining({ type: "data", name: "kokoro:unsupported", data: expect.objectContaining({ originalKind: "future-visual" }) }),
     ]))
     expect(assistantProjection.parts).toHaveLength(14)
@@ -629,16 +642,26 @@ describe("Chat projection", () => {
       kind: "media-operation" as const,
       payload: {
         media_operation_ref: "media-ref",
-        capability: "image.generate",
-        status: "running",
-        safe_metadata: { title: "Poster" },
+        definition_ref: "image.text_to_image",
+        definition_revision_ref: "image.text_to_image@1",
+        owner_version: "1",
         progress_bps: 2500,
+        candidates: [{ candidate_ref: "candidate-1", ordinal: 0, owner_version: "1", state: "producing" as const }],
+        updated_at: NOW,
+        state: "active" as const,
       },
     }
     const second = {
       ...first,
       version: 2,
-      payload: { ...first.payload, status: "completed", progress_bps: 10000, artifact_ref: "artifact-ref" },
+      payload: {
+        ...first.payload,
+        owner_version: "2",
+        progress_bps: 10000,
+        candidates: [{ candidate_ref: "candidate-1", ordinal: 0, owner_version: "2", artifact_ref: "artifact-ref", artifact_version_ref: "artifact-v1", state: "ready" as const }],
+        outcome_class: "canonical" as const,
+        state: "completed" as const,
+      },
       lifecycle: "completed" as const,
     }
     const withPart = (part: typeof first | typeof second): SessionSnapshot => ({
@@ -660,8 +683,195 @@ describe("Chat projection", () => {
       kind: "media-operation",
       version: 2,
       progressBps: 10000,
-      artifactRef: "artifact-ref",
+      ownerVersion: "2",
+      state: "completed",
+      outcomeClass: "canonical",
+      candidates: [expect.objectContaining({ state: "ready", artifactRef: "artifact-ref", artifactVersionRef: "artifact-v1" })],
     })
+  })
+
+  it("deep-freezes copied owner state so caller mutations cannot bypass the store", () => {
+    const part: MessagePartEnvelope = {
+      part_id: "media-frozen",
+      message_id: "message-assistant-12345678",
+      ordinal: 0,
+      version: 1,
+      schema_version: 1,
+      lifecycle: "streaming",
+      kind: "media-operation",
+      payload: {
+        media_operation_ref: "media-ref",
+        definition_ref: "image.text_to_image",
+        definition_revision_ref: "image.text_to_image@1",
+        owner_version: "8",
+        progress_bps: 4200,
+        candidates: [{
+          candidate_ref: "candidate-restricted",
+          ordinal: 0,
+          owner_version: "3",
+          safe_failure: { code: "artifact_restricted", retry_class: "never", safe_message: "Restricted by policy." },
+          state: "restricted",
+        }],
+        cost_projection: { cost_projection_ref: "cost-ref", owner_version: "2" },
+        updated_at: NOW,
+        state: "active",
+      },
+    }
+    const input = snapshotWithAssistantParts([part])
+    const store = createChatProjectionStore()
+    store.hydrate(input)
+    const projection = store.getSnapshot()
+    const projected = projection.messages[1]?.parts[0]
+    if (projected?.kind !== "media-operation") throw new Error("media projection missing")
+
+    expect(Object.isFrozen(projection)).toBe(true)
+    expect(Object.isFrozen(projection.messages)).toBe(true)
+    expect(Object.isFrozen(projected)).toBe(true)
+    expect(Object.isFrozen(projected.candidates)).toBe(true)
+    expect(Object.isFrozen(projected.candidates[0])).toBe(true)
+    expect(Object.isFrozen(projected.candidates[0]?.state === "restricted" ? projected.candidates[0].failure : null)).toBe(true)
+    expect(Object.isFrozen(projected.costProjection)).toBe(true)
+
+    const inputPart = input.messages[1]?.parts[0]
+    if (inputPart?.kind !== "media-operation") throw new Error("input media part missing")
+    const inputCandidate = inputPart.payload.candidates[0]
+    if (inputCandidate === undefined) throw new Error("input candidate missing")
+    ;(inputCandidate as { state: string }).state = "ready"
+    expect(projected.candidates[0]).toMatchObject({ state: "restricted", failure: { code: "artifact_restricted" } })
+  })
+
+  it("rejects Media owner and candidate version regressions without replacing authoritative state", () => {
+    const current: MessagePartEnvelope = {
+      part_id: "media-monotonic",
+      message_id: "message-assistant-12345678",
+      ordinal: 0,
+      version: 1,
+      schema_version: 1,
+      lifecycle: "streaming",
+      kind: "media-operation",
+      payload: {
+        media_operation_ref: "media-ref",
+        definition_ref: "image.text_to_image",
+        definition_revision_ref: "image.text_to_image@1",
+        owner_version: "8",
+        progress_bps: 5000,
+        candidates: [{ candidate_ref: "candidate-1", ordinal: 0, owner_version: "5", state: "validating" }],
+        updated_at: NOW,
+        state: "finalizing",
+      },
+    }
+    const ownerRegression: MessagePartEnvelope = {
+      ...current,
+      version: 2,
+      payload: { ...current.payload, owner_version: "7", progress_bps: 6000 },
+    }
+    const ownerStore = createChatProjectionStore()
+    ownerStore.hydrate(snapshotWithAssistantParts([current]))
+    ownerStore.dispatch({ type: "event", event: event({ kind: "message.part.updated", payload: { part: ownerRegression } }) })
+    expect(ownerStore.getSnapshot().messages[1]?.parts[0]).toMatchObject({ ownerVersion: "8", progressBps: 5000 })
+    expect(ownerStore.getSnapshot().repair).toEqual({ required: true, reason: "owner_version_regression" })
+
+    const candidateRegression: MessagePartEnvelope = {
+      ...current,
+      version: 2,
+      payload: {
+        ...current.payload,
+        owner_version: "9",
+        progress_bps: 6000,
+        candidates: [{ candidate_ref: "candidate-1", ordinal: 0, owner_version: "4", state: "validating" }],
+      },
+    }
+    const candidateStore = createChatProjectionStore()
+    candidateStore.hydrate(snapshotWithAssistantParts([current]))
+    candidateStore.dispatch({ type: "event", event: event({ kind: "message.part.updated", payload: { part: candidateRegression } }) })
+    expect(candidateStore.getSnapshot().messages[1]?.parts[0]).toMatchObject({ ownerVersion: "8", candidates: [expect.objectContaining({ ownerVersion: "5" })] })
+    expect(candidateStore.getSnapshot().repair).toEqual({ required: true, reason: "candidate_owner_version_regression" })
+  })
+
+  it("keeps Media terminal state closed and preserves owner failure and unavailable projections", () => {
+    const terminal: MessagePartEnvelope = {
+      part_id: "media-terminal",
+      message_id: "message-assistant-12345678",
+      ordinal: 0,
+      version: 1,
+      schema_version: 1,
+      lifecycle: "failed",
+      kind: "media-operation",
+      payload: {
+        media_operation_ref: "media-ref",
+        definition_ref: "image.text_to_image",
+        definition_revision_ref: "image.text_to_image@1",
+        owner_version: "12",
+        progress_bps: 8100,
+        candidates: [{ candidate_ref: "candidate-unknown", ordinal: 0, owner_version: "6", state: "unknown" }],
+        updated_at: NOW,
+        outcome_class: "irreconcilable",
+        safe_failure: { code: "outcome_unknown", retry_class: "reconcile_receipt", safe_message: "Outcome needs reconciliation." },
+        state: "failed",
+      },
+    }
+    const artifact: MessagePartEnvelope = {
+      part_id: "artifact-unavailable",
+      message_id: "message-assistant-12345678",
+      ordinal: 1,
+      version: 1,
+      schema_version: 1,
+      lifecycle: "failed",
+      kind: "artifact",
+      payload: {
+        artifact_ref: "artifact-ref",
+        artifact_version_ref: "artifact-v1",
+        owner_version: "4",
+        media_class: "image",
+        updated_at: NOW,
+        safe_failure: { code: "artifact_unavailable", retry_class: "after_user_action", safe_message: "Artifact is unavailable." },
+        availability: "unavailable",
+      },
+    }
+    const cost: MessagePartEnvelope = {
+      part_id: "cost-unavailable",
+      message_id: "message-assistant-12345678",
+      ordinal: 2,
+      version: 1,
+      schema_version: 1,
+      lifecycle: "failed",
+      kind: "cost",
+      payload: {
+        media_operation_ref: "media-ref",
+        cost_projection_ref: "cost-ref",
+        owner_version: "3",
+        freshness: "unavailable",
+        updated_at: NOW,
+        safe_reason: "Rating projection is temporarily unavailable.",
+        state: "unavailable",
+      },
+    }
+    const store = createChatProjectionStore()
+    store.hydrate(snapshotWithAssistantParts([terminal, artifact, cost]))
+    expect(store.getSnapshot().messages[1]?.parts).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: "media-operation", state: "failed", outcomeClass: "irreconcilable", failure: { code: "outcome_unknown", retryClass: "reconcile_receipt", safeMessage: "Outcome needs reconciliation." }, candidates: [expect.objectContaining({ state: "unknown" })] }),
+      expect.objectContaining({ kind: "artifact", availability: "unavailable", failure: { code: "artifact_unavailable", retryClass: "after_user_action", safeMessage: "Artifact is unavailable." } }),
+      expect.objectContaining({ kind: "cost", state: "unavailable", freshness: "unavailable", safeReason: "Rating projection is temporarily unavailable." }),
+    ]))
+
+    const reopened: MessagePartEnvelope = {
+      ...terminal,
+      version: 2,
+      lifecycle: "streaming",
+      payload: {
+        media_operation_ref: "media-ref",
+        definition_ref: "image.text_to_image",
+        definition_revision_ref: "image.text_to_image@1",
+        owner_version: "13",
+        progress_bps: 9000,
+        candidates: [{ candidate_ref: "candidate-unknown", ordinal: 0, owner_version: "7", state: "validating" }],
+        updated_at: NOW,
+        state: "active",
+      },
+    }
+    store.dispatch({ type: "event", event: event({ kind: "message.part.updated", payload: { part: reopened } }) })
+    expect(store.getSnapshot().messages[1]?.parts[0]).toMatchObject({ state: "failed", ownerVersion: "12" })
+    expect(store.getSnapshot().repair).toEqual({ required: true, reason: "media_terminal_state_conflict" })
   })
 
   it("rejects part version regression without mutating the current projection", () => {
