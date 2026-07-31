@@ -5,7 +5,11 @@ import {
   SESSION_CLIENT_OPERATION_SURFACE,
   type SessionTransport,
 } from "../src/client.js";
-import { SESSION_HTTP_ENDPOINTS, submitMessageRequestSchema } from "../src/contracts.js";
+import {
+  SESSION_HTTP_ENDPOINTS,
+  submitMessageRequestSchema,
+  type ErrorEnvelope,
+} from "../src/contracts.js";
 
 const DIGEST = "a".repeat(64);
 
@@ -64,7 +68,11 @@ function commandResponse(operation = "submit_message") {
   };
 }
 
-function problem(code: string, action: string, retryClass: string) {
+function problem(
+  code: ErrorEnvelope["error"]["code"],
+  action: ErrorEnvelope["error"]["action"],
+  retryClass: ErrorEnvelope["error"]["retry_class"],
+): ErrorEnvelope {
   return {
     error: {
       code,
@@ -358,7 +366,7 @@ describe("contract-bound Session v3 client", () => {
     [403, problem("ADMISSION_DENIED", "show_reason", "never"), "http"],
     [403, problem("SESSION_SCOPE_MISMATCH", "stop", "never"), "http"],
     [401, problem("BFF_WORKLOAD_REVOKED", "stop", "never"), "http"],
-    [400, problem("SNAPSHOT_REQUIRED", "refetch_snapshot", "immediate"), "repair_required"],
+    [409, problem("SNAPSHOT_REQUIRED", "refetch_snapshot", "after_user_action"), "repair_required"],
   ])("classifies status %i by stable problem semantics", async (status, body, kind) => {
     const client = createSessionClient({
       transport: {

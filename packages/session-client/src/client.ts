@@ -685,7 +685,7 @@ export function createSessionClient(options: {
           });
           if (
             problem.error.action === "retry_same_cursor" ||
-            ["immediate", "after_delay"].includes(problem.error.retry_class)
+            problem.error.retry_class === "after_delay"
           ) {
             scheduleReconnect(response.headers);
           } else {

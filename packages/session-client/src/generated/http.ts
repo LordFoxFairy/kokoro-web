@@ -6,7 +6,7 @@ import { z } from "zod"
 export const sessionHttpContractMetadata = Object.freeze({
   schemaId: "kokoro.session.browser.v3",
   schemaVersion: 3,
-  sourceDigestSha256: "5e550086f0a7478ff839ffee87f377a64a12077e9fc8b8e5df6f512385f1f687",
+  sourceDigestSha256: "290740c84c20fdc921e7d245508cefafde2e33e8e32d4d61a353372e6af1c7eb",
 })
 
 export const commandIdentitySchema = z
@@ -23,7 +23,7 @@ export const errorDetailSchema = z
   .object({
     code: z.enum(["REQUEST_INVALID", "PAYLOAD_TOO_LARGE", "METHOD_NOT_ALLOWED", "UNSUPPORTED_MEDIA_TYPE", "BFF_WORKLOAD_REQUIRED", "BFF_WORKLOAD_REVOKED", "SESSION_ACCESS_GRANT_REQUIRED", "SESSION_ACCESS_GRANT_EXPIRED", "SESSION_ACCESS_GRANT_REVOKED", "SESSION_SCOPE_MISMATCH", "SESSION_NOT_FOUND", "SESSION_VERSION_CONFLICT", "IDEMPOTENCY_CONFLICT", "ACTIVE_RUN_EXISTS", "CAPABILITY_SNAPSHOT_LOCKED", "MODEL_OPTION_UNAVAILABLE", "ATTACHMENT_NOT_READY", "ATTACHMENT_REVOKED", "ADMISSION_DENIED", "ADMISSION_OUTCOME_UNKNOWN", "LAUNCH_OUTCOME_UNKNOWN", "RUN_CANCELLATION_PENDING", "RUN_OUTCOME_UNKNOWN", "ACTION_NOT_FOUND", "ACTION_VERSION_CONFLICT", "ACTION_EXPIRED", "ACTION_NOT_ALLOWED", "ACTION_DECISION_PENDING", "PLAN_NOT_FOUND", "PLAN_VERSION_CONFLICT", "PLAN_EXPIRED", "PLAN_DECISION_PENDING", "CURSOR_INVALID", "CURSOR_CONFLICT", "CURSOR_AHEAD", "SNAPSHOT_REQUIRED", "CURSOR_SCOPE_MISMATCH", "STREAM_EPOCH_MISMATCH", "CLIENT_CONTRACT_UPGRADE_REQUIRED", "PART_SCHEMA_UNSUPPORTED", "INTERNAL_UNAVAILABLE"]),
     message: z.string().min(1),
-    retry_class: z.enum(["never", "immediate", "after_delay", "after_user_action", "reconcile_receipt"]),
+    retry_class: z.enum(["never", "after_delay", "after_user_action", "reconcile_receipt"]),
     action: z.enum(["retry_same_cursor", "refresh_grant", "reauthenticate", "refetch_snapshot", "upgrade_client", "stop", "developer_error", "wait_or_cancel", "fork_new_session", "choose_model", "wait_prerequisite", "remove_attachment", "show_reason", "reconcile_receipt", "poll_or_stream", "render_unsupported"]),
     details: z.record(z.string(), z.unknown()).optional(),
   })
@@ -230,7 +230,7 @@ export type SessionCommandEffect = z.infer<typeof sessionCommandEffectSchema>
 
 export const commandRecoveryPayloadSchema = z
   .object({
-    retry_class: z.enum(["never", "immediate", "after_delay", "after_user_action", "reconcile_receipt"]),
+    retry_class: z.enum(["never", "after_delay", "after_user_action", "reconcile_receipt"]),
     action: z.enum(["retry_same_cursor", "refresh_grant", "reauthenticate", "refetch_snapshot", "upgrade_client", "stop", "developer_error", "wait_or_cancel", "fork_new_session", "choose_model", "wait_prerequisite", "remove_attachment", "show_reason", "reconcile_receipt", "poll_or_stream", "render_unsupported"]),
     retry_after_ms: z.number().int().nonnegative().optional(),
   })
@@ -442,37 +442,457 @@ export const subagentPartPayloadSchema = z
   .strict()
 export type SubagentPartPayload = z.infer<typeof subagentPartPayloadSchema>
 
-export const mediaOperationPartPayloadSchema = z
+export const mediaSafeFailureSchema = z
+  .object({
+    code: z.enum(["input_rejected", "policy_rejected", "credit_rejected", "generation_failed", "validation_failed", "temporarily_unavailable", "outcome_unknown", "artifact_restricted", "artifact_unavailable"]),
+    retry_class: z.enum(["never", "after_delay", "after_user_action", "reconcile_receipt"]),
+    safe_message: z.string().optional(),
+  })
+  .strict()
+export type MediaSafeFailure = z.infer<typeof mediaSafeFailureSchema>
+
+const mediaCandidatePartAllocatedSchema = z
+  .object({
+    candidate_ref: z.string().min(1).max(256),
+    ordinal: z.number().int().nonnegative(),
+    owner_version: z.string().regex(/^(0|[1-9][0-9]{0,19})$/u).refine((value) => value.length < 20 || value <= "18446744073709551615"),
+    state: z.literal("allocated"),
+  })
+  .strict()
+
+const mediaCandidatePartProducingSchema = z
+  .object({
+    candidate_ref: z.string().min(1).max(256),
+    ordinal: z.number().int().nonnegative(),
+    owner_version: z.string().regex(/^(0|[1-9][0-9]{0,19})$/u).refine((value) => value.length < 20 || value <= "18446744073709551615"),
+    state: z.literal("producing"),
+  })
+  .strict()
+
+const mediaCandidatePartOutputReceivedSchema = z
+  .object({
+    candidate_ref: z.string().min(1).max(256),
+    ordinal: z.number().int().nonnegative(),
+    owner_version: z.string().regex(/^(0|[1-9][0-9]{0,19})$/u).refine((value) => value.length < 20 || value <= "18446744073709551615"),
+    state: z.literal("output_received"),
+  })
+  .strict()
+
+const mediaCandidatePartValidatingSchema = z
+  .object({
+    candidate_ref: z.string().min(1).max(256),
+    ordinal: z.number().int().nonnegative(),
+    owner_version: z.string().regex(/^(0|[1-9][0-9]{0,19})$/u).refine((value) => value.length < 20 || value <= "18446744073709551615"),
+    state: z.literal("validating"),
+  })
+  .strict()
+
+const mediaCandidatePartReadySchema = z
+  .object({
+    candidate_ref: z.string().min(1).max(256),
+    ordinal: z.number().int().nonnegative(),
+    owner_version: z.string().regex(/^(0|[1-9][0-9]{0,19})$/u).refine((value) => value.length < 20 || value <= "18446744073709551615"),
+    artifact_ref: z.string().min(1).max(256),
+    artifact_version_ref: z.string().min(1).max(256),
+    state: z.literal("ready"),
+  })
+  .strict()
+
+const mediaCandidatePartRestrictedSchema = z
+  .object({
+    candidate_ref: z.string().min(1).max(256),
+    ordinal: z.number().int().nonnegative(),
+    owner_version: z.string().regex(/^(0|[1-9][0-9]{0,19})$/u).refine((value) => value.length < 20 || value <= "18446744073709551615"),
+    safe_failure: mediaSafeFailureSchema,
+    state: z.literal("restricted"),
+  })
+  .strict()
+
+const mediaCandidatePartFailedSchema = z
+  .object({
+    candidate_ref: z.string().min(1).max(256),
+    ordinal: z.number().int().nonnegative(),
+    owner_version: z.string().regex(/^(0|[1-9][0-9]{0,19})$/u).refine((value) => value.length < 20 || value <= "18446744073709551615"),
+    safe_failure: mediaSafeFailureSchema,
+    state: z.literal("failed"),
+  })
+  .strict()
+
+const mediaCandidatePartUnknownSchema = z
+  .object({
+    candidate_ref: z.string().min(1).max(256),
+    ordinal: z.number().int().nonnegative(),
+    owner_version: z.string().regex(/^(0|[1-9][0-9]{0,19})$/u).refine((value) => value.length < 20 || value <= "18446744073709551615"),
+    state: z.literal("unknown"),
+  })
+  .strict()
+
+const mediaCandidatePartCancelRequestedSchema = z
+  .object({
+    candidate_ref: z.string().min(1).max(256),
+    ordinal: z.number().int().nonnegative(),
+    owner_version: z.string().regex(/^(0|[1-9][0-9]{0,19})$/u).refine((value) => value.length < 20 || value <= "18446744073709551615"),
+    state: z.literal("cancel_requested"),
+  })
+  .strict()
+
+const mediaCandidatePartCanceledSchema = z
+  .object({
+    candidate_ref: z.string().min(1).max(256),
+    ordinal: z.number().int().nonnegative(),
+    owner_version: z.string().regex(/^(0|[1-9][0-9]{0,19})$/u).refine((value) => value.length < 20 || value <= "18446744073709551615"),
+    state: z.literal("canceled"),
+  })
+  .strict()
+
+export const mediaCandidatePartSchema = z.discriminatedUnion("state", [
+  mediaCandidatePartAllocatedSchema,
+  mediaCandidatePartProducingSchema,
+  mediaCandidatePartOutputReceivedSchema,
+  mediaCandidatePartValidatingSchema,
+  mediaCandidatePartReadySchema,
+  mediaCandidatePartRestrictedSchema,
+  mediaCandidatePartFailedSchema,
+  mediaCandidatePartUnknownSchema,
+  mediaCandidatePartCancelRequestedSchema,
+  mediaCandidatePartCanceledSchema,
+])
+export type MediaCandidatePart = z.infer<typeof mediaCandidatePartSchema>
+
+export const costProjectionLinkSchema = z
+  .object({
+    cost_projection_ref: z.string().min(1).max(256),
+    owner_version: z.string().regex(/^(0|[1-9][0-9]{0,19})$/u).refine((value) => value.length < 20 || value <= "18446744073709551615"),
+  })
+  .strict()
+export type CostProjectionLink = z.infer<typeof costProjectionLinkSchema>
+
+const mediaOperationPartPayloadAdmissionPendingSchema = z
   .object({
     media_operation_ref: z.string().min(1).max(256),
-    capability: z.string().min(1),
-    status: z.string().min(1),
-    safe_metadata: z.record(z.string(), z.unknown()),
-    progress_bps: z.number().int().min(0).max(10000).optional(),
-    artifact_ref: z.string().min(1).max(256).optional(),
+    definition_ref: z.string().min(1).max(256),
+    definition_revision_ref: z.string().min(1).max(256),
+    owner_version: z.string().regex(/^(0|[1-9][0-9]{0,19})$/u).refine((value) => value.length < 20 || value <= "18446744073709551615"),
+    progress_bps: z.number().int().min(0).max(10000),
+    candidates: z.array(mediaCandidatePartSchema).max(4),
+    cost_projection: costProjectionLinkSchema.optional(),
+    updated_at: z.string().datetime({ offset: true }),
+    state: z.literal("admission_pending"),
   })
   .strict()
+
+const mediaOperationPartPayloadAuthorizedSchema = z
+  .object({
+    media_operation_ref: z.string().min(1).max(256),
+    definition_ref: z.string().min(1).max(256),
+    definition_revision_ref: z.string().min(1).max(256),
+    owner_version: z.string().regex(/^(0|[1-9][0-9]{0,19})$/u).refine((value) => value.length < 20 || value <= "18446744073709551615"),
+    progress_bps: z.number().int().min(0).max(10000),
+    candidates: z.array(mediaCandidatePartSchema).max(4),
+    cost_projection: costProjectionLinkSchema.optional(),
+    updated_at: z.string().datetime({ offset: true }),
+    state: z.literal("authorized"),
+  })
+  .strict()
+
+const mediaOperationPartPayloadQueuedSchema = z
+  .object({
+    media_operation_ref: z.string().min(1).max(256),
+    definition_ref: z.string().min(1).max(256),
+    definition_revision_ref: z.string().min(1).max(256),
+    owner_version: z.string().regex(/^(0|[1-9][0-9]{0,19})$/u).refine((value) => value.length < 20 || value <= "18446744073709551615"),
+    progress_bps: z.number().int().min(0).max(10000),
+    candidates: z.array(mediaCandidatePartSchema).max(4),
+    cost_projection: costProjectionLinkSchema.optional(),
+    updated_at: z.string().datetime({ offset: true }),
+    state: z.literal("queued"),
+  })
+  .strict()
+
+const mediaOperationPartPayloadActiveSchema = z
+  .object({
+    media_operation_ref: z.string().min(1).max(256),
+    definition_ref: z.string().min(1).max(256),
+    definition_revision_ref: z.string().min(1).max(256),
+    owner_version: z.string().regex(/^(0|[1-9][0-9]{0,19})$/u).refine((value) => value.length < 20 || value <= "18446744073709551615"),
+    progress_bps: z.number().int().min(0).max(10000),
+    candidates: z.array(mediaCandidatePartSchema).max(4),
+    cost_projection: costProjectionLinkSchema.optional(),
+    updated_at: z.string().datetime({ offset: true }),
+    state: z.literal("active"),
+  })
+  .strict()
+
+const mediaOperationPartPayloadFinalizingSchema = z
+  .object({
+    media_operation_ref: z.string().min(1).max(256),
+    definition_ref: z.string().min(1).max(256),
+    definition_revision_ref: z.string().min(1).max(256),
+    owner_version: z.string().regex(/^(0|[1-9][0-9]{0,19})$/u).refine((value) => value.length < 20 || value <= "18446744073709551615"),
+    progress_bps: z.number().int().min(0).max(10000),
+    candidates: z.array(mediaCandidatePartSchema).max(4),
+    cost_projection: costProjectionLinkSchema.optional(),
+    updated_at: z.string().datetime({ offset: true }),
+    state: z.literal("finalizing"),
+  })
+  .strict()
+
+const mediaOperationPartPayloadCancelRequestedSchema = z
+  .object({
+    media_operation_ref: z.string().min(1).max(256),
+    definition_ref: z.string().min(1).max(256),
+    definition_revision_ref: z.string().min(1).max(256),
+    owner_version: z.string().regex(/^(0|[1-9][0-9]{0,19})$/u).refine((value) => value.length < 20 || value <= "18446744073709551615"),
+    progress_bps: z.number().int().min(0).max(10000),
+    candidates: z.array(mediaCandidatePartSchema).max(4),
+    cost_projection: costProjectionLinkSchema.optional(),
+    updated_at: z.string().datetime({ offset: true }),
+    state: z.literal("cancel_requested"),
+  })
+  .strict()
+
+const mediaOperationPartPayloadReconcilingSchema = z
+  .object({
+    media_operation_ref: z.string().min(1).max(256),
+    definition_ref: z.string().min(1).max(256),
+    definition_revision_ref: z.string().min(1).max(256),
+    owner_version: z.string().regex(/^(0|[1-9][0-9]{0,19})$/u).refine((value) => value.length < 20 || value <= "18446744073709551615"),
+    progress_bps: z.number().int().min(0).max(10000),
+    candidates: z.array(mediaCandidatePartSchema).max(4),
+    cost_projection: costProjectionLinkSchema.optional(),
+    updated_at: z.string().datetime({ offset: true }),
+    state: z.literal("reconciling"),
+  })
+  .strict()
+
+const mediaOperationPartPayloadCompletedSchema = z
+  .object({
+    media_operation_ref: z.string().min(1).max(256),
+    definition_ref: z.string().min(1).max(256),
+    definition_revision_ref: z.string().min(1).max(256),
+    owner_version: z.string().regex(/^(0|[1-9][0-9]{0,19})$/u).refine((value) => value.length < 20 || value <= "18446744073709551615"),
+    progress_bps: z.number().int().min(0).max(10000),
+    candidates: z.array(mediaCandidatePartSchema).max(4),
+    cost_projection: costProjectionLinkSchema.optional(),
+    updated_at: z.string().datetime({ offset: true }),
+    outcome_class: z.enum(["canonical", "irreconcilable"]),
+    state: z.literal("completed"),
+  })
+  .strict()
+
+const mediaOperationPartPayloadPartialSchema = z
+  .object({
+    media_operation_ref: z.string().min(1).max(256),
+    definition_ref: z.string().min(1).max(256),
+    definition_revision_ref: z.string().min(1).max(256),
+    owner_version: z.string().regex(/^(0|[1-9][0-9]{0,19})$/u).refine((value) => value.length < 20 || value <= "18446744073709551615"),
+    progress_bps: z.number().int().min(0).max(10000),
+    candidates: z.array(mediaCandidatePartSchema).max(4),
+    cost_projection: costProjectionLinkSchema.optional(),
+    updated_at: z.string().datetime({ offset: true }),
+    outcome_class: z.enum(["canonical", "irreconcilable"]),
+    state: z.literal("partial"),
+  })
+  .strict()
+
+const mediaOperationPartPayloadFailedSchema = z
+  .object({
+    media_operation_ref: z.string().min(1).max(256),
+    definition_ref: z.string().min(1).max(256),
+    definition_revision_ref: z.string().min(1).max(256),
+    owner_version: z.string().regex(/^(0|[1-9][0-9]{0,19})$/u).refine((value) => value.length < 20 || value <= "18446744073709551615"),
+    progress_bps: z.number().int().min(0).max(10000),
+    candidates: z.array(mediaCandidatePartSchema).max(4),
+    cost_projection: costProjectionLinkSchema.optional(),
+    updated_at: z.string().datetime({ offset: true }),
+    outcome_class: z.enum(["canonical", "irreconcilable"]),
+    safe_failure: mediaSafeFailureSchema,
+    state: z.literal("failed"),
+  })
+  .strict()
+
+const mediaOperationPartPayloadCanceledSchema = z
+  .object({
+    media_operation_ref: z.string().min(1).max(256),
+    definition_ref: z.string().min(1).max(256),
+    definition_revision_ref: z.string().min(1).max(256),
+    owner_version: z.string().regex(/^(0|[1-9][0-9]{0,19})$/u).refine((value) => value.length < 20 || value <= "18446744073709551615"),
+    progress_bps: z.number().int().min(0).max(10000),
+    candidates: z.array(mediaCandidatePartSchema).max(4),
+    cost_projection: costProjectionLinkSchema.optional(),
+    updated_at: z.string().datetime({ offset: true }),
+    outcome_class: z.enum(["canonical", "irreconcilable"]),
+    state: z.literal("canceled"),
+  })
+  .strict()
+
+export const mediaOperationPartPayloadSchema = z.discriminatedUnion("state", [
+  mediaOperationPartPayloadAdmissionPendingSchema,
+  mediaOperationPartPayloadAuthorizedSchema,
+  mediaOperationPartPayloadQueuedSchema,
+  mediaOperationPartPayloadActiveSchema,
+  mediaOperationPartPayloadFinalizingSchema,
+  mediaOperationPartPayloadCancelRequestedSchema,
+  mediaOperationPartPayloadReconcilingSchema,
+  mediaOperationPartPayloadCompletedSchema,
+  mediaOperationPartPayloadPartialSchema,
+  mediaOperationPartPayloadFailedSchema,
+  mediaOperationPartPayloadCanceledSchema,
+])
 export type MediaOperationPartPayload = z.infer<typeof mediaOperationPartPayloadSchema>
 
-export const artifactPartPayloadSchema = z
+export const artifactImageDisplaySchema = z
+  .object({
+    format: z.enum(["png", "jpeg", "webp"]),
+    width: z.number().int().positive(),
+    height: z.number().int().positive(),
+    byte_size: z.string().regex(/^(0|[1-9][0-9]{0,19})$/u).refine((value) => value.length < 20 || value <= "18446744073709551615"),
+  })
+  .strict()
+export type ArtifactImageDisplay = z.infer<typeof artifactImageDisplaySchema>
+
+const artifactPartPayloadProcessingSchema = z
   .object({
     artifact_ref: z.string().min(1).max(256),
-    version_ref: z.string().min(1).max(256),
-    content_type: z.string().min(1).optional(),
-    safe_metadata: z.record(z.string(), z.unknown()).optional(),
+    artifact_version_ref: z.string().min(1).max(256),
+    owner_version: z.string().regex(/^(0|[1-9][0-9]{0,19})$/u).refine((value) => value.length < 20 || value <= "18446744073709551615"),
+    media_class: z.enum(["image"]),
+    updated_at: z.string().datetime({ offset: true }),
+    availability: z.literal("processing"),
   })
   .strict()
+
+const artifactPartPayloadReadySchema = z
+  .object({
+    artifact_ref: z.string().min(1).max(256),
+    artifact_version_ref: z.string().min(1).max(256),
+    owner_version: z.string().regex(/^(0|[1-9][0-9]{0,19})$/u).refine((value) => value.length < 20 || value <= "18446744073709551615"),
+    media_class: z.enum(["image"]),
+    updated_at: z.string().datetime({ offset: true }),
+    availability: z.literal("ready"),
+    payload: artifactImageDisplaySchema,
+  })
+  .strict()
+
+const artifactPartPayloadRestrictedSchema = z
+  .object({
+    artifact_ref: z.string().min(1).max(256),
+    artifact_version_ref: z.string().min(1).max(256),
+    owner_version: z.string().regex(/^(0|[1-9][0-9]{0,19})$/u).refine((value) => value.length < 20 || value <= "18446744073709551615"),
+    media_class: z.enum(["image"]),
+    updated_at: z.string().datetime({ offset: true }),
+    safe_failure: mediaSafeFailureSchema,
+    availability: z.literal("restricted"),
+  })
+  .strict()
+
+const artifactPartPayloadUnavailableSchema = z
+  .object({
+    artifact_ref: z.string().min(1).max(256),
+    artifact_version_ref: z.string().min(1).max(256),
+    owner_version: z.string().regex(/^(0|[1-9][0-9]{0,19})$/u).refine((value) => value.length < 20 || value <= "18446744073709551615"),
+    media_class: z.enum(["image"]),
+    updated_at: z.string().datetime({ offset: true }),
+    safe_failure: mediaSafeFailureSchema,
+    availability: z.literal("unavailable"),
+  })
+  .strict()
+
+const artifactPartPayloadDeletedSchema = z
+  .object({
+    artifact_ref: z.string().min(1).max(256),
+    artifact_version_ref: z.string().min(1).max(256),
+    owner_version: z.string().regex(/^(0|[1-9][0-9]{0,19})$/u).refine((value) => value.length < 20 || value <= "18446744073709551615"),
+    media_class: z.enum(["image"]),
+    updated_at: z.string().datetime({ offset: true }),
+    availability: z.literal("deleted"),
+  })
+  .strict()
+
+export const artifactPartPayloadSchema = z.discriminatedUnion("availability", [
+  artifactPartPayloadProcessingSchema,
+  artifactPartPayloadReadySchema,
+  artifactPartPayloadRestrictedSchema,
+  artifactPartPayloadUnavailableSchema,
+  artifactPartPayloadDeletedSchema,
+])
 export type ArtifactPartPayload = z.infer<typeof artifactPartPayloadSchema>
 
-export const costPartPayloadSchema = z
+export const creditCostAmountSchema = z
   .object({
-    cost_projection_ref: z.string().min(1),
-    status: z.enum(["none", "reserved", "committed", "cost_pending", "settled", "released", "reconciliation_required"]),
-    amount: z.string().min(1).optional(),
-    currency_or_credit_unit: z.string().min(1).optional(),
-    freshness: z.string().datetime({ offset: true }),
+    credit_unit: z.string().min(1).max(256),
+    amount: z.string().regex(/^(0|[1-9][0-9]{0,39})$/u),
   })
   .strict()
+export type CreditCostAmount = z.infer<typeof creditCostAmountSchema>
+
+const costPartPayloadPendingSchema = z
+  .object({
+    media_operation_ref: z.string().min(1).max(256),
+    cost_projection_ref: z.string().min(1).max(256),
+    owner_version: z.string().regex(/^(0|[1-9][0-9]{0,19})$/u).refine((value) => value.length < 20 || value <= "18446744073709551615"),
+    freshness: z.enum(["current", "stale", "rebuilding", "unavailable"]),
+    updated_at: z.string().datetime({ offset: true }),
+    state: z.literal("pending"),
+  })
+  .strict()
+
+const costPartPayloadEstimatedSchema = z
+  .object({
+    media_operation_ref: z.string().min(1).max(256),
+    cost_projection_ref: z.string().min(1).max(256),
+    owner_version: z.string().regex(/^(0|[1-9][0-9]{0,19})$/u).refine((value) => value.length < 20 || value <= "18446744073709551615"),
+    freshness: z.enum(["current", "stale", "rebuilding", "unavailable"]),
+    updated_at: z.string().datetime({ offset: true }),
+    state: z.literal("estimated"),
+    payload: creditCostAmountSchema,
+  })
+  .strict()
+
+const costPartPayloadFinalSchema = z
+  .object({
+    media_operation_ref: z.string().min(1).max(256),
+    cost_projection_ref: z.string().min(1).max(256),
+    owner_version: z.string().regex(/^(0|[1-9][0-9]{0,19})$/u).refine((value) => value.length < 20 || value <= "18446744073709551615"),
+    freshness: z.enum(["current", "stale", "rebuilding", "unavailable"]),
+    updated_at: z.string().datetime({ offset: true }),
+    state: z.literal("final"),
+    payload: creditCostAmountSchema,
+  })
+  .strict()
+
+const costPartPayloadCorrectedSchema = z
+  .object({
+    media_operation_ref: z.string().min(1).max(256),
+    cost_projection_ref: z.string().min(1).max(256),
+    owner_version: z.string().regex(/^(0|[1-9][0-9]{0,19})$/u).refine((value) => value.length < 20 || value <= "18446744073709551615"),
+    freshness: z.enum(["current", "stale", "rebuilding", "unavailable"]),
+    updated_at: z.string().datetime({ offset: true }),
+    corrects_owner_version: z.string().regex(/^(0|[1-9][0-9]{0,19})$/u).refine((value) => value.length < 20 || value <= "18446744073709551615"),
+    state: z.literal("corrected"),
+    payload: creditCostAmountSchema,
+  })
+  .strict()
+
+const costPartPayloadUnavailableSchema = z
+  .object({
+    media_operation_ref: z.string().min(1).max(256),
+    cost_projection_ref: z.string().min(1).max(256),
+    owner_version: z.string().regex(/^(0|[1-9][0-9]{0,19})$/u).refine((value) => value.length < 20 || value <= "18446744073709551615"),
+    freshness: z.enum(["current", "stale", "rebuilding", "unavailable"]),
+    updated_at: z.string().datetime({ offset: true }),
+    safe_reason: z.string().min(1),
+    state: z.literal("unavailable"),
+  })
+  .strict()
+
+export const costPartPayloadSchema = z.discriminatedUnion("state", [
+  costPartPayloadPendingSchema,
+  costPartPayloadEstimatedSchema,
+  costPartPayloadFinalSchema,
+  costPartPayloadCorrectedSchema,
+  costPartPayloadUnavailableSchema,
+])
 export type CostPartPayload = z.infer<typeof costPartPayloadSchema>
 
 export const noticePartPayloadSchema = z
@@ -481,7 +901,7 @@ export const noticePartPayloadSchema = z
     code: z.string().min(1),
     message: z.string(),
     severity: z.enum(["info", "warning"]),
-    retry_class: z.enum(["never", "immediate", "after_delay", "after_user_action", "reconcile_receipt"]).optional(),
+    retry_class: z.enum(["never", "after_delay", "after_user_action", "reconcile_receipt"]).optional(),
     support_correlation_ref: z.string().min(1).optional(),
   })
   .strict()
@@ -492,7 +912,7 @@ export const errorPartPayloadSchema = z
     error_ref: z.string().min(1).max(256),
     code: z.string().min(1),
     message: z.string(),
-    retry_class: z.enum(["never", "immediate", "after_delay", "after_user_action", "reconcile_receipt"]),
+    retry_class: z.enum(["never", "after_delay", "after_user_action", "reconcile_receipt"]),
     support_correlation_ref: z.string().min(1).optional(),
   })
   .strict()
