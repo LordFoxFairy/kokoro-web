@@ -15,6 +15,7 @@ import {
   type AguiDecodedFrame,
   type AguiSseFrame,
 } from "../src/agui-presentation.js";
+import { createAguiPresentationStateMachineForTesting } from "../src/agui-presentation-state-machine.internal.js";
 
 const grant = {
   sessionId: "session.01",
@@ -229,6 +230,43 @@ function bindingAuthorityFromFrames(frames: readonly AguiSseFrame[]): Readonly<{
   };
 }
 
+type MutableSnapshotAuthority = {
+  authority: "session-browser-v3-http-snapshot";
+  hydrate: true;
+  repair: true;
+  profileRevision: typeof AGUI_PRESENTATION_PROFILE_REVISION;
+  sessionId: string;
+  streamEpoch: string;
+  durableSeq: string;
+  lastRecordedAt: string | null;
+  cursor: string;
+  runBindings: Array<Record<string, unknown>>;
+  messageBindings: Array<Record<string, unknown>>;
+};
+
+function snapshotAuthorityFromFrames(frames: readonly AguiSseFrame[]): MutableSnapshotAuthority {
+  const authority = bindingAuthorityFromFrames(frames);
+  const last = frames.at(-1);
+  const payload = last === undefined || typeof last.data !== "string"
+    ? undefined
+    : JSON.parse(last.data) as { source?: { recordedAt?: unknown } };
+  const lastRecordedAt = payload?.source?.recordedAt;
+  if (typeof lastRecordedAt !== "string") throw new Error("Snapshot authority head missing");
+  return {
+    authority: "session-browser-v3-http-snapshot",
+    hydrate: true,
+    repair: true,
+    profileRevision: AGUI_PRESENTATION_PROFILE_REVISION,
+    sessionId: grant.sessionId,
+    streamEpoch: initialCursor.streamEpoch,
+    durableSeq: String(frames.length),
+    lastRecordedAt,
+    cursor: `opaque.snapshot.cursor.${String(frames.length).padStart(4, "0")}`,
+    runBindings: structuredClone(authority.runBindings) as Array<Record<string, unknown>>,
+    messageBindings: structuredClone(authority.messageBindings) as Array<Record<string, unknown>>,
+  };
+}
+
 function createAguiPresentationDecoder(options: Readonly<{
   grant: AguiGrantBinding;
   initialCursor: typeof initialCursor | Readonly<{
@@ -248,24 +286,18 @@ function createAguiPresentationDecoder(options: Readonly<{
   // is not provider compatibility evidence; the Root corpus has a separate
   // empty-snapshot blocker until Session emits a durable binding delta.
   const bindingAuthority = bindingAuthorityFromFrames(options.authorityFrames ?? []);
-  const lastRecordedAt = Object.hasOwn(options, "lastRecordedAt")
-    ? options.lastRecordedAt
-    : options.initialCursor.durableSeq === "0" ? null : "2026-08-01T12:00:09.000Z";
-  return createProductionAguiPresentationDecoder({
+  let lastRecordedAt: string | null;
+  if (Object.hasOwn(options, "lastRecordedAt")) {
+    if (options.lastRecordedAt === undefined) throw new Error("Synthetic watermark missing");
+    lastRecordedAt = options.lastRecordedAt;
+  } else {
+    lastRecordedAt = options.initialCursor.durableSeq === "0" ? null : "2026-08-01T12:00:09.000Z";
+  }
+  return createAguiPresentationStateMachineForTesting({
     grant: options.grant,
-    snapshotAuthority: {
-      authority: "session-browser-v3-http-snapshot",
-      hydrate: true,
-      repair: true,
-      profileRevision: options.initialCursor.profileRevision,
-      sessionId: options.initialCursor.sessionId,
-      streamEpoch: options.initialCursor.streamEpoch,
-      durableSeq: options.initialCursor.durableSeq,
-      lastRecordedAt,
-      cursor: options.initialCursor.cursor,
-      runBindings: bindingAuthority.runBindings,
-      messageBindings: bindingAuthority.messageBindings,
-    },
+    initialCursor: options.initialCursor,
+    bindingAuthority,
+    lastRecordedAt,
     ...(options.limits === undefined ? {} : { limits: options.limits }),
   });
 }
@@ -308,6 +340,308 @@ describe("strict Session-owned AG-UI decoder", () => {
         "agui_snapshot_authority_invalid",
       );
     }
+  });
+
+  it("rejects sequence-zero snapshots that predeclare future binding authority", () => {
+    const started = durableFrame({
+      seq: 1,
+      sourceKind: "presentation.run.started",
+      runBindingRef: "run.01",
+      event: { type: EventType.RUN_STARTED, threadId: "thread.01", runId: "run.01" },
+    });
+    const authority = snapshotAuthorityFromFrames([started]);
+    authority.durableSeq = "0";
+    authority.lastRecordedAt = null;
+    authority.cursor = initialCursor.cursor;
+
+    expectCode(
+      () => createProductionAguiPresentationDecoder({ grant, snapshotAuthority: authority }),
+      "agui_snapshot_authority_invalid",
+    );
+  });
+
+  it("rejects binding evidence whose cardinality exceeds the durable head", () => {
+    const frames = [
+      durableFrame({
+        seq: 1,
+        sourceKind: "presentation.run.started",
+        runBindingRef: "run.01",
+        event: { type: EventType.RUN_STARTED, threadId: "thread.01", runId: "run.01" },
+      }),
+      durableFrame({
+        seq: 2,
+        sourceKind: "presentation.message.text.started",
+        runBindingRef: "run.01",
+        messageBindingRef: "message.01",
+        event: { type: EventType.TEXT_MESSAGE_START, messageId: "message.01", role: "assistant" },
+      }),
+    ];
+    const authority = snapshotAuthorityFromFrames(frames);
+    authority.durableSeq = "1";
+    authority.cursor = "opaque.snapshot.cursor.0001";
+
+    expectCode(
+      () => createProductionAguiPresentationDecoder({ grant, snapshotAuthority: authority }),
+      "agui_snapshot_authority_invalid",
+    );
+  });
+
+  it("rejects non-canonical binding timestamps", () => {
+    const authority = snapshotAuthorityFromFrames([
+      durableFrame({
+        seq: 1,
+        sourceKind: "presentation.run.started",
+        runBindingRef: "run.01",
+        event: { type: EventType.RUN_STARTED, threadId: "thread.01", runId: "run.01" },
+      }),
+    ]);
+    const run = authority.runBindings[0];
+    if (run === undefined) throw new Error("Run authority missing");
+    run["openedAt"] = "2026-02-30T12:00:01.000Z";
+
+    expectCode(
+      () => createProductionAguiPresentationDecoder({ grant, snapshotAuthority: authority }),
+      "agui_run_binding_time_invalid",
+    );
+  });
+
+  it("rejects snapshot authority spanning multiple presentation threads", () => {
+    const authority = snapshotAuthorityFromFrames([
+      durableFrame({
+        seq: 1,
+        sourceKind: "presentation.run.started",
+        runBindingRef: "run.01",
+        event: { type: EventType.RUN_STARTED, threadId: "thread.01", runId: "run.01" },
+      }),
+      durableFrame({
+        seq: 2,
+        sourceKind: "presentation.run.started",
+        runBindingRef: "run.02",
+        event: { type: EventType.RUN_STARTED, threadId: "thread.02", runId: "run.02" },
+      }),
+    ]);
+
+    expectCode(
+      () => createProductionAguiPresentationDecoder({ grant, snapshotAuthority: authority }),
+      "agui_run_thread_scope_conflict",
+    );
+  });
+
+  it("rejects parent cycles", () => {
+    const first = durableFrame({
+      seq: 1,
+      sourceKind: "presentation.run.started",
+      runBindingRef: "run.a",
+      event: { type: EventType.RUN_STARTED, threadId: "thread.01", runId: "run.a", parentRunId: "run.b" },
+    });
+    const second = durableFrame({
+      seq: 2,
+      sourceKind: "presentation.run.started",
+      runBindingRef: "run.b",
+      event: { type: EventType.RUN_STARTED, threadId: "thread.01", runId: "run.b", parentRunId: "run.a" },
+    });
+    const cycle = snapshotAuthorityFromFrames([first, second]);
+    const cycleFirst = cycle.runBindings.find(({ presentationRunId }) => presentationRunId === "run.a");
+    if (cycleFirst === undefined) throw new Error("Cycle authority missing");
+    cycleFirst["openedAt"] = "2026-08-01T12:00:02.000Z";
+    expectCode(
+      () => createProductionAguiPresentationDecoder({ grant, snapshotAuthority: cycle }),
+      "agui_parent_lineage_cycle",
+    );
+  });
+
+  it("rejects parent chronology regressions", () => {
+    const child = durableFrame({
+      seq: 1,
+      sourceKind: "presentation.run.started",
+      runBindingRef: "run.child",
+      event: { type: EventType.RUN_STARTED, threadId: "thread.01", runId: "run.child", parentRunId: "run.parent" },
+    });
+    const parentFrame = durableFrame({
+      seq: 2,
+      sourceKind: "presentation.run.started",
+      runBindingRef: "run.parent",
+      event: { type: EventType.RUN_STARTED, threadId: "thread.01", runId: "run.parent" },
+    });
+    const chronology = snapshotAuthorityFromFrames([child, parentFrame]);
+    expectCode(
+      () => createProductionAguiPresentationDecoder({ grant, snapshotAuthority: chronology }),
+      "agui_parent_lineage_time_invalid",
+    );
+  });
+
+  it("rejects global binding and presentation identity collisions", () => {
+    const authority = snapshotAuthorityFromFrames([
+      durableFrame({
+        seq: 1,
+        sourceKind: "presentation.run.started",
+        runBindingRef: "run.01",
+        event: { type: EventType.RUN_STARTED, threadId: "thread.01", runId: "run.01" },
+      }),
+      durableFrame({
+        seq: 2,
+        sourceKind: "presentation.message.text.started",
+        runBindingRef: "run.01",
+        messageBindingRef: "message.01",
+        event: { type: EventType.TEXT_MESSAGE_START, messageId: "message.01", role: "assistant" },
+      }),
+    ]);
+    const run = authority.runBindings[0];
+    const message = authority.messageBindings[0];
+    if (run === undefined || message === undefined) throw new Error("Binding authority missing");
+    message["bindingRef"] = run["bindingRef"];
+    message["presentationMessageId"] = run["presentationRunId"];
+
+    expectCode(
+      () => createProductionAguiPresentationDecoder({ grant, snapshotAuthority: authority }),
+      "agui_binding_identity_duplicate",
+    );
+  });
+
+  it("rejects non-M0 Run terminal dispositions", () => {
+    const authority = snapshotAuthorityFromFrames([
+      durableFrame({
+        seq: 1,
+        sourceKind: "presentation.run.started",
+        runBindingRef: "run.01",
+        event: { type: EventType.RUN_STARTED, threadId: "thread.01", runId: "run.01" },
+      }),
+      durableFrame({
+        seq: 2,
+        sourceKind: "presentation.run.finished",
+        runBindingRef: "run.01",
+        event: { type: EventType.RUN_FINISHED, threadId: "thread.01", runId: "run.01" },
+      }),
+    ]);
+    const run = authority.runBindings[0];
+    if (run === undefined) throw new Error("Run authority missing");
+    run["terminalDisposition"] = "interrupted";
+
+    expectCode(
+      () => createProductionAguiPresentationDecoder({ grant, snapshotAuthority: authority }),
+      "agui_run_terminal_state_invalid",
+    );
+  });
+
+  it("rejects message resume predecessors outside the owning Run resume chain", () => {
+    const authority = snapshotAuthorityFromFrames([
+      durableFrame({
+        seq: 1,
+        sourceKind: "presentation.run.started",
+        runBindingRef: "run.a.0",
+        event: { type: EventType.RUN_STARTED, threadId: "thread.01", runId: "run.a.0" },
+      }),
+      durableFrame({
+        seq: 2,
+        sourceKind: "presentation.message.text.started",
+        runBindingRef: "run.a.0",
+        messageBindingRef: "message.a.0",
+        event: { type: EventType.TEXT_MESSAGE_START, messageId: "message.a.0", role: "assistant" },
+      }),
+      durableFrame({
+        seq: 3,
+        sourceKind: "presentation.message.text.ended",
+        runBindingRef: "run.a.0",
+        messageBindingRef: "message.a.0",
+        event: { type: EventType.TEXT_MESSAGE_END, messageId: "message.a.0" },
+      }),
+      durableFrame({
+        seq: 4,
+        sourceKind: "presentation.run.finished",
+        runBindingRef: "run.a.0",
+        event: { type: EventType.RUN_FINISHED, threadId: "thread.01", runId: "run.a.0" },
+      }),
+    ]);
+    const firstRun = authority.runBindings[0];
+    const firstMessage = authority.messageBindings[0];
+    if (firstRun === undefined || firstMessage === undefined) throw new Error("Base resume authority missing");
+    firstRun["internalRunRef"] = "internal.run.a";
+    firstMessage["internalMessageRef"] = "internal.message.shared";
+    authority.runBindings.push(
+      {
+        bindingRef: "run.b.0",
+        profileRevision: AGUI_PRESENTATION_PROFILE_REVISION,
+        sessionId: grant.sessionId,
+        internalRunRef: "internal.run.b",
+        presentationThreadId: "thread.01",
+        presentationRunId: "presentation.run.b.0",
+        segmentOrdinal: 0,
+        resumeOfPresentationRunId: null,
+        parentLineage: { parentInternalRunRef: null, parentPresentationRunId: null },
+        state: "finished",
+        terminalDisposition: "success",
+        openedBySourceEventId: "source.05",
+        terminalSourceEventId: "source.06",
+        openedAt: "2026-08-01T12:00:05.000Z",
+        terminalAt: "2026-08-01T12:00:06.000Z",
+      },
+      {
+        bindingRef: "run.b.1",
+        profileRevision: AGUI_PRESENTATION_PROFILE_REVISION,
+        sessionId: grant.sessionId,
+        internalRunRef: "internal.run.b",
+        presentationThreadId: "thread.01",
+        presentationRunId: "presentation.run.b.1",
+        segmentOrdinal: 1,
+        resumeOfPresentationRunId: "presentation.run.b.0",
+        parentLineage: { parentInternalRunRef: null, parentPresentationRunId: null },
+        state: "open",
+        terminalDisposition: null,
+        openedBySourceEventId: "source.07",
+        terminalSourceEventId: null,
+        openedAt: "2026-08-01T12:00:07.000Z",
+        terminalAt: null,
+      },
+    );
+    authority.messageBindings.push({
+      bindingRef: "message.shared.1",
+      profileRevision: AGUI_PRESENTATION_PROFILE_REVISION,
+      sessionId: grant.sessionId,
+      internalMessageRef: "internal.message.shared",
+      presentationRunBindingRef: "run.b.1",
+      presentationMessageId: "presentation.message.shared.1",
+      resumeSegmentOrdinal: 1,
+      state: "open",
+      openedBySourceEventId: "source.08",
+      endedBySourceEventId: null,
+      openedAt: "2026-08-01T12:00:08.000Z",
+      endedAt: null,
+    });
+    authority.durableSeq = "8";
+    authority.lastRecordedAt = "2026-08-01T12:00:08.000Z";
+    authority.cursor = "opaque.snapshot.cursor.0008";
+
+    expectCode(
+      () => createProductionAguiPresentationDecoder({ grant, snapshotAuthority: authority }),
+      "agui_message_resume_predecessor_invalid",
+    );
+  });
+
+  it("rejects duplicate binding source identities across Run and message authority", () => {
+    const authority = snapshotAuthorityFromFrames([
+      durableFrame({
+        seq: 1,
+        sourceKind: "presentation.run.started",
+        runBindingRef: "run.01",
+        event: { type: EventType.RUN_STARTED, threadId: "thread.01", runId: "run.01" },
+      }),
+      durableFrame({
+        seq: 2,
+        sourceKind: "presentation.message.text.started",
+        runBindingRef: "run.01",
+        messageBindingRef: "message.01",
+        event: { type: EventType.TEXT_MESSAGE_START, messageId: "message.01", role: "assistant" },
+      }),
+    ]);
+    const run = authority.runBindings[0];
+    const message = authority.messageBindings[0];
+    if (run === undefined || message === undefined) throw new Error("Binding authority missing");
+    message["openedBySourceEventId"] = run["openedBySourceEventId"];
+
+    expectCode(
+      () => createProductionAguiPresentationDecoder({ grant, snapshotAuthority: authority }),
+      "agui_binding_source_identity_duplicate",
+    );
   });
 
   it("preserves the Root profile, SSE identity, and Last-Event-ID binding", () => {
@@ -736,6 +1070,7 @@ describe("strict Session-owned AG-UI decoder", () => {
   it("exposes only prepare-ack-commit admission on the production decoder", () => {
     const decoder = createAguiPresentationDecoder({ grant, initialCursor });
     expect(decoder).not.toHaveProperty("decode");
+    expect(AguiPresentationModule).not.toHaveProperty("createAguiPresentationStateMachineForTesting");
   });
 
   it("publishes a compact replay-memory bound and fails closed for non-latest cursor retries", () => {

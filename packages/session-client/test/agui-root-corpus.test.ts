@@ -13,6 +13,7 @@ import {
   type AguiPresentationDecoder,
   type AguiSseFrame,
 } from "../src/agui-presentation.js";
+import { createAguiPresentationStateMachineForTesting } from "../src/agui-presentation-state-machine.internal.js";
 
 type CorpusSnapshot = Readonly<{
   authority: string;
@@ -71,24 +72,27 @@ type Corpus = Readonly<{
 const corpusFixture = new URL("./fixtures/root-agui-presentation-v1.json", import.meta.url);
 const corpusSource = readFileSync(corpusFixture);
 const corpus = JSON.parse(corpusSource.toString("utf8")) as Corpus;
-const ROOT_CORPUS_SHA256 = "105f39c3b291ec92e967275a3e770b9eab9db60c4316f4d7fa5e64f5f445a08b";
-
-/**
- * Pre-activation decoder harness only. The mapping corpus describes the full
- * future binding result, so this merge is not Session compatibility evidence.
- */
-function syntheticPreActivationSnapshotAuthority(contractCase: CorpusCase): Readonly<Record<string, unknown>> {
-  return {
-    ...contractCase.snapshot,
-    runBindings: contractCase.runBindings,
-    messageBindings: contractCase.messageBindings,
-  };
-}
+const ROOT_CORPUS_SHA256 = "f4bb2bee0651aace710f0725bfa457d378f15a93ebb45cb1188e8ee6f480006a";
 
 function createCorpusDecoder(contractCase: CorpusCase): AguiPresentationDecoder {
-  return createAguiPresentationDecoder({
+  // Static mapping vectors predeclare bindings created by their future frames.
+  // Exercise those vectors through the internal state-machine seam, never the
+  // production Session HTTP snapshot admission path.
+  return createAguiPresentationStateMachineForTesting({
     grant: contractCase.grantBinding,
-    snapshotAuthority: syntheticPreActivationSnapshotAuthority(contractCase),
+    initialCursor: {
+      cursor: contractCase.snapshot.cursor,
+      sessionId: contractCase.snapshot.sessionId,
+      streamEpoch: contractCase.snapshot.streamEpoch,
+      durableSeq: contractCase.snapshot.durableSeq,
+      profileRevision: contractCase.grantBinding.presentationProfileRevision,
+      cursorProfileRevision: contractCase.grantBinding.cursorProfileRevision,
+    },
+    bindingAuthority: {
+      runBindings: contractCase.runBindings,
+      messageBindings: contractCase.messageBindings,
+    },
+    lastRecordedAt: contractCase.snapshot.lastRecordedAt,
   });
 }
 
@@ -106,10 +110,11 @@ function liveSessionFrame(
   base: CorpusCase,
   sourceEventId: string,
   recordedAt: string,
+  durableSeq = "10",
 ): CorpusFrame {
   return {
     kind: "durable",
-    id: "opaque.live.cursor.0010",
+    id: `opaque.live.cursor.${durableSeq.padStart(4, "0")}`,
     event: "CUSTOM",
     data: {
       profileRevision: AGUI_PRESENTATION_PROFILE_REVISION,
@@ -118,8 +123,8 @@ function liveSessionFrame(
         sourceKind: "presentation.custom.session",
         sessionId: base.snapshot.sessionId,
         streamEpoch: base.snapshot.streamEpoch,
-        durableSeq: "10",
-        projectionVersion: 10,
+        durableSeq,
+        projectionVersion: Number(durableSeq),
         schemaRevision: 1,
         recordedAt,
       },
@@ -280,62 +285,70 @@ describe("Root AG-UI conformance corpus mirror", () => {
   });
 
   it("seeds snapshot binding source identities and evidence time before a nonzero resume", () => {
-    const base = corpus.positiveCases[0];
-    const firstRun = base?.runBindings[0] as { openedBySourceEventId?: string } | undefined;
-    if (base === undefined || firstRun?.openedBySourceEventId === undefined) {
+    const authorityCase = corpus.snapshotAuthorityCases[0];
+    const base = corpus.positiveCases.find(({ id }) => id === authorityCase?.baseCaseId);
+    const snapshot = authorityCase?.snapshot;
+    const runBindings = snapshot?.["runBindings"];
+    const firstRun = Array.isArray(runBindings)
+      ? runBindings[0] as { openedBySourceEventId?: string } | undefined
+      : undefined;
+    const durableSeq = snapshot?.["durableSeq"];
+    if (
+      authorityCase === undefined || base === undefined || snapshot === undefined ||
+      firstRun?.openedBySourceEventId === undefined || typeof durableSeq !== "string"
+    ) {
       throw new Error("Root corpus snapshot evidence missing");
     }
     const openedBySourceEventId = firstRun.openedBySourceEventId;
-    const resumedAuthority = {
-      ...syntheticPreActivationSnapshotAuthority(base),
-      durableSeq: "9",
-      lastRecordedAt: "2026-08-01T12:00:30.000Z",
-      cursor: "opaque.snapshot.cursor.0009",
-    };
+    const nextSeq = (BigInt(durableSeq) + 1n).toString();
 
-    const reused = createAguiPresentationDecoder({ grant: base.grantBinding, snapshotAuthority: resumedAuthority });
+    const reused = createAguiPresentationDecoder({ grant: base.grantBinding, snapshotAuthority: snapshot });
     expectCode(
-      () => admit(reused, liveSessionFrame(base, openedBySourceEventId, "2026-08-01T12:00:31.000Z")),
+      () => admit(reused, liveSessionFrame(base, openedBySourceEventId, authorityCase.nextEventRecordedAt, nextSeq)),
       "agui_stream_identity_duplicate",
     );
-    expect(reused.getResumeRequest().cursorBinding.durableSeq).toBe("9");
+    expect(reused.getResumeRequest().cursorBinding.durableSeq).toBe(durableSeq);
 
-    const regressed = createAguiPresentationDecoder({ grant: base.grantBinding, snapshotAuthority: resumedAuthority });
+    const regressed = createAguiPresentationDecoder({ grant: base.grantBinding, snapshotAuthority: snapshot });
     expectCode(
-      () => admit(regressed, liveSessionFrame(base, "source.live.10", "2026-08-01T12:00:00.000Z")),
+      () => admit(regressed, liveSessionFrame(base, "source.live.regressed", "2026-08-01T12:00:00.000Z", nextSeq)),
       "agui_event_time_invalid",
     );
-    expect(regressed.getResumeRequest().cursorBinding.durableSeq).toBe("9");
+    expect(regressed.getResumeRequest().cursorBinding.durableSeq).toBe(durableSeq);
 
+    // A durable head may advance without adding presentation bindings. Its
+    // recorded-at watermark must still dominate the older binding evidence.
+    const laterHeadAuthority = {
+      ...snapshot,
+      durableSeq: "26",
+      lastRecordedAt: "2026-08-01T13:00:30.000Z",
+    };
     const betweenBindingEvidenceAndHead = createAguiPresentationDecoder({
       grant: base.grantBinding,
-      snapshotAuthority: resumedAuthority,
+      snapshotAuthority: laterHeadAuthority,
     });
     expectCode(
       () => admit(
         betweenBindingEvidenceAndHead,
-        liveSessionFrame(base, "source.live.between-watermarks", "2026-08-01T12:00:27.000Z"),
+        liveSessionFrame(base, "source.live.between-watermarks", "2026-08-01T13:00:27.000Z", "27"),
       ),
       "agui_event_time_invalid",
     );
-    expect(betweenBindingEvidenceAndHead.getResumeRequest().cursorBinding.durableSeq).toBe("9");
+    expect(betweenBindingEvidenceAndHead.getResumeRequest().cursorBinding.durableSeq).toBe("26");
 
     expectCode(
       () => createAguiPresentationDecoder({
         grant: base.grantBinding,
-        snapshotAuthority: resumedAuthority,
+        snapshotAuthority: snapshot,
         limits: { streamIdentities: 2 },
       }),
       "agui_authority_capacity_exceeded",
     );
-    expectCode(
-      () => createAguiPresentationDecoder({
-        grant: base.grantBinding,
-        snapshotAuthority: resumedAuthority,
-        limits: { streamIdentities: 8 },
-      }),
-      "agui_authority_capacity_exceeded",
-    );
+    expect(createAguiPresentationDecoder({
+      grant: base.grantBinding,
+      snapshotAuthority: snapshot,
+      limits: { streamIdentities: 8 },
+    }).getResumeRequest().cursorBinding.durableSeq).toBe(durableSeq);
   });
 
   it("accepts the Root Session-owned nonzero snapshot authority case", () => {
@@ -347,7 +360,7 @@ describe("Root AG-UI conformance corpus mirror", () => {
       grant: base.grantBinding,
       snapshotAuthority: contractCase.snapshot,
     });
-    expect(decoder.getResumeRequest().cursorBinding.durableSeq).toBe("26");
+    expect(decoder.getResumeRequest().cursorBinding.durableSeq).toBe(contractCase.snapshot["durableSeq"]);
 
     expectCode(
       () => createAguiPresentationDecoder({
@@ -389,11 +402,13 @@ describe("Root AG-UI conformance corpus mirror", () => {
   });
 
   it("normalizes hostile snapshot accessors and proxies to protocol errors", () => {
-    const base = corpus.positiveCases[0];
-    if (base === undefined) throw new Error("Root corpus case missing");
+    const authorityCase = corpus.snapshotAuthorityCases[0];
+    const base = corpus.positiveCases.find(({ id }) => id === authorityCase?.baseCaseId);
+    const snapshot = authorityCase?.snapshot;
+    if (base === undefined || snapshot === undefined) throw new Error("Root corpus snapshot authority case missing");
     let getterCalls = 0;
     const accessor = Object.create(Object.prototype, {
-      ...Object.fromEntries(Object.entries(syntheticPreActivationSnapshotAuthority(base)).map(([key, value]) => [
+      ...Object.fromEntries(Object.entries(snapshot).map(([key, value]) => [
         key,
         { enumerable: true, value },
       ])),
@@ -430,7 +445,7 @@ describe("Root AG-UI conformance corpus mirror", () => {
         return Reflect.ownKeys(target);
       },
     });
-    const oversizedGraph = structuredClone(syntheticPreActivationSnapshotAuthority(base));
+    const oversizedGraph = structuredClone(snapshot);
     const runBindings = oversizedGraph["runBindings"];
     if (!Array.isArray(runBindings) || runBindings[0] === null || typeof runBindings[0] !== "object") {
       throw new Error("Root corpus run binding missing");
@@ -464,7 +479,7 @@ describe("Root AG-UI conformance corpus mirror", () => {
         Array.from({ length: 32 }, (_, index) => [`branch${index}`, sharedFanout]),
       );
     }
-    const amplifiedGraph = structuredClone(syntheticPreActivationSnapshotAuthority(base));
+    const amplifiedGraph = structuredClone(snapshot);
     const amplifiedRunBindings = amplifiedGraph["runBindings"];
     if (
       !Array.isArray(amplifiedRunBindings) ||

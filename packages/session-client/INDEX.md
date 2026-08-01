@@ -28,6 +28,9 @@ does not create a second Session endpoint or a transport-specific escape hatch.
 
 The strict AG-UI presentation consumer is present only through the explicit
 `@kokoro/session-client/agui-presentation-dormant` subpath; the package main entry does not expose it.
+That subpath is a whitelist façade over an internal state-machine module. The internal module's test-only seam
+accepts separately supplied synthetic binding authority for transition tests, is absent from package exports, and
+cannot be selected through a production option or HTTP snapshot payload.
 Its Run/message binding validators are a committed static TypeScript runtime mirror generated from Root's
 `presentation-run-binding-v1` and `presentation-message-binding-v1` JSON Schemas, with both Root source SHA-256
 digests embedded in the artifact. The deterministic Web-local generator accepts only the reviewed v1 schema shape;
