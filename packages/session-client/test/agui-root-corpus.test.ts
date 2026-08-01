@@ -1,0 +1,270 @@
+import { createHash } from "node:crypto";
+import { existsSync, readFileSync } from "node:fs";
+
+import { describe, expect, it } from "vitest";
+
+import {
+  AGUI_CURSOR_PROFILE_REVISION,
+  AGUI_PRESENTATION_PROFILE_REVISION,
+  SESSION_AGUI_CONTRACT_REVISION,
+  AguiPresentationProtocolError,
+  createAguiPresentationDecoder,
+  type AguiGrantBinding,
+  type AguiPresentationDecoder,
+  type AguiSseFrame,
+} from "../src/agui-presentation.js";
+
+type CorpusSnapshot = Readonly<{
+  authority: string;
+  hydrate: boolean;
+  repair: boolean;
+  profileRevision: string;
+  sessionId: string;
+  streamEpoch: string;
+  durableSeq: string;
+  cursor: string;
+}>;
+
+type CorpusFrame = Readonly<{
+  kind: "durable";
+  id: string;
+  event: string;
+  data: Readonly<Record<string, unknown>>;
+}>;
+
+type CorpusCase = Readonly<{
+  id: string;
+  snapshot: CorpusSnapshot;
+  grantBinding: AguiGrantBinding;
+  runBindings: readonly unknown[];
+  messageBindings: readonly unknown[];
+  frames: readonly CorpusFrame[];
+}>;
+
+type NegativeCase = Readonly<{
+  id: string;
+  baseCaseId: string;
+  mutation: Readonly<{
+    operation: string;
+    path?: string;
+    value?: unknown;
+    runBindingRef?: string;
+    messageBindingRef?: string;
+  }>;
+  expectedCode: string;
+}>;
+
+type Corpus = Readonly<{
+  corpusId: string;
+  profileRevision: string;
+  positiveCases: readonly CorpusCase[];
+  negativeCases: readonly NegativeCase[];
+}>;
+
+const corpusFixture = new URL("./fixtures/root-agui-presentation-v1.json", import.meta.url);
+const corpusSource = readFileSync(corpusFixture);
+const corpus = JSON.parse(corpusSource.toString("utf8")) as Corpus;
+const ROOT_CORPUS_SHA256 = "296897c3f61cfd8f906898b6d21277b21d6cb02d06503913695ae8741468397f";
+
+function snapshotAuthority(contractCase: CorpusCase): Readonly<Record<string, unknown>> {
+  return {
+    ...contractCase.snapshot,
+    runBindings: contractCase.runBindings,
+    messageBindings: contractCase.messageBindings,
+  };
+}
+
+function createCorpusDecoder(contractCase: CorpusCase): AguiPresentationDecoder {
+  return createAguiPresentationDecoder({
+    grant: contractCase.grantBinding,
+    snapshotAuthority: snapshotAuthority(contractCase),
+  });
+}
+
+function admit(decoder: AguiPresentationDecoder, corpusFrame: CorpusFrame): void {
+  const frame: AguiSseFrame = {
+    id: corpusFrame.id,
+    event: corpusFrame.event,
+    data: JSON.stringify(corpusFrame.data),
+  };
+  const prepared = decoder.prepare(frame);
+  prepared.commit("applied");
+}
+
+function expectCode(operation: () => unknown, code: string): void {
+  try {
+    operation();
+  } catch (error) {
+    expect(error).toBeInstanceOf(AguiPresentationProtocolError);
+    expect((error as AguiPresentationProtocolError).code).toBe(code);
+    return;
+  }
+  throw new Error(`Expected ${code}`);
+}
+
+function setAtPath(value: unknown, path: string, replacement: unknown): void {
+  const segments = path.split(".");
+  let cursor = value;
+  for (const segment of segments.slice(0, -1)) {
+    if (cursor === null || typeof cursor !== "object" || !(segment in cursor)) {
+      throw new Error(`Invalid Root corpus mutation path: ${path}`);
+    }
+    cursor = (cursor as Record<string, unknown>)[segment];
+  }
+  if (cursor === null || typeof cursor !== "object") throw new Error(`Invalid Root corpus mutation path: ${path}`);
+  (cursor as Record<string, unknown>)[segments.at(-1) ?? ""] = structuredClone(replacement);
+}
+
+function applyRootMutation(base: CorpusCase, attack: NegativeCase): CorpusCase {
+  const candidate = structuredClone(base) as unknown as {
+    runBindings: Array<Record<string, unknown>>;
+    frames: Array<{
+      kind: "durable";
+      id: string;
+      event: string;
+      data: Record<string, unknown>;
+    }>;
+  };
+  if (attack.mutation.operation === "set") {
+    if (attack.mutation.path === undefined) throw new Error(`Root mutation path missing: ${attack.id}`);
+    setAtPath(candidate, attack.mutation.path, attack.mutation.value);
+    if (attack.mutation.path.endsWith("parentLineage.parentPresentationRunId")) {
+      const bindingIndex = Number.parseInt(attack.mutation.path.split(".")[1] ?? "", 10);
+      const parent = candidate.runBindings.find((binding) =>
+        binding["presentationRunId"] === attack.mutation.value);
+      const target = candidate.runBindings[bindingIndex];
+      const lineage = target?.["parentLineage"];
+      if (lineage !== null && typeof lineage === "object") {
+        (lineage as Record<string, unknown>)["parentInternalRunRef"] = parent?.["internalRunRef"] ?? null;
+      }
+    }
+    return candidate as unknown as CorpusCase;
+  }
+
+  const expectedEvent = attack.mutation.operation === "terminal-revival" ? "RUN_STARTED" : "TEXT_MESSAGE_CONTENT";
+  const baseFrame = candidate.frames.find((frame) =>
+    frame.event === expectedEvent &&
+    (attack.mutation.operation === "terminal-revival"
+      ? frame.data["presentationRunBindingRef"] === attack.mutation.runBindingRef
+      : frame.data["presentationMessageBindingRef"] === attack.mutation.messageBindingRef));
+  const last = candidate.frames.at(-1);
+  if (baseFrame === undefined || last === undefined) throw new Error(`Root attack frame missing: ${attack.id}`);
+  const frame = structuredClone(baseFrame);
+  const lastSource = last.data["source"] as Record<string, unknown>;
+  const source = frame.data["source"] as Record<string, unknown>;
+  const event = frame.data["event"] as Record<string, unknown>;
+  const nextSeq = (BigInt(String(lastSource["durableSeq"])) + 1n).toString();
+  const recordedAt = "2026-08-01T12:00:27.000Z";
+  source["sourceEventId"] = attack.mutation.operation === "terminal-revival"
+    ? "attack.source.terminal-revival"
+    : "attack.source.message-reopen";
+  source["sourceKind"] = attack.mutation.operation === "terminal-revival"
+    ? "presentation.run.started"
+    : "presentation.message.text.content";
+  source["durableSeq"] = nextSeq;
+  source["projectionVersion"] = Number(source["projectionVersion"]) + 1;
+  source["recordedAt"] = recordedAt;
+  event["timestamp"] = Date.parse(recordedAt);
+  frame.id = `opaque.attack.cursor.${nextSeq}.${attack.mutation.operation}`;
+  candidate.frames.push(frame);
+  return candidate as unknown as CorpusCase;
+}
+
+describe("Root AG-UI conformance corpus mirror", () => {
+  it("is the exact pinned Root corpus bytes in a federated checkout", () => {
+    expect(createHash("sha256").update(corpusSource).digest("hex")).toBe(ROOT_CORPUS_SHA256);
+    const rootCorpus = new URL("../../../../contract/corpus/agui-presentation-v1.json", import.meta.url);
+    if (existsSync(rootCorpus)) {
+      expect(readFileSync(rootCorpus).equals(corpusSource)).toBe(true);
+    }
+  });
+
+  it("keeps the exact Root corpus identity and positive owner baselines 2/3/4", () => {
+    expect(corpus.corpusId).toBe("kokoro.agui.presentation-conformance.v1");
+    expect(corpus.profileRevision).toBe(AGUI_PRESENTATION_PROFILE_REVISION);
+    const primary = corpus.positiveCases.find(({ id }) => id === "resume-with-safe-typed-presentation");
+    if (primary === undefined) throw new Error("Root primary corpus case missing");
+    const customVersions = primary.frames
+      .map(({ data }) => data.event)
+      .filter((event): event is Readonly<Record<string, unknown>> => event !== null && typeof event === "object")
+      .filter(({ type }) => type === "CUSTOM")
+      .map(({ value }) => value)
+      .filter((value): value is Readonly<Record<string, unknown>> => value !== null && typeof value === "object")
+      .flatMap((value) => [value.version, value.projectionVersion])
+      .filter((version): version is number => typeof version === "number");
+    expect(customVersions).toEqual(expect.arrayContaining([2, 3, 4]));
+  });
+
+  it("replays every Root positive frame without rewriting owner versions", () => {
+    for (const contractCase of corpus.positiveCases) {
+      expect(contractCase.snapshot).toMatchObject({
+        authority: "session-browser-v3-http-snapshot",
+        hydrate: true,
+        repair: true,
+      });
+      const decoder = createCorpusDecoder(contractCase);
+      for (const frame of contractCase.frames) admit(decoder, frame);
+      expect(decoder.getResumeRequest().cursorBinding.durableSeq).toBe(
+        contractCase.frames.at(-1)?.data.source !== null &&
+        typeof contractCase.frames.at(-1)?.data.source === "object"
+          ? (contractCase.frames.at(-1)?.data.source as Readonly<Record<string, unknown>>).durableSeq
+          : undefined,
+      );
+    }
+  });
+
+  it("requires snapshot binding authority even for the zero cursor", () => {
+    const contractCase = corpus.positiveCases[0];
+    if (contractCase === undefined) throw new Error("Root corpus case missing");
+    expectCode(
+      () => createAguiPresentationDecoder({
+        grant: {
+          sessionId: contractCase.snapshot.sessionId,
+          sessionContractRevision: SESSION_AGUI_CONTRACT_REVISION,
+          presentationProfileRevision: AGUI_PRESENTATION_PROFILE_REVISION,
+          cursorProfileRevision: AGUI_CURSOR_PROFILE_REVISION,
+        },
+      } as unknown as Parameters<typeof createAguiPresentationDecoder>[0]),
+      "agui_snapshot_authority_required",
+    );
+  });
+
+  it("replays the Root parent-lineage attack against constructor authority", () => {
+    const attack = corpus.negativeCases.find(({ id }) => id === "resume-parent-lineage-confusion");
+    const base = corpus.positiveCases.find(({ id }) => id === attack?.baseCaseId);
+    if (attack === undefined || base === undefined || attack.mutation.path === undefined) {
+      throw new Error("Root lineage attack missing");
+    }
+    const candidate = structuredClone(base);
+    const target = candidate.runBindings[1] as {
+      parentLineage: { parentInternalRunRef: string | null; parentPresentationRunId: string | null };
+    };
+    target.parentLineage.parentPresentationRunId = String(attack.mutation.value);
+    const parent = candidate.runBindings.find((binding) =>
+      (binding as { presentationRunId?: string }).presentationRunId === attack.mutation.value) as
+      { internalRunRef?: string } | undefined;
+    target.parentLineage.parentInternalRunRef = parent?.internalRunRef ?? null;
+    expectCode(() => createCorpusDecoder(candidate), attack.expectedCode);
+  });
+
+  it("rejects a pattern-valid but impossible binding timestamp at construction", () => {
+    const base = corpus.positiveCases[0];
+    if (base === undefined) throw new Error("Root corpus case missing");
+    const candidate = structuredClone(base);
+    const run = candidate.runBindings[0] as { openedAt: string };
+    run.openedAt = "2026-99-99T12:00:00.000Z";
+    expectCode(() => createCorpusDecoder(candidate), "agui_run_binding_time_invalid");
+  });
+
+  it("replays every Root negative vector with its contract error code", () => {
+    for (const attack of corpus.negativeCases) {
+      const base = corpus.positiveCases.find(({ id }) => id === attack.baseCaseId);
+      if (base === undefined) throw new Error(`Root negative base missing: ${attack.id}`);
+      const candidate = applyRootMutation(base, attack);
+      expectCode(() => {
+        const decoder = createCorpusDecoder(candidate);
+        for (const frame of candidate.frames) admit(decoder, frame);
+      }, attack.expectedCode);
+    }
+  });
+});

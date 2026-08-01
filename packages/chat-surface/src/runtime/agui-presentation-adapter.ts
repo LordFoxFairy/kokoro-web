@@ -1,11 +1,11 @@
 import type {
   AguiActivityEvent,
-  AguiCursorBinding,
   AguiCustomEvent,
   AguiDecodedFrame,
   AguiDurableFrame,
   AguiGrantBinding,
   AguiPresentationDecoder,
+  AguiPresentationSnapshotAuthority,
   AguiSseFrame,
 } from "@kokoro/session-client/agui-presentation-dormant"
 import {
@@ -247,7 +247,7 @@ function mapAguiPresentationFrame(
 
 export type DormantAguiProjectionPort = Readonly<{
   grant: AguiGrantBinding
-  initialCursor: AguiCursorBinding
+  snapshotAuthority: AguiPresentationSnapshotAuthority
   limits?: Readonly<{
     streamIdentities?: number
     runs?: number
@@ -271,7 +271,7 @@ export function createDormantAguiProjectionAdapter(port: DormantAguiProjectionPo
 }> {
   const decoder = createAguiPresentationDecoder({
     grant: port.grant,
-    initialCursor: port.initialCursor,
+    snapshotAuthority: port.snapshotAuthority,
     ...(port.limits === undefined ? {} : { limits: port.limits }),
   })
   return Object.freeze({

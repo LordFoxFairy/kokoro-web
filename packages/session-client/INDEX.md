@@ -28,6 +28,11 @@ does not create a second Session endpoint or a transport-specific escape hatch.
 
 The strict AG-UI presentation consumer is present only through the explicit
 `@kokoro/session-client/agui-presentation-dormant` subpath; the package main entry does not expose it.
+Its Run/message binding validators are a committed static TypeScript runtime mirror generated from Root's
+`presentation-run-binding-v1` and `presentation-message-binding-v1` JSON Schemas, with both Root source SHA-256
+digests embedded in the artifact. The federated test gate compares those digests to the Root sources when they are
+present; an independently built Web package never reads a parent checkout or treats the conformance corpus as a
+schema authority.
 `@ag-ui/core@0.0.57` is pinned exactly and
 `EventSchemas` is used only after Kokoro's smaller closed profile has passed UTF-8 byte, JSON depth/node/key/array,
 event, source-mapping, grant, cursor, Session, epoch, sequence, timestamp, binding, thread, message-END, and terminal
@@ -59,9 +64,10 @@ Session remains the only browser transport and presentation owner: Web never con
 raw payload. Agent/Python may become the internal AG-UI producer only after Root pins the Python SDK and TypeScript
 SDK to one reviewed upstream revision and proves the Agent-to-Session mapping through cross-repository compatibility
 evidence. `@ag-ui/client`, `useAgUiRuntime`, and stock browser transports remain forbidden because they do not
-preserve Kokoro cursor/snapshot/repair authority. R0 also has no browser snapshot-authority schema capable of
-seeding thread, Run, message, cursor, and source ledgers. Consequently decoder construction fails closed with
-`agui_snapshot_authority_required` for every nonzero initial durable sequence. No active Web controller opens the
-AG-UI stream until both provider compatibility and snapshot repair authority are promoted.
+preserve Kokoro cursor/snapshot/repair authority. Decoder construction requires a closed, trusted Session HTTP
+snapshot even at durable sequence zero. That snapshot seeds cursor, Run, message, lineage, segment, source/time, and
+terminal evidence; missing, malformed, cross-scope, discontinuous, or contradictory binding authority fails closed.
+No active Web controller opens the AG-UI stream until provider compatibility and the Session snapshot endpoint are
+promoted together.
 
 Verification: `pnpm --filter @kokoro/session-client lint && pnpm --filter @kokoro/session-client typecheck && pnpm --filter @kokoro/session-client test && pnpm --filter @kokoro/session-client build`.

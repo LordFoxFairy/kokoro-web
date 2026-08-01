@@ -9,7 +9,7 @@ import {
   AGUI_PRESENTATION_PROFILE_REVISION,
   SESSION_AGUI_CONTRACT_REVISION,
   AguiPresentationProtocolError,
-  createAguiPresentationDecoder,
+  createAguiPresentationDecoder as createProductionAguiPresentationDecoder,
   type AguiGrantBinding,
   type AguiPresentationDecoder,
   type AguiDecodedFrame,
@@ -88,15 +88,43 @@ function admitAfterExternalAck(
   return prepared.decoded;
 }
 
+function createAguiPresentationDecoder(options: Readonly<{
+  grant: AguiGrantBinding;
+  initialCursor: typeof initialCursor | Readonly<{
+    cursor: string;
+    sessionId: string;
+    streamEpoch: string;
+    durableSeq: string;
+    profileRevision: typeof AGUI_PRESENTATION_PROFILE_REVISION;
+    cursorProfileRevision: typeof AGUI_CURSOR_PROFILE_REVISION;
+  }>;
+  limits?: Readonly<{ streamIdentities?: number; runs?: number; messages?: number }>;
+}>): AguiPresentationDecoder {
+  return createProductionAguiPresentationDecoder({
+    grant: options.grant,
+    snapshotAuthority: {
+      authority: "session-browser-v3-http-snapshot",
+      hydrate: true,
+      repair: true,
+      profileRevision: options.initialCursor.profileRevision,
+      sessionId: options.initialCursor.sessionId,
+      streamEpoch: options.initialCursor.streamEpoch,
+      durableSeq: options.initialCursor.durableSeq,
+      cursor: options.initialCursor.cursor,
+      runBindings: [],
+      messageBindings: [],
+    },
+    ...(options.limits === undefined ? {} : { limits: options.limits }),
+  });
+}
+
 describe("strict Session-owned AG-UI decoder", () => {
-  it("requires authoritative snapshot state before resuming from a nonzero durable cursor", () => {
-    expectCode(
-      () => createAguiPresentationDecoder({
-        grant,
-        initialCursor: { ...initialCursor, durableSeq: "9" },
-      }),
-      "agui_snapshot_authority_required",
-    );
+  it("resumes from a trusted nonzero HTTP snapshot watermark", () => {
+    const decoder = createAguiPresentationDecoder({
+      grant,
+      initialCursor: { ...initialCursor, durableSeq: "9" },
+    });
+    expect(decoder.getResumeRequest()).toMatchObject({ cursorBinding: { durableSeq: "9" } });
   });
 
   it("preserves the Root profile, SSE identity, and Last-Event-ID binding", () => {

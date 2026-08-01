@@ -37,6 +37,19 @@ const initialCursor = {
   cursorProfileRevision: AGUI_CURSOR_PROFILE_REVISION,
 } as const;
 
+const snapshotAuthority = {
+  authority: "session-browser-v3-http-snapshot",
+  hydrate: true,
+  repair: true,
+  profileRevision: initialCursor.profileRevision,
+  sessionId: initialCursor.sessionId,
+  streamEpoch: initialCursor.streamEpoch,
+  durableSeq: initialCursor.durableSeq,
+  cursor: initialCursor.cursor,
+  runBindings: [],
+  messageBindings: [],
+} as const;
+
 function frame(
   seq: number,
   sourceKind: string,
@@ -71,7 +84,7 @@ function createAdapter(
 ) {
   return {
     dispatch,
-    adapter: createDormantAguiProjectionAdapter({ grant, initialCursor, dispatch }),
+    adapter: createDormantAguiProjectionAdapter({ grant, snapshotAuthority, dispatch }),
   };
 }
 
