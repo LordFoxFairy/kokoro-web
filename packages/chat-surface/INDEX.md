@@ -15,15 +15,30 @@ Assistant UI is a rendering/runtime adapter only: it never becomes persistence o
 The projection consumes Session browser v3 directly: active history is admitted only when every active-branch message forms the one
 exact root-to-leaf parent chain, exhausts that branch's messages, and has contiguous canonical ordinals. A leafless branch is valid
 only when its root, leaf, and message set are all empty. Versioned part events replace projections rather than appending transport
-deltas, run projections own terminal state, and every live active-leaf change fails closed until a fresh snapshot replaces branch
-authority. `branch.created` adds only a version-1 contract branch and keeps the first exact identity; activation of an unseen branch,
+deltas and run projections own terminal state. A same-branch leaf change asserted only by Session metadata fails closed until a fresh
+snapshot replaces branch authority; a valid `message.created` may extend the exact current lineage. `branch.created` adds only a
+version-1 contract branch and keeps the first exact identity; activation of an unseen branch,
 Session identity/context drift, or an owner-version gap requests snapshot repair without fabricating branch history. Approval/interaction/plan parts retain their exact owner, version, safe display schema, allowed-action, deadline, and receipt projections so UI commands never reconstruct authority. Reasoning summaries, plan progress, subagents, media operations, artifacts, notices, and errors remain distinct typed parts; there is no generic background-task projection. Tool calls retain their contract-owned call id, result preview, tri-state error marker, and truncation marker while safely defaulting an omitted input summary to an empty object. The assistant-ui adapter preserves the native tool result and error field and emits a typed companion metadata part for fields outside its native shape. Unsupported kinds preserve their message and expose only the generated safe fallback. There is no legacy flat-snapshot or legacy event compatibility path.
 
-Run and launch envelope admission freezes their immutable bindings as well as their canonical fingerprints. Consecutive owner versions
-must follow the explicit lifecycle transition tables; terminal states can replay exactly but can never revive. Once an authoritative
-Run is visible, a matching terminal launch cannot clear it, and a conflicting launch identity requests repair.
+Run and launch envelope admission freezes their immutable bindings as well as their canonical fingerprints and one bijective
+`runId <-> launchId <-> branchId` pair authority. A complete snapshot rejects an unpaired Run, duplicate pair ownership, and more
+than one active execution. Live Run/launch events may arrive in either order, but the first half remains private and cannot project
+`launching`/`running`; the pair activates atomically only after both envelopes agree. Consecutive owner versions must follow the
+explicit lifecycle transition tables; terminal states can replay exactly but can never revive. Once an authoritative Run is visible,
+a matching terminal launch cannot clear it, while a terminal Run always dominates later launch evidence and a conflicting pair
+requests repair without committing the rejected envelope.
 
-A message ID is admitted only from an authoritative Session snapshot or `message.created` event. The first complete envelope owns that ID; only an exact canonical replay is ignored, while any same-ID role, branch, lineage, attachment, part, lifecycle, or system-message drift preserves the first projection and requires repair. A newly observed part starts at version 1; an existing part accepts only its exact replay or the immediately consecutive version. Same-version equality uses an internal canonical fingerprint of the complete validated envelope before display projection: JSON object key order is irrelevant, array order remains meaningful, and the fingerprint is never exposed through the public projection or assistant-ui adapter. Its message, part id, kind, and ordinal are immutable; gaps or identity conflicts preserve the current projection and require snapshot repair.
+A message ID is admitted only from an authoritative Session snapshot or `message.created` event. A new live active-branch message must
+be the exact next ordinal, name the current authoritative leaf as parent (or establish the empty branch's first root), and extend the
+one current root-to-leaf chain. Admission atomically advances the projected Session/branch leaf; a later same-branch `session.updated`
+may confirm that leaf with its next owner version. Invalid parent/root/leaf/ordinal evidence requests repair before the message
+fingerprint or projection is committed. The first complete envelope owns that ID; only an exact canonical replay is ignored, while
+any same-ID role, branch, lineage, attachment, part, lifecycle, or system-message drift preserves the first projection and requires
+repair. A newly observed part starts at version 1; an existing part accepts only its exact replay or the immediately consecutive
+version. Same-version equality uses an internal canonical fingerprint of the complete validated envelope before display projection:
+JSON object key order is irrelevant, array order remains meaningful, and the fingerprint is never exposed through the public
+projection or assistant-ui adapter. Its message, part id, kind, and ordinal are immutable; gaps or identity conflicts preserve the
+current projection and require snapshot repair.
 
 Hydration builds private message-envelope, Run-envelope, launch-envelope, message-id, and part-owner indexes and rejects duplicate identities. Streaming part updates use those indexes for constant-time owner/message location while preserving the immutable projection array, exact replay fingerprints, consecutive-version checks, and owner transition validation. Authoritative message creation, branch replacement, and snapshot hydration rebuild the visible indexes; a normal token delta never scans the full message collection or rebuilds them. Unsupported content is rendered only when it arrives as a generated part on an authoritative message; the browser has no mutation that can manufacture a message or part identity.
 

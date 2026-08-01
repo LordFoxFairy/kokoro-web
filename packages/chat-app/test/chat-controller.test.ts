@@ -266,7 +266,7 @@ describe("Chat recovery controller", () => {
       last_durable_cursor: "signed.cursor.1",
       projection_version: 1,
     }
-    const invalid: SessionSnapshot = { ...withAssistantText(valid, "must not render"), branches: [], runs: [run] }
+    const invalid: SessionSnapshot = { ...withAssistantText(valid, "must not render"), branches: [] }
     let resolveSnapshot: ((value: SessionSnapshot) => void) | undefined
     const fetchSnapshot = vi.fn<SessionClient["fetchSnapshot"]>(() => new Promise((resolve) => {
       resolveSnapshot = (value) => resolve(value)
@@ -438,6 +438,83 @@ describe("Chat recovery controller", () => {
     const second = controller.submit("second")
     await expect(Promise.all([first, second])).resolves.toEqual([false, false])
     expect(submitMessage).toHaveBeenCalledOnce()
+    controller.close()
+  })
+
+  it("keeps the command slot pending while model selection changes during post-effect refresh", async () => {
+    const initial = snapshot("branch-original-12345678", "signed.cursor.1", "1")
+    const refreshed = snapshot("branch-original-12345678", "signed.cursor.2", "2")
+    let resolveRefresh: ((value: SessionSnapshot | null) => void) | undefined
+    const fetchSnapshot = vi.fn<SessionClient["fetchSnapshot"]>(() => new Promise((resolve) => {
+      resolveRefresh = (value) => resolve(value)
+    }))
+    const submitMessage = vi.fn<SessionClient["submitMessage"]>(async (_sessionId, body) =>
+      acceptedRunLaunch(body.command))
+    const { client } = clientFixture({ initial, fetchSnapshot, submitMessage })
+    const controller = createChatController({
+      client,
+      trustedLocale: "en-US",
+      chatCatalog: {
+        surfaceId: "chat",
+        catalogRevisionRef: "catalog-12345678",
+        defaultModelOptionRevisionRef: "model-option-default-12345678",
+        publishedAt: NOW,
+        options: [{
+          modelOptionRevisionRef: "model-option-default-12345678",
+          optionKey: "default",
+          label: "Default",
+          inputModalities: ["text"],
+          outputModalities: ["text"],
+          supportedEfforts: ["low"],
+          badges: [],
+          availability: "available",
+        }, {
+          modelOptionRevisionRef: "model-option-deep-12345678",
+          optionKey: "deep",
+          label: "Deep",
+          inputModalities: ["text"],
+          outputModalities: ["text"],
+          supportedEfforts: ["medium", "high"],
+          badges: [],
+          availability: "available",
+        }],
+      },
+      defaultProjectRef: initial.session.project_ref,
+    })
+    await controller.open(initial.session.session_id)
+
+    const pending = controller.submit("first")
+    await vi.waitFor(() => expect(fetchSnapshot).toHaveBeenCalledOnce())
+    expect(controller.getSnapshot().projection.command.state).toBe("pending")
+
+    controller.selectModelOption("model-option-deep-12345678")
+    controller.selectEffort("high")
+
+    expect(controller.getSnapshot()).toMatchObject({
+      selectedModelOptionRevisionRef: "model-option-deep-12345678",
+      selectedEffort: "high",
+      projection: { command: { state: "pending" } },
+    })
+    await expect(controller.submit("must stay blocked")).resolves.toBe(false)
+    expect(submitMessage).toHaveBeenCalledOnce()
+
+    resolveRefresh?.(refreshed)
+    await expect(pending).resolves.toBe(true)
+    expect(controller.getSnapshot().projection.command.state).toBe("idle")
+
+    const missingAuthority = controller.submit("second")
+    await vi.waitFor(() => expect(fetchSnapshot).toHaveBeenCalledTimes(2))
+    resolveRefresh?.(null)
+    await expect(missingAuthority).resolves.toBe(false)
+    expect(controller.getSnapshot()).toMatchObject({
+      failure: { code: "SNAPSHOT_REQUIRED", action: "refetch_snapshot" },
+      projection: { command: { state: "failed" } },
+    })
+    controller.selectModelOption("model-option-default-12345678")
+    expect(controller.getSnapshot()).toMatchObject({
+      failure: { code: "SNAPSHOT_REQUIRED", action: "refetch_snapshot" },
+      projection: { command: { state: "failed" } },
+    })
     controller.close()
   })
 
@@ -635,6 +712,16 @@ describe("Chat recovery controller", () => {
         last_durable_cursor: base.snapshot_watermark.cursor,
         projection_version: 2,
       }],
+      run_launches: [{
+        launch_id: "launch-12345678",
+        branch_id: base.session.active_branch_id,
+        trigger_message_id: messageId,
+        proposed_run_id: runId,
+        status: "event_observed",
+        command_receipt_ref: "receipt-launch-12345678",
+        version: 2,
+        updated_at: NOW,
+      }],
     }
 
     for (const kind of ["action", "plan"] as const) {
@@ -670,6 +757,131 @@ describe("Chat recovery controller", () => {
       expect(decidePlan).not.toHaveBeenCalled()
       controller.close()
     }
+  })
+
+  it("binds edit and interaction schema refs to the current HITL projection", async () => {
+    const base = snapshot("branch-original-12345678", "signed.cursor.1", "1")
+    const messageId = "message-assistant-12345678"
+    const runId = "run-12345678"
+    const schemaRef = "schema-authoritative-12345678"
+    const initial: SessionSnapshot = {
+      ...base,
+      session: { ...base.session, active_leaf_message_id: messageId },
+      branches: [{ ...base.branches[0]!, root_message_id: messageId, leaf_message_id: messageId }],
+      messages: [{
+        message_id: messageId,
+        branch_id: base.session.active_branch_id,
+        role: "assistant",
+        ordinal: 0,
+        run_id: runId,
+        lifecycle: "streaming",
+        parts: [{
+          part_id: "interaction-part-12345678",
+          message_id: messageId,
+          ordinal: 0,
+          version: 1,
+          schema_version: 1,
+          lifecycle: "streaming",
+          kind: "interaction",
+          payload: {
+            owner_ref: "interaction-owner-12345678",
+            expected_version: 1,
+            decision_group_ref: "decision-group-12345678",
+            required_owner_refs: ["interaction-owner-12345678"],
+            title: "Respond",
+            description: "Provide an answer",
+            input_schema_ref: schemaRef,
+            safe_input_schema: { kind: "text", max_length: 128 },
+            allowed_actions: ["edit", "respond"],
+            status: "pending",
+          },
+        }],
+        attachments: [],
+        created_at: NOW,
+      }],
+      run_launches: [{
+        launch_id: "launch-12345678",
+        branch_id: base.session.active_branch_id,
+        trigger_message_id: messageId,
+        proposed_run_id: runId,
+        status: "event_observed",
+        command_receipt_ref: "receipt-launch-12345678",
+        version: 1,
+        updated_at: NOW,
+      }],
+      runs: [{
+        run_id: runId,
+        launch_id: "launch-12345678",
+        branch_id: base.session.active_branch_id,
+        assistant_message_id: messageId,
+        execution_status: "paused",
+        cost_status: "committed",
+        last_durable_cursor: base.snapshot_watermark.cursor,
+        projection_version: 1,
+      }],
+    }
+
+    const mismatchedDecision = vi.fn<SessionClient["decideAction"]>()
+    const mismatchFixture = clientFixture({
+      initial,
+      fetchSnapshot: vi.fn(async () => initial),
+      decideAction: mismatchedDecision,
+    })
+    const mismatch = createChatController({
+      client: mismatchFixture.client,
+      trustedLocale: "en-US",
+      chatCatalog: null,
+      defaultProjectRef: initial.session.project_ref,
+    })
+    await mismatch.open(initial.session.session_id)
+    await mismatch.decideAction({
+      runId,
+      partId: "interaction-part-12345678",
+      decision: {
+        kind: "respond",
+        payload: {
+          input_schema_ref: "schema-caller-controlled-12345678",
+          response: { kind: "text", payload: { text: "hello" } },
+        },
+      },
+    })
+    expect(mismatchedDecision).not.toHaveBeenCalled()
+    expect(mismatch.getSnapshot().failure).toMatchObject({ code: "ACTION_NOT_ALLOWED", action: "refetch_snapshot" })
+    mismatch.close()
+
+    const decideAction = vi.fn<SessionClient["decideAction"]>(async () => {
+      throw new TypeError("stop after request capture")
+    })
+    const getCommandReceipt = vi.fn<SessionClient["getCommandReceipt"]>(async () => {
+      throw new TypeError("receipt unavailable")
+    })
+    const matchingFixture = clientFixture({
+      initial,
+      fetchSnapshot: vi.fn(async () => initial),
+      decideAction,
+      getCommandReceipt,
+    })
+    const matching = createChatController({
+      client: matchingFixture.client,
+      trustedLocale: "en-US",
+      chatCatalog: null,
+      defaultProjectRef: initial.session.project_ref,
+    })
+    await matching.open(initial.session.session_id)
+    await matching.decideAction({
+      runId,
+      partId: "interaction-part-12345678",
+      decision: {
+        kind: "edit",
+        payload: { input_schema_ref: schemaRef, edited_input: { safe: true } },
+      },
+    })
+    expect(decideAction).toHaveBeenCalledOnce()
+    expect(decideAction.mock.calls[0]?.[2].decision).toEqual({
+      kind: "edit",
+      payload: { input_schema_ref: schemaRef, edited_input: { safe: true } },
+    })
+    matching.close()
   })
 
   it("exposes one projection authority for live session and branch metadata", async () => {
@@ -1230,6 +1442,16 @@ describe("Chat recovery controller", () => {
     const base = snapshot("branch-original-12345678", "signed.cursor.1", "1")
     const initial: SessionSnapshot = {
       ...base,
+      run_launches: [{
+        launch_id: "launch-12345678",
+        branch_id: "branch-original-12345678",
+        trigger_message_id: "message-trigger-12345678",
+        proposed_run_id: "run-12345678",
+        status: "event_observed",
+        command_receipt_ref: "receipt-launch-12345678",
+        version: 2,
+        updated_at: NOW,
+      }],
       runs: [{
         run_id: "run-12345678",
         launch_id: "launch-12345678",

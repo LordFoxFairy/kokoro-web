@@ -1068,9 +1068,35 @@ export function createChatController(options: {
       ?.parts.find((candidate): candidate is Extract<ChatPart, { kind: "approval" | "interaction" }> =>
         candidate.id === partId && (candidate.kind === "approval" || candidate.kind === "interaction"))
     const deadline = part?.deadline === undefined ? null : Date.parse(part.deadline)
+    let schemaBoundDecision: ActionDecision | null = null
+    if (part !== undefined) {
+      switch (decision.kind) {
+        case "edit":
+          if (part.inputSchemaRef !== undefined && decision.payload.input_schema_ref === part.inputSchemaRef) {
+            schemaBoundDecision = {
+              kind: "edit",
+              payload: { ...decision.payload, input_schema_ref: part.inputSchemaRef },
+            }
+          }
+          break
+        case "respond":
+          if (part.inputSchemaRef !== undefined && decision.payload.input_schema_ref === part.inputSchemaRef) {
+            schemaBoundDecision = {
+              kind: "respond",
+              payload: { ...decision.payload, input_schema_ref: part.inputSchemaRef },
+            }
+          }
+          break
+        case "approve":
+        case "reject":
+          schemaBoundDecision = decision
+          break
+      }
+    }
     if (
       runVersion === null ||
       part === undefined ||
+      schemaBoundDecision === null ||
       part.status !== "pending" || !part.allowedActions.includes(decision.kind) ||
       deadline !== null && (!Number.isFinite(deadline) || deadline <= Date.now())
     ) {
@@ -1084,7 +1110,7 @@ export function createChatController(options: {
       owner_ref: part.ownerRef,
       decision_group_ref: part.decisionGroupRef,
       expected_owner_version: part.expectedVersion,
-      decision,
+      decision: schemaBoundDecision,
     }
     const commandGeneration = generation
     try {
@@ -1179,8 +1205,17 @@ export function createChatController(options: {
           : selected.supportedEfforts.includes("medium")
             ? "medium"
             : selected.supportedEfforts[0] ?? null
-      projectionStore.dispatch({ type: "command", state: "idle" })
-      publish({ ...state, selectedModelOptionRevisionRef: modelOptionRevisionRef, selectedEffort, failure: null, projection: projectionStore.getSnapshot() })
+      const selectionFailure = state.failure?.action === "choose_model"
+      const mayRestoreIdle = commandClaim === null && snapshotRequest === null &&
+        (state.projection.command.state === "idle" || selectionFailure)
+      if (mayRestoreIdle) projectionStore.dispatch({ type: "command", state: "idle" })
+      publish({
+        ...state,
+        selectedModelOptionRevisionRef: modelOptionRevisionRef,
+        selectedEffort,
+        failure: mayRestoreIdle && selectionFailure ? null : state.failure,
+        projection: projectionStore.getSnapshot(),
+      })
     },
     selectEffort(effort) {
       if (disposed) return
@@ -1192,8 +1227,16 @@ export function createChatController(options: {
         return
       }
       selectionSessionId = state.sessionId
-      projectionStore.dispatch({ type: "command", state: "idle" })
-      publish({ ...state, selectedEffort: effort, failure: null, projection: projectionStore.getSnapshot() })
+      const selectionFailure = state.failure?.action === "choose_model"
+      const mayRestoreIdle = commandClaim === null && snapshotRequest === null &&
+        (state.projection.command.state === "idle" || selectionFailure)
+      if (mayRestoreIdle) projectionStore.dispatch({ type: "command", state: "idle" })
+      publish({
+        ...state,
+        selectedEffort: effort,
+        failure: mayRestoreIdle && selectionFailure ? null : state.failure,
+        projection: projectionStore.getSnapshot(),
+      })
     },
     decideAction,
     decidePlan,

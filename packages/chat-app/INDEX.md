@@ -54,11 +54,16 @@ synchronously claims its single browser command slot before command-digest work 
 race through an async preimage calculation. `close()` is terminal: it aborts snapshot work, closes the stream, and no later callback,
 open, create, or mutation can revive that controller. Snapshot repair marks the projection unavailable before its request begins;
 an invalid or missing repair result clears all Session/UI authority instead of publishing stale content.
+Model and effort selection may update the next-turn draft while a mutation's authoritative post-effect snapshot is pending, but it
+cannot release or overwrite that pending command slot. A valid selection clears a prior selection failure only when no command or
+snapshot request owns the slot.
 Run and launch versions/fingerprints are fenced monotonically inside the projection store; a regression, conflicting replay, or gap
 forces snapshot repair instead of regressing visible terminal state. Cancel and HITL commands read only the active Run version
 published by `ChatProjection`, so the controller cannot retain a parallel execution authority. HITL callers provide only
 `{runId, partId, decision}`; immediately before dispatch the controller re-resolves the current pending part, allowed actions,
-deadline, owner identity, and owner version from that projection. A previously rendered part object is never command authority.
+deadline, owner identity, owner version, and `inputSchemaRef` from that projection. `edit`/`respond` decisions are rejected when the
+caller's schema ref differs, and the dispatched request is rebuilt with the projection-owned ref. A previously rendered part object
+is never command authority.
 
 Before a Chat mutation crosses the BFF, its non-secret receipt lookup identity is bounded and stored in the
 current browser session. An ambiguous response can therefore only query the exact command/digest after a

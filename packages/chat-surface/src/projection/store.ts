@@ -205,6 +205,13 @@ type ProjectionEnvelopeAuthority = Readonly<{
   messages: Map<string, string>
   runs: Map<string, VersionedEnvelopeFingerprint<RunStatus>>
   launches: Map<string, VersionedEnvelopeFingerprint<RunLaunchStatus>>
+  pairsByRunId: Map<string, RunLaunchPairBinding>
+  pairsByLaunchId: Map<string, RunLaunchPairBinding>
+}>
+type RunLaunchPairBinding = Readonly<{
+  runId: string
+  launchId: string
+  branchId: string
 }>
 type ProjectionIndexes = Readonly<{
   messageIndexById: Map<string, number>
@@ -290,41 +297,100 @@ function launchTransitionAllowed(previous: RunLaunchStatus, next: RunLaunchStatu
 }
 
 function emptyEnvelopeAuthority(): ProjectionEnvelopeAuthority {
-  return { messages: new Map(), runs: new Map(), launches: new Map() }
+  return {
+    messages: new Map(),
+    runs: new Map(),
+    launches: new Map(),
+    pairsByRunId: new Map(),
+    pairsByLaunchId: new Map(),
+  }
+}
+
+function runPair(run: RunView): RunLaunchPairBinding {
+  return { runId: run.run_id, launchId: run.launch_id, branchId: run.branch_id }
+}
+
+function launchPair(launch: RunLaunch): RunLaunchPairBinding {
+  return { runId: launch.proposed_run_id, launchId: launch.launch_id, branchId: launch.branch_id }
+}
+
+function pairBindingMatches(
+  authority: ProjectionEnvelopeAuthority,
+  pair: RunLaunchPairBinding,
+): boolean {
+  const byRun = authority.pairsByRunId.get(pair.runId)
+  const byLaunch = authority.pairsByLaunchId.get(pair.launchId)
+  return (byRun === undefined || stableStringify(byRun) === stableStringify(pair)) &&
+    (byLaunch === undefined || stableStringify(byLaunch) === stableStringify(pair))
+}
+
+function commitPairBinding(
+  authority: ProjectionEnvelopeAuthority,
+  pair: RunLaunchPairBinding,
+): void {
+  authority.pairsByRunId.set(pair.runId, pair)
+  authority.pairsByLaunchId.set(pair.launchId, pair)
 }
 
 function snapshotEnvelopeAuthority(snapshot: SessionSnapshot): Readonly<{
   authority: ProjectionEnvelopeAuthority
-  conflict?: "message_identity_conflict" | "run_projection_version_conflict" | "run_launch_version_conflict"
+  conflict?:
+    | "message_identity_conflict"
+    | "run_projection_version_conflict"
+    | "run_launch_version_conflict"
+    | "run_launch_binding_conflict"
 }> {
   const authority = emptyEnvelopeAuthority()
-  let conflict: "message_identity_conflict" | "run_projection_version_conflict" | "run_launch_version_conflict" | undefined
+  let conflict:
+    | "message_identity_conflict"
+    | "run_projection_version_conflict"
+    | "run_launch_version_conflict"
+    | "run_launch_binding_conflict"
+    | undefined
   for (const message of snapshot.messages) {
     if (authority.messages.has(message.message_id)) conflict ??= "message_identity_conflict"
     else authority.messages.set(message.message_id, stableStringify(message))
   }
   for (const run of snapshot.runs) {
     if (authority.runs.has(run.run_id)) conflict ??= "run_projection_version_conflict"
-    else authority.runs.set(run.run_id, {
-      version: run.projection_version,
-      fingerprint: stableStringify(run),
-      bindingFingerprint: runBinding(run),
-      status: run.execution_status,
-    })
+    else {
+      const pair = runPair(run)
+      if (!pairBindingMatches(authority, pair)) conflict ??= "run_launch_binding_conflict"
+      else commitPairBinding(authority, pair)
+      authority.runs.set(run.run_id, {
+        version: run.projection_version,
+        fingerprint: stableStringify(run),
+        bindingFingerprint: runBinding(run),
+        status: run.execution_status,
+      })
+    }
   }
   for (const launch of snapshot.run_launches) {
     if (authority.launches.has(launch.launch_id)) conflict ??= "run_launch_version_conflict"
-    else authority.launches.set(launch.launch_id, {
-      version: launch.version,
-      fingerprint: stableStringify(launch),
-      bindingFingerprint: launchBinding(launch),
-      status: launch.status,
-    })
+    else {
+      const pair = launchPair(launch)
+      if (!pairBindingMatches(authority, pair)) conflict ??= "run_launch_binding_conflict"
+      else commitPairBinding(authority, pair)
+      authority.launches.set(launch.launch_id, {
+        version: launch.version,
+        fingerprint: stableStringify(launch),
+        bindingFingerprint: launchBinding(launch),
+        status: launch.status,
+      })
+    }
+  }
+  for (const run of snapshot.runs) {
+    if (!authority.launches.has(run.launch_id)) conflict ??= "run_launch_binding_conflict"
   }
   return { authority, ...(conflict === undefined ? {} : { conflict }) }
 }
 
-function acceptVersionedEnvelope<Status extends string>(
+type VersionedEnvelopeAdmission<Status extends string> =
+  | Readonly<{ admission: "accepted"; next: VersionedEnvelopeFingerprint<Status> }>
+  | Readonly<{ admission: "exact_replay" }>
+  | Readonly<{ admission: "conflict" }>
+
+function inspectVersionedEnvelope<Status extends string>(
   authority: Map<string, VersionedEnvelopeFingerprint<Status>>,
   id: string,
   version: number,
@@ -332,19 +398,25 @@ function acceptVersionedEnvelope<Status extends string>(
   bindingFingerprint: string,
   status: Status,
   transitionAllowed: (previous: Status, next: Status) => boolean,
-): "accepted" | "exact_replay" | "conflict" {
+): VersionedEnvelopeAdmission<Status> {
   const fingerprint = stableStringify(envelope)
   const current = authority.get(id)
   if (current === undefined) {
-    if (version !== 1) return "conflict"
-    authority.set(id, { version, fingerprint, bindingFingerprint, status })
-    return "accepted"
+    if (version !== 1) return { admission: "conflict" }
+    return {
+      admission: "accepted",
+      next: { version, fingerprint, bindingFingerprint, status },
+    }
   }
-  if (bindingFingerprint !== current.bindingFingerprint) return "conflict"
-  if (version === current.version && fingerprint === current.fingerprint) return "exact_replay"
-  if (version !== current.version + 1 || !transitionAllowed(current.status, status)) return "conflict"
-  authority.set(id, { version, fingerprint, bindingFingerprint, status })
-  return "accepted"
+  if (bindingFingerprint !== current.bindingFingerprint) return { admission: "conflict" }
+  if (version === current.version && fingerprint === current.fingerprint) return { admission: "exact_replay" }
+  if (version !== current.version + 1 || !transitionAllowed(current.status, status)) {
+    return { admission: "conflict" }
+  }
+  return {
+    admission: "accepted",
+    next: { version, fingerprint, bindingFingerprint, status },
+  }
 }
 
 function copyUnknown(value: unknown): unknown {
@@ -709,32 +781,154 @@ function activeMessageRecords(snapshot: SessionSnapshot): Readonly<{
   return { messages, complete: true }
 }
 
-function activeRun(snapshot: SessionSnapshot): Pick<
+type ActiveExecution = Pick<
   ChatProjection,
   "activeRunId" | "activeRunProjectionVersion" | "activeRunState"
-> {
+>
+
+const NO_ACTIVE_EXECUTION: ActiveExecution = {
+  activeRunId: null,
+  activeRunProjectionVersion: null,
+  activeRunState: null,
+}
+
+function activeRun(
+  snapshot: SessionSnapshot,
+  authority: ProjectionEnvelopeAuthority,
+): Readonly<{
+  execution: ActiveExecution
+  conflict?: "run_launch_binding_conflict"
+}> {
   const candidates = snapshot.runs.filter((run) =>
     run.branch_id === snapshot.session.active_branch_id && ACTIVE_RUN_STATUSES.has(run.execution_status),
   )
-  const run = candidates.at(-1)
-  const launch = snapshot.run_launches
-    .filter((candidate) => candidate.branch_id === snapshot.session.active_branch_id && ACTIVE_LAUNCH_STATUSES.has(candidate.status))
-    .at(-1)
+  const launchCandidates = snapshot.run_launches.filter((candidate) =>
+    candidate.branch_id === snapshot.session.active_branch_id &&
+    ACTIVE_LAUNCH_STATUSES.has(candidate.status) &&
+    !authority.runs.has(candidate.proposed_run_id),
+  )
+  if (candidates.length + launchCandidates.length > 1) {
+    return { execution: NO_ACTIVE_EXECUTION, conflict: "run_launch_binding_conflict" }
+  }
+  const run = candidates[0]
+  const launch = launchCandidates[0]
   const runId = run?.run_id ?? launch?.proposed_run_id ?? null
-  if (runId === null) return { activeRunId: null, activeRunProjectionVersion: null, activeRunState: null }
+  if (runId === null) return { execution: NO_ACTIVE_EXECUTION }
   const activeRunProjectionVersion = run?.projection_version ?? null
   const cancelling = snapshot.controls.some((control) =>
     control.run_id === runId && control.kind === "cancel" && ["pending", "persisted", "applied", "outcome_unknown"].includes(control.status),
   )
-  if (cancelling) return { activeRunId: runId, activeRunProjectionVersion, activeRunState: "cancelling" }
-  if (run?.execution_status === "paused") return { activeRunId: runId, activeRunProjectionVersion, activeRunState: "paused" }
+  if (cancelling) {
+    return { execution: { activeRunId: runId, activeRunProjectionVersion, activeRunState: "cancelling" } }
+  }
+  if (run?.execution_status === "paused") {
+    return { execution: { activeRunId: runId, activeRunProjectionVersion, activeRunState: "paused" } }
+  }
   if (run?.execution_status === "outcome_unknown" || launch?.status === "outcome_unknown") {
-    return { activeRunId: runId, activeRunProjectionVersion, activeRunState: "outcome_unknown" }
+    return { execution: { activeRunId: runId, activeRunProjectionVersion, activeRunState: "outcome_unknown" } }
   }
   return {
-    activeRunId: runId,
-    activeRunProjectionVersion,
-    activeRunState: run === undefined ? "launching" : "running",
+    execution: {
+      activeRunId: runId,
+      activeRunProjectionVersion,
+      activeRunState: run === undefined ? "launching" : "running",
+    },
+  }
+}
+
+function updateActivePairProjection(
+  state: ChatProjection,
+  authority: ProjectionEnvelopeAuthority,
+  pair: RunLaunchPairBinding,
+): ChatProjection | "conflict" {
+  if (pair.branchId !== state.activeBranchId) return state
+  const run = authority.runs.get(pair.runId)
+  const launch = authority.launches.get(pair.launchId)
+  if (run === undefined || launch === undefined) {
+    if (run === undefined && launch !== undefined && state.activeRunId === pair.runId && state.activeRunProjectionVersion === null) {
+      if (TERMINAL_LAUNCH_STATUSES.has(launch.status)) return { ...state, ...NO_ACTIVE_EXECUTION }
+      return {
+        ...state,
+        activeRunState: launch.status === "outcome_unknown" ? "outcome_unknown" : "launching",
+      }
+    }
+    return state
+  }
+  if (TERMINAL_RUN_STATUSES.has(run.status)) {
+    return state.activeRunId === pair.runId ? { ...state, ...NO_ACTIVE_EXECUTION } : state
+  }
+  if (
+    TERMINAL_LAUNCH_STATUSES.has(launch.status) &&
+    state.activeRunId !== pair.runId
+  ) return state
+  if (state.activeRunId !== null && state.activeRunId !== pair.runId) return "conflict"
+  return {
+    ...state,
+    activeRunId: pair.runId,
+    activeRunProjectionVersion: run.version,
+    activeRunState: run.status === "paused" || run.status === "cancelling" || run.status === "outcome_unknown"
+      ? run.status
+      : "running",
+  }
+}
+
+function activePairProjectionWouldConflict(
+  state: ChatProjection,
+  authority: ProjectionEnvelopeAuthority,
+  pair: RunLaunchPairBinding,
+  nextRun?: VersionedEnvelopeFingerprint<RunStatus>,
+  nextLaunch?: VersionedEnvelopeFingerprint<RunLaunchStatus>,
+): boolean {
+  if (pair.branchId !== state.activeBranchId) return false
+  const run = nextRun ?? authority.runs.get(pair.runId)
+  const launch = nextLaunch ?? authority.launches.get(pair.launchId)
+  if (run === undefined || launch === undefined || TERMINAL_RUN_STATUSES.has(run.status)) return false
+  if (TERMINAL_LAUNCH_STATUSES.has(launch.status) && state.activeRunId !== pair.runId) return false
+  return state.activeRunId !== null && state.activeRunId !== pair.runId
+}
+
+function activeMessageExtension(
+  state: ChatProjection,
+  record: MessageRecord,
+): Readonly<{
+  session: ChatSessionMetadata
+  branches: readonly ChatBranchSummary[]
+}> | null {
+  const session = state.session
+  const activeBranchId = state.activeBranchId
+  if (session === null || activeBranchId === null || record.branch_id !== activeBranchId || record.role === "system") {
+    return null
+  }
+  const branchIndex = state.branches.findIndex((branch) => branch.id === activeBranchId)
+  const branch = state.branches[branchIndex]
+  if (branch === undefined) return null
+  const first = state.messages[0]
+  const leaf = state.messages.at(-1)
+  const empty = state.messages.length === 0
+  const lineageComplete = empty
+    ? branch.rootMessageId === undefined && branch.leafMessageId === undefined && session.activeLeafMessageId === undefined
+    : first !== undefined && leaf !== undefined &&
+      branch.rootMessageId === first.id &&
+      branch.leafMessageId === leaf.id &&
+      session.activeLeafMessageId === leaf.id &&
+      state.messages.every((message, index) =>
+        message.branchId === activeBranchId &&
+        (index === 0 ? message.parentMessageId === undefined : message.parentMessageId === state.messages[index - 1]?.id))
+  if (
+    !lineageComplete ||
+    record.ordinal !== state.messages.length ||
+    (empty ? record.parent_message_id !== undefined : record.parent_message_id !== leaf?.id)
+  ) return null
+  const nextBranch: ChatBranchSummary = {
+    ...branch,
+    rootMessageId: branch.rootMessageId ?? record.message_id,
+    leafMessageId: record.message_id,
+  }
+  const branches = [...state.branches]
+  branches[branchIndex] = deepFreeze(nextBranch)
+  return {
+    session: { ...session, activeLeafMessageId: record.message_id },
+    branches: Object.freeze(branches),
   }
 }
 
@@ -768,14 +962,27 @@ function reduceEvent(
         next = state
         break
       }
-      envelopes.messages.set(record.message_id, fingerprint)
       if (record.branch_id !== state.activeBranchId) {
+        if (!state.branches.some((branch) => branch.id === record.branch_id)) {
+          return { ...state, repair: { required: true, reason: "message_lineage_conflict" } }
+        }
+        envelopes.messages.set(record.message_id, fingerprint)
         next = state
         break
       }
+      const extension = activeMessageExtension(state, record)
+      if (extension === null) {
+        return { ...state, repair: { required: true, reason: "message_lineage_conflict" } }
+      }
       const message = projectMessage(record, fingerprints)
-      next = message === null ? state : {
+      if (message === null) {
+        return { ...state, repair: { required: true, reason: "message_lineage_conflict" } }
+      }
+      envelopes.messages.set(record.message_id, fingerprint)
+      next = {
         ...state,
+        session: extension.session,
+        branches: extension.branches,
         messages: appendMessage(state.messages, message),
       }
       break
@@ -806,7 +1013,11 @@ function reduceEvent(
     }
     case "run.launch.updated": {
       const launch = event.payload.launch
-      const admission = acceptVersionedEnvelope(
+      const pair = launchPair(launch)
+      if (!pairBindingMatches(envelopes, pair)) {
+        return { ...state, repair: { required: true, reason: "run_launch_binding_conflict" } }
+      }
+      const inspected = inspectVersionedEnvelope(
         envelopes.launches,
         launch.launch_id,
         launch.version,
@@ -815,38 +1026,29 @@ function reduceEvent(
         launch.status,
         launchTransitionAllowed,
       )
-      if (admission === "conflict") {
+      if (inspected.admission === "conflict") {
         return { ...state, repair: { required: true, reason: "run_launch_version_conflict" } }
       }
-      if (admission === "exact_replay") return state
-      if (launch.branch_id !== state.activeBranchId) {
-        next = state
-        break
+      if (inspected.admission === "exact_replay") return state
+      if (activePairProjectionWouldConflict(state, envelopes, pair, undefined, inspected.next)) {
+        return { ...state, repair: { required: true, reason: "run_launch_binding_conflict" } }
       }
-      if (state.activeRunProjectionVersion !== null) {
-        if (state.activeRunId !== launch.proposed_run_id) {
-          return { ...state, repair: { required: true, reason: "run_launch_version_conflict" } }
-        }
-        next = state
-        break
+      commitPairBinding(envelopes, pair)
+      envelopes.launches.set(launch.launch_id, inspected.next)
+      const projected = updateActivePairProjection(state, envelopes, pair)
+      if (projected === "conflict") {
+        return { ...state, repair: { required: true, reason: "run_launch_binding_conflict" } }
       }
-      if (ACTIVE_LAUNCH_STATUSES.has(launch.status)) {
-        next = {
-          ...state,
-          activeRunId: launch.proposed_run_id,
-          activeRunProjectionVersion: null,
-          activeRunState: launch.status === "outcome_unknown" ? "outcome_unknown" : "launching",
-        }
-        break
-      }
-      next = state.activeRunId === launch.proposed_run_id
-        ? { ...state, activeRunId: null, activeRunProjectionVersion: null, activeRunState: null }
-        : state
+      next = projected
       break
     }
     case "run.view.updated": {
       const run = event.payload.run
-      const admission = acceptVersionedEnvelope(
+      const pair = runPair(run)
+      if (!pairBindingMatches(envelopes, pair)) {
+        return { ...state, repair: { required: true, reason: "run_launch_binding_conflict" } }
+      }
+      const inspected = inspectVersionedEnvelope(
         envelopes.runs,
         run.run_id,
         run.projection_version,
@@ -855,39 +1057,34 @@ function reduceEvent(
         run.execution_status,
         runTransitionAllowed,
       )
-      if (admission === "conflict") {
+      if (inspected.admission === "conflict") {
         return { ...state, repair: { required: true, reason: "run_projection_version_conflict" } }
       }
-      if (admission === "exact_replay") return state
+      if (inspected.admission === "exact_replay") return state
+      if (activePairProjectionWouldConflict(state, envelopes, pair, inspected.next)) {
+        return { ...state, repair: { required: true, reason: "run_launch_binding_conflict" } }
+      }
       if (run.branch_id !== state.activeBranchId) {
+        commitPairBinding(envelopes, pair)
+        envelopes.runs.set(run.run_id, inspected.next)
         next = state
         break
       }
-      const active = ACTIVE_RUN_STATUSES.has(run.execution_status)
-      if (
-        active &&
-        state.activeRunId !== null &&
-        state.activeRunId !== run.run_id
-      ) {
-        return { ...state, repair: { required: true, reason: "run_projection_version_conflict" } }
+      commitPairBinding(envelopes, pair)
+      envelopes.runs.set(run.run_id, inspected.next)
+      const projected = updateActivePairProjection(state, envelopes, pair)
+      if (projected === "conflict") {
+        return { ...state, repair: { required: true, reason: "run_launch_binding_conflict" } }
       }
+      const active = ACTIVE_RUN_STATUSES.has(run.execution_status)
       const messages = state.messages.map((message) =>
         message.runId === run.run_id && !active
           ? { ...message, status: run.execution_status === "completed" ? "complete" as const : "incomplete" as const }
           : message,
       )
       next = {
-        ...state,
+        ...projected,
         messages,
-        activeRunId: active ? run.run_id : state.activeRunId === run.run_id ? null : state.activeRunId,
-        activeRunProjectionVersion: active
-          ? run.projection_version
-          : state.activeRunId === run.run_id ? null : state.activeRunProjectionVersion,
-        activeRunState: active
-          ? run.execution_status === "paused" || run.execution_status === "cancelling" || run.execution_status === "outcome_unknown"
-            ? run.execution_status
-            : "running"
-          : state.activeRunId === run.run_id ? null : state.activeRunState,
       }
       break
     }
@@ -1029,7 +1226,7 @@ function reduceChatProjection(
       const branchIdentityComplete = branchIds.size === branches.length
       const activeBranchExists = branchIds.has(action.snapshot.session.active_branch_id)
       const active = activeMessageRecords(action.snapshot)
-      const activeExecution = activeRun(action.snapshot)
+      const activeExecution = activeRun(action.snapshot, envelopes)
       return {
         ...base,
         connection: state.connection,
@@ -1041,14 +1238,16 @@ function reduceChatProjection(
           .filter((message): message is ChatProjectionMessage => message !== null) : [],
         activeBranchId: action.snapshot.session.active_branch_id,
         snapshotRevision: action.snapshot.snapshot_watermark.cursor,
-        ...activeExecution,
+        ...activeExecution.execution,
         repair: !branchIdentityComplete
           ? { required: true, reason: "branch_identity_conflict" }
           : !activeBranchExists
             ? { required: true, reason: "snapshot_active_branch_missing" }
-            : active.complete
-              ? { required: false }
-              : { required: true, reason: "snapshot_active_lineage_incomplete" },
+            : !active.complete
+              ? { required: true, reason: "snapshot_active_lineage_incomplete" }
+              : activeExecution.conflict === undefined
+                ? { required: false }
+                : { required: true, reason: activeExecution.conflict },
       }
     }
     case "event":

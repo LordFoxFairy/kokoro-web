@@ -96,7 +96,16 @@ function snapshot(): SessionSnapshot {
       attachments: [],
       created_at: NOW,
     }],
-    run_launches: [],
+    run_launches: [{
+      launch_id: "launch-12345678",
+      branch_id: "branch-12345678",
+      trigger_message_id: "message-user-12345678",
+      proposed_run_id: "run-12345678",
+      status: "event_observed",
+      command_receipt_ref: "receipt-launch-12345678",
+      version: 2,
+      updated_at: NOW,
+    }],
     runs: [{
       run_id: "run-12345678",
       launch_id: "launch-12345678",
@@ -292,7 +301,7 @@ describe("Chat projection", () => {
     expect(bindingDrift.getSnapshot()).toMatchObject({
       activeRunId: run.run_id,
       activeRunProjectionVersion: 2,
-      repair: { required: true, reason: "run_projection_version_conflict" },
+      repair: { required: true, reason: "run_launch_binding_conflict" },
     })
 
     const terminalRun = createChatProjectionStore()
@@ -360,6 +369,179 @@ describe("Chat projection", () => {
     })
   })
 
+  it("correlates Run and launch envelopes before display and never revives a terminal Run", () => {
+    const base = snapshot()
+    const run = base.runs[0]
+    const launch = base.run_launches[0]
+    if (run === undefined || launch === undefined) throw new Error("execution fixture missing")
+    const empty: SessionSnapshot = { ...base, runs: [], run_launches: [] }
+
+    const runFirst = createChatProjectionStore()
+    runFirst.hydrate(empty)
+    runFirst.dispatch({
+      type: "event",
+      event: event({
+        kind: "run.view.updated",
+        payload: { run: { ...run, projection_version: 1 } },
+      }),
+    })
+    expect(runFirst.getSnapshot()).toMatchObject({ activeRunId: null, activeRunState: null })
+    runFirst.dispatch({
+      type: "event",
+      event: event({
+        kind: "run.launch.updated",
+        payload: { launch: { ...launch, version: 1 } },
+      }),
+    })
+    expect(runFirst.getSnapshot()).toMatchObject({
+      activeRunId: run.run_id,
+      activeRunProjectionVersion: 1,
+      activeRunState: "running",
+      repair: { required: false },
+    })
+
+    const launchFirst = createChatProjectionStore()
+    launchFirst.hydrate(empty)
+    launchFirst.dispatch({
+      type: "event",
+      event: event({
+        kind: "run.launch.updated",
+        payload: { launch: { ...launch, status: "dispatch_pending", version: 1 } },
+      }),
+    })
+    expect(launchFirst.getSnapshot()).toMatchObject({ activeRunId: null, activeRunState: null })
+    launchFirst.dispatch({
+      type: "event",
+      event: event({
+        kind: "run.view.updated",
+        payload: { run: { ...run, projection_version: 1 } },
+      }),
+    })
+    expect(launchFirst.getSnapshot()).toMatchObject({
+      activeRunId: run.run_id,
+      activeRunProjectionVersion: 1,
+      activeRunState: "running",
+      repair: { required: false },
+    })
+
+    const terminal = createChatProjectionStore()
+    terminal.hydrate(empty)
+    terminal.dispatch({
+      type: "event",
+      event: event({
+        kind: "run.view.updated",
+        payload: { run: { ...run, execution_status: "completed", projection_version: 1 } },
+      }),
+    })
+    terminal.dispatch({
+      type: "event",
+      event: event({
+        kind: "run.launch.updated",
+        payload: { launch: { ...launch, version: 1 } },
+      }),
+    })
+    expect(terminal.getSnapshot()).toMatchObject({
+      activeRunId: null,
+      activeRunProjectionVersion: null,
+      activeRunState: null,
+      repair: { required: false },
+    })
+  })
+
+  it("rejects non-bijective Run-launch bindings in snapshots and live correlation", () => {
+    const initial = snapshot()
+    const run = initial.runs[0]
+    const launch = initial.run_launches[0]
+    if (run === undefined || launch === undefined) throw new Error("execution fixture missing")
+
+    const duplicateRun = createChatProjectionStore()
+    duplicateRun.hydrate({
+      ...initial,
+      runs: [run, { ...run, run_id: "run-other-12345678", assistant_message_id: "message-other-12345678" }],
+    })
+    expect(duplicateRun.getSnapshot().repair).toEqual({
+      required: true,
+      reason: "run_launch_binding_conflict",
+    })
+
+    const empty: SessionSnapshot = { ...initial, runs: [], run_launches: [] }
+    const live = createChatProjectionStore()
+    live.hydrate(empty)
+    live.dispatch({
+      type: "event",
+      event: event({ kind: "run.launch.updated", payload: { launch: { ...launch, version: 1 } } }),
+    })
+    const beforeConflict = live.getSnapshot()
+    live.dispatch({
+      type: "event",
+      event: event({
+        kind: "run.view.updated",
+        payload: {
+          run: {
+            ...run,
+            run_id: "run-other-12345678",
+            assistant_message_id: "message-other-12345678",
+            projection_version: 1,
+          },
+        },
+      }),
+    })
+    expect(live.getSnapshot()).toMatchObject({
+      activeRunId: beforeConflict.activeRunId,
+      activeRunState: beforeConflict.activeRunState,
+      repair: { required: true, reason: "run_launch_binding_conflict" },
+    })
+
+    const concurrent = createChatProjectionStore()
+    concurrent.hydrate(empty)
+    concurrent.dispatch({
+      type: "event",
+      event: event({ kind: "run.view.updated", payload: { run: { ...run, projection_version: 1 } } }),
+    })
+    concurrent.dispatch({
+      type: "event",
+      event: event({ kind: "run.launch.updated", payload: { launch: { ...launch, version: 1 } } }),
+    })
+    const otherRun = {
+      ...run,
+      run_id: "run-concurrent-12345678",
+      launch_id: "launch-concurrent-12345678",
+      assistant_message_id: "message-concurrent-12345678",
+      projection_version: 1,
+    }
+    const otherLaunch = {
+      ...launch,
+      launch_id: otherRun.launch_id,
+      proposed_run_id: otherRun.run_id,
+      trigger_message_id: "message-trigger-concurrent-12345678",
+      status: "dispatch_pending" as const,
+      version: 1,
+    }
+    concurrent.dispatch({
+      type: "event",
+      event: event({ kind: "run.view.updated", payload: { run: otherRun } }),
+    })
+    concurrent.dispatch({
+      type: "event",
+      event: event({ kind: "run.launch.updated", payload: { launch: otherLaunch } }),
+    })
+    expect(concurrent.getSnapshot()).toMatchObject({
+      activeRunId: run.run_id,
+      repair: { required: true, reason: "run_launch_binding_conflict" },
+    })
+    concurrent.dispatch({
+      type: "event",
+      event: event({
+        kind: "run.launch.updated",
+        payload: { launch: { ...otherLaunch, status: "failed", failure_code: "ADMISSION_DENIED" } },
+      }),
+    })
+    expect(concurrent.getSnapshot().repair).toEqual({
+      required: true,
+      reason: "run_launch_binding_conflict",
+    })
+  })
+
   it("repairs every same-branch active-leaf change until a fresh snapshot updates branch authority", () => {
     const initial = snapshot()
     const unproven = createChatProjectionStore()
@@ -418,10 +600,91 @@ describe("Chat projection", () => {
       }),
     })
     expect(proven.getSnapshot()).toMatchObject({
-      session: { activeLeafMessageId: initial.session.active_leaf_message_id, version: 2 },
+      session: { activeLeafMessageId: nextMessage.message_id, version: 3 },
       messages: [{ id: "message-user-12345678" }, { id: "message-assistant-12345678" }, { id: nextMessage.message_id }],
-      branches: [{ id: initial.session.active_branch_id, version: 2 }],
-      repair: { required: true, reason: "active_leaf_changed_refetch_snapshot" },
+      branches: [{ id: initial.session.active_branch_id, leafMessageId: nextMessage.message_id, version: 2 }],
+      repair: { required: false },
+    })
+  })
+
+  it("admits only the next active lineage message without polluting authority on rejection", () => {
+    const initial = snapshot()
+    const valid = {
+      message_id: "message-next-12345678",
+      branch_id: initial.session.active_branch_id,
+      parent_message_id: initial.session.active_leaf_message_id,
+      role: "user" as const,
+      ordinal: 2,
+      lifecycle: "completed" as const,
+      parts: [],
+      attachments: [],
+      created_at: NOW,
+    }
+    const attacks = [
+      { ...valid, ordinal: 4 },
+      { ...valid, parent_message_id: "message-unknown-12345678" },
+    ] as const
+
+    for (const attack of attacks) {
+      const store = createChatProjectionStore()
+      store.hydrate(initial)
+      const before = store.getSnapshot()
+      store.dispatch({
+        type: "event",
+        event: event({ kind: "message.created", payload: { message: attack } }),
+      })
+      expect(store.getSnapshot().messages).toBe(before.messages)
+      expect(store.getSnapshot()).toMatchObject({
+        session: { activeLeafMessageId: initial.session.active_leaf_message_id },
+        branches: [{ leafMessageId: initial.session.active_leaf_message_id }],
+        repair: { required: true, reason: "message_lineage_conflict" },
+      })
+
+      store.dispatch({
+        type: "event",
+        event: event({ kind: "message.created", payload: { message: valid } }),
+      })
+      expect(store.getSnapshot().messages.at(-1)?.id).toBe(valid.message_id)
+    }
+  })
+
+  it("establishes the root and leaf atomically for the first live active message", () => {
+    const base = snapshot()
+    const empty: SessionSnapshot = {
+      ...base,
+      session: { ...base.session, active_leaf_message_id: undefined },
+      branches: [{
+        branch_id: base.session.active_branch_id,
+        origin: "original",
+        version: 1,
+        created_at: NOW,
+      }],
+      messages: [],
+      runs: [],
+      run_launches: [],
+    }
+    const first = {
+      message_id: "message-first-12345678",
+      branch_id: empty.session.active_branch_id,
+      role: "user" as const,
+      ordinal: 0,
+      lifecycle: "completed" as const,
+      parts: [],
+      attachments: [],
+      created_at: NOW,
+    }
+    const store = createChatProjectionStore()
+    store.hydrate(empty)
+    store.dispatch({
+      type: "event",
+      event: event({ kind: "message.created", payload: { message: first } }),
+    })
+
+    expect(store.getSnapshot()).toMatchObject({
+      session: { activeLeafMessageId: first.message_id },
+      branches: [{ rootMessageId: first.message_id, leafMessageId: first.message_id }],
+      messages: [{ id: first.message_id }],
+      repair: { required: false },
     })
   })
 
