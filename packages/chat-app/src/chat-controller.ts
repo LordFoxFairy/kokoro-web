@@ -353,6 +353,13 @@ export function createChatController(options: {
       failClosedForOwnerContract()
       return false
     }
+    if (
+      state.projection.session?.id === sessionId &&
+      state.projection.session.contextPolicy !== snapshot.session.context_policy
+    ) {
+      failClosedForOwnerContract()
+      return false
+    }
     const previousStream = stream
     stream = null
     previousStream?.close()

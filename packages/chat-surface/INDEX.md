@@ -38,9 +38,13 @@ one current root-to-leaf chain. Admission atomically advances the projected Sess
 may confirm Session metadata but cannot certify the still-old branch version. The projection remains
 `active_branch_authority_stale`, and all branch-versioned mutations stay disabled until a complete snapshot replaces branch
 authority. The store privately fences that live extension to its Session, previous Session version, branch, previous branch version,
-and expected leaf. Session and existing Branch owners retain `{version, fingerprint}` records: lower versions are rejected,
-same-version envelopes must be exact semantic replays, and only a higher version may change owner state. Accepted live owner events
-advance the same records. A snapshot clears the fence only when it retains that active branch, proves the expected complete lineage,
+and expected leaf. Session and existing Branch owners retain separate immutable-identity and versioned semantic-state fingerprints:
+lower versions are rejected and same-version envelopes must replay every owner field exactly. Session identity locks its ID, project,
+context policy, and creation instant; `updatedAt` is monotonic while title, lifecycle, active branch, and active leaf may evolve only at
+a higher version. Branch identity locks its ID, parent, fork source, origin, and creation instant. Its root is write-once: an empty
+branch may establish a root at a higher version, after which no version may change or clear it; leaf state may evolve at a higher
+version. Accepted complete live owner events advance the same records. A snapshot clears the fence only when it retains that active
+branch, proves the expected complete lineage,
 and advances the branch owner version strictly beyond the fence baseline. A complete different active branch may supersede the
 fence when its Session version advances beyond that baseline; if a live owner event already established version N, the version-N
 snapshot is admitted only when its owner fingerprint is exact. Same/older equivocation remains repair-only. Reset/recovery cannot

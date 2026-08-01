@@ -1122,6 +1122,211 @@ describe("Chat projection", () => {
     })
   })
 
+  it("locks Session identity and timestamp authority independently from mutable state", () => {
+    const initial = snapshot()
+    const later = "2026-07-28T00:00:01.000Z"
+    const immutableDrifts: readonly Partial<SessionSnapshot["session"]>[] = [
+      { project_ref: "project-rebound-12345678" },
+      { context_policy: "temporary" },
+      { created_at: later },
+    ]
+
+    for (const drift of immutableDrifts) {
+      const store = createChatProjectionStore()
+      store.hydrate(initial)
+      store.hydrate({
+        ...initial,
+        session: { ...initial.session, ...drift, title: "A legal new title", version: 3, updated_at: later },
+      })
+      expect(store.getSnapshot()).toMatchObject({
+        session: { projectRef: initial.session.project_ref, title: initial.session.title, version: 2 },
+        repair: { required: true, reason: "session_owner_version_conflict" },
+      })
+    }
+
+    const timestampRollback = createChatProjectionStore()
+    timestampRollback.hydrate(initial)
+    timestampRollback.hydrate({
+      ...initial,
+      session: {
+        ...initial.session,
+        title: "A legal new title",
+        version: 3,
+        updated_at: "2026-07-27T23:59:59.000Z",
+      },
+    })
+    expect(timestampRollback.getSnapshot()).toMatchObject({
+      session: { title: initial.session.title, version: 2 },
+      repair: { required: true, reason: "session_owner_version_conflict" },
+    })
+
+    const sameVersionTimestampDrift = createChatProjectionStore()
+    sameVersionTimestampDrift.hydrate(initial)
+    sameVersionTimestampDrift.hydrate({
+      ...initial,
+      session: { ...initial.session, updated_at: later },
+    })
+    expect(sameVersionTimestampDrift.getSnapshot()).toMatchObject({
+      session: { version: 2 },
+      repair: { required: true, reason: "session_owner_version_conflict" },
+    })
+  })
+
+  it("rejects immutable Session drift from a live owner event before projection", () => {
+    const initial = snapshot()
+    const store = createChatProjectionStore()
+    store.hydrate(initial)
+    store.dispatch({
+      type: "event",
+      event: event({
+        kind: "session.updated",
+        payload: {
+          session: {
+            ...initial.session,
+            project_ref: "project-live-rebound-12345678",
+            title: "Must not project",
+            version: 3,
+            updated_at: "2026-07-28T00:00:01.000Z",
+          },
+        },
+      }),
+    })
+    expect(store.getSnapshot()).toMatchObject({
+      session: { projectRef: initial.session.project_ref, title: initial.session.title, version: 2 },
+      repair: { required: true, reason: "session_owner_version_conflict" },
+    })
+  })
+
+  it("allows higher-version Session title and leaf evolution with monotonic time", () => {
+    const initial = snapshot()
+    const nextMessage = {
+      message_id: "message-owner-next-leaf-12345678",
+      branch_id: initial.session.active_branch_id,
+      parent_message_id: initial.session.active_leaf_message_id,
+      role: "assistant" as const,
+      ordinal: 2,
+      lifecycle: "completed" as const,
+      parts: [],
+      attachments: [],
+      created_at: "2026-07-28T00:00:01.000Z",
+    }
+    const store = createChatProjectionStore()
+    store.hydrate(initial)
+    store.hydrate({
+      ...initial,
+      session: {
+        ...initial.session,
+        title: "Renamed thread",
+        active_leaf_message_id: nextMessage.message_id,
+        version: 3,
+        updated_at: nextMessage.created_at,
+      },
+      branches: [{
+        ...initial.branches[0]!,
+        leaf_message_id: nextMessage.message_id,
+        version: 3,
+      }],
+      messages: [...initial.messages, nextMessage],
+    })
+    expect(store.getSnapshot()).toMatchObject({
+      session: { title: "Renamed thread", activeLeafMessageId: nextMessage.message_id, version: 3 },
+      branches: [{ rootMessageId: initial.branches[0]!.root_message_id, leafMessageId: nextMessage.message_id, version: 3 }],
+      repair: { required: false },
+    })
+  })
+
+  it("locks Branch identity and makes root ownership write-once", () => {
+    const initial = snapshot()
+    const immutableDrifts: readonly Partial<SessionSnapshot["branches"][number]>[] = [
+      { parent_branch_id: "branch-parent-rebound-12345678" },
+      { forked_from_message_id: "message-user-12345678" },
+      { origin: "edit" },
+      { created_at: "2026-07-28T00:00:01.000Z" },
+    ]
+    for (const drift of immutableDrifts) {
+      const store = createChatProjectionStore()
+      store.hydrate(initial)
+      store.hydrate({
+        ...initial,
+        session: { ...initial.session, version: 3, updated_at: "2026-07-28T00:00:01.000Z" },
+        branches: [{ ...initial.branches[0]!, ...drift, version: 3 }],
+      })
+      expect(store.getSnapshot()).toMatchObject({
+        branches: [{
+          id: initial.branches[0]!.branch_id,
+          origin: initial.branches[0]!.origin,
+          rootMessageId: initial.branches[0]!.root_message_id,
+          version: 2,
+        }],
+        repair: { required: true, reason: "branch_owner_version_conflict" },
+      })
+    }
+
+    for (const root_message_id of [undefined, "message-assistant-12345678"] as const) {
+      const store = createChatProjectionStore()
+      store.hydrate(initial)
+      store.hydrate({
+        ...initial,
+        session: { ...initial.session, version: 3, updated_at: "2026-07-28T00:00:01.000Z" },
+        branches: [{ ...initial.branches[0]!, root_message_id, version: 3 }],
+      })
+      expect(store.getSnapshot()).toMatchObject({
+        branches: [{ rootMessageId: initial.branches[0]!.root_message_id, version: 2 }],
+        repair: { required: true, reason: "branch_owner_version_conflict" },
+      })
+    }
+  })
+
+  it("allows an empty Branch to establish its root once at a higher version", () => {
+    const initial = snapshot()
+    const empty: SessionSnapshot = {
+      ...initial,
+      session: { ...initial.session, active_leaf_message_id: undefined },
+      branches: [{
+        ...initial.branches[0]!,
+        root_message_id: undefined,
+        leaf_message_id: undefined,
+        version: 1,
+      }],
+      messages: [],
+      runs: [],
+      run_launches: [],
+    }
+    const rootMessage = {
+      message_id: "message-first-root-12345678",
+      branch_id: initial.session.active_branch_id,
+      role: "user" as const,
+      ordinal: 0,
+      lifecycle: "completed" as const,
+      parts: [],
+      attachments: [],
+      created_at: "2026-07-28T00:00:01.000Z",
+    }
+    const store = createChatProjectionStore()
+    store.hydrate(empty)
+    store.hydrate({
+      ...empty,
+      session: {
+        ...empty.session,
+        active_leaf_message_id: rootMessage.message_id,
+        version: 3,
+        updated_at: rootMessage.created_at,
+      },
+      branches: [{
+        ...empty.branches[0]!,
+        root_message_id: rootMessage.message_id,
+        leaf_message_id: rootMessage.message_id,
+        version: 2,
+      }],
+      messages: [rootMessage],
+    })
+    expect(store.getSnapshot()).toMatchObject({
+      session: { activeLeafMessageId: rootMessage.message_id, version: 3 },
+      branches: [{ rootMessageId: rootMessage.message_id, leafMessageId: rootMessage.message_id, version: 2 }],
+      repair: { required: false },
+    })
+  })
+
   it("accepts an exact live Session owner at N while rejecting same-version branch-switch equivocation", () => {
     const initial = snapshot()
     const nextMessage = {
@@ -1720,7 +1925,7 @@ describe("Chat projection", () => {
     })
     expect(contextDrift.getSnapshot()).toMatchObject({
       session: { title: "Thread", contextPolicy: "standard" },
-      repair: { required: true, reason: "session_metadata_conflict" },
+      repair: { required: true, reason: "session_owner_version_conflict" },
     })
 
     const incompatibleRevision = createChatProjectionStore()

@@ -1290,15 +1290,25 @@ type TerminalLaunchAuthority = Readonly<{
   pair: RunLaunchPairBinding
 }>
 
-type VersionedOwnerRecord = Readonly<{
+type SessionOwnerRecord = Readonly<{
   version: number
-  fingerprint: string
+  identityFingerprint: string
+  semanticFingerprint?: string
+  projectedStateFingerprint: string
+  updatedAtEpochMs: number
+}>
+
+type BranchOwnerRecord = Readonly<{
+  version: number
+  identityFingerprint: string
+  semanticFingerprint: string
+  rootMessageId: string | null
 }>
 
 type ProjectionOwnerScope = {
   sessionId: string
-  sessionOwner: VersionedOwnerRecord
-  branchOwners: Map<string, VersionedOwnerRecord>
+  sessionOwner: SessionOwnerRecord
+  branchOwners: Map<string, BranchOwnerRecord>
   branchAuthorityFence: BranchAuthorityFence | null
   terminalRuns: Map<string, TerminalRunAuthority>
   terminalLaunches: Map<string, TerminalLaunchAuthority>
@@ -1318,56 +1328,122 @@ type HydrationOwnerConflict =
 
 const DEFAULT_TERMINAL_AUTHORITY_LIMIT = 4_096
 
-function sessionOwnerRecordFromSnapshot(session: SessionSnapshot["session"]): VersionedOwnerRecord {
+function ownerTimestamp(value: string): number {
+  return Date.parse(value)
+}
+
+function sessionProjectedStateFingerprint(
+  session: Pick<ChatSessionMetadata, "id" | "projectRef" | "title" | "lifecycle" | "contextPolicy" | "version" | "activeLeafMessageId">,
+  activeBranchId: string,
+): string {
+  return stableStringify({
+    id: session.id,
+    projectRef: session.projectRef,
+    title: session.title,
+    lifecycle: session.lifecycle,
+    contextPolicy: session.contextPolicy,
+    version: session.version,
+    activeBranchId,
+    activeLeafMessageId: session.activeLeafMessageId ?? null,
+  })
+}
+
+function sessionOwnerRecordFromSnapshot(session: SessionSnapshot["session"]): SessionOwnerRecord {
+  const projected = projectSessionMetadata(session)
   return {
     version: session.version,
-    fingerprint: stableStringify({
+    identityFingerprint: stableStringify({
+      id: session.session_id,
+      projectRef: session.project_ref,
+      contextPolicy: session.context_policy,
+      createdAtEpochMs: ownerTimestamp(session.created_at),
+    }),
+    semanticFingerprint: stableStringify({
       id: session.session_id,
       projectRef: session.project_ref,
       title: session.title,
       lifecycle: session.lifecycle,
       contextPolicy: session.context_policy,
-      version: session.version,
       activeBranchId: session.active_branch_id,
       activeLeafMessageId: session.active_leaf_message_id ?? null,
+      version: session.version,
+      createdAtEpochMs: ownerTimestamp(session.created_at),
+      updatedAtEpochMs: ownerTimestamp(session.updated_at),
     }),
+    projectedStateFingerprint: sessionProjectedStateFingerprint(projected, session.active_branch_id),
+    updatedAtEpochMs: ownerTimestamp(session.updated_at),
   }
 }
 
 function sessionOwnerRecordFromProjection(
   session: ChatSessionMetadata,
   activeBranchId: string,
-): VersionedOwnerRecord {
+  current: SessionOwnerRecord,
+): SessionOwnerRecord {
   return {
     version: session.version,
-    fingerprint: stableStringify({
-      id: session.id,
-      projectRef: session.projectRef,
-      title: session.title,
-      lifecycle: session.lifecycle,
-      contextPolicy: session.contextPolicy,
-      version: session.version,
-      activeBranchId,
-      activeLeafMessageId: session.activeLeafMessageId ?? null,
-    }),
+    identityFingerprint: current.identityFingerprint,
+    projectedStateFingerprint: sessionProjectedStateFingerprint(session, activeBranchId),
+    updatedAtEpochMs: current.updatedAtEpochMs,
   }
 }
 
-function branchOwnerRecord(branch: ConversationBranch): VersionedOwnerRecord {
+function branchOwnerRecord(branch: ConversationBranch): BranchOwnerRecord {
   return {
     version: branch.version,
-    fingerprint: stableStringify(projectBranchSummary(branch)),
+    identityFingerprint: stableStringify({
+      id: branch.branch_id,
+      parentBranchId: branch.parent_branch_id ?? null,
+      forkedFromMessageId: branch.forked_from_message_id ?? null,
+      origin: branch.origin,
+      createdAtEpochMs: ownerTimestamp(branch.created_at),
+    }),
+    semanticFingerprint: stableStringify({
+      id: branch.branch_id,
+      parentBranchId: branch.parent_branch_id ?? null,
+      forkedFromMessageId: branch.forked_from_message_id ?? null,
+      rootMessageId: branch.root_message_id ?? null,
+      leafMessageId: branch.leaf_message_id ?? null,
+      origin: branch.origin,
+      version: branch.version,
+      createdAtEpochMs: ownerTimestamp(branch.created_at),
+    }),
+    rootMessageId: branch.root_message_id ?? null,
   }
 }
 
-function ownerRecordConflict(
-  current: VersionedOwnerRecord,
-  candidate: VersionedOwnerRecord,
-  regression: HydrationOwnerConflict,
-  equivocation: HydrationOwnerConflict,
+function sessionOwnerConflict(
+  current: SessionOwnerRecord,
+  candidate: SessionOwnerRecord,
 ): HydrationOwnerConflict | undefined {
-  if (candidate.version < current.version) return regression
-  if (candidate.version === current.version && candidate.fingerprint !== current.fingerprint) return equivocation
+  if (candidate.version < current.version) return "session_version_regression"
+  if (
+    candidate.identityFingerprint !== current.identityFingerprint ||
+    candidate.updatedAtEpochMs < current.updatedAtEpochMs
+  ) return "session_owner_version_conflict"
+  if (candidate.version !== current.version) return undefined
+  if (current.semanticFingerprint !== undefined) {
+    if (candidate.semanticFingerprint !== current.semanticFingerprint) return "session_owner_version_conflict"
+  } else if (candidate.projectedStateFingerprint !== current.projectedStateFingerprint) {
+    return "session_owner_version_conflict"
+  }
+  return undefined
+}
+
+function branchOwnerConflict(
+  current: BranchOwnerRecord,
+  candidate: BranchOwnerRecord,
+): HydrationOwnerConflict | undefined {
+  if (candidate.version < current.version) return "branch_owner_version_regression"
+  if (candidate.identityFingerprint !== current.identityFingerprint) return "branch_owner_version_conflict"
+  if (candidate.version === current.version && candidate.semanticFingerprint !== current.semanticFingerprint) {
+    return "branch_owner_version_conflict"
+  }
+  if (
+    candidate.version > current.version &&
+    current.rootMessageId !== null &&
+    candidate.rootMessageId !== current.rootMessageId
+  ) return "branch_owner_version_conflict"
   return undefined
 }
 
@@ -1407,22 +1483,15 @@ function snapshotOwnerConflict(
   scope: ProjectionOwnerScope,
   snapshot: SessionSnapshot,
 ): HydrationOwnerConflict | undefined {
-  const sessionConflict = ownerRecordConflict(
+  const sessionConflict = sessionOwnerConflict(
     scope.sessionOwner,
     sessionOwnerRecordFromSnapshot(snapshot.session),
-    "session_version_regression",
-    "session_owner_version_conflict",
   )
   if (sessionConflict !== undefined) return sessionConflict
   for (const [branchId, current] of scope.branchOwners) {
     const branch = snapshot.branches.find((candidate) => candidate.branch_id === branchId)
     if (branch === undefined) return "branch_owner_missing"
-    const branchConflict = ownerRecordConflict(
-      current,
-      branchOwnerRecord(branch),
-      "branch_owner_version_regression",
-      "branch_owner_version_conflict",
-    )
+    const branchConflict = branchOwnerConflict(current, branchOwnerRecord(branch))
     if (branchConflict !== undefined) return branchConflict
   }
   return undefined
@@ -1533,6 +1602,14 @@ function liveTerminalOwnerConflict(
     ) return "terminal_authority_capacity_exceeded"
   }
   return undefined
+}
+
+function liveOwnerConflict(
+  scope: ProjectionOwnerScope,
+  event: SessionEvent,
+): HydrationOwnerConflict | undefined {
+  if (event.kind !== "session.updated") return undefined
+  return sessionOwnerConflict(scope.sessionOwner, sessionOwnerRecordFromSnapshot(event.payload.session))
 }
 
 function rememberTerminalAuthority(
@@ -1696,7 +1773,8 @@ export function createChatProjectionStore(options: ChatProjectionStoreOptions = 
         ownerScope !== null &&
         action.event.session_id === ownerScope.sessionId
       ) {
-        const conflict = liveTerminalOwnerConflict(ownerScope, action.event, terminalAuthorityLimit)
+        const conflict = liveOwnerConflict(ownerScope, action.event) ??
+          liveTerminalOwnerConflict(ownerScope, action.event, terminalAuthorityLimit)
         if (conflict !== undefined) {
           commit({ ...state, repair: { required: true, reason: conflict } })
           return
@@ -1754,7 +1832,11 @@ export function createChatProjectionStore(options: ChatProjectionStoreOptions = 
           next.activeBranchId !== null &&
           next.session.version > (previous.session?.version ?? 0)
         ) {
-          ownerScope.sessionOwner = sessionOwnerRecordFromProjection(next.session, next.activeBranchId)
+          ownerScope.sessionOwner = sessionOwnerRecordFromProjection(
+            next.session,
+            next.activeBranchId,
+            ownerScope.sessionOwner,
+          )
         }
         if (
           action.event.kind === "branch.created" &&
