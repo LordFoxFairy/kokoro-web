@@ -323,7 +323,7 @@ describe("Chat projection", () => {
     expect(terminalRun.getSnapshot()).toMatchObject({
       activeRunId: null,
       activeRunProjectionVersion: null,
-      repair: { required: true, reason: "run_projection_version_conflict" },
+      repair: { required: true, reason: "run_terminal_authority_conflict" },
     })
 
     const terminalLaunchCannotClearRun = createChatProjectionStore()
@@ -365,7 +365,7 @@ describe("Chat projection", () => {
     })
     expect(terminalLaunch.getSnapshot()).toMatchObject({
       activeRunId: null,
-      repair: { required: true, reason: "run_launch_version_conflict" },
+      repair: { required: true, reason: "run_launch_terminal_authority_conflict" },
     })
   })
 
@@ -636,8 +636,8 @@ describe("Chat projection", () => {
       },
     })
     expect(proven.getSnapshot()).toMatchObject({
-      session: { activeLeafMessageId: initial.session.active_leaf_message_id },
-      branches: [{ leafMessageId: initial.session.active_leaf_message_id, version: 3 }],
+      session: { activeLeafMessageId: nextMessage.message_id, version: 3 },
+      branches: [{ leafMessageId: nextMessage.message_id, version: 2 }],
       repair: { required: true, reason: "active_branch_authority_stale" },
     })
 
@@ -651,15 +651,15 @@ describe("Chat projection", () => {
       },
     })
     expect(proven.getSnapshot()).toMatchObject({
-      branches: [{ leafMessageId: nextMessage.message_id, version: 1 }],
-      repair: { required: true, reason: "active_branch_authority_stale" },
+      branches: [{ leafMessageId: nextMessage.message_id, version: 2 }],
+      repair: { required: true, reason: "branch_owner_version_regression" },
     })
 
     proven.hydrate(matchingSnapshot)
     expect(proven.getSnapshot()).toMatchObject({
       session: { activeLeafMessageId: nextMessage.message_id, version: 3 },
       branches: [{ leafMessageId: nextMessage.message_id, version: 2 }],
-      repair: { required: true, reason: "active_branch_authority_stale" },
+      repair: { required: true, reason: "branch_owner_version_conflict" },
     })
 
     proven.hydrate({
@@ -686,8 +686,8 @@ describe("Chat projection", () => {
       },
     })
     expect(proven.getSnapshot()).toMatchObject({
-      activeBranchId: "branch-switched-12345678",
-      repair: { required: true, reason: "active_branch_authority_stale" },
+      activeBranchId: initial.session.active_branch_id,
+      repair: { required: true, reason: "session_owner_version_conflict" },
     })
 
     proven.hydrate({
@@ -899,7 +899,7 @@ describe("Chat projection", () => {
     store.reset()
     store.hydrate(switchedSnapshot(2, "signed.cursor.switch-same-version"))
     expect(store.getSnapshot()).toMatchObject({
-      repair: { required: true, reason: "active_branch_authority_stale" },
+      repair: { required: true, reason: "session_owner_version_conflict" },
     })
 
     store.reset()
@@ -1081,6 +1081,292 @@ describe("Chat projection", () => {
       session: { activeLeafMessageId: second.message_id },
       messages: [{}, {}, { id: first.message_id }, { id: second.message_id }],
       repair: { required: false },
+    })
+  })
+
+  it("fences same-version Session and Branch owner equivocation", () => {
+    const initial = snapshot()
+    const sessionConflict = createChatProjectionStore()
+    sessionConflict.hydrate(initial)
+    sessionConflict.hydrate({
+      ...initial,
+      session: { ...initial.session, title: "same-version drift" },
+    })
+    expect(sessionConflict.getSnapshot()).toMatchObject({
+      session: { title: initial.session.title, version: 2 },
+      repair: { required: true, reason: "session_owner_version_conflict" },
+    })
+
+    const branchConflict = createChatProjectionStore()
+    branchConflict.hydrate(initial)
+    branchConflict.hydrate({
+      ...initial,
+      session: { ...initial.session, version: 3 },
+      branches: [{ ...initial.branches[0]!, created_at: "2026-07-28T00:00:01.000Z" }],
+    })
+    expect(branchConflict.getSnapshot()).toMatchObject({
+      session: { version: 2 },
+      branches: [{ version: 2, createdAt: NOW }],
+      repair: { required: true, reason: "branch_owner_version_conflict" },
+    })
+
+    branchConflict.reset()
+    branchConflict.hydrate({
+      ...initial,
+      session: { ...initial.session, version: 3 },
+      branches: [{ ...initial.branches[0]!, version: 1 }],
+    })
+    expect(branchConflict.getSnapshot()).toMatchObject({
+      session: null,
+      repair: { required: true, reason: "branch_owner_version_regression" },
+    })
+  })
+
+  it("accepts an exact live Session owner at N while rejecting same-version branch-switch equivocation", () => {
+    const initial = snapshot()
+    const nextMessage = {
+      message_id: "message-before-live-switch-12345678",
+      branch_id: initial.session.active_branch_id,
+      parent_message_id: initial.session.active_leaf_message_id,
+      role: "user" as const,
+      ordinal: 2,
+      lifecycle: "completed" as const,
+      parts: [],
+      attachments: [],
+      created_at: NOW,
+    }
+    const branch = {
+      branch_id: "branch-live-switch-12345678",
+      parent_branch_id: initial.session.active_branch_id,
+      forked_from_message_id: initial.session.active_leaf_message_id,
+      origin: "fork" as const,
+      version: 1,
+      created_at: NOW,
+    }
+    const liveSession = {
+      ...initial.session,
+      active_branch_id: branch.branch_id,
+      active_leaf_message_id: undefined,
+      version: 3,
+    }
+    const complete = (session: SessionSnapshot["session"]): SessionSnapshot => ({
+      ...initial,
+      session,
+      branches: [...initial.branches, branch],
+      runs: [],
+      run_launches: [],
+      snapshot_watermark: {
+        ...initial.snapshot_watermark,
+        cursor: "signed.cursor.live-switch",
+        durable_seq: "10",
+        projection_version: 3,
+      },
+    })
+    const store = createChatProjectionStore()
+    store.hydrate(initial)
+    store.dispatch({ type: "event", event: event({ kind: "message.created", payload: { message: nextMessage } }) })
+    store.dispatch({ type: "event", event: event({ kind: "branch.created", payload: { branch } }) })
+    store.dispatch({ type: "event", event: event({ kind: "session.updated", payload: { session: liveSession } }) })
+
+    store.reset()
+    store.hydrate(complete({ ...liveSession, title: "same-version switch drift" }))
+    expect(store.getSnapshot()).toMatchObject({
+      session: null,
+      repair: { required: true, reason: "session_owner_version_conflict" },
+    })
+
+    store.reset()
+    store.hydrate(complete(liveSession))
+    expect(store.getSnapshot()).toMatchObject({
+      session: { id: initial.session.session_id, version: 3 },
+      activeBranchId: branch.branch_id,
+      messages: [],
+      repair: { required: false },
+    })
+  })
+
+  it("keeps terminal pair bindings across omission and rejects live rebinding before projection", () => {
+    const initial = snapshot()
+    const run = initial.runs[0]!
+    const launch = initial.run_launches[0]!
+    const store = createChatProjectionStore()
+    store.hydrate(initial)
+    store.dispatch({
+      type: "event",
+      event: event({
+        kind: "run.view.updated",
+        payload: { run: { ...run, execution_status: "completed", projection_version: 3 } },
+      }),
+    })
+    store.hydrate({
+      ...initial,
+      session: { ...initial.session, version: 3 },
+      runs: [],
+      run_launches: [],
+    })
+    expect(store.getSnapshot()).toMatchObject({ activeRunId: null, repair: { required: false } })
+
+    const reboundLaunch = {
+      ...launch,
+      launch_id: "launch-rebound-12345678",
+      proposed_run_id: run.run_id,
+      command_receipt_ref: "receipt-rebound-12345678",
+      status: "dispatched" as const,
+      version: 1,
+    }
+    store.dispatch({
+      type: "event",
+      event: event({ kind: "run.launch.updated", payload: { launch: reboundLaunch } }),
+    })
+    expect(store.getSnapshot()).toMatchObject({
+      activeRunId: null,
+      repair: { required: true, reason: "run_terminal_authority_conflict" },
+    })
+    store.dispatch({
+      type: "event",
+      event: event({
+        kind: "run.view.updated",
+        payload: {
+          run: {
+            ...run,
+            launch_id: reboundLaunch.launch_id,
+            execution_status: "completed",
+            projection_version: 4,
+          },
+        },
+      }),
+    })
+    expect(store.getSnapshot()).toMatchObject({
+      activeRunId: null,
+      repair: { required: true, reason: "run_terminal_authority_conflict" },
+    })
+
+    store.reset()
+    store.hydrate({
+      ...initial,
+      session: { ...initial.session, version: 4 },
+      runs: [{ ...run, launch_id: reboundLaunch.launch_id, execution_status: "completed", projection_version: 4 }],
+      run_launches: [reboundLaunch],
+    })
+    expect(store.getSnapshot()).toMatchObject({
+      activeRunId: null,
+      repair: { required: true, reason: "run_terminal_authority_conflict" },
+    })
+  })
+
+  it("does not let an invalid candidate Session clear the current owner scope", () => {
+    const initial = snapshot()
+    const run = initial.runs[0]!
+    const nextMessage = {
+      message_id: "message-before-invalid-session-12345678",
+      branch_id: initial.session.active_branch_id,
+      parent_message_id: initial.session.active_leaf_message_id,
+      role: "user" as const,
+      ordinal: 2,
+      lifecycle: "completed" as const,
+      parts: [],
+      attachments: [],
+      created_at: NOW,
+    }
+    const store = createChatProjectionStore()
+    store.hydrate(initial)
+    store.dispatch({ type: "event", event: event({ kind: "message.created", payload: { message: nextMessage } }) })
+    store.dispatch({
+      type: "event",
+      event: event({
+        kind: "run.view.updated",
+        payload: { run: { ...run, execution_status: "completed", projection_version: 3 } },
+      }),
+    })
+    store.dispatch({
+      type: "event",
+      event: event({
+        kind: "session.updated",
+        payload: {
+          session: { ...initial.session, active_leaf_message_id: nextMessage.message_id, version: 3 },
+        },
+      }),
+    })
+
+    store.hydrate({
+      ...initial,
+      session: {
+        ...initial.session,
+        session_id: "session-invalid-candidate-12345678",
+        active_branch_id: "branch-missing-12345678",
+        version: 99,
+      },
+    })
+    expect(store.getSnapshot()).toMatchObject({
+      session: { id: initial.session.session_id, version: 3, activeLeafMessageId: nextMessage.message_id },
+      repair: { required: true, reason: "snapshot_active_branch_missing" },
+    })
+
+    store.reset()
+    store.hydrate(initial)
+    expect(store.getSnapshot()).toMatchObject({
+      session: null,
+      repair: { required: true, reason: "session_version_regression" },
+    })
+
+    store.reset()
+    store.hydrate({
+      ...initial,
+      session: { ...initial.session, active_leaf_message_id: nextMessage.message_id, version: 3 },
+      branches: [{ ...initial.branches[0]!, leaf_message_id: nextMessage.message_id, version: 3 }],
+      messages: [...initial.messages, nextMessage],
+      runs: [{ ...run, execution_status: "completed", projection_version: 4 }],
+    })
+    expect(store.getSnapshot()).toMatchObject({
+      session: { id: initial.session.session_id, version: 3 },
+      activeRunId: null,
+      repair: { required: false },
+    })
+  })
+
+  it("fails closed without evicting terminal authority when the safety limit is reached", () => {
+    const initial = snapshot()
+    const run = initial.runs[0]!
+    const store = createChatProjectionStore({ terminalAuthorityLimit: 1 })
+    store.hydrate({ ...initial, runs: [], run_launches: [] })
+    store.dispatch({
+      type: "event",
+      event: event({
+        kind: "run.view.updated",
+        payload: { run: { ...run, execution_status: "completed", projection_version: 1 } },
+      }),
+    })
+    store.dispatch({
+      type: "event",
+      event: event({
+        kind: "run.view.updated",
+        payload: {
+          run: {
+            ...run,
+            run_id: "run-over-limit-12345678",
+            launch_id: "launch-over-limit-12345678",
+            assistant_message_id: "message-over-limit-12345678",
+            execution_status: "completed",
+            projection_version: 1,
+          },
+        },
+      }),
+    })
+    expect(store.getSnapshot().repair).toEqual({
+      required: true,
+      reason: "terminal_authority_capacity_exceeded",
+    })
+
+    store.reset()
+    store.hydrate({
+      ...initial,
+      session: { ...initial.session, version: 3 },
+      runs: [{ ...run, execution_status: "running", projection_version: 2 }],
+      run_launches: [initial.run_launches[0]!],
+    })
+    expect(store.getSnapshot()).toMatchObject({
+      activeRunId: null,
+      repair: { required: true, reason: "run_terminal_authority_conflict" },
     })
   })
 
@@ -1267,6 +1553,7 @@ describe("Chat projection", () => {
       ...initial,
       session: {
         ...initial.session,
+        session_id: "session-replacement-12345678",
         title: "Replacement",
         active_branch_id: "branch-replacement-12345678",
         active_leaf_message_id: undefined,
@@ -1280,6 +1567,7 @@ describe("Chat projection", () => {
       }],
       messages: [],
       runs: [],
+      run_launches: [],
       snapshot_watermark: {
         cursor: "signed.cursor.9",
         stream_epoch: "epoch-12345678",

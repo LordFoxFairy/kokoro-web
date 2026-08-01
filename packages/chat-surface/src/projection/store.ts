@@ -1290,17 +1290,86 @@ type TerminalLaunchAuthority = Readonly<{
   pair: RunLaunchPairBinding
 }>
 
+type VersionedOwnerRecord = Readonly<{
+  version: number
+  fingerprint: string
+}>
+
 type ProjectionOwnerScope = {
   sessionId: string
-  sessionVersionFloor: number
+  sessionOwner: VersionedOwnerRecord
+  branchOwners: Map<string, VersionedOwnerRecord>
   branchAuthorityFence: BranchAuthorityFence | null
   terminalRuns: Map<string, TerminalRunAuthority>
   terminalLaunches: Map<string, TerminalLaunchAuthority>
+  terminalPairsByRunId: Map<string, RunLaunchPairBinding>
+  terminalPairsByLaunchId: Map<string, RunLaunchPairBinding>
 }
 
 type HydrationOwnerConflict =
+  | "session_version_regression"
+  | "session_owner_version_conflict"
+  | "branch_owner_missing"
+  | "branch_owner_version_regression"
+  | "branch_owner_version_conflict"
   | "run_terminal_authority_conflict"
   | "run_launch_terminal_authority_conflict"
+  | "terminal_authority_capacity_exceeded"
+
+const DEFAULT_TERMINAL_AUTHORITY_LIMIT = 4_096
+
+function sessionOwnerRecordFromSnapshot(session: SessionSnapshot["session"]): VersionedOwnerRecord {
+  return {
+    version: session.version,
+    fingerprint: stableStringify({
+      id: session.session_id,
+      projectRef: session.project_ref,
+      title: session.title,
+      lifecycle: session.lifecycle,
+      contextPolicy: session.context_policy,
+      version: session.version,
+      activeBranchId: session.active_branch_id,
+      activeLeafMessageId: session.active_leaf_message_id ?? null,
+    }),
+  }
+}
+
+function sessionOwnerRecordFromProjection(
+  session: ChatSessionMetadata,
+  activeBranchId: string,
+): VersionedOwnerRecord {
+  return {
+    version: session.version,
+    fingerprint: stableStringify({
+      id: session.id,
+      projectRef: session.projectRef,
+      title: session.title,
+      lifecycle: session.lifecycle,
+      contextPolicy: session.contextPolicy,
+      version: session.version,
+      activeBranchId,
+      activeLeafMessageId: session.activeLeafMessageId ?? null,
+    }),
+  }
+}
+
+function branchOwnerRecord(branch: ConversationBranch): VersionedOwnerRecord {
+  return {
+    version: branch.version,
+    fingerprint: stableStringify(projectBranchSummary(branch)),
+  }
+}
+
+function ownerRecordConflict(
+  current: VersionedOwnerRecord,
+  candidate: VersionedOwnerRecord,
+  regression: HydrationOwnerConflict,
+  equivocation: HydrationOwnerConflict,
+): HydrationOwnerConflict | undefined {
+  if (candidate.version < current.version) return regression
+  if (candidate.version === current.version && candidate.fingerprint !== current.fingerprint) return equivocation
+  return undefined
+}
 
 function samePair(left: RunLaunchPairBinding, right: RunLaunchPairBinding): boolean {
   return left.runId === right.runId && left.launchId === right.launchId && left.branchId === right.branchId
@@ -1315,10 +1384,58 @@ function terminalEnvelopeConflicts<Status extends string>(
   return candidate.version === terminal.version && candidate.fingerprint !== terminal.fingerprint
 }
 
+function terminalPairConflict(
+  scope: ProjectionOwnerScope,
+  pair: RunLaunchPairBinding,
+): HydrationOwnerConflict | undefined {
+  const byRun = scope.terminalPairsByRunId.get(pair.runId)
+  if (byRun !== undefined && !samePair(byRun, pair)) {
+    return scope.terminalRuns.has(byRun.runId)
+      ? "run_terminal_authority_conflict"
+      : "run_launch_terminal_authority_conflict"
+  }
+  const byLaunch = scope.terminalPairsByLaunchId.get(pair.launchId)
+  if (byLaunch !== undefined && !samePair(byLaunch, pair)) {
+    return scope.terminalRuns.has(byLaunch.runId)
+      ? "run_terminal_authority_conflict"
+      : "run_launch_terminal_authority_conflict"
+  }
+  return undefined
+}
+
+function snapshotOwnerConflict(
+  scope: ProjectionOwnerScope,
+  snapshot: SessionSnapshot,
+): HydrationOwnerConflict | undefined {
+  const sessionConflict = ownerRecordConflict(
+    scope.sessionOwner,
+    sessionOwnerRecordFromSnapshot(snapshot.session),
+    "session_version_regression",
+    "session_owner_version_conflict",
+  )
+  if (sessionConflict !== undefined) return sessionConflict
+  for (const [branchId, current] of scope.branchOwners) {
+    const branch = snapshot.branches.find((candidate) => candidate.branch_id === branchId)
+    if (branch === undefined) return "branch_owner_missing"
+    const branchConflict = ownerRecordConflict(
+      current,
+      branchOwnerRecord(branch),
+      "branch_owner_version_regression",
+      "branch_owner_version_conflict",
+    )
+    if (branchConflict !== undefined) return branchConflict
+  }
+  return undefined
+}
+
 function hydrationOwnerConflict(
   scope: ProjectionOwnerScope,
   authority: ProjectionEnvelopeAuthority,
 ): HydrationOwnerConflict | undefined {
+  for (const pair of authority.pairsByRunId.values()) {
+    const pairConflict = terminalPairConflict(scope, pair)
+    if (pairConflict !== undefined) return pairConflict
+  }
   for (const [runId, terminal] of scope.terminalRuns) {
     const candidateRun = authority.runs.get(runId)
     if (candidateRun !== undefined && terminalEnvelopeConflicts(terminal.envelope, candidateRun)) {
@@ -1352,6 +1469,72 @@ function hydrationOwnerConflict(
   return undefined
 }
 
+function terminalAuthorityCapacityExceeded(
+  scope: ProjectionOwnerScope | null,
+  authority: ProjectionEnvelopeAuthority,
+  limit: number,
+): boolean {
+  const runIds = new Set(scope?.terminalRuns.keys() ?? [])
+  const launchIds = new Set(scope?.terminalLaunches.keys() ?? [])
+  for (const [runId, envelope] of authority.runs) {
+    if (TERMINAL_RUN_STATUSES.has(envelope.status)) runIds.add(runId)
+  }
+  for (const [launchId, envelope] of authority.launches) {
+    if (TERMINAL_LAUNCH_STATUSES.has(envelope.status)) launchIds.add(launchId)
+  }
+  return runIds.size + launchIds.size > limit
+}
+
+function liveTerminalOwnerConflict(
+  scope: ProjectionOwnerScope,
+  event: SessionEvent,
+  limit: number,
+): HydrationOwnerConflict | undefined {
+  if (event.kind === "run.view.updated") {
+    const run = event.payload.run
+    const pair = runPair(run)
+    const pairConflict = terminalPairConflict(scope, pair)
+    if (pairConflict !== undefined) return pairConflict
+    const candidate: VersionedEnvelopeFingerprint<RunStatus> = {
+      version: run.projection_version,
+      fingerprint: stableStringify(run),
+      bindingFingerprint: runBinding(run),
+      status: run.execution_status,
+    }
+    const terminal = scope.terminalRuns.get(run.run_id)
+    if (terminal !== undefined && terminalEnvelopeConflicts(terminal.envelope, candidate)) {
+      return "run_terminal_authority_conflict"
+    }
+    if (
+      terminal === undefined &&
+      TERMINAL_RUN_STATUSES.has(run.execution_status) &&
+      scope.terminalRuns.size + scope.terminalLaunches.size >= limit
+    ) return "terminal_authority_capacity_exceeded"
+  }
+  if (event.kind === "run.launch.updated") {
+    const launch = event.payload.launch
+    const pair = launchPair(launch)
+    const pairConflict = terminalPairConflict(scope, pair)
+    if (pairConflict !== undefined) return pairConflict
+    const candidate: VersionedEnvelopeFingerprint<RunLaunchStatus> = {
+      version: launch.version,
+      fingerprint: stableStringify(launch),
+      bindingFingerprint: launchBinding(launch),
+      status: launch.status,
+    }
+    const terminal = scope.terminalLaunches.get(launch.launch_id)
+    if (terminal !== undefined && terminalEnvelopeConflicts(terminal.envelope, candidate)) {
+      return "run_launch_terminal_authority_conflict"
+    }
+    if (
+      terminal === undefined &&
+      TERMINAL_LAUNCH_STATUSES.has(launch.status) &&
+      scope.terminalRuns.size + scope.terminalLaunches.size >= limit
+    ) return "terminal_authority_capacity_exceeded"
+  }
+  return undefined
+}
+
 function rememberTerminalAuthority(
   scope: ProjectionOwnerScope,
   authority: ProjectionEnvelopeAuthority,
@@ -1365,6 +1548,8 @@ function rememberTerminalAuthority(
       (current === undefined || !terminalEnvelopeConflicts(current.envelope, envelope))
     ) {
       scope.terminalRuns.set(runId, { envelope, pair })
+      scope.terminalPairsByRunId.set(pair.runId, pair)
+      scope.terminalPairsByLaunchId.set(pair.launchId, pair)
     }
   }
   for (const [launchId, envelope] of authority.launches) {
@@ -1376,6 +1561,8 @@ function rememberTerminalAuthority(
       (current === undefined || !terminalEnvelopeConflicts(current.envelope, envelope))
     ) {
       scope.terminalLaunches.set(launchId, { envelope, pair })
+      scope.terminalPairsByRunId.set(pair.runId, pair)
+      scope.terminalPairsByLaunchId.set(pair.launchId, pair)
     }
   }
 }
@@ -1386,16 +1573,27 @@ function createProjectionOwnerScope(
 ): ProjectionOwnerScope {
   const scope: ProjectionOwnerScope = {
     sessionId: snapshot.session.session_id,
-    sessionVersionFloor: snapshot.session.version,
+    sessionOwner: sessionOwnerRecordFromSnapshot(snapshot.session),
+    branchOwners: new Map(snapshot.branches.map((branch) => [branch.branch_id, branchOwnerRecord(branch)])),
     branchAuthorityFence: null,
     terminalRuns: new Map(),
     terminalLaunches: new Map(),
+    terminalPairsByRunId: new Map(),
+    terminalPairsByLaunchId: new Map(),
   }
   rememberTerminalAuthority(scope, authority)
   return scope
 }
 
-export function createChatProjectionStore(): ChatProjectionStore {
+export type ChatProjectionStoreOptions = Readonly<{
+  terminalAuthorityLimit?: number
+}>
+
+export function createChatProjectionStore(options: ChatProjectionStoreOptions = {}): ChatProjectionStore {
+  const terminalAuthorityLimit = options.terminalAuthorityLimit ?? DEFAULT_TERMINAL_AUTHORITY_LIMIT
+  if (!Number.isSafeInteger(terminalAuthorityLimit) || terminalAuthorityLimit < 1) {
+    throw new RangeError("terminalAuthorityLimit must be a positive safe integer")
+  }
   let state = createChatProjection()
   let fingerprints: PartEnvelopeFingerprints = new WeakMap()
   let envelopes = emptyEnvelopeAuthority()
@@ -1414,26 +1612,9 @@ export function createChatProjectionStore(): ChatProjectionStore {
       return () => listeners.delete(listener)
     },
     hydrate(snapshot) {
-      if (ownerScope !== null && ownerScope.sessionId !== snapshot.session.session_id) {
-        ownerScope = null
-      }
-      const currentScope = ownerScope
-      if (
-        currentScope !== null &&
-        snapshot.session.version < currentScope.sessionVersionFloor
-      ) {
-        commit({ ...state, repair: { required: true, reason: "session_version_regression" } })
-        return
-      }
+      const currentScope = ownerScope?.sessionId === snapshot.session.session_id ? ownerScope : null
       const nextFingerprints: PartEnvelopeFingerprints = new WeakMap()
       const nextEnvelopes = snapshotEnvelopeAuthority(snapshot)
-      const ownerConflict = currentScope === null
-        ? undefined
-        : hydrationOwnerConflict(currentScope, nextEnvelopes.authority)
-      if (ownerConflict !== undefined) {
-        commit({ ...state, repair: { required: true, reason: ownerConflict } })
-        return
-      }
       let next = reduceChatProjection(
         state,
         { type: "snapshot", snapshot },
@@ -1446,15 +1627,26 @@ export function createChatProjectionStore(): ChatProjectionStore {
       if (conflict !== undefined) {
         next = { ...next, repair: { required: true, reason: conflict } }
       }
+      let ownerConflict: HydrationOwnerConflict | undefined
+      if (currentScope !== null) {
+        ownerConflict = snapshotOwnerConflict(currentScope, snapshot) ??
+          hydrationOwnerConflict(currentScope, nextEnvelopes.authority)
+      }
+      if (
+        ownerConflict === undefined &&
+        terminalAuthorityCapacityExceeded(currentScope, nextEnvelopes.authority, terminalAuthorityLimit)
+      ) {
+        ownerConflict = "terminal_authority_capacity_exceeded"
+      }
       const fence = currentScope?.branchAuthorityFence ?? null
-      if (currentScope !== null && fence !== null) {
+      let clearsFence = false
+      if (ownerConflict === undefined && currentScope !== null && fence !== null) {
         const fencedBranch = snapshot.branches.find((branch) => branch.branch_id === fence.branchId)
         const fencedLeaf = next.messages.at(-1)
         const replacesSameBranchAuthority =
           !next.repair.required &&
           snapshot.session.active_branch_id === fence.branchId &&
-          snapshot.session.version >= currentScope.sessionVersionFloor &&
-          snapshot.session.version >= fence.previousSessionVersion &&
+          snapshot.session.version > fence.previousSessionVersion &&
           snapshot.session.active_leaf_message_id === fence.expectedLeafMessageId &&
           fencedBranch?.leaf_message_id === fence.expectedLeafMessageId &&
           fencedBranch.version > fence.previousBranchVersion &&
@@ -1462,26 +1654,31 @@ export function createChatProjectionStore(): ChatProjectionStore {
         const replacesWithNewActiveBranch =
           !next.repair.required &&
           snapshot.session.active_branch_id !== fence.branchId &&
-          snapshot.session.version > currentScope.sessionVersionFloor
+          snapshot.session.version > fence.previousSessionVersion
         if (replacesSameBranchAuthority || replacesWithNewActiveBranch) {
-          currentScope.branchAuthorityFence = null
+          clearsFence = true
         } else if (!next.repair.required) {
           next = { ...next, repair: { required: true, reason: "active_branch_authority_stale" } }
         }
       }
+      const rejection = ownerConflict ?? (next.repair.required ? next.repair.reason ?? "snapshot_invalid" : undefined)
+      if (rejection !== undefined) {
+        const rejected = { ...state, repair: { required: true, reason: rejection } }
+        commit(ownerScope === null ? { ...next, repair: rejected.repair } : rejected)
+        return
+      }
       fingerprints = nextFingerprints
       envelopes = nextEnvelopes.authority
       indexes = built.indexes
-      if (!next.repair.required) {
-        if (currentScope === null) {
-          ownerScope = createProjectionOwnerScope(snapshot, nextEnvelopes.authority)
-        } else {
-          currentScope.sessionVersionFloor = Math.max(
-            currentScope.sessionVersionFloor,
-            snapshot.session.version,
-          )
-          rememberTerminalAuthority(currentScope, nextEnvelopes.authority)
+      if (currentScope === null) {
+        ownerScope = createProjectionOwnerScope(snapshot, nextEnvelopes.authority)
+      } else {
+        currentScope.sessionOwner = sessionOwnerRecordFromSnapshot(snapshot.session)
+        for (const branch of snapshot.branches) {
+          currentScope.branchOwners.set(branch.branch_id, branchOwnerRecord(branch))
         }
+        if (clearsFence) currentScope.branchAuthorityFence = null
+        rememberTerminalAuthority(currentScope, nextEnvelopes.authority)
       }
       commit(next)
     },
@@ -1494,6 +1691,17 @@ export function createChatProjectionStore(): ChatProjectionStore {
     },
     dispatch(action) {
       const previous = state
+      if (
+        action.type === "event" &&
+        ownerScope !== null &&
+        action.event.session_id === ownerScope.sessionId
+      ) {
+        const conflict = liveTerminalOwnerConflict(ownerScope, action.event, terminalAuthorityLimit)
+        if (conflict !== undefined) {
+          commit({ ...state, repair: { required: true, reason: conflict } })
+          return
+        }
+      }
       let next = reduceChatProjection(state, action, fingerprints, envelopes, indexes)
       if (
         action.type === "event" &&
@@ -1505,7 +1713,8 @@ export function createChatProjectionStore(): ChatProjectionStore {
         const session = previous.session
         const branch = previous.branches.find((candidate) => candidate.id === message.branch_id)
         const scope = ownerScope
-        if (session !== null && branch !== undefined && scope?.sessionId === session.id) {
+        const branchOwner = scope?.branchOwners.get(message.branch_id)
+        if (session !== null && branch !== undefined && scope?.sessionId === session.id && branchOwner !== undefined) {
           scope.branchAuthorityFence = scope.branchAuthorityFence !== null &&
               scope.branchAuthorityFence.sessionId === session.id &&
               scope.branchAuthorityFence.branchId === branch.id
@@ -1516,8 +1725,8 @@ export function createChatProjectionStore(): ChatProjectionStore {
             : {
                 sessionId: session.id,
                 branchId: branch.id,
-                previousSessionVersion: session.version,
-                previousBranchVersion: branch.version,
+                previousSessionVersion: scope.sessionOwner.version,
+                previousBranchVersion: branchOwner.version,
                 expectedLeafMessageId: message.message_id,
               }
         }
@@ -1535,10 +1744,26 @@ export function createChatProjectionStore(): ChatProjectionStore {
       }
       if (ownerScope !== null && next.session?.id === ownerScope.sessionId && action.type === "event") {
         if (
-          ["branch.activated", "session.updated"].includes(action.event.kind) &&
+          action.event.kind === "session.updated" &&
           next.session.version > (previous.session?.version ?? 0)
         ) {
-          ownerScope.sessionVersionFloor = Math.max(ownerScope.sessionVersionFloor, next.session.version)
+          ownerScope.sessionOwner = sessionOwnerRecordFromSnapshot(action.event.payload.session)
+        }
+        if (
+          action.event.kind === "branch.activated" &&
+          next.activeBranchId !== null &&
+          next.session.version > (previous.session?.version ?? 0)
+        ) {
+          ownerScope.sessionOwner = sessionOwnerRecordFromProjection(next.session, next.activeBranchId)
+        }
+        if (
+          action.event.kind === "branch.created" &&
+          next.branches.length > previous.branches.length
+        ) {
+          ownerScope.branchOwners.set(
+            action.event.payload.branch.branch_id,
+            branchOwnerRecord(action.event.payload.branch),
+          )
         }
         if (["run.launch.updated", "run.view.updated"].includes(action.event.kind)) {
           rememberTerminalAuthority(ownerScope, envelopes)

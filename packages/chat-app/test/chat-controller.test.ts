@@ -1506,7 +1506,8 @@ describe("Chat recovery controller", () => {
 
   it("repairs a projection-invalidating event from a fresh authoritative snapshot", async () => {
     const initial = snapshot("branch-original-12345678", "signed.cursor.1", "1")
-    const repaired = snapshot("branch-repaired-12345678", "signed.cursor.2", "2")
+    const repairedBranch = snapshot("branch-repaired-12345678", "signed.cursor.2", "2")
+    const repaired = { ...repairedBranch, branches: [...initial.branches, ...repairedBranch.branches] }
     const fetchSnapshot = vi.fn(async () => repaired)
     const { client, streams } = clientFixture({ initial, fetchSnapshot })
     const controller = createChatController({
@@ -1639,7 +1640,8 @@ describe("Chat recovery controller", () => {
 
   it("keeps a safe retry action when snapshot repair is temporarily unavailable", async () => {
     const initial = snapshot("branch-original-12345678", "signed.cursor.1", "1")
-    const repaired = snapshot("branch-repaired-12345678", "signed.cursor.2", "2")
+    const repairedBranch = snapshot("branch-repaired-12345678", "signed.cursor.2", "2")
+    const repaired = { ...repairedBranch, branches: [...initial.branches, ...repairedBranch.branches] }
     const fetchSnapshot = vi.fn<SessionClient["fetchSnapshot"]>()
       .mockRejectedValueOnce(new SessionClientError("network", "offline"))
       .mockResolvedValueOnce(repaired)

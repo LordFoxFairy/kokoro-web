@@ -6,7 +6,7 @@ owners: ["@LordFoxFairy"]
 
 # Chat surface foundation
 
-Owns the browser-safe Kokoro Chat projection and assistant-ui `useExternalStoreRuntime` adapter. Session snapshots and durable events enter one reducer; admitted snapshot actions replace the complete browser projection for Session metadata, branches, active history, command-safe attachment references, and execution state. Same-Session snapshots remain subordinate to the store's private owner floors and irreversible terminal ledger. `ChatProjection` is the only public Chat UI read model; callers must not retain a parallel `SessionSnapshot` for rendering or command construction. Unsupported and incomplete parts, connection state, command conflict, and repair state are first-class and are preserved in adapter extras.
+Owns the browser-safe Kokoro Chat projection and assistant-ui `useExternalStoreRuntime` adapter. Session snapshots and durable events enter one reducer; admitted snapshot actions replace the complete browser projection for Session metadata, branches, active history, command-safe attachment references, and execution state. Same-Session snapshots remain subordinate to private version-plus-fingerprint owner records and an irreversible terminal ledger. A candidate for another Session replaces that scope only after its complete snapshot passes every structural, envelope, and capacity check; an invalid candidate leaves the current Session's authority intact. `ChatProjection` is the only public Chat UI read model; callers must not retain a parallel `SessionSnapshot` for rendering or command construction. Unsupported and incomplete parts, connection state, command conflict, and repair state are first-class and are preserved in adapter extras.
 
 `snapshotRevision` is the opaque cursor of the last successful complete hydrate. It exists to remount viewport-only state after hydrate/repair; it is not the live stream head and must not be compared or incremented by the browser. Session, branch, Run, launch, message, message-part, and owner projections fence their own contract versions or immutable identities. `activeRunProjectionVersion` is the only public Run control precondition; all Run/launch envelope fingerprints remain private to the store. `SessionEvent.projection_version` is aggregate evidence, not a globally monotonic stream revision.
 
@@ -26,7 +26,11 @@ than one active execution. Live Run/launch events may arrive in either order, bu
 `launching`/`running`; the pair activates atomically only after both envelopes agree. Consecutive owner versions must follow the
 explicit lifecycle transition tables; terminal states can replay exactly but can never revive. Once an authoritative Run is visible,
 a matching terminal launch cannot clear it, while a terminal Run always dominates later launch evidence and a conflicting pair
-requests repair without committing the rejected envelope.
+requests repair without committing the rejected envelope. A terminal envelope permanently locks both directions of its
+`runId <-> launchId` pair for that Session, including across snapshots that omit the pair; hydrate and live-event admission both
+check those locks before replacing or mutating private envelope authority. The ledger has a fixed production capacity of 4096
+terminal Run/launch envelopes. Reaching it fails closed with `terminal_authority_capacity_exceeded`; the store never evicts or clears
+an earlier safety fact to admit a later one.
 
 A message ID is admitted only from an authoritative Session snapshot or `message.created` event. A new live active-branch message must
 be the exact next ordinal, name the current authoritative leaf as parent (or establish the empty branch's first root), and extend the
@@ -34,11 +38,13 @@ one current root-to-leaf chain. Admission atomically advances the projected Sess
 may confirm Session metadata but cannot certify the still-old branch version. The projection remains
 `active_branch_authority_stale`, and all branch-versioned mutations stay disabled until a complete snapshot replaces branch
 authority. The store privately fences that live extension to its Session, previous Session version, branch, previous branch version,
-and expected leaf. A
-snapshot clears the fence only when it retains that active branch, proves the expected complete lineage, and advances the branch
-owner version strictly without regressing the Session owner floor. A complete different active branch may supersede the fence only
-when its lineage is complete and its Session version strictly advances; same/older branch switches remain repair-only. Reset/recovery
-cannot erase a same-Session fence, Session floor, or terminal Run/launch authority. A snapshot cannot revive a terminal envelope or
+and expected leaf. Session and existing Branch owners retain `{version, fingerprint}` records: lower versions are rejected,
+same-version envelopes must be exact semantic replays, and only a higher version may change owner state. Accepted live owner events
+advance the same records. A snapshot clears the fence only when it retains that active branch, proves the expected complete lineage,
+and advances the branch owner version strictly beyond the fence baseline. A complete different active branch may supersede the
+fence when its Session version advances beyond that baseline; if a live owner event already established version N, the version-N
+snapshot is admitted only when its owner fingerprint is exact. Same/older equivocation remains repair-only. Reset/recovery cannot
+erase a same-Session fence, owner record, or terminal Run/launch authority. A snapshot cannot revive a terminal envelope or
 its active pair even at a higher owner version, while a complete snapshot for another Session starts with independent authority.
 Invalid parent/root/leaf/ordinal
 evidence requests repair before the message fingerprint or projection is committed. The
