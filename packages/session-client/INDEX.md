@@ -38,6 +38,12 @@ cursor/source identity ledger is fixed at 4096 facts, Run authority at 256, and 
 may lower but cannot raise those production ceilings. All ledgers fail closed to future HTTP snapshot repair
 instead of evicting irreversible facts. JSON structure admission uses an iterative, early-stopping traversal, so a
 deep but byte-bounded input cannot exhaust the JavaScript call stack before the depth gate runs.
+Raw SSE admission first requires an exact plain `{id,event,data}` object with primitive fields and counts their
+UTF-8 bytes with an allocation-bounded scan before parsing `data`; circular extras, accessors, BigInt, class
+instances, and oversized payloads therefore produce stable protocol errors instead of native serialization errors.
+The decoder also exposes a transactional `prepare`/`commit` seam. A prepared durable frame owns one pending slot,
+does not advance cursor or lifecycle authority before commit, permits only an exact retry, and rejects a different
+frame until the pending mutation receives an acknowledgement.
 
 Session remains the only browser transport and presentation owner: Web never connects to Agent or trusts an Agent
 raw payload. Agent/Python may become the internal AG-UI producer only after Root pins the Python SDK and TypeScript

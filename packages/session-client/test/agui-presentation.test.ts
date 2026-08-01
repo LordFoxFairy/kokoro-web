@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   AGUI_CURSOR_PROFILE_REVISION,
+  AGUI_PRESENTATION_LIMITS,
   AGUI_PRESENTATION_PROFILE_REVISION,
   SESSION_AGUI_CONTRACT_REVISION,
   AguiPresentationProtocolError,
@@ -113,6 +114,32 @@ describe("strict Session-owned AG-UI decoder", () => {
       queryCursor: "opaque.cursor.0001",
       cursorBinding: expect.objectContaining({ durableSeq: "1" }),
     });
+  });
+
+  it("keeps prepared authority pending until an explicit idempotent commit", () => {
+    const decoder = createAguiPresentationDecoder({ grant, initialCursor });
+    const first = durableFrame({
+      seq: 1,
+      sourceKind: "presentation.run.started",
+      runBindingRef: "run.01",
+      event: { type: EventType.RUN_STARTED, threadId: "thread.01", runId: "run.01" },
+    });
+    const prepared = decoder.prepare(first);
+    expect(decoder.getResumeRequest().cursorBinding.durableSeq).toBe("0");
+    expect(decoder.prepare(first)).toBe(prepared);
+    expectCode(
+      () => decoder.prepare(durableFrame({
+        seq: 1,
+        sourceKind: "presentation.run.started",
+        runBindingRef: "run.other",
+        event: { type: EventType.RUN_STARTED, threadId: "thread.01", runId: "run.other" },
+      })),
+      "agui_admission_pending",
+    );
+
+    prepared.commit();
+    prepared.commit();
+    expect(decoder.getResumeRequest().cursorBinding.durableSeq).toBe("1");
   });
 
   it("accepts the Root lifecycle, text, activity, and registered CUSTOM vocabulary", () => {
@@ -401,5 +428,47 @@ describe("strict Session-owned AG-UI decoder", () => {
 
     const longCursor = durableFrame({ seq: 1, sourceKind: "presentation.run.error", runBindingRef: "run.01", cursor: `opaque.${"x".repeat(2_050)}`, event: { type: EventType.RUN_ERROR, message: "Safe", code: "RUN_FAILED" } });
     expectCode(() => decoder.decode(longCursor), "agui_cursor_invalid");
+  });
+
+  it("rejects hostile raw frame objects before serialization or payload copying", () => {
+    const decoder = createAguiPresentationDecoder({ grant, initialCursor });
+    const circular: Record<string, unknown> = {
+      id: "opaque.cursor.0001",
+      event: EventType.RUN_ERROR,
+      data: "{}",
+    };
+    circular.self = circular;
+    expectCode(
+      () => decoder.decode(circular as unknown as AguiSseFrame),
+      "agui_sse_frame_shape_invalid",
+    );
+
+    expectCode(
+      () => decoder.decode({
+        id: "opaque.cursor.0001",
+        event: EventType.RUN_ERROR,
+        data: 1n,
+      } as unknown as AguiSseFrame),
+      "agui_sse_frame_shape_invalid",
+    );
+
+    class NonPlainFrame {
+      readonly id = "opaque.cursor.0001";
+      readonly event = EventType.RUN_ERROR;
+      readonly data = "{}";
+    }
+    expectCode(
+      () => decoder.decode(new NonPlainFrame() as unknown as AguiSseFrame),
+      "agui_sse_frame_shape_invalid",
+    );
+
+    expectCode(
+      () => decoder.decode({
+        id: "opaque.cursor.0001",
+        event: EventType.RUN_ERROR,
+        data: "x".repeat(AGUI_PRESENTATION_LIMITS.maximumFrameBytes + 1),
+      }),
+      "agui_frame_limit_exceeded",
+    );
   });
 });

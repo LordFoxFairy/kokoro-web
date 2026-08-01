@@ -23,6 +23,11 @@ events, raw/native tool/state/reasoning payloads, or unknown extensions because 
 `ChatProjection`, or second assistant-ui store from presentation fields that lack Session owner facts. No current
 Chat controller instantiates it; activation waits for the real Session provider, complete compatibility evidence,
 and an explicit bridge into the existing `ChatProjection`/assistant-ui external-store authority.
+The dormant dispatch port is transactional: every durable mutation carries its opaque cursor as the idempotency
+key and must return `applied|replayed`. Decoder cursor/Run/message authority commits only after that acknowledgement.
+If a consumer applies a mutation and then loses the acknowledgement, retrying the exact frame dispatches the same
+mutation again; the consumer returns `replayed`, after which the decoder commits. Dispatch failure never advances
+the resume cursor, and a different frame fails closed while the original admission is pending.
 
 The projection consumes Session browser v3 directly: active history is admitted only when every active-branch message forms the one
 exact root-to-leaf parent chain, exhausts that branch's messages, and has contiguous canonical ordinals. A leafless branch is valid

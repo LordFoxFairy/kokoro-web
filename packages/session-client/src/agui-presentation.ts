@@ -409,6 +409,62 @@ function bytes(value: string): number {
   return new TextEncoder().encode(value).byteLength;
 }
 
+function boundedUtf8ByteLength(value: string, maximum: number): number {
+  let total = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    const codeUnit = value.charCodeAt(index);
+    if (codeUnit <= 0x7f) total += 1;
+    else if (codeUnit <= 0x7ff) total += 2;
+    else if (codeUnit >= 0xd800 && codeUnit <= 0xdbff) {
+      const next = value.charCodeAt(index + 1);
+      if (next >= 0xdc00 && next <= 0xdfff) {
+        total += 4;
+        index += 1;
+      } else total += 3;
+    } else total += 3;
+    if (total > maximum) return maximum + 1;
+  }
+  return total;
+}
+
+function admitSseFrame(value: unknown): AguiSseFrame {
+  try {
+    if (value === null || typeof value !== "object" || Object.getPrototypeOf(value) !== Object.prototype) {
+      fail("agui_sse_frame_shape_invalid");
+    }
+    const keys = Reflect.ownKeys(value);
+    if (
+      keys.length !== 3 || keys.some((key) => typeof key !== "string") ||
+      !keys.includes("id") || !keys.includes("event") || !keys.includes("data")
+    ) fail("agui_sse_frame_shape_invalid");
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    const id = descriptors.id?.value as unknown;
+    const event = descriptors.event?.value as unknown;
+    const data = descriptors.data?.value as unknown;
+    if (
+      (id !== null && typeof id !== "string") ||
+      (event !== null && typeof event !== "string") ||
+      typeof data !== "string"
+    ) fail("agui_sse_frame_shape_invalid");
+
+    let remaining = AGUI_PRESENTATION_LIMITS.maximumFrameBytes;
+    for (const field of [id, event, data]) {
+      if (field === null) continue;
+      const fieldBytes = boundedUtf8ByteLength(field, remaining);
+      if (fieldBytes > remaining) fail("agui_frame_limit_exceeded", "bytes");
+      remaining -= fieldBytes;
+    }
+    return Object.freeze({ id, event, data });
+  } catch (error) {
+    if (error instanceof AguiPresentationProtocolError) throw error;
+    fail("agui_sse_frame_shape_invalid");
+  }
+}
+
+function sameSseFrame(left: AguiSseFrame, right: AguiSseFrame): boolean {
+  return left.id === right.id && left.event === right.event && left.data === right.data;
+}
+
 function deepFreeze<T>(value: T): T {
   if (value !== null && typeof value === "object" && !Object.isFrozen(value)) {
     for (const child of Object.values(value)) deepFreeze(child);
@@ -444,8 +500,6 @@ function assertJsonBudget(value: unknown): void {
 }
 
 function parseBoundedJson(frame: AguiSseFrame): unknown {
-  const frameBytes = bytes(JSON.stringify(frame));
-  if (frameBytes > AGUI_PRESENTATION_LIMITS.maximumFrameBytes) fail("agui_frame_limit_exceeded", "bytes");
   let parsed: unknown;
   try {
     parsed = JSON.parse(frame.data) as unknown;
@@ -556,7 +610,13 @@ type MessageAuthority = Readonly<{
   state: "open" | "ended";
 }>;
 
+export type AguiPreparedFrame = Readonly<{
+  decoded: AguiDecodedFrame;
+  commit(): void;
+}>;
+
 export type AguiPresentationDecoder = Readonly<{
+  prepare(frame: AguiSseFrame): AguiPreparedFrame;
   decode(frame: AguiSseFrame): AguiDecodedFrame;
   getResumeRequest(): Readonly<{
     headers: Readonly<Record<typeof LAST_EVENT_ID_HEADER, string>>;
@@ -633,14 +693,25 @@ export function createAguiPresentationDecoder(options: Readonly<{
   let lastRecordedAt = -1;
   let lastDecoded: AguiDurableFrame | undefined;
   let presentationThreadId: string | undefined;
-  const cursorFingerprints = new Map<string, string>([[cursorBinding.cursor, "snapshot"]]);
+  const cursorFrames = new Map<string, AguiSseFrame | null>([[cursorBinding.cursor, null]]);
   const sourceEventIds = new Set<string>();
   const runs = new Map<string, RunAuthority>();
   const runIds = new Map<string, string>();
   const messages = new Map<string, MessageAuthority>();
   const messageIds = new Map<string, string>();
+  let pending: Readonly<{ frame: AguiSseFrame; prepared: AguiPreparedFrame }> | undefined;
 
-  const decode = (frame: AguiSseFrame): AguiDecodedFrame => {
+  const settled = (decoded: AguiDecodedFrame): AguiPreparedFrame => Object.freeze({
+    decoded,
+    commit() {},
+  });
+
+  const prepare = (candidate: AguiSseFrame): AguiPreparedFrame => {
+    const frame = admitSseFrame(candidate);
+    if (pending !== undefined) {
+      if (sameSseFrame(pending.frame, frame)) return pending.prepared;
+      fail("agui_admission_pending");
+    }
     const raw = parseBoundedJson(frame);
     if (frame.event === "kokoro.stream.draining") {
       if (frame.id !== null) fail("agui_draining_not_nondurable");
@@ -651,18 +722,18 @@ export function createAguiPresentationDecoder(options: Readonly<{
         parsed.data.streamEpoch !== cursorBinding.streamEpoch ||
         parsed.data.lastDurableCursor !== cursorBinding.cursor
       ) fail("agui_draining_cursor_conflict");
-      return deepFreeze({ kind: "control", id: null, event: "kokoro.stream.draining", data: parsed.data });
+      return settled(deepFreeze({ kind: "control", id: null, event: "kokoro.stream.draining", data: parsed.data }));
     }
 
     if (frame.id === null || frame.event === null) fail("agui_durable_sse_identity_missing");
-    if (bytes(frame.id) > AGUI_PRESENTATION_LIMITS.maximumCursorBytes || !cursorSchema.safeParse(frame.id).success) {
+    const durableCursor = frame.id;
+    if (bytes(durableCursor) > AGUI_PRESENTATION_LIMITS.maximumCursorBytes || !cursorSchema.safeParse(durableCursor).success) {
       fail("agui_cursor_invalid");
     }
-    const frameFingerprint = JSON.stringify(frame);
-    const priorFingerprint = cursorFingerprints.get(frame.id);
-    if (priorFingerprint !== undefined) {
-      if (priorFingerprint === frameFingerprint && lastDecoded?.id === frame.id) {
-        return Object.freeze({ kind: "replay", frame: lastDecoded });
+    if (cursorFrames.has(durableCursor)) {
+      const priorFrame = cursorFrames.get(durableCursor);
+      if (priorFrame !== null && priorFrame !== undefined && sameSseFrame(priorFrame, frame) && lastDecoded?.id === durableCursor) {
+        return settled(Object.freeze({ kind: "replay", frame: lastDecoded }));
       }
       fail("agui_stream_identity_duplicate");
     }
@@ -700,7 +771,7 @@ export function createAguiPresentationDecoder(options: Readonly<{
     const recordedAt = Date.parse(data.source.recordedAt);
     if (recordedAt !== data.event.timestamp || recordedAt < lastRecordedAt) fail("agui_event_time_invalid");
     if (sourceEventIds.has(data.source.sourceEventId)) fail("agui_stream_identity_duplicate");
-    if (cursorFingerprints.size >= streamIdentityLimit || sourceEventIds.size >= streamIdentityLimit) {
+    if (cursorFrames.size >= streamIdentityLimit || sourceEventIds.size >= streamIdentityLimit) {
       fail("agui_authority_capacity_exceeded");
     }
 
@@ -767,7 +838,7 @@ export function createAguiPresentationDecoder(options: Readonly<{
     }
 
     const nextCursorBinding: AguiCursorBinding = Object.freeze({
-      cursor: frame.id,
+      cursor: durableCursor,
       sessionId: data.source.sessionId,
       streamEpoch: data.source.streamEpoch,
       durableSeq: data.source.durableSeq,
@@ -776,30 +847,48 @@ export function createAguiPresentationDecoder(options: Readonly<{
     });
     const decoded: AguiDurableFrame = deepFreeze({
       kind: "durable",
-      id: frame.id as SessionCursor,
+      id: durableCursor as SessionCursor,
       event: data.event.type,
       data,
       cursorBinding: nextCursorBinding,
     });
 
-    if (runUpdate !== undefined) {
-      runs.set(runUpdate.ref, runUpdate.authority);
-      runIds.set(runUpdate.authority.runId, runUpdate.ref);
-      presentationThreadId ??= runUpdate.authority.threadId;
-    }
-    if (messageUpdate !== undefined) {
-      messages.set(messageUpdate.ref, messageUpdate.authority);
-      messageIds.set(messageUpdate.authority.messageId, messageUpdate.ref);
-    }
-    sourceEventIds.add(data.source.sourceEventId);
-    cursorFingerprints.set(frame.id, frameFingerprint);
-    cursorBinding = nextCursorBinding;
-    lastRecordedAt = recordedAt;
-    lastDecoded = decoded;
-    return decoded;
+    let committed = false;
+    const prepared: AguiPreparedFrame = Object.freeze({
+      decoded,
+      commit() {
+        if (committed) return;
+        if (pending?.prepared !== prepared) fail("agui_admission_commit_conflict");
+        if (runUpdate !== undefined) {
+          runs.set(runUpdate.ref, runUpdate.authority);
+          runIds.set(runUpdate.authority.runId, runUpdate.ref);
+          presentationThreadId ??= runUpdate.authority.threadId;
+        }
+        if (messageUpdate !== undefined) {
+          messages.set(messageUpdate.ref, messageUpdate.authority);
+          messageIds.set(messageUpdate.authority.messageId, messageUpdate.ref);
+        }
+        sourceEventIds.add(data.source.sourceEventId);
+        cursorFrames.set(durableCursor, frame);
+        cursorBinding = nextCursorBinding;
+        lastRecordedAt = recordedAt;
+        lastDecoded = decoded;
+        committed = true;
+        pending = undefined;
+      },
+    });
+    pending = Object.freeze({ frame, prepared });
+    return prepared;
+  };
+
+  const decode = (frame: AguiSseFrame): AguiDecodedFrame => {
+    const prepared = prepare(frame);
+    prepared.commit();
+    return prepared.decoded;
   };
 
   return Object.freeze({
+    prepare,
     decode,
     getResumeRequest() {
       return Object.freeze({

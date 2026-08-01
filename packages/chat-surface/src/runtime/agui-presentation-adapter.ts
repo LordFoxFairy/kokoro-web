@@ -8,7 +8,10 @@ import type {
   AguiPresentationDecoder,
   AguiSseFrame,
 } from "@kokoro/session-client/agui-presentation-dormant"
-import { createAguiPresentationDecoder } from "@kokoro/session-client/agui-presentation-dormant"
+import {
+  AguiPresentationProtocolError,
+  createAguiPresentationDecoder,
+} from "@kokoro/session-client/agui-presentation-dormant"
 
 type DurableMutationAuthority = Readonly<{
   durable: true
@@ -250,7 +253,12 @@ export type DormantAguiProjectionPort = Readonly<{
     runs?: number
     messages?: number
   }>
-  dispatch(mutation: ChatAguiPresentationMutation): void
+  /**
+   * Durable mutations use `mutation.cursor` as their idempotency key. A retry
+   * after an uncertain acknowledgement must return `replayed` once that cursor
+   * is already present, rather than applying the mutation twice.
+   */
+  dispatch(mutation: ChatAguiPresentationMutation): "applied" | "replayed"
 }>
 
 /**
@@ -268,8 +276,17 @@ export function createDormantAguiProjectionAdapter(port: DormantAguiProjectionPo
   })
   return Object.freeze({
     accept(frame) {
-      const mutation = mapAguiPresentationFrame(decoder.decode(frame))
-      if (mutation !== null) port.dispatch(mutation)
+      const prepared = decoder.prepare(frame)
+      const mutation = mapAguiPresentationFrame(prepared.decoded)
+      if (mutation === null) {
+        prepared.commit()
+        return
+      }
+      const acknowledgement = port.dispatch(mutation)
+      if (acknowledgement !== "applied" && acknowledgement !== "replayed") {
+        throw new AguiPresentationProtocolError("agui_dispatch_ack_invalid")
+      }
+      prepared.commit()
     },
     getResumeRequest: decoder.getResumeRequest,
   })

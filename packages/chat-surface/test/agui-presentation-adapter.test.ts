@@ -11,6 +11,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createDormantAguiProjectionAdapter,
   type ChatAguiPresentationMutation,
+  type DormantAguiProjectionPort,
 } from "../src/runtime/agui-presentation-adapter.js";
 
 const EventType = {
@@ -65,11 +66,24 @@ function frame(
   };
 }
 
-function createAdapter(dispatch = vi.fn()) {
+function createAdapter(
+  dispatch: DormantAguiProjectionPort["dispatch"] = vi.fn(() => "applied" as const),
+) {
   return {
     dispatch,
     adapter: createDormantAguiProjectionAdapter({ grant, initialCursor, dispatch }),
   };
+}
+
+function expectProtocolCode(operation: () => unknown, code: string): void {
+  try {
+    operation();
+  } catch (error) {
+    expect(error).toBeInstanceOf(AguiPresentationProtocolError);
+    expect((error as AguiPresentationProtocolError).code).toBe(code);
+    return;
+  }
+  throw new Error(`Expected ${code}`);
 }
 
 describe("dormant AG-UI Chat projection adapter", () => {
@@ -103,7 +117,11 @@ describe("dormant AG-UI Chat projection adapter", () => {
   });
 
   it("preserves discriminator/content correlation for activity and CUSTOM mutations", () => {
-    const { adapter, dispatch } = createAdapter();
+    const dispatch = vi.fn((mutation: ChatAguiPresentationMutation) => {
+      void mutation;
+      return "applied" as const;
+    });
+    const { adapter } = createAdapter(dispatch);
     adapter.accept(frame(1, "presentation.run.started", {
       type: EventType.RUN_STARTED,
       threadId: "thread.01",
@@ -178,6 +196,68 @@ describe("dormant AG-UI Chat projection adapter", () => {
       durable: false,
       action: "retry-same-cursor",
     }));
+  });
+
+  it("does not advance resume authority until an idempotent dispatch acknowledges the mutation", () => {
+    let appliedCursor: string | undefined;
+    const dispatch = vi.fn((mutation: ChatAguiPresentationMutation) => {
+      if (!mutation.durable) return "applied" as const;
+      if (appliedCursor === mutation.cursor) return "replayed" as const;
+      appliedCursor = mutation.cursor;
+      throw new Error("consumer applied the mutation but lost its acknowledgement");
+    });
+    const { adapter } = createAdapter(dispatch);
+    const durable = frame(1, "presentation.run.started", {
+      type: EventType.RUN_STARTED,
+      threadId: "thread.01",
+      runId: "run.01",
+    }, { run: "run.01" });
+
+    expect(() => adapter.accept(durable)).toThrow("lost its acknowledgement");
+    expect(adapter.getResumeRequest().cursorBinding.durableSeq).toBe("0");
+
+    adapter.accept(durable);
+    expect(dispatch).toHaveBeenCalledTimes(2);
+    expect(dispatch.mock.calls[0]?.[0]).toEqual(dispatch.mock.calls[1]?.[0]);
+    expect(adapter.getResumeRequest().cursorBinding.durableSeq).toBe("1");
+  });
+
+  it("fails closed on a different frame while one admitted mutation awaits acknowledgement", () => {
+    const dispatch = vi.fn(() => {
+      throw new Error("ack unavailable");
+    });
+    const { adapter } = createAdapter(dispatch);
+    const first = frame(1, "presentation.run.started", {
+      type: EventType.RUN_STARTED,
+      threadId: "thread.01",
+      runId: "run.01",
+    }, { run: "run.01" });
+    expect(() => adapter.accept(first)).toThrow("ack unavailable");
+
+    expectProtocolCode(
+      () => adapter.accept(frame(1, "presentation.run.started", {
+        type: EventType.RUN_STARTED,
+        threadId: "thread.01",
+        runId: "run.other",
+      }, { run: "run.other" })),
+      "agui_admission_pending",
+    );
+    expect(dispatch).toHaveBeenCalledTimes(1);
+    expect(adapter.getResumeRequest().cursorBinding.durableSeq).toBe("0");
+  });
+
+  it("requires an explicit applied or replayed dispatch acknowledgement", () => {
+    const dispatch = vi.fn(() => undefined) as unknown as DormantAguiProjectionPort["dispatch"];
+    const { adapter } = createAdapter(dispatch);
+    expectProtocolCode(
+      () => adapter.accept(frame(1, "presentation.run.started", {
+        type: EventType.RUN_STARTED,
+        threadId: "thread.01",
+        runId: "run.01",
+      }, { run: "run.01" })),
+      "agui_dispatch_ack_invalid",
+    );
+    expect(adapter.getResumeRequest().cursorBinding.durableSeq).toBe("0");
   });
 
   it("rejects structured decoded-frame forgeries before dispatch", () => {
