@@ -33,7 +33,11 @@ be the exact next ordinal, name the current authoritative leaf as parent (or est
 one current root-to-leaf chain. Admission atomically advances the projected Session/branch leaf; a later same-branch `session.updated`
 may confirm Session metadata but cannot certify the still-old branch version. The projection remains
 `active_branch_authority_stale`, and all branch-versioned mutations stay disabled until a complete snapshot replaces branch
-authority. Invalid parent/root/leaf/ordinal evidence requests repair before the message fingerprint or projection is committed. The
+authority. The store privately fences that live extension to its Session, branch, previous branch version, and expected leaf. A
+snapshot clears the fence only when it retains that active branch, proves the expected complete lineage, and advances the branch
+owner version strictly; same/older owner versions and a different active branch remain repair-only. Reset/recovery cannot erase a
+same-Session fence, while a complete snapshot for another Session starts with independent authority. Invalid parent/root/leaf/ordinal
+evidence requests repair before the message fingerprint or projection is committed. The
 first complete envelope owns that ID; only an exact canonical replay is ignored, while
 any same-ID role, branch, lineage, attachment, part, lifecycle, or system-message drift preserves the first projection and requires
 repair. A newly observed part starts at version 1; an existing part accepts only its exact replay or the immediately consecutive

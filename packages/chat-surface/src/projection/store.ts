@@ -1272,11 +1272,19 @@ export type ChatProjectionStore = {
   readonly dispatch: (action: ChatProjectionMutation) => void
 }
 
+type BranchAuthorityFence = Readonly<{
+  sessionId: string
+  branchId: string
+  previousBranchVersion: number
+  expectedLeafMessageId: string
+}>
+
 export function createChatProjectionStore(): ChatProjectionStore {
   let state = createChatProjection()
   let fingerprints: PartEnvelopeFingerprints = new WeakMap()
   let envelopes = emptyEnvelopeAuthority()
   let indexes = buildProjectionIndexes(state.messages).indexes
+  let branchAuthorityFence: BranchAuthorityFence | null = null
   const listeners = new Set<() => void>()
   const commit = (next: ChatProjection): void => {
     if (next === state) return
@@ -1290,6 +1298,12 @@ export function createChatProjectionStore(): ChatProjectionStore {
       return () => listeners.delete(listener)
     },
     hydrate(snapshot) {
+      if (
+        branchAuthorityFence !== null &&
+        branchAuthorityFence.sessionId !== snapshot.session.session_id
+      ) {
+        branchAuthorityFence = null
+      }
       const nextFingerprints: PartEnvelopeFingerprints = new WeakMap()
       const nextEnvelopes = snapshotEnvelopeAuthority(snapshot)
       let next = reduceChatProjection(
@@ -1304,6 +1318,23 @@ export function createChatProjectionStore(): ChatProjectionStore {
       if (conflict !== undefined) {
         next = { ...next, repair: { required: true, reason: conflict } }
       }
+      if (branchAuthorityFence !== null) {
+        const fence = branchAuthorityFence
+        const fencedBranch = snapshot.branches.find((branch) => branch.branch_id === fence.branchId)
+        const fencedLeaf = next.messages.at(-1)
+        const replacesFencedAuthority =
+          !next.repair.required &&
+          snapshot.session.active_branch_id === fence.branchId &&
+          snapshot.session.active_leaf_message_id === fence.expectedLeafMessageId &&
+          fencedBranch?.leaf_message_id === fence.expectedLeafMessageId &&
+          fencedBranch.version > fence.previousBranchVersion &&
+          fencedLeaf?.id === fence.expectedLeafMessageId
+        if (replacesFencedAuthority) {
+          branchAuthorityFence = null
+        } else if (!next.repair.required) {
+          next = { ...next, repair: { required: true, reason: "active_branch_authority_stale" } }
+        }
+      }
       fingerprints = nextFingerprints
       envelopes = nextEnvelopes.authority
       indexes = built.indexes
@@ -1317,7 +1348,33 @@ export function createChatProjectionStore(): ChatProjectionStore {
       commit(next)
     },
     dispatch(action) {
+      const previous = state
       let next = reduceChatProjection(state, action, fingerprints, envelopes, indexes)
+      if (
+        action.type === "event" &&
+        action.event.kind === "message.created" &&
+        next.messages !== previous.messages &&
+        next.session?.activeLeafMessageId === action.event.payload.message.message_id
+      ) {
+        const message = action.event.payload.message
+        const session = previous.session
+        const branch = previous.branches.find((candidate) => candidate.id === message.branch_id)
+        if (session !== null && branch !== undefined) {
+          branchAuthorityFence = branchAuthorityFence !== null &&
+              branchAuthorityFence.sessionId === session.id &&
+              branchAuthorityFence.branchId === branch.id
+            ? {
+                ...branchAuthorityFence,
+                expectedLeafMessageId: message.message_id,
+              }
+            : {
+                sessionId: session.id,
+                branchId: branch.id,
+                previousBranchVersion: branch.version,
+                expectedLeafMessageId: message.message_id,
+              }
+        }
+      }
       if (next !== state && next.messages !== state.messages) {
         if (action.type === "event" && action.event.kind === "message.part.updated") {
           indexes.partOwnerById.set(action.event.payload.part.part_id, action.event.payload.part.message_id)

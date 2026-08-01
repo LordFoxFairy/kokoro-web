@@ -612,10 +612,10 @@ describe("Chat projection", () => {
       repair: { required: true, reason: "active_branch_authority_stale" },
     })
 
-    proven.hydrate({
+    const matchingSnapshot = {
       ...initial,
       session: { ...initial.session, active_leaf_message_id: nextMessage.message_id, version: 3 },
-      branches: [{ ...initial.branches[0]!, leaf_message_id: nextMessage.message_id, version: 3 }],
+      branches: [{ ...initial.branches[0]!, leaf_message_id: nextMessage.message_id, version: 2 }],
       messages: [...initial.messages, nextMessage],
       snapshot_watermark: {
         ...initial.snapshot_watermark,
@@ -623,10 +623,117 @@ describe("Chat projection", () => {
         durable_seq: "9",
         projection_version: 3,
       },
+    } satisfies SessionSnapshot
+    proven.hydrate({
+      ...initial,
+      session: { ...initial.session, version: 4 },
+      branches: [{ ...initial.branches[0]!, version: 3 }],
+      snapshot_watermark: {
+        ...initial.snapshot_watermark,
+        cursor: "signed.cursor.8-wrong-leaf",
+        durable_seq: "8",
+        projection_version: 4,
+      },
+    })
+    expect(proven.getSnapshot()).toMatchObject({
+      session: { activeLeafMessageId: initial.session.active_leaf_message_id },
+      branches: [{ leafMessageId: initial.session.active_leaf_message_id, version: 3 }],
+      repair: { required: true, reason: "active_branch_authority_stale" },
+    })
+
+    proven.hydrate({
+      ...matchingSnapshot,
+      branches: [{ ...matchingSnapshot.branches[0]!, version: 1 }],
+      snapshot_watermark: {
+        ...matchingSnapshot.snapshot_watermark,
+        cursor: "signed.cursor.8-old",
+        durable_seq: "8",
+      },
+    })
+    expect(proven.getSnapshot()).toMatchObject({
+      branches: [{ leafMessageId: nextMessage.message_id, version: 1 }],
+      repair: { required: true, reason: "active_branch_authority_stale" },
+    })
+
+    proven.hydrate(matchingSnapshot)
+    expect(proven.getSnapshot()).toMatchObject({
+      session: { activeLeafMessageId: nextMessage.message_id, version: 3 },
+      branches: [{ leafMessageId: nextMessage.message_id, version: 2 }],
+      repair: { required: true, reason: "active_branch_authority_stale" },
+    })
+
+    proven.hydrate({
+      ...initial,
+      session: {
+        ...initial.session,
+        active_branch_id: "branch-switched-12345678",
+        active_leaf_message_id: undefined,
+        version: 4,
+      },
+      branches: [{
+        branch_id: "branch-switched-12345678",
+        parent_branch_id: initial.session.active_branch_id,
+        origin: "fork",
+        version: 1,
+        created_at: NOW,
+      }],
+      messages: [],
+      snapshot_watermark: {
+        ...initial.snapshot_watermark,
+        cursor: "signed.cursor.10",
+        durable_seq: "10",
+        projection_version: 4,
+      },
+    })
+    expect(proven.getSnapshot()).toMatchObject({
+      activeBranchId: "branch-switched-12345678",
+      repair: { required: true, reason: "active_branch_authority_stale" },
+    })
+
+    proven.hydrate({
+      ...matchingSnapshot,
+      branches: [{ ...matchingSnapshot.branches[0]!, version: 3 }],
+      snapshot_watermark: {
+        ...matchingSnapshot.snapshot_watermark,
+        cursor: "signed.cursor.11",
+        durable_seq: "11",
+      },
     })
     expect(proven.getSnapshot()).toMatchObject({
       session: { activeLeafMessageId: nextMessage.message_id, version: 3 },
       branches: [{ leafMessageId: nextMessage.message_id, version: 3 }],
+      repair: { required: false },
+    })
+  })
+
+  it("scopes a live branch authority fence to its owning Session", () => {
+    const initial = snapshot()
+    const nextMessage = {
+      message_id: "message-next-session-scope-12345678",
+      branch_id: initial.session.active_branch_id,
+      parent_message_id: initial.session.active_leaf_message_id,
+      role: "user" as const,
+      ordinal: 2,
+      lifecycle: "completed" as const,
+      parts: [],
+      attachments: [],
+      created_at: NOW,
+    }
+    const store = createChatProjectionStore()
+    store.hydrate(initial)
+    store.dispatch({
+      type: "event",
+      event: event({ kind: "message.created", payload: { message: nextMessage } }),
+    })
+    expect(store.getSnapshot().repair).toEqual({ required: true, reason: "active_branch_authority_stale" })
+
+    store.reset()
+    store.hydrate({
+      ...initial,
+      session: { ...initial.session, session_id: "session-other-12345678" },
+    })
+    expect(store.getSnapshot()).toMatchObject({
+      session: { id: "session-other-12345678" },
       repair: { required: false },
     })
   })
