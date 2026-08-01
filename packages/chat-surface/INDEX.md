@@ -31,6 +31,11 @@ key and must return `applied|replayed`. Decoder cursor/Run/message authority com
 If a consumer applies a mutation and then loses the acknowledgement, retrying the exact frame dispatches the same
 mutation again; the consumer returns `replayed`, after which the decoder commits. Dispatch failure never advances
 the resume cursor, and a different frame fails closed while the original admission is pending.
+The separate `@kokoro/chat-surface/agui-compatibility-consumer` subpath is a release-evidence CLI core, not a product
+controller. It closed-decodes the bounded Session provider-v1 output, streams every replay page and raw frame through
+this public adapter, verifies provider receipts and canonical payload digests, observes pre-ack committed authority,
+and requires the final Web authority to equal the independently validated Session final snapshot. Its machine receipt
+contains only scope, counts, coverage booleans, cursors, and digests; it never exports mutations or private route refs.
 
 The projection consumes Session browser v3 directly: active history is admitted only when every active-branch message forms the one
 exact root-to-leaf parent chain, exhausts that branch's messages, and has contiguous canonical ordinals. A leafless branch is valid

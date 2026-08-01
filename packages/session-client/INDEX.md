@@ -58,6 +58,9 @@ frame until the pending mutation receives an explicit `applied|replayed` acknowl
 auto-commit decoder path. CUSTOM Run/message replacements have bounded owner ledgers with canonical closed-payload
 fingerprints, immutable bindings, consecutive versions, irreversible lifecycle transitions, and native
 RUN/TEXT-terminal interlocks; all owner and cursor changes commit atomically only after the external acknowledgement.
+`getSnapshotAuthority()` returns a fresh, deeply frozen view of committed Session binding authority only. It never
+exposes the staged next state, replay ledgers, projection-owner fingerprints, or any Agent/internal route identity;
+compatibility consumers use it to compare Web's committed authority with a later Session snapshot.
 
 Replay admission retains only compact cursor/source identity strings, the last committed raw frame, and at most one
 pending raw frame. The exported byte budgets are ceilings for retained UTF-8 identity/wire payload, not an estimate

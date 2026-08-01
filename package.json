@@ -9,6 +9,7 @@
   "description": "Kokoro Web shared Site factory, reference fixture, and independently deployed admin console.",
   "scripts": {
     "dev:reference": "pnpm --filter @kokoro/reference-site dev",
+    "compat:agui-consumer": "pnpm --filter @kokoro/chat-surface compat:agui-consumer",
     "generate:agui-binding-authority": "node scripts/generate-agui-binding-authority.mjs --write",
     "verify:agui-binding-authority": "node scripts/generate-agui-binding-authority.mjs --check",
     "build": "pnpm run build:site && pnpm run build:admin",

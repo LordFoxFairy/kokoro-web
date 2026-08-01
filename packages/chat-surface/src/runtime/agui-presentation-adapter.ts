@@ -272,6 +272,7 @@ export type DormantAguiProjectionPort = Readonly<{
  */
 export function createDormantAguiProjectionAdapter(port: DormantAguiProjectionPort): Readonly<{
   accept(frame: AguiSseFrame): void
+  getSnapshotAuthority: AguiPresentationDecoder["getSnapshotAuthority"]
   getResumeRequest: AguiPresentationDecoder["getResumeRequest"]
 }> {
   const decoder = createAguiPresentationDecoder({
@@ -293,6 +294,7 @@ export function createDormantAguiProjectionAdapter(port: DormantAguiProjectionPo
       }
       prepared.commit(acknowledgement)
     },
+    getSnapshotAuthority: decoder.getSnapshotAuthority,
     getResumeRequest: decoder.getResumeRequest,
   })
 }

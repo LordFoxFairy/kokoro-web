@@ -899,6 +899,7 @@ export type AguiPreparedFrame = Readonly<{
 
 export type AguiPresentationDecoder = Readonly<{
   prepare(frame: AguiSseFrame): AguiPreparedFrame;
+  getSnapshotAuthority(): AguiPresentationSnapshotAuthority;
   getResumeRequest(): Readonly<{
     headers: Readonly<Record<typeof LAST_EVENT_ID_HEADER, string>>;
     queryCursor: string;
@@ -1936,17 +1937,7 @@ function createAguiPresentationDecoderInternal(options: Readonly<{
     return prepared;
   };
 
-  const decoder: AguiPresentationDecoder = Object.freeze({
-    prepare,
-    getResumeRequest() {
-      return Object.freeze({
-        headers: Object.freeze({ [LAST_EVENT_ID_HEADER]: state.cursorBinding.cursor }),
-        queryCursor: state.cursorBinding.cursor,
-        cursorBinding: state.cursorBinding,
-      });
-    },
-  });
-  aguiPresentationSnapshotReadersForTesting.set(decoder, () => deepFreeze({
+  const getSnapshotAuthority = (): AguiPresentationSnapshotAuthority => deepFreeze({
     authority: snapshot.authority,
     hydrate: snapshot.hydrate,
     repair: snapshot.repair,
@@ -1960,7 +1951,20 @@ function createAguiPresentationDecoderInternal(options: Readonly<{
     cursor: state.cursorBinding.cursor,
     runBindings: [...state.trustedRuns.values()],
     messageBindings: [...state.trustedMessages.values()],
-  }));
+  });
+
+  const decoder: AguiPresentationDecoder = Object.freeze({
+    prepare,
+    getSnapshotAuthority,
+    getResumeRequest() {
+      return Object.freeze({
+        headers: Object.freeze({ [LAST_EVENT_ID_HEADER]: state.cursorBinding.cursor }),
+        queryCursor: state.cursorBinding.cursor,
+        cursorBinding: state.cursorBinding,
+      });
+    },
+  });
+  aguiPresentationSnapshotReadersForTesting.set(decoder, getSnapshotAuthority);
   return decoder;
 }
 

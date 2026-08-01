@@ -16,10 +16,17 @@
       "types": "./src/runtime/agui-presentation-adapter.ts",
       "development": "./src/runtime/agui-presentation-adapter.ts",
       "import": "./dist/runtime/agui-presentation-adapter.js"
+    },
+    "./agui-compatibility-consumer": {
+      "types": "./src/runtime/agui-compatibility-consumer.ts",
+      "development": "./src/runtime/agui-compatibility-consumer.ts",
+      "import": "./dist/runtime/agui-compatibility-consumer.js"
     }
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
+    "precompat:agui-consumer": "pnpm --filter @kokoro/session-client build && pnpm run build",
+    "compat:agui-consumer": "node scripts/agui-compatibility-consumer.mjs --input",
     "prepack": "pnpm run build",
     "lint": "eslint src test",
     "typecheck": "tsc --noEmit",
@@ -29,7 +36,8 @@
   "dependencies": {
     "@assistant-ui/react": "0.14.28",
     "@kokoro/session-client": "workspace:*",
-    "fast-json-stable-stringify": "2.1.0"
+    "fast-json-stable-stringify": "2.1.0",
+    "zod": "4.4.3"
   },
   "peerDependencies": { "react": "^18 || ^19", "react-dom": "^18 || ^19" },
   "devDependencies": {

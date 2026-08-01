@@ -76,15 +76,23 @@ describe("AG-UI presentation decoder", () => {
     const firstSse = sse(first);
     const prepared = stateMachine.prepare(firstSse);
 
+    expect(stateMachine.getSnapshotAuthority().durableSeq).toBe("0");
+
     expectCode(() => stateMachine.prepare(sse(second)), "agui_admission_pending");
     expectCode(() => Reflect.apply(prepared.commit, prepared, ["failed"]), "agui_dispatch_ack_invalid");
     expect(stateMachine.getResumeRequest().cursorBinding.durableSeq).toBe("0");
+    expect(stateMachine.getSnapshotAuthority().durableSeq).toBe("0");
     expect(stateMachine.prepare(firstSse)).toBe(prepared);
 
     prepared.commit("applied");
     expect(stateMachine.getResumeRequest()).toMatchObject({
       queryCursor: first.id,
       cursorBinding: { durableSeq: "1" },
+    });
+    expect(stateMachine.getSnapshotAuthority()).toMatchObject({
+      durableSeq: "1",
+      cursor: first.id,
+      runBindings: [expect.objectContaining({ state: "open" })],
     });
 
     const replay = stateMachine.prepare(firstSse);

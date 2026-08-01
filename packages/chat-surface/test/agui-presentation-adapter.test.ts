@@ -77,6 +77,7 @@ function expectProtocolCode(operation: () => unknown, code: string): void {
 describe("AG-UI Chat projection adapter", () => {
   it("uses the public decoder to rebuild lifecycle and text authority from sequence zero", () => {
     const { adapter, dispatch } = createAdapter();
+    expect(adapter.getSnapshotAuthority().durableSeq).toBe("0");
     adapter.accept(rootFrame(1));
     adapter.accept(rootFrame(2));
 
@@ -92,6 +93,11 @@ describe("AG-UI Chat projection adapter", () => {
       source: expect.objectContaining({ durableSeq: "2", projectionVersion: "2" }),
     }));
     expect(adapter.getResumeRequest().cursorBinding.durableSeq).toBe("2");
+    expect(adapter.getSnapshotAuthority()).toMatchObject({
+      durableSeq: "2",
+      runBindings: [expect.objectContaining({ state: "open" })],
+      messageBindings: [expect.objectContaining({ state: "open" })],
+    });
   });
 
   it("preserves the closed activity discriminator/content correlation", () => {
