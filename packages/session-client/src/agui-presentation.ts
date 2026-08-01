@@ -56,6 +56,7 @@ export const AGUI_PRESENTATION_REPLAY_MEMORY_BOUNDS = Object.freeze({
 const idPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/u;
 const cursorPattern = /^(?=.*[A-Za-z._~-])[A-Za-z0-9._~-]+$/u;
 const dateTimePattern = /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{3})?(?:Z|[+-][0-9]{2}:[0-9]{2})$/u;
+const canonicalUtcMsPattern = /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z$/u;
 const uint64Pattern = /^(?:0|[1-9][0-9]{0,19})$/u;
 const uint64Maximum = 18_446_744_073_709_551_615n;
 
@@ -65,6 +66,10 @@ const dateTimeSchema = z.string().min(20).max(35).regex(dateTimePattern).refine(
   (value) => Number.isFinite(Date.parse(value)),
   "invalid timestamp",
 );
+const canonicalUtcMsSchema = z.string().regex(canonicalUtcMsPattern).refine((value) => {
+  const milliseconds = Date.parse(value);
+  return Number.isFinite(milliseconds) && new Date(milliseconds).toISOString() === value;
+}, "invalid canonical UTC millisecond timestamp").brand<"AguiSnapshotCanonicalUtcMs">();
 const uint64Schema = z.string().regex(uint64Pattern).refine(
   (value) => BigInt(value) <= uint64Maximum,
   "outside uint64",
@@ -102,10 +107,17 @@ const aguiSnapshotAuthorityEnvelopeSchema = z.strictObject({
   sessionId: idSchema,
   streamEpoch: positiveUint64Schema,
   durableSeq: uint64Schema,
+  lastRecordedAt: canonicalUtcMsSchema.nullable(),
   cursor: cursorSchema,
   runBindings: z.array(z.unknown()).max(AGUI_PRESENTATION_AUTHORITY_LIMITS.runs),
   messageBindings: z.array(z.unknown()).max(AGUI_PRESENTATION_AUTHORITY_LIMITS.messages),
+}).superRefine((snapshot, context) => {
+  if ((snapshot.durableSeq === "0") !== (snapshot.lastRecordedAt === null)) {
+    context.addIssue({ code: "custom", message: "durable head time" });
+  }
 });
+
+type AguiSnapshotCanonicalUtcMs = z.infer<typeof canonicalUtcMsSchema>;
 
 export type AguiPresentationSnapshotAuthority = Readonly<{
   authority: "session-browser-v3-http-snapshot";
@@ -115,6 +127,7 @@ export type AguiPresentationSnapshotAuthority = Readonly<{
   sessionId: string;
   streamEpoch: string;
   durableSeq: string;
+  lastRecordedAt: AguiSnapshotCanonicalUtcMs | null;
   cursor: string;
   runBindings: readonly AguiPresentationRunBinding[];
   messageBindings: readonly AguiPresentationMessageBinding[];
@@ -576,6 +589,7 @@ const snapshotAuthorityKeys = new Set([
   "sessionId",
   "streamEpoch",
   "durableSeq",
+  "lastRecordedAt",
   "cursor",
   "runBindings",
   "messageBindings",
@@ -1010,7 +1024,6 @@ function validateSnapshotAuthority(
   runRefs: ReadonlyMap<string, AguiPresentationRunBinding>;
   messageRefs: ReadonlyMap<string, AguiPresentationMessageBinding>;
   sourceEventIds: ReadonlySet<string>;
-  bindingEvidenceRecordedAt: number;
 }> {
   const admitted = admitSnapshotAuthority(value, limits);
   const envelope = aguiSnapshotAuthorityEnvelopeSchema.safeParse(admitted);
@@ -1164,6 +1177,10 @@ function validateSnapshotAuthority(
   ) {
     fail("agui_authority_capacity_exceeded");
   }
+  if (
+    envelope.data.lastRecordedAt !== null &&
+    authorityRecordedAt > Date.parse(envelope.data.lastRecordedAt)
+  ) fail("agui_snapshot_authority_invalid");
 
   const snapshot: AguiPresentationSnapshotAuthority = deepFreeze({
     ...envelope.data,
@@ -1175,7 +1192,6 @@ function validateSnapshotAuthority(
     runRefs,
     messageRefs,
     sourceEventIds: evidenceSourceIds,
-    bindingEvidenceRecordedAt: authorityRecordedAt,
   });
 }
 
@@ -1217,7 +1233,7 @@ export function createAguiPresentationDecoder(options: Readonly<{
     cursorProfileRevision: parsedGrant.data.cursorProfileRevision,
   });
   const resumesFromSnapshot = BigInt(snapshot.durableSeq) !== 0n;
-  let lastRecordedAt = resumesFromSnapshot ? snapshotValidation.bindingEvidenceRecordedAt : -1;
+  let lastRecordedAt = snapshot.lastRecordedAt === null ? -1 : Date.parse(snapshot.lastRecordedAt);
   let lastDecoded: AguiDurableFrame | undefined;
   let lastCommittedFrame: AguiSseFrame | undefined;
   let presentationThreadId: string | undefined;

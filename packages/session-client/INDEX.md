@@ -72,11 +72,16 @@ terminal evidence; missing, malformed, cross-scope, discontinuous, or contradict
 Every Run-bound frame must resolve its Run binding in that snapshot, and every message-bound frame must resolve a
 message binding owned by the same trusted Run. An unknown binding requests snapshot repair before Web can create a
 ledger entry, dispatch a Chat mutation, or advance its cursor.
-Activation remains blocked until the Root/Session snapshot authority exports the stream's canonical durable-head
-`lastRecordedAt` (`null` at sequence zero). Web currently seeds every source identity and timestamp carried by the
-Run/message binding evidence, but their maximum timestamp is intentionally not represented as the complete durable
-watermark: a later CUSTOM or ACTIVITY row may own the durable head without changing a binding.
-No active Web controller opens the AG-UI stream until provider compatibility and the Session snapshot endpoint are
-promoted together.
+The snapshot's Session-owned canonical UTC-millisecond `lastRecordedAt` is required and is `null` exactly at sequence
+zero. For a nonzero head it must not precede any Run/message binding evidence and directly seeds event chronology;
+Web never derives the durable-head watermark from binding evidence because a later CUSTOM or ACTIVITY row may own the
+head without changing a binding.
+Activation is still blocked at the first bound event after a real empty sequence-zero snapshot: the current durable
+projection payload carries only binding references, so Web correctly rejects the unknown Run instead of inventing
+authority. Root and Session must add an atomic owner-authored binding authority delta to the same durable row/payload
+before Web can evolve from the empty snapshot. Per-event HTTP repair, future-binding preloads, and Web-side inference
+are not valid substitutes; existing future-binding unit harnesses are state-machine tests only, never compatibility
+evidence. No active Web controller opens the AG-UI stream until that provider compatibility boundary and the Session
+snapshot endpoint are promoted together.
 
 Verification: `pnpm --filter @kokoro/session-client lint && pnpm --filter @kokoro/session-client typecheck && pnpm --filter @kokoro/session-client test && pnpm --filter @kokoro/session-client build`.

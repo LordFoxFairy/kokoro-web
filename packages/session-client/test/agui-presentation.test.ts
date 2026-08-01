@@ -240,9 +240,17 @@ function createAguiPresentationDecoder(options: Readonly<{
     cursorProfileRevision: typeof AGUI_CURSOR_PROFILE_REVISION;
   }>;
   authorityFrames?: readonly AguiSseFrame[];
+  lastRecordedAt?: string | null;
   limits?: Readonly<{ streamIdentities?: number; runs?: number; messages?: number }>;
 }>): AguiPresentationDecoder {
+  // Pre-activation state-machine harness only: authorityFrames predeclare
+  // bindings that a real sequence-zero Session snapshot cannot contain. This
+  // is not provider compatibility evidence; the Root corpus has a separate
+  // empty-snapshot blocker until Session emits a durable binding delta.
   const bindingAuthority = bindingAuthorityFromFrames(options.authorityFrames ?? []);
+  const lastRecordedAt = Object.hasOwn(options, "lastRecordedAt")
+    ? options.lastRecordedAt
+    : options.initialCursor.durableSeq === "0" ? null : "2026-08-01T12:00:09.000Z";
   return createProductionAguiPresentationDecoder({
     grant: options.grant,
     snapshotAuthority: {
@@ -253,6 +261,7 @@ function createAguiPresentationDecoder(options: Readonly<{
       sessionId: options.initialCursor.sessionId,
       streamEpoch: options.initialCursor.streamEpoch,
       durableSeq: options.initialCursor.durableSeq,
+      lastRecordedAt,
       cursor: options.initialCursor.cursor,
       runBindings: bindingAuthority.runBindings,
       messageBindings: bindingAuthority.messageBindings,
@@ -268,6 +277,37 @@ describe("strict Session-owned AG-UI decoder", () => {
       initialCursor: { ...initialCursor, durableSeq: "9" },
     });
     expect(decoder.getResumeRequest()).toMatchObject({ cursorBinding: { durableSeq: "9" } });
+  });
+
+  it("requires the Session durable-head time and admits only canonical UTC milliseconds", () => {
+    const base = {
+      authority: "session-browser-v3-http-snapshot",
+      hydrate: true,
+      repair: true,
+      profileRevision: AGUI_PRESENTATION_PROFILE_REVISION,
+      sessionId: grant.sessionId,
+      streamEpoch: initialCursor.streamEpoch,
+      durableSeq: "0",
+      lastRecordedAt: null,
+      cursor: initialCursor.cursor,
+      runBindings: [],
+      messageBindings: [],
+    } as const;
+
+    for (const snapshotAuthority of [
+      Object.fromEntries(Object.entries(base).filter(([key]) => key !== "lastRecordedAt")),
+      { ...base, unexpected: true },
+      { ...base, lastRecordedAt: "2026-08-01T12:00:00.000Z" },
+      { ...base, durableSeq: "1", lastRecordedAt: null },
+      { ...base, durableSeq: "1", lastRecordedAt: "2026-08-01T12:00:00Z" },
+      { ...base, durableSeq: "1", lastRecordedAt: "2026-08-01T08:00:00.000-04:00" },
+      { ...base, durableSeq: "1", lastRecordedAt: "2026-99-99T12:00:00.000Z" },
+    ]) {
+      expectCode(
+        () => createProductionAguiPresentationDecoder({ grant, snapshotAuthority }),
+        "agui_snapshot_authority_invalid",
+      );
+    }
   });
 
   it("preserves the Root profile, SSE identity, and Last-Event-ID binding", () => {
@@ -327,7 +367,7 @@ describe("strict Session-owned AG-UI decoder", () => {
     expect(decoder.getResumeRequest().cursorBinding.durableSeq).toBe("1");
   });
 
-  it("accepts the Root lifecycle, text, activity, and registered CUSTOM vocabulary", () => {
+  it("exercises the closed vocabulary in the pre-activation state-machine harness", () => {
     const frames: AguiSseFrame[] = [
       durableFrame({ seq: 1, sourceKind: "presentation.run.started", runBindingRef: "run-binding.01.segment.0", event: { type: EventType.RUN_STARTED, threadId: "thread.session.01", runId: "presentation.run.01.segment.0" } }),
       durableFrame({ seq: 2, sourceKind: "presentation.message.text.started", runBindingRef: "run-binding.01.segment.0", messageBindingRef: "message-binding.01.segment.0", event: { type: EventType.TEXT_MESSAGE_START, messageId: "presentation.message.01.segment.0", role: "assistant" } }),

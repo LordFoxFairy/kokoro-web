@@ -22,6 +22,7 @@ type CorpusSnapshot = Readonly<{
   sessionId: string;
   streamEpoch: string;
   durableSeq: string;
+  lastRecordedAt: string | null;
   cursor: string;
 }>;
 
@@ -59,14 +60,24 @@ type Corpus = Readonly<{
   profileRevision: string;
   positiveCases: readonly CorpusCase[];
   negativeCases: readonly NegativeCase[];
+  snapshotAuthorityCases: readonly Readonly<{
+    id: string;
+    baseCaseId: string;
+    nextEventRecordedAt: string;
+    snapshot: Readonly<Record<string, unknown>>;
+  }>[];
 }>;
 
 const corpusFixture = new URL("./fixtures/root-agui-presentation-v1.json", import.meta.url);
 const corpusSource = readFileSync(corpusFixture);
 const corpus = JSON.parse(corpusSource.toString("utf8")) as Corpus;
-const ROOT_CORPUS_SHA256 = "296897c3f61cfd8f906898b6d21277b21d6cb02d06503913695ae8741468397f";
+const ROOT_CORPUS_SHA256 = "105f39c3b291ec92e967275a3e770b9eab9db60c4316f4d7fa5e64f5f445a08b";
 
-function snapshotAuthority(contractCase: CorpusCase): Readonly<Record<string, unknown>> {
+/**
+ * Pre-activation decoder harness only. The mapping corpus describes the full
+ * future binding result, so this merge is not Session compatibility evidence.
+ */
+function syntheticPreActivationSnapshotAuthority(contractCase: CorpusCase): Readonly<Record<string, unknown>> {
   return {
     ...contractCase.snapshot,
     runBindings: contractCase.runBindings,
@@ -77,7 +88,7 @@ function snapshotAuthority(contractCase: CorpusCase): Readonly<Record<string, un
 function createCorpusDecoder(contractCase: CorpusCase): AguiPresentationDecoder {
   return createAguiPresentationDecoder({
     grant: contractCase.grantBinding,
-    snapshotAuthority: snapshotAuthority(contractCase),
+    snapshotAuthority: syntheticPreActivationSnapshotAuthority(contractCase),
   });
 }
 
@@ -234,7 +245,7 @@ describe("Root AG-UI conformance corpus mirror", () => {
     expect(customVersions).toEqual(expect.arrayContaining([2, 3, 4]));
   });
 
-  it("replays every Root positive frame without rewriting owner versions", () => {
+  it("exercises dormant event semantics under synthetic future-binding authority", () => {
     for (const contractCase of corpus.positiveCases) {
       expect(contractCase.snapshot).toMatchObject({
         authority: "session-browser-v3-http-snapshot",
@@ -276,14 +287,15 @@ describe("Root AG-UI conformance corpus mirror", () => {
     }
     const openedBySourceEventId = firstRun.openedBySourceEventId;
     const resumedAuthority = {
-      ...snapshotAuthority(base),
+      ...syntheticPreActivationSnapshotAuthority(base),
       durableSeq: "9",
+      lastRecordedAt: "2026-08-01T12:00:30.000Z",
       cursor: "opaque.snapshot.cursor.0009",
     };
 
     const reused = createAguiPresentationDecoder({ grant: base.grantBinding, snapshotAuthority: resumedAuthority });
     expectCode(
-      () => admit(reused, liveSessionFrame(base, openedBySourceEventId, "2026-08-01T12:00:27.000Z")),
+      () => admit(reused, liveSessionFrame(base, openedBySourceEventId, "2026-08-01T12:00:31.000Z")),
       "agui_stream_identity_duplicate",
     );
     expect(reused.getResumeRequest().cursorBinding.durableSeq).toBe("9");
@@ -294,6 +306,19 @@ describe("Root AG-UI conformance corpus mirror", () => {
       "agui_event_time_invalid",
     );
     expect(regressed.getResumeRequest().cursorBinding.durableSeq).toBe("9");
+
+    const betweenBindingEvidenceAndHead = createAguiPresentationDecoder({
+      grant: base.grantBinding,
+      snapshotAuthority: resumedAuthority,
+    });
+    expectCode(
+      () => admit(
+        betweenBindingEvidenceAndHead,
+        liveSessionFrame(base, "source.live.between-watermarks", "2026-08-01T12:00:27.000Z"),
+      ),
+      "agui_event_time_invalid",
+    );
+    expect(betweenBindingEvidenceAndHead.getResumeRequest().cursorBinding.durableSeq).toBe("9");
 
     expectCode(
       () => createAguiPresentationDecoder({
@@ -310,6 +335,29 @@ describe("Root AG-UI conformance corpus mirror", () => {
         limits: { streamIdentities: 8 },
       }),
       "agui_authority_capacity_exceeded",
+    );
+  });
+
+  it("accepts the Root Session-owned nonzero snapshot authority case", () => {
+    const contractCase = corpus.snapshotAuthorityCases[0];
+    const base = corpus.positiveCases.find(({ id }) => id === contractCase?.baseCaseId);
+    if (contractCase === undefined || base === undefined) throw new Error("Root snapshot authority case missing");
+
+    const decoder = createAguiPresentationDecoder({
+      grant: base.grantBinding,
+      snapshotAuthority: contractCase.snapshot,
+    });
+    expect(decoder.getResumeRequest().cursorBinding.durableSeq).toBe("26");
+
+    expectCode(
+      () => createAguiPresentationDecoder({
+        grant: base.grantBinding,
+        snapshotAuthority: {
+          ...contractCase.snapshot,
+          lastRecordedAt: "2026-08-01T12:00:25.999Z",
+        },
+      }),
+      "agui_snapshot_authority_invalid",
     );
   });
 
@@ -345,7 +393,7 @@ describe("Root AG-UI conformance corpus mirror", () => {
     if (base === undefined) throw new Error("Root corpus case missing");
     let getterCalls = 0;
     const accessor = Object.create(Object.prototype, {
-      ...Object.fromEntries(Object.entries(snapshotAuthority(base)).map(([key, value]) => [
+      ...Object.fromEntries(Object.entries(syntheticPreActivationSnapshotAuthority(base)).map(([key, value]) => [
         key,
         { enumerable: true, value },
       ])),
@@ -382,7 +430,7 @@ describe("Root AG-UI conformance corpus mirror", () => {
         return Reflect.ownKeys(target);
       },
     });
-    const oversizedGraph = structuredClone(snapshotAuthority(base));
+    const oversizedGraph = structuredClone(syntheticPreActivationSnapshotAuthority(base));
     const runBindings = oversizedGraph["runBindings"];
     if (!Array.isArray(runBindings) || runBindings[0] === null || typeof runBindings[0] !== "object") {
       throw new Error("Root corpus run binding missing");
@@ -416,7 +464,7 @@ describe("Root AG-UI conformance corpus mirror", () => {
         Array.from({ length: 32 }, (_, index) => [`branch${index}`, sharedFanout]),
       );
     }
-    const amplifiedGraph = structuredClone(snapshotAuthority(base));
+    const amplifiedGraph = structuredClone(syntheticPreActivationSnapshotAuthority(base));
     const amplifiedRunBindings = amplifiedGraph["runBindings"];
     if (
       !Array.isArray(amplifiedRunBindings) ||
@@ -432,7 +480,7 @@ describe("Root AG-UI conformance corpus mirror", () => {
     );
   });
 
-  it("does not admit an untrusted Run binding from an empty zero snapshot", () => {
+  it("keeps activation blocked when a real empty zero snapshot receives an unknown Run binding", () => {
     const base = corpus.positiveCases[0];
     const firstFrame = base?.frames[0];
     if (base === undefined || firstFrame === undefined) throw new Error("Root corpus case missing");
