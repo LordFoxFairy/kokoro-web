@@ -12,15 +12,16 @@ function sha256(path: URL): string {
 }
 
 describe("Root-generated AG-UI binding runtime mirror", () => {
-  it("records both reviewed Root JSON Schema sources", () => {
+  it("records all reviewed Root JSON Schema sources", () => {
     expect(aguiBindingAuthorityContractMetadata).toMatchObject({
       profileRevision: "kokoro-agui-presentation.v1",
       sources: {
         "contract/spec/presentation-run-binding-v1.yaml": expect.stringMatching(/^[0-9a-f]{64}$/u),
         "contract/spec/presentation-message-binding-v1.yaml": expect.stringMatching(/^[0-9a-f]{64}$/u),
+        "contract/spec/presentation-binding-authority-delta-v1.yaml": expect.stringMatching(/^[0-9a-f]{64}$/u),
       },
     });
-    expect(Object.keys(aguiBindingAuthorityContractMetadata.sources)).toHaveLength(2);
+    expect(Object.keys(aguiBindingAuthorityContractMetadata.sources)).toHaveLength(3);
   });
 
   it("fails on Root source drift when executed from the federated checkout", () => {
@@ -34,6 +35,6 @@ describe("Root-generated AG-UI binding runtime mirror", () => {
       checkedSources += 1;
       expect(sha256(source), relativePath).toBe(expectedDigest);
     }
-    expect(checkedSources).toBe(federatedContractPresent ? 2 : 0);
+    expect(checkedSources).toBe(federatedContractPresent ? 3 : 0);
   });
 });

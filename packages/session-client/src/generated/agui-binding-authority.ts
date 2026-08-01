@@ -2,6 +2,7 @@
 // Sources:
 //   contract/spec/presentation-run-binding-v1.yaml
 //   contract/spec/presentation-message-binding-v1.yaml
+//   contract/spec/presentation-binding-authority-delta-v1.yaml
 // Generation authority: Kokoro Root contract authority.
 
 import { z } from "zod";
@@ -10,41 +11,70 @@ export const aguiBindingAuthorityContractMetadata = Object.freeze({
   profileRevision: "kokoro-agui-presentation.v1",
   sources: Object.freeze({
     "contract/spec/presentation-run-binding-v1.yaml":
-      "dd5318258dbf8a33065e533b62b84ed08440c25af358235663a8d40b26ef5063",
+      "4d2ac9baca89f389d62ccf8d08b7890d4cdddf1a055996c6347058bc9e4c4c8d",
     "contract/spec/presentation-message-binding-v1.yaml":
-      "d4817d5ae5010393d60f1597576bbc08355c0edfb268ea72014ffea49964e9a7",
+      "0b2f3b9ba68c78fc58182539e2d33673e7af4a5e9ba5ed1bc2c48b0edb69dd6c",
+    "contract/spec/presentation-binding-authority-delta-v1.yaml":
+      "9fd30b734e2aa5f52be50eb1442eaf16843de8baa8098fcc996bc5e057f9dd2d",
   }),
 });
 
 const idPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/u;
+const runBindingRefPattern = /^presentation\.run-binding:[0-9a-f]{64}$/u;
+const messageBindingRefPattern = /^presentation\.message-binding:[0-9a-f]{64}$/u;
+const presentationThreadIdPattern = /^presentation\.thread:[0-9a-f]{64}$/u;
+const presentationRunIdPattern = /^presentation\.run:[0-9a-f]{64}$/u;
+const presentationMessageIdPattern = /^presentation\.message:[0-9a-f]{64}$/u;
+const publicSourceEventIdPattern = /^presentation\.event:(?![A-Za-z0-9._:-]*agent\.event)[A-Za-z0-9][A-Za-z0-9._:-]*$/u;
 const dateTimePattern = /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{3})?(?:Z|[+-][0-9]{2}:[0-9]{2})$/u;
 
 const idSchema = z.string().min(1).max(128).regex(idPattern);
+export const aguiPresentationRunBindingRefSchema = z.string()
+  .regex(runBindingRefPattern)
+  .brand<"AguiPresentationRunBindingRef">();
+export const aguiPresentationMessageBindingRefSchema = z.string()
+  .regex(messageBindingRefPattern)
+  .brand<"AguiPresentationMessageBindingRef">();
+export const aguiPresentationThreadIdSchema = z.string()
+  .regex(presentationThreadIdPattern)
+  .brand<"AguiPresentationThreadId">();
+export const aguiPresentationRunIdSchema = z.string()
+  .regex(presentationRunIdPattern)
+  .brand<"AguiPresentationRunId">();
+export const aguiPresentationMessageIdSchema = z.string()
+  .regex(presentationMessageIdPattern)
+  .brand<"AguiPresentationMessageId">();
+export const aguiPublicSourceEventIdSchema = z.string()
+  .min(20)
+  .max(128)
+  .regex(publicSourceEventIdPattern)
+  .brand<"AguiPublicSourceEventId">();
 const dateTimeSchema = z.string().min(20).max(35).regex(dateTimePattern);
 
+export type AguiPresentationRunBindingRef = z.infer<typeof aguiPresentationRunBindingRefSchema>;
+export type AguiPresentationMessageBindingRef = z.infer<typeof aguiPresentationMessageBindingRefSchema>;
+export type AguiPresentationThreadId = z.infer<typeof aguiPresentationThreadIdSchema>;
+export type AguiPresentationRunId = z.infer<typeof aguiPresentationRunIdSchema>;
+export type AguiPresentationMessageId = z.infer<typeof aguiPresentationMessageIdSchema>;
+export type AguiPublicSourceEventId = z.infer<typeof aguiPublicSourceEventIdSchema>;
+
 const parentLineageSchema = z.strictObject({
-  parentInternalRunRef: idSchema.nullable(),
-  parentPresentationRunId: idSchema.nullable(),
-}).superRefine((lineage, context) => {
-  if ((lineage.parentInternalRunRef === null) !== (lineage.parentPresentationRunId === null)) {
-    context.addIssue({ code: "custom", message: "parent lineage pair" });
-  }
+  parentPresentationRunId: aguiPresentationRunIdSchema.nullable(),
 });
 
 export const aguiPresentationRunBindingSchema = z.strictObject({
-  bindingRef: idSchema,
+  bindingRef: aguiPresentationRunBindingRefSchema,
   profileRevision: z.literal("kokoro-agui-presentation.v1"),
   sessionId: idSchema,
-  internalRunRef: idSchema,
-  presentationThreadId: idSchema,
-  presentationRunId: idSchema,
+  presentationThreadId: aguiPresentationThreadIdSchema,
+  presentationRunId: aguiPresentationRunIdSchema,
   segmentOrdinal: z.number().int().min(0).max(65_535),
-  resumeOfPresentationRunId: idSchema.nullable(),
+  resumeOfPresentationRunId: aguiPresentationRunIdSchema.nullable(),
   parentLineage: parentLineageSchema,
   state: z.enum(["open", "finished", "error"]),
   terminalDisposition: z.enum(["success", "interrupted", "error", "canceled"]).nullable(),
-  openedBySourceEventId: idSchema,
-  terminalSourceEventId: idSchema.nullable(),
+  openedBySourceEventId: aguiPublicSourceEventIdSchema,
+  terminalSourceEventId: aguiPublicSourceEventIdSchema.nullable(),
   openedAt: dateTimeSchema,
   terminalAt: dateTimeSchema.nullable(),
 }).superRefine((binding, context) => {
@@ -64,16 +94,15 @@ export const aguiPresentationRunBindingSchema = z.strictObject({
 export type AguiPresentationRunBinding = Readonly<z.infer<typeof aguiPresentationRunBindingSchema>>;
 
 export const aguiPresentationMessageBindingSchema = z.strictObject({
-  bindingRef: idSchema,
+  bindingRef: aguiPresentationMessageBindingRefSchema,
   profileRevision: z.literal("kokoro-agui-presentation.v1"),
   sessionId: idSchema,
-  internalMessageRef: idSchema,
-  presentationRunBindingRef: idSchema,
-  presentationMessageId: idSchema,
+  presentationRunBindingRef: aguiPresentationRunBindingRefSchema,
+  presentationMessageId: aguiPresentationMessageIdSchema,
   resumeSegmentOrdinal: z.number().int().min(0).max(65_535),
   state: z.enum(["open", "ended"]),
-  openedBySourceEventId: idSchema,
-  endedBySourceEventId: idSchema.nullable(),
+  openedBySourceEventId: aguiPublicSourceEventIdSchema,
+  endedBySourceEventId: aguiPublicSourceEventIdSchema.nullable(),
   openedAt: dateTimeSchema,
   endedAt: dateTimeSchema.nullable(),
 }).superRefine((binding, context) => {
@@ -84,3 +113,13 @@ export const aguiPresentationMessageBindingSchema = z.strictObject({
 });
 
 export type AguiPresentationMessageBinding = Readonly<z.infer<typeof aguiPresentationMessageBindingSchema>>;
+
+export const aguiPresentationBindingAuthorityDeltaSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("none") }),
+  z.strictObject({ kind: z.literal("run.replace"), binding: aguiPresentationRunBindingSchema }),
+  z.strictObject({ kind: z.literal("message.replace"), binding: aguiPresentationMessageBindingSchema }),
+]);
+
+export type AguiPresentationBindingAuthorityDelta = Readonly<
+  z.infer<typeof aguiPresentationBindingAuthorityDeltaSchema>
+>;

@@ -9,10 +9,17 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 export const aguiBindingAuthoritySources = Object.freeze([
   "contract/spec/presentation-run-binding-v1.yaml",
   "contract/spec/presentation-message-binding-v1.yaml",
+  "contract/spec/presentation-binding-authority-delta-v1.yaml",
 ]);
 
-const [runSourcePath, messageSourcePath] = aguiBindingAuthoritySources;
+const [runSourcePath, messageSourcePath, deltaSourcePath] = aguiBindingAuthoritySources;
 const idRef = Object.freeze({ $ref: "#/$defs/id" });
+const runBindingRef = Object.freeze({ $ref: "#/$defs/runBindingRef" });
+const messageBindingRef = Object.freeze({ $ref: "#/$defs/messageBindingRef" });
+const presentationThreadIdRef = Object.freeze({ $ref: "#/$defs/presentationThreadId" });
+const presentationRunIdRef = Object.freeze({ $ref: "#/$defs/presentationRunId" });
+const presentationMessageIdRef = Object.freeze({ $ref: "#/$defs/presentationMessageId" });
+const publicSourceEventIdRef = Object.freeze({ $ref: "#/$defs/publicSourceEventId" });
 const dateTimeRef = Object.freeze({ $ref: "#/$defs/dateTime" });
 const nullType = Object.freeze({ type: "null" });
 
@@ -43,16 +50,33 @@ function parseSource(source, relativePath) {
   }
 }
 
-function inspectSharedDefinitions(schema, label) {
-  expectKeys(schema.$defs, ["id", "dateTime"], `${label} definitions`);
+function inspectDefinitions(schema, label, opaqueNames) {
+  expectKeys(schema.$defs, ["id", "publicSourceEventId", "dateTime", ...opaqueNames], `${label} definitions`);
   const id = expectRecord(schema.$defs.id, `${label} id definition`);
+  const publicSourceEventId = expectRecord(
+    schema.$defs.publicSourceEventId,
+    `${label} public source event id definition`,
+  );
   const dateTime = expectRecord(schema.$defs.dateTime, `${label} date-time definition`);
   expectKeys(id, ["type", "minLength", "maxLength", "pattern"], `${label} id definition`);
+  expectKeys(
+    publicSourceEventId,
+    ["type", "minLength", "maxLength", "pattern"],
+    `${label} public source event id definition`,
+  );
   expectKeys(
     dateTime,
     ["type", "minLength", "maxLength", "pattern"],
     `${label} date-time definition`,
   );
+  if (
+    publicSourceEventId.type !== "string" ||
+    !Number.isSafeInteger(publicSourceEventId.minLength) ||
+    !Number.isSafeInteger(publicSourceEventId.maxLength) ||
+    typeof publicSourceEventId.pattern !== "string"
+  ) {
+    fail(`${label} public source event id definition values`);
+  }
   if (
     id.type !== "string" ||
     !Number.isSafeInteger(id.minLength) ||
@@ -69,7 +93,15 @@ function inspectSharedDefinitions(schema, label) {
   ) {
     fail(`${label} date-time definition values`);
   }
-  return { id, dateTime };
+  const opaque = Object.fromEntries(opaqueNames.map((name) => {
+    const definition = expectRecord(schema.$defs[name], `${label} ${name} definition`);
+    expectKeys(definition, ["type", "pattern"], `${label} ${name} definition`);
+    if (definition.type !== "string" || typeof definition.pattern !== "string") {
+      fail(`${label} ${name} definition values`);
+    }
+    return [name, definition];
+  }));
+  return { id, publicSourceEventId, dateTime, opaque };
 }
 
 function inspectObjectEnvelope(schema, expectedId, required, label) {
@@ -79,6 +111,7 @@ function inspectObjectEnvelope(schema, expectedId, required, label) {
       "$schema",
       "$id",
       "title",
+      "description",
       "type",
       "additionalProperties",
       "required",
@@ -101,7 +134,6 @@ function inspectRunSchema(schema) {
     "bindingRef",
     "profileRevision",
     "sessionId",
-    "internalRunRef",
     "presentationThreadId",
     "presentationRunId",
     "segmentOrdinal",
@@ -121,19 +153,13 @@ function inspectRunSchema(schema) {
     "run binding",
   );
   const properties = schema.properties;
-  for (const field of [
-    "bindingRef",
-    "sessionId",
-    "internalRunRef",
-    "presentationThreadId",
-    "presentationRunId",
-    "openedBySourceEventId",
-  ]) {
-    expectEqual(properties[field], idRef, `run binding ${field}`);
-  }
-  for (const field of ["resumeOfPresentationRunId", "terminalSourceEventId"]) {
-    expectEqual(properties[field], { oneOf: [idRef, nullType] }, `run binding ${field}`);
-  }
+  expectEqual(properties.bindingRef, runBindingRef, "run binding bindingRef");
+  expectEqual(properties.sessionId, idRef, "run binding sessionId");
+  expectEqual(properties.presentationThreadId, presentationThreadIdRef, "run binding presentationThreadId");
+  expectEqual(properties.presentationRunId, presentationRunIdRef, "run binding presentationRunId");
+  expectEqual(properties.resumeOfPresentationRunId, { oneOf: [presentationRunIdRef, nullType] }, "run binding resumeOfPresentationRunId");
+  expectEqual(properties.openedBySourceEventId, publicSourceEventIdRef, "run binding opened source");
+  expectEqual(properties.terminalSourceEventId, { oneOf: [publicSourceEventIdRef, nullType] }, "run binding terminal source");
   expectEqual(properties.openedAt, dateTimeRef, "run binding openedAt");
   expectEqual(properties.terminalAt, { oneOf: [dateTimeRef, nullType] }, "run binding terminalAt");
 
@@ -171,31 +197,16 @@ function inspectRunSchema(schema) {
   expectEqual(parentLineage, {
     type: "object",
     additionalProperties: false,
-    required: ["parentInternalRunRef", "parentPresentationRunId"],
+    required: ["parentPresentationRunId"],
     properties: {
-      parentInternalRunRef: { oneOf: [idRef, nullType] },
-      parentPresentationRunId: { oneOf: [idRef, nullType] },
+      parentPresentationRunId: { oneOf: [presentationRunIdRef, nullType] },
     },
-    oneOf: [
-      {
-        properties: {
-          parentInternalRunRef: nullType,
-          parentPresentationRunId: nullType,
-        },
-      },
-      {
-        properties: {
-          parentInternalRunRef: idRef,
-          parentPresentationRunId: idRef,
-        },
-      },
-    ],
   }, "run parent lineage semantics");
   expectEqual(schema.allOf, [
     {
       if: { properties: { segmentOrdinal: { const: segment.minimum } }, required: ["segmentOrdinal"] },
       then: { properties: { resumeOfPresentationRunId: nullType } },
-      else: { properties: { resumeOfPresentationRunId: idRef } },
+      else: { properties: { resumeOfPresentationRunId: presentationRunIdRef } },
     },
     {
       if: { properties: { state: { const: "open" } }, required: ["state"] },
@@ -209,7 +220,7 @@ function inspectRunSchema(schema) {
       else: {
         properties: {
           terminalDisposition: { enum: dispositions },
-          terminalSourceEventId: idRef,
+          terminalSourceEventId: publicSourceEventIdRef,
           terminalAt: dateTimeRef,
         },
       },
@@ -224,7 +235,6 @@ function inspectMessageSchema(schema) {
     "bindingRef",
     "profileRevision",
     "sessionId",
-    "internalMessageRef",
     "presentationRunBindingRef",
     "presentationMessageId",
     "resumeSegmentOrdinal",
@@ -241,17 +251,12 @@ function inspectMessageSchema(schema) {
     "message binding",
   );
   const properties = schema.properties;
-  for (const field of [
-    "bindingRef",
-    "sessionId",
-    "internalMessageRef",
-    "presentationRunBindingRef",
-    "presentationMessageId",
-    "openedBySourceEventId",
-  ]) {
-    expectEqual(properties[field], idRef, `message binding ${field}`);
-  }
-  expectEqual(properties.endedBySourceEventId, { oneOf: [idRef, nullType] }, "message ended source");
+  expectEqual(properties.bindingRef, messageBindingRef, "message binding bindingRef");
+  expectEqual(properties.sessionId, idRef, "message binding sessionId");
+  expectEqual(properties.presentationRunBindingRef, runBindingRef, "message binding presentationRunBindingRef");
+  expectEqual(properties.presentationMessageId, presentationMessageIdRef, "message binding presentationMessageId");
+  expectEqual(properties.openedBySourceEventId, publicSourceEventIdRef, "message opened source");
+  expectEqual(properties.endedBySourceEventId, { oneOf: [publicSourceEventIdRef, nullType] }, "message ended source");
   expectEqual(properties.openedAt, dateTimeRef, "message openedAt");
   expectEqual(properties.endedAt, { oneOf: [dateTimeRef, nullType] }, "message endedAt");
 
@@ -276,11 +281,52 @@ function inspectMessageSchema(schema) {
     {
       if: { properties: { state: { const: "open" } }, required: ["state"] },
       then: { properties: { endedBySourceEventId: nullType, endedAt: nullType } },
-      else: { properties: { endedBySourceEventId: idRef, endedAt: dateTimeRef } },
+      else: { properties: { endedBySourceEventId: publicSourceEventIdRef, endedAt: dateTimeRef } },
     },
   ], "message conditional semantics");
 
   return { profileRevision, segment, states };
+}
+
+function inspectDeltaSchema(schema) {
+  expectKeys(schema, ["$schema", "$id", "title", "description", "oneOf", "$defs"], "binding delta");
+  expectEqual(schema.$schema, "https://json-schema.org/draft/2020-12/schema", "binding delta draft");
+  expectEqual(
+    schema.$id,
+    "https://contracts.kokoro.invalid/presentation-binding-authority-delta.v1.schema.json",
+    "binding delta id",
+  );
+  expectEqual(schema.oneOf, [
+    { $ref: "#/$defs/none" },
+    { $ref: "#/$defs/runReplace" },
+    { $ref: "#/$defs/messageReplace" },
+  ], "binding delta union");
+  expectEqual(schema.$defs, {
+    none: {
+      type: "object",
+      additionalProperties: false,
+      required: ["kind"],
+      properties: { kind: { const: "none" } },
+    },
+    runReplace: {
+      type: "object",
+      additionalProperties: false,
+      required: ["kind", "binding"],
+      properties: {
+        kind: { const: "run.replace" },
+        binding: { $ref: "https://contracts.kokoro.invalid/presentation-run-binding.v1.schema.json" },
+      },
+    },
+    messageReplace: {
+      type: "object",
+      additionalProperties: false,
+      required: ["kind", "binding"],
+      properties: {
+        kind: { const: "message.replace" },
+        binding: { $ref: "https://contracts.kokoro.invalid/presentation-message-binding.v1.schema.json" },
+      },
+    },
+  }, "binding delta definitions");
 }
 
 function digest(source) {
@@ -307,21 +353,44 @@ export function generateAguiBindingAuthority(sources) {
   expectKeys(sources, aguiBindingAuthoritySources, "source set");
   const runSource = sources[runSourcePath];
   const messageSource = sources[messageSourcePath];
+  const deltaSource = sources[deltaSourcePath];
   const runSchema = parseSource(runSource, runSourcePath);
   const messageSchema = parseSource(messageSource, messageSourcePath);
+  const deltaSchema = parseSource(deltaSource, deltaSourcePath);
   const run = inspectRunSchema(runSchema);
   const message = inspectMessageSchema(messageSchema);
-  const runDefinitions = inspectSharedDefinitions(runSchema, "run binding");
-  const messageDefinitions = inspectSharedDefinitions(messageSchema, "message binding");
-  expectEqual(messageDefinitions, runDefinitions, "shared definitions");
+  inspectDeltaSchema(deltaSchema);
+  const runDefinitions = inspectDefinitions(
+    runSchema,
+    "run binding",
+    ["runBindingRef", "presentationThreadId", "presentationRunId"],
+  );
+  const messageDefinitions = inspectDefinitions(
+    messageSchema,
+    "message binding",
+    ["runBindingRef", "messageBindingRef", "presentationMessageId"],
+  );
+  expectEqual(
+    { id: messageDefinitions.id, publicSourceEventId: messageDefinitions.publicSourceEventId, dateTime: messageDefinitions.dateTime },
+    { id: runDefinitions.id, publicSourceEventId: runDefinitions.publicSourceEventId, dateTime: runDefinitions.dateTime },
+    "shared definitions",
+  );
+  expectEqual(
+    messageDefinitions.opaque.runBindingRef,
+    runDefinitions.opaque.runBindingRef,
+    "shared run binding ref",
+  );
   expectEqual(message.profileRevision, run.profileRevision, "shared profile revision");
   expectEqual(message.segment, run.segment, "shared segment ordinal");
 
-  const { id, dateTime } = runDefinitions;
+  const { id, publicSourceEventId, dateTime } = runDefinitions;
+  const { runBindingRef: runBinding, presentationThreadId, presentationRunId } = runDefinitions.opaque;
+  const { messageBindingRef: messageBinding, presentationMessageId } = messageDefinitions.opaque;
   return `// GENERATED — DO NOT EDIT.
 // Sources:
 //   ${runSourcePath}
 //   ${messageSourcePath}
+//   ${deltaSourcePath}
 // Generation authority: Kokoro Root contract authority.
 
 import { z } from "zod";
@@ -333,38 +402,67 @@ export const aguiBindingAuthorityContractMetadata = Object.freeze({
       ${quote(digest(runSource))},
     ${quote(messageSourcePath)}:
       ${quote(digest(messageSource))},
+    ${quote(deltaSourcePath)}:
+      ${quote(digest(deltaSource))},
   }),
 });
 
 const idPattern = ${renderRegex(id.pattern)};
+const runBindingRefPattern = ${renderRegex(runBinding.pattern)};
+const messageBindingRefPattern = ${renderRegex(messageBinding.pattern)};
+const presentationThreadIdPattern = ${renderRegex(presentationThreadId.pattern)};
+const presentationRunIdPattern = ${renderRegex(presentationRunId.pattern)};
+const presentationMessageIdPattern = ${renderRegex(presentationMessageId.pattern)};
+const publicSourceEventIdPattern = ${renderRegex(publicSourceEventId.pattern)};
 const dateTimePattern = ${renderRegex(dateTime.pattern)};
 
 const idSchema = z.string().min(${id.minLength}).max(${id.maxLength}).regex(idPattern);
+export const aguiPresentationRunBindingRefSchema = z.string()
+  .regex(runBindingRefPattern)
+  .brand<"AguiPresentationRunBindingRef">();
+export const aguiPresentationMessageBindingRefSchema = z.string()
+  .regex(messageBindingRefPattern)
+  .brand<"AguiPresentationMessageBindingRef">();
+export const aguiPresentationThreadIdSchema = z.string()
+  .regex(presentationThreadIdPattern)
+  .brand<"AguiPresentationThreadId">();
+export const aguiPresentationRunIdSchema = z.string()
+  .regex(presentationRunIdPattern)
+  .brand<"AguiPresentationRunId">();
+export const aguiPresentationMessageIdSchema = z.string()
+  .regex(presentationMessageIdPattern)
+  .brand<"AguiPresentationMessageId">();
+export const aguiPublicSourceEventIdSchema = z.string()
+  .min(${publicSourceEventId.minLength})
+  .max(${publicSourceEventId.maxLength})
+  .regex(publicSourceEventIdPattern)
+  .brand<"AguiPublicSourceEventId">();
 const dateTimeSchema = z.string().min(${dateTime.minLength}).max(${dateTime.maxLength}).regex(dateTimePattern);
 
+export type AguiPresentationRunBindingRef = z.infer<typeof aguiPresentationRunBindingRefSchema>;
+export type AguiPresentationMessageBindingRef = z.infer<typeof aguiPresentationMessageBindingRefSchema>;
+export type AguiPresentationThreadId = z.infer<typeof aguiPresentationThreadIdSchema>;
+export type AguiPresentationRunId = z.infer<typeof aguiPresentationRunIdSchema>;
+export type AguiPresentationMessageId = z.infer<typeof aguiPresentationMessageIdSchema>;
+export type AguiPublicSourceEventId = z.infer<typeof aguiPublicSourceEventIdSchema>;
+
 const parentLineageSchema = z.strictObject({
-  parentInternalRunRef: idSchema.nullable(),
-  parentPresentationRunId: idSchema.nullable(),
-}).superRefine((lineage, context) => {
-  if ((lineage.parentInternalRunRef === null) !== (lineage.parentPresentationRunId === null)) {
-    context.addIssue({ code: "custom", message: "parent lineage pair" });
-  }
+  parentPresentationRunId: aguiPresentationRunIdSchema.nullable(),
 });
 
 export const aguiPresentationRunBindingSchema = z.strictObject({
-  bindingRef: idSchema,
+  bindingRef: aguiPresentationRunBindingRefSchema,
   profileRevision: z.literal(${quote(run.profileRevision)}),
   sessionId: idSchema,
-  internalRunRef: idSchema,
-  presentationThreadId: idSchema,
-  presentationRunId: idSchema,
+  presentationThreadId: aguiPresentationThreadIdSchema,
+  presentationRunId: aguiPresentationRunIdSchema,
   segmentOrdinal: z.number().int().min(${renderInteger(run.segment.minimum)}).max(${renderInteger(run.segment.maximum)}),
-  resumeOfPresentationRunId: idSchema.nullable(),
+  resumeOfPresentationRunId: aguiPresentationRunIdSchema.nullable(),
   parentLineage: parentLineageSchema,
   state: z.enum(${renderEnum(run.states)}),
   terminalDisposition: z.enum(${renderEnum(run.dispositions)}).nullable(),
-  openedBySourceEventId: idSchema,
-  terminalSourceEventId: idSchema.nullable(),
+  openedBySourceEventId: aguiPublicSourceEventIdSchema,
+  terminalSourceEventId: aguiPublicSourceEventIdSchema.nullable(),
   openedAt: dateTimeSchema,
   terminalAt: dateTimeSchema.nullable(),
 }).superRefine((binding, context) => {
@@ -384,16 +482,15 @@ export const aguiPresentationRunBindingSchema = z.strictObject({
 export type AguiPresentationRunBinding = Readonly<z.infer<typeof aguiPresentationRunBindingSchema>>;
 
 export const aguiPresentationMessageBindingSchema = z.strictObject({
-  bindingRef: idSchema,
+  bindingRef: aguiPresentationMessageBindingRefSchema,
   profileRevision: z.literal(${quote(message.profileRevision)}),
   sessionId: idSchema,
-  internalMessageRef: idSchema,
-  presentationRunBindingRef: idSchema,
-  presentationMessageId: idSchema,
+  presentationRunBindingRef: aguiPresentationRunBindingRefSchema,
+  presentationMessageId: aguiPresentationMessageIdSchema,
   resumeSegmentOrdinal: z.number().int().min(${renderInteger(message.segment.minimum)}).max(${renderInteger(message.segment.maximum)}),
   state: z.enum(${renderEnum(message.states)}),
-  openedBySourceEventId: idSchema,
-  endedBySourceEventId: idSchema.nullable(),
+  openedBySourceEventId: aguiPublicSourceEventIdSchema,
+  endedBySourceEventId: aguiPublicSourceEventIdSchema.nullable(),
   openedAt: dateTimeSchema,
   endedAt: dateTimeSchema.nullable(),
 }).superRefine((binding, context) => {
@@ -404,6 +501,16 @@ export const aguiPresentationMessageBindingSchema = z.strictObject({
 });
 
 export type AguiPresentationMessageBinding = Readonly<z.infer<typeof aguiPresentationMessageBindingSchema>>;
+
+export const aguiPresentationBindingAuthorityDeltaSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("none") }),
+  z.strictObject({ kind: z.literal("run.replace"), binding: aguiPresentationRunBindingSchema }),
+  z.strictObject({ kind: z.literal("message.replace"), binding: aguiPresentationMessageBindingSchema }),
+]);
+
+export type AguiPresentationBindingAuthorityDelta = Readonly<
+  z.infer<typeof aguiPresentationBindingAuthorityDeltaSchema>
+>;
 `;
 }
 

@@ -23,7 +23,10 @@ events, raw/native tool/state/reasoning payloads, or unknown extensions because 
 `ChatProjection`, or second assistant-ui store from presentation fields that lack Session owner facts. No current
 Chat controller instantiates it; activation waits for the real Session provider, complete compatibility evidence,
 and an explicit bridge into the existing `ChatProjection`/assistant-ui external-store authority.
-The dormant dispatch port is transactional: every durable mutation carries its opaque cursor as the idempotency
+The adapter consumes only the public production decoder and its trusted Session snapshot. It never accepts a
+future-authority preload, reconstructs bindings from later frames, or handles private Agent/internal route refs.
+Presentation event, Run, message, thread, and binding identities remain branded opaque values through the mutation
+boundary. Its dispatch port is transactional: every durable mutation carries its opaque cursor as the idempotency
 key and must return `applied|replayed`. Decoder cursor/Run/message authority commits only after that acknowledgement.
 If a consumer applies a mutation and then loses the acknowledgement, retrying the exact frame dispatches the same
 mutation again; the consumer returns `replayed`, after which the decoder commits. Dispatch failure never advances

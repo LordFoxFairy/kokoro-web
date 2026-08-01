@@ -4,8 +4,13 @@ import type {
   AguiDecodedFrame,
   AguiDurableFrame,
   AguiGrantBinding,
+  AguiPresentationMessageBindingRef,
+  AguiPresentationMessageId,
   AguiPresentationDecoder,
+  AguiPresentationRunBindingRef,
+  AguiPresentationRunId,
   AguiPresentationSnapshotAuthority,
+  AguiPresentationThreadId,
   AguiSseFrame,
 } from "@kokoro/session-client/agui-presentation-dormant"
 import {
@@ -17,15 +22,15 @@ type DurableMutationAuthority = Readonly<{
   durable: true
   cursor: string
   source: AguiDurableFrame["data"]["source"]
-  runBindingRef?: string
-  messageBindingRef?: string
+  runBindingRef?: AguiPresentationRunBindingRef
+  messageBindingRef?: AguiPresentationMessageBindingRef
 }>
 
 type ChatAguiActivityMutation<Event extends AguiActivityEvent = AguiActivityEvent> =
   Event extends AguiActivityEvent
     ? DurableMutationAuthority & Readonly<{
         type: "agui.activity"
-        presentationMessageId: string
+        presentationMessageId: AguiPresentationMessageId
         activityType: Event["activityType"]
         content: Event["content"]
         replace: true
@@ -45,15 +50,15 @@ export type ChatAguiPresentationMutation =
   | (DurableMutationAuthority & Readonly<{
       type: "agui.lifecycle"
       phase: "run-started"
-      threadId: string
-      runId: string
-      parentRunId?: string
+      threadId: AguiPresentationThreadId
+      runId: AguiPresentationRunId
+      parentRunId?: AguiPresentationRunId
     }>)
   | (DurableMutationAuthority & Readonly<{
       type: "agui.lifecycle"
       phase: "run-finished"
-      threadId: string
-      runId: string
+      threadId: AguiPresentationThreadId
+      runId: AguiPresentationRunId
     }>)
   | (DurableMutationAuthority & Readonly<{
       type: "agui.lifecycle"
@@ -64,19 +69,19 @@ export type ChatAguiPresentationMutation =
   | (DurableMutationAuthority & Readonly<{
       type: "agui.text"
       phase: "start"
-      presentationMessageId: string
+      presentationMessageId: AguiPresentationMessageId
       role: "assistant"
     }>)
   | (DurableMutationAuthority & Readonly<{
       type: "agui.text"
       phase: "content"
-      presentationMessageId: string
+      presentationMessageId: AguiPresentationMessageId
       delta: string
     }>)
   | (DurableMutationAuthority & Readonly<{
       type: "agui.text"
       phase: "end"
-      presentationMessageId: string
+      presentationMessageId: AguiPresentationMessageId
     }>)
   | ChatAguiActivityMutation
   | ChatAguiCustomMutation

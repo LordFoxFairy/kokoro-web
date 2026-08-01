@@ -28,12 +28,13 @@ does not create a second Session endpoint or a transport-specific escape hatch.
 
 The strict AG-UI presentation consumer is present only through the explicit
 `@kokoro/session-client/agui-presentation-dormant` subpath; the package main entry does not expose it.
-That subpath is a whitelist façade over an internal state-machine module. The internal module's test-only seam
-accepts separately supplied synthetic binding authority for transition tests, is absent from package exports, and
-cannot be selected through a production option or HTTP snapshot payload.
-Its Run/message binding validators are a committed static TypeScript runtime mirror generated from Root's
-`presentation-run-binding-v1` and `presentation-message-binding-v1` JSON Schemas, with both Root source SHA-256
-digests embedded in the artifact. The deterministic Web-local generator accepts only the reviewed v1 schema shape;
+That subpath is a whitelist façade over one production state-machine implementation; there is no synthetic,
+future-authority, preload, or test-only decoder variant.
+Its Run/message binding and atomic binding-delta validators are a committed static TypeScript runtime mirror generated
+from Root's `presentation-run-binding-v1`, `presentation-message-binding-v1`, and
+`presentation-binding-authority-delta-v1` JSON Schemas, with all three Root source SHA-256 digests embedded in the
+artifact. Root-owned event, Run, message, thread, and binding identities retain branded opaque TypeScript types and
+closed runtime patterns at the browser boundary. The deterministic Web-local generator accepts only the reviewed v1 schema shape;
 the federated repository gate regenerates the complete artifact and compares it byte-for-byte, rather than allowing
 a digest-only mirror to conceal validator drift. Run `pnpm generate:agui-binding-authority` from a federated checkout
 after an approved Root contract change. An independently built Web package skips that repository-only gate and never
@@ -72,19 +73,21 @@ evidence. `@ag-ui/client`, `useAgUiRuntime`, and stock browser transports remain
 preserve Kokoro cursor/snapshot/repair authority. Decoder construction requires a closed, trusted Session HTTP
 snapshot even at durable sequence zero. That snapshot seeds cursor, Run, message, lineage, segment, source/time, and
 terminal evidence; missing, malformed, cross-scope, discontinuous, or contradictory binding authority fails closed.
-Every Run-bound frame must resolve its Run binding in that snapshot, and every message-bound frame must resolve a
-message binding owned by the same trusted Run. An unknown binding requests snapshot repair before Web can create a
-ledger entry, dispatch a Chat mutation, or advance its cursor.
+Every durable payload carries exactly one Session-owned `bindingAuthorityDelta`: `none`, a complete Run replacement,
+or a complete message replacement. A real empty sequence-zero snapshot therefore rebuilds its authority only from
+ordered durable evidence; Web never infers a binding or preloads evidence from a future frame. Each replacement is
+validated against the event, source identity, time, parent/resume topology, terminal state, and current trusted
+authority before the event can reach Chat.
 The snapshot's Session-owned canonical UTC-millisecond `lastRecordedAt` is required and is `null` exactly at sequence
 zero. For a nonzero head it must not precede any Run/message binding evidence and directly seeds event chronology;
 Web never derives the durable-head watermark from binding evidence because a later CUSTOM or ACTIVITY row may own the
 head without changing a binding.
-Activation is still blocked at the first bound event after a real empty sequence-zero snapshot: the current durable
-projection payload carries only binding references, so Web correctly rejects the unknown Run instead of inventing
-authority. Root and Session must add an atomic owner-authored binding authority delta to the same durable row/payload
-before Web can evolve from the empty snapshot. Per-event HTTP repair, future-binding preloads, and Web-side inference
-are not valid substitutes; existing future-binding unit harnesses are state-machine tests only, never compatibility
-evidence. No active Web controller opens the AG-UI stream until that provider compatibility boundary and the Session
-snapshot endpoint are promoted together.
+Prepare stages the complete next decoder state—including cursor/replay ledgers, reduced lifecycle authority, full
+binding authority, and Run/message owner records—as one immutable value. After dispatch acknowledges `applied|replayed`,
+commit performs one state-reference swap; a parse, validation, dispatch, or acknowledgement failure leaves every
+authority fact unchanged. Root's positive corpus is rebuilt from a real empty sequence-zero snapshot, and all
+browser-facing corpus attacks plus snapshot-authority attacks run against this production decoder. Product activation
+still requires the Session provider and compatibility evidence to be promoted with the snapshot endpoint; Web has no
+fallback that talks to Agent, repairs per event, preloads future bindings, or derives private topology.
 
 Verification: `pnpm --filter @kokoro/session-client lint && pnpm --filter @kokoro/session-client typecheck && pnpm --filter @kokoro/session-client test && pnpm --filter @kokoro/session-client build`.
