@@ -542,7 +542,7 @@ describe("Chat projection", () => {
     })
   })
 
-  it("repairs every same-branch active-leaf change until a fresh snapshot updates branch authority", () => {
+  it("keeps live leaf extension branch authority stale until a complete snapshot replaces it", () => {
     const initial = snapshot()
     const unproven = createChatProjectionStore()
     unproven.hydrate(initial)
@@ -590,6 +590,12 @@ describe("Chat projection", () => {
       type: "event",
       event: event({ kind: "message.created", payload: { message: nextMessage } }),
     })
+    expect(proven.getSnapshot()).toMatchObject({
+      session: { activeLeafMessageId: nextMessage.message_id, version: 2 },
+      messages: [{ id: "message-user-12345678" }, { id: "message-assistant-12345678" }, { id: nextMessage.message_id }],
+      branches: [{ id: initial.session.active_branch_id, leafMessageId: nextMessage.message_id, version: 2 }],
+      repair: { required: true, reason: "active_branch_authority_stale" },
+    })
     proven.dispatch({
       type: "event",
       event: event({
@@ -603,6 +609,24 @@ describe("Chat projection", () => {
       session: { activeLeafMessageId: nextMessage.message_id, version: 3 },
       messages: [{ id: "message-user-12345678" }, { id: "message-assistant-12345678" }, { id: nextMessage.message_id }],
       branches: [{ id: initial.session.active_branch_id, leafMessageId: nextMessage.message_id, version: 2 }],
+      repair: { required: true, reason: "active_branch_authority_stale" },
+    })
+
+    proven.hydrate({
+      ...initial,
+      session: { ...initial.session, active_leaf_message_id: nextMessage.message_id, version: 3 },
+      branches: [{ ...initial.branches[0]!, leaf_message_id: nextMessage.message_id, version: 3 }],
+      messages: [...initial.messages, nextMessage],
+      snapshot_watermark: {
+        ...initial.snapshot_watermark,
+        cursor: "signed.cursor.9",
+        durable_seq: "9",
+        projection_version: 3,
+      },
+    })
+    expect(proven.getSnapshot()).toMatchObject({
+      session: { activeLeafMessageId: nextMessage.message_id, version: 3 },
+      branches: [{ leafMessageId: nextMessage.message_id, version: 3 }],
       repair: { required: false },
     })
   })
@@ -684,7 +708,7 @@ describe("Chat projection", () => {
       session: { activeLeafMessageId: first.message_id },
       branches: [{ rootMessageId: first.message_id, leafMessageId: first.message_id }],
       messages: [{ id: first.message_id }],
-      repair: { required: false },
+      repair: { required: true, reason: "active_branch_authority_stale" },
     })
   })
 

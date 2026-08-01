@@ -1160,6 +1160,14 @@ export function createChatController(options: {
     }
   }
 
+  const selectionValidationOwnsFailure = (): boolean =>
+    state.phase === "ready" &&
+    commandClaim === null &&
+    snapshotRequest === null &&
+    state.projection.command.state === "idle" &&
+    !state.projection.repair.required &&
+    (state.failure === null || state.failure.action === "choose_model")
+
   return Object.freeze({
     getSnapshot: () => state,
     subscribe(listener) {
@@ -1191,7 +1199,9 @@ export function createChatController(options: {
         (option) => option.modelOptionRevisionRef === modelOptionRevisionRef && option.availability === "available",
       ) === true
       if (!selectable) {
-        fail(describeSessionFailure({ stableCode: "MODEL_OPTION_UNAVAILABLE", action: "choose_model", retryClass: "after_user_action" }))
+        if (selectionValidationOwnsFailure()) {
+          fail(describeSessionFailure({ stableCode: "MODEL_OPTION_UNAVAILABLE", action: "choose_model", retryClass: "after_user_action" }))
+        }
         return
       }
       selectionSessionId = state.sessionId
@@ -1223,7 +1233,9 @@ export function createChatController(options: {
         (option) => option.modelOptionRevisionRef === state.selectedModelOptionRevisionRef,
       )
       if (effort !== null && selected?.supportedEfforts.includes(effort) !== true) {
-        fail(describeSessionFailure({ stableCode: "REQUEST_INVALID", action: "choose_model", retryClass: "after_user_action" }))
+        if (selectionValidationOwnsFailure()) {
+          fail(describeSessionFailure({ stableCode: "REQUEST_INVALID", action: "choose_model", retryClass: "after_user_action" }))
+        }
         return
       }
       selectionSessionId = state.sessionId

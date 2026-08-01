@@ -56,7 +56,8 @@ open, create, or mutation can revive that controller. Snapshot repair marks the 
 an invalid or missing repair result clears all Session/UI authority instead of publishing stale content.
 Model and effort selection may update the next-turn draft while a mutation's authoritative post-effect snapshot is pending, but it
 cannot release or overwrite that pending command slot. A valid selection clears a prior selection failure only when no command or
-snapshot request owns the slot.
+snapshot request owns the slot. Invalid selector input may publish local validation only from an otherwise healthy idle controller;
+it cannot replace a snapshot/repair/reconciliation failure or turn an invalid→valid selector sequence into mutation authority.
 Run and launch versions/fingerprints are fenced monotonically inside the projection store; a regression, conflicting replay, or gap
 forces snapshot repair instead of regressing visible terminal state. Cancel and HITL commands read only the active Run version
 published by `ChatProjection`, so the controller cannot retain a parallel execution authority. HITL callers provide only

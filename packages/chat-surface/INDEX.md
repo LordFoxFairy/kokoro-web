@@ -31,8 +31,10 @@ requests repair without committing the rejected envelope.
 A message ID is admitted only from an authoritative Session snapshot or `message.created` event. A new live active-branch message must
 be the exact next ordinal, name the current authoritative leaf as parent (or establish the empty branch's first root), and extend the
 one current root-to-leaf chain. Admission atomically advances the projected Session/branch leaf; a later same-branch `session.updated`
-may confirm that leaf with its next owner version. Invalid parent/root/leaf/ordinal evidence requests repair before the message
-fingerprint or projection is committed. The first complete envelope owns that ID; only an exact canonical replay is ignored, while
+may confirm Session metadata but cannot certify the still-old branch version. The projection remains
+`active_branch_authority_stale`, and all branch-versioned mutations stay disabled until a complete snapshot replaces branch
+authority. Invalid parent/root/leaf/ordinal evidence requests repair before the message fingerprint or projection is committed. The
+first complete envelope owns that ID; only an exact canonical replay is ignored, while
 any same-ID role, branch, lineage, attachment, part, lifecycle, or system-message drift preserves the first projection and requires
 repair. A newly observed part starts at version 1; an existing part accepts only its exact replay or the immediately consecutive
 version. Same-version equality uses an internal canonical fingerprint of the complete validated envelope before display projection:

@@ -984,6 +984,9 @@ function reduceEvent(
         session: extension.session,
         branches: extension.branches,
         messages: appendMessage(state.messages, message),
+        repair: state.repair.required
+          ? state.repair
+          : { required: true, reason: "active_branch_authority_stale" },
       }
       break
     }

@@ -510,11 +510,18 @@ describe("Chat recovery controller", () => {
       failure: { code: "SNAPSHOT_REQUIRED", action: "refetch_snapshot" },
       projection: { command: { state: "failed" } },
     })
+    controller.selectModelOption("model-option-attacker-controlled-12345678")
+    expect(controller.getSnapshot()).toMatchObject({
+      failure: { code: "SNAPSHOT_REQUIRED", action: "refetch_snapshot" },
+      projection: { command: { state: "failed" } },
+    })
     controller.selectModelOption("model-option-default-12345678")
     expect(controller.getSnapshot()).toMatchObject({
       failure: { code: "SNAPSHOT_REQUIRED", action: "refetch_snapshot" },
       projection: { command: { state: "failed" } },
     })
+    await expect(controller.submit("must remain blocked after invalid then valid selection")).resolves.toBe(false)
+    expect(submitMessage).toHaveBeenCalledTimes(2)
     controller.close()
   })
 
