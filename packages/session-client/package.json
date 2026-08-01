@@ -21,6 +21,11 @@
       "types": "./src/contracts.ts",
       "development": "./src/contracts.ts",
       "import": "./dist/contracts.js"
+    },
+    "./agui-presentation-dormant": {
+      "types": "./src/agui-presentation.ts",
+      "development": "./src/agui-presentation.ts",
+      "import": "./dist/agui-presentation.js"
     }
   },
   "scripts": {

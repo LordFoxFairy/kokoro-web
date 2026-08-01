@@ -11,6 +11,11 @@
       "types": "./src/index.ts",
       "development": "./src/index.ts",
       "import": "./dist/index.js"
+    },
+    "./agui-presentation-dormant": {
+      "types": "./src/runtime/agui-presentation-adapter.ts",
+      "development": "./src/runtime/agui-presentation-adapter.ts",
+      "import": "./dist/runtime/agui-presentation-adapter.js"
     }
   },
   "scripts": {

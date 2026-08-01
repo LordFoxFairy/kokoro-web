@@ -26,18 +26,26 @@ Snapshot fetch and hydration accept an optional `AbortSignal` and forward the ex
 transport. Product controllers use it to cancel superseded, unmounted, and closed authority requests; cancellation
 does not create a second Session endpoint or a transport-specific escape hatch.
 
-The strict AG-UI presentation consumer is present but **dormant**. `@ag-ui/core@0.0.57` is pinned exactly and
+The strict AG-UI presentation consumer is present only through the explicit
+`@kokoro/session-client/agui-presentation-dormant` subpath; the package main entry does not expose it.
+`@ag-ui/core@0.0.57` is pinned exactly and
 `EventSchemas` is used only after Kokoro's smaller closed profile has passed UTF-8 byte, JSON depth/node/key/array,
 event, source-mapping, grant, cursor, Session, epoch, sequence, timestamp, binding, thread, message-END, and terminal
 checks. RAW, native tool, state/delta, reasoning/thinking, unknown activity/custom, extra fields, provider payload,
 and secret-bearing previews fail closed. The decoder preserves SSE `id`/`event`, emits the exact opaque cursor as
 both `Last-Event-ID` and the matching query cursor, and never treats `stream.draining` as durable progress. Its
-identity/run/message authority ledgers are bounded at 4096 facts and fail closed to future HTTP snapshot repair
-instead of evicting irreversible facts.
+cursor/source identity ledger is fixed at 4096 facts, Run authority at 256, and message authority at 512; callers
+may lower but cannot raise those production ceilings. All ledgers fail closed to future HTTP snapshot repair
+instead of evicting irreversible facts. JSON structure admission uses an iterative, early-stopping traversal, so a
+deep but byte-bounded input cannot exhaust the JavaScript call stack before the depth gate runs.
 
-Session remains the only browser presentation owner. The Python `ag-ui-protocol` package and Agent raw events are
-not participants, and `@ag-ui/client`, `useAgUiRuntime`, and stock AG-UI transports are forbidden because they do
-not preserve Kokoro cursor/snapshot/repair authority. No active Web controller opens the AG-UI stream until a real
-Session provider and cross-repository compatibility evidence are promoted.
+Session remains the only browser transport and presentation owner: Web never connects to Agent or trusts an Agent
+raw payload. Agent/Python may become the internal AG-UI producer only after Root pins the Python SDK and TypeScript
+SDK to one reviewed upstream revision and proves the Agent-to-Session mapping through cross-repository compatibility
+evidence. `@ag-ui/client`, `useAgUiRuntime`, and stock browser transports remain forbidden because they do not
+preserve Kokoro cursor/snapshot/repair authority. R0 also has no browser snapshot-authority schema capable of
+seeding thread, Run, message, cursor, and source ledgers. Consequently decoder construction fails closed with
+`agui_snapshot_authority_required` for every nonzero initial durable sequence. No active Web controller opens the
+AG-UI stream until both provider compatibility and snapshot repair authority are promoted.
 
 Verification: `pnpm --filter @kokoro/session-client lint && pnpm --filter @kokoro/session-client typecheck && pnpm --filter @kokoro/session-client test && pnpm --filter @kokoro/session-client build`.

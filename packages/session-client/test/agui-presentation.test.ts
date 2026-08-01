@@ -75,6 +75,16 @@ function expectCode(operation: () => unknown, code: string): void {
 }
 
 describe("strict Session-owned AG-UI decoder", () => {
+  it("requires authoritative snapshot state before resuming from a nonzero durable cursor", () => {
+    expectCode(
+      () => createAguiPresentationDecoder({
+        grant,
+        initialCursor: { ...initialCursor, durableSeq: "9" },
+      }),
+      "agui_snapshot_authority_required",
+    );
+  });
+
   it("preserves the Root profile, SSE identity, and Last-Event-ID binding", () => {
     const decoder = createAguiPresentationDecoder({ grant, initialCursor });
     const decoded = decoder.decode(durableFrame({
@@ -254,10 +264,44 @@ describe("strict Session-owned AG-UI decoder", () => {
   });
 
   it("fails closed instead of evicting durable identity and terminal authority", () => {
-    const decoder = createAguiPresentationDecoder({ grant, initialCursor, authorityLimit: 2 });
+    const decoder = createAguiPresentationDecoder({
+      grant,
+      initialCursor,
+      limits: { streamIdentities: 2 },
+    });
     decoder.decode(durableFrame({ seq: 1, sourceKind: "presentation.run.started", runBindingRef: "run.01", event: { type: EventType.RUN_STARTED, threadId: "thread.01", runId: "run.01" } }));
     expectCode(() => decoder.decode(durableFrame({ seq: 2, sourceKind: "presentation.run.finished", runBindingRef: "run.01", event: { type: EventType.RUN_FINISHED, threadId: "thread.01", runId: "run.01" } })), "agui_authority_capacity_exceeded");
     expect(decoder.getResumeRequest()).toMatchObject({ cursorBinding: { durableSeq: "1" } });
+  });
+
+  it("uses separate production-bounded ledgers for stream, run, and message authority", () => {
+    for (const limits of [
+      { streamIdentities: 4_097 },
+      { runs: 257 },
+      { messages: 513 },
+    ]) {
+      expectCode(
+        () => createAguiPresentationDecoder({ grant, initialCursor, limits }),
+        "agui_authority_limit_invalid",
+      );
+    }
+
+    const runDecoder = createAguiPresentationDecoder({ grant, initialCursor, limits: { runs: 1 } });
+    runDecoder.decode(durableFrame({ seq: 1, sourceKind: "presentation.run.started", runBindingRef: "run.01", event: { type: EventType.RUN_STARTED, threadId: "thread.01", runId: "run.01" } }));
+    runDecoder.decode(durableFrame({ seq: 2, sourceKind: "presentation.run.finished", runBindingRef: "run.01", event: { type: EventType.RUN_FINISHED, threadId: "thread.01", runId: "run.01" } }));
+    expectCode(
+      () => runDecoder.decode(durableFrame({ seq: 3, sourceKind: "presentation.run.started", runBindingRef: "run.02", event: { type: EventType.RUN_STARTED, threadId: "thread.01", runId: "run.02" } })),
+      "agui_authority_capacity_exceeded",
+    );
+
+    const messageDecoder = createAguiPresentationDecoder({ grant, initialCursor, limits: { messages: 1 } });
+    messageDecoder.decode(durableFrame({ seq: 1, sourceKind: "presentation.run.started", runBindingRef: "run.01", event: { type: EventType.RUN_STARTED, threadId: "thread.01", runId: "run.01" } }));
+    messageDecoder.decode(durableFrame({ seq: 2, sourceKind: "presentation.message.text.started", runBindingRef: "run.01", messageBindingRef: "message.01", event: { type: EventType.TEXT_MESSAGE_START, messageId: "message.01", role: "assistant" } }));
+    messageDecoder.decode(durableFrame({ seq: 3, sourceKind: "presentation.message.text.ended", runBindingRef: "run.01", messageBindingRef: "message.01", event: { type: EventType.TEXT_MESSAGE_END, messageId: "message.01" } }));
+    expectCode(
+      () => messageDecoder.decode(durableFrame({ seq: 4, sourceKind: "presentation.message.text.started", runBindingRef: "run.01", messageBindingRef: "message.02", event: { type: EventType.TEXT_MESSAGE_START, messageId: "message.02", role: "assistant" } })),
+      "agui_authority_capacity_exceeded",
+    );
   });
 
   it("keeps stream.draining non-durable and bound to the last cursor", () => {
@@ -304,6 +348,13 @@ describe("strict Session-owned AG-UI decoder", () => {
     const parsed = JSON.parse(deeplyNested.data) as Record<string, unknown>;
     parsed.extra = nested;
     expectCode(() => decoder.decode({ ...deeplyNested, data: JSON.stringify(parsed) }), "agui_frame_limit_exceeded");
+
+    const hostileDepth = 10_000;
+    const hostileJson = `${'{"nested":'.repeat(hostileDepth)}null${"}".repeat(hostileDepth)}`;
+    expectCode(
+      () => decoder.decode({ id: "opaque.cursor.0001", event: EventType.RUN_ERROR, data: hostileJson }),
+      "agui_frame_limit_exceeded",
+    );
 
     const tooManyNodes = durableFrame({ seq: 1, sourceKind: "presentation.run.error", runBindingRef: "run.01", event: { type: EventType.RUN_ERROR, message: "Safe", code: "RUN_FAILED" } });
     const nodePayload = JSON.parse(tooManyNodes.data) as Record<string, unknown>;

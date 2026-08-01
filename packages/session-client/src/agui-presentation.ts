@@ -7,7 +7,11 @@ import type { SessionCursor } from "./cursor-policy.js";
 export const AGUI_PRESENTATION_PROFILE_REVISION = "kokoro-agui-presentation.v1" as const;
 export const AGUI_CURSOR_PROFILE_REVISION = "opaque-session-cursor-v1" as const;
 export const SESSION_AGUI_CONTRACT_REVISION = "session-agui-stream.v1" as const;
-export const AGUI_PRESENTATION_AUTHORITY_LIMIT = 4_096;
+export const AGUI_PRESENTATION_AUTHORITY_LIMITS = Object.freeze({
+  streamIdentities: 4_096,
+  runs: 256,
+  messages: 512,
+});
 
 export const AGUI_PRESENTATION_LIMITS = Object.freeze({
   maximumFrameBytes: 131_072,
@@ -413,35 +417,30 @@ function deepFreeze<T>(value: T): T {
   return value;
 }
 
-type JsonStats = { nodes: number; depth: number; maximumKeys: number; maximumItems: number };
-
-function collectJsonStats(value: unknown, depth = 0, result: JsonStats = {
-  nodes: 0,
-  depth: 0,
-  maximumKeys: 0,
-  maximumItems: 0,
-}): JsonStats {
-  result.nodes += 1;
-  result.depth = Math.max(result.depth, depth);
-  if (Array.isArray(value)) {
-    result.maximumItems = Math.max(result.maximumItems, value.length);
-    for (const child of value) collectJsonStats(child, depth + 1, result);
-  } else if (value !== null && typeof value === "object") {
-    const values = Object.values(value);
-    result.maximumKeys = Math.max(result.maximumKeys, values.length);
-    for (const child of values) collectJsonStats(child, depth + 1, result);
-  }
-  return result;
-}
-
 function assertJsonBudget(value: unknown): void {
-  const stats = collectJsonStats(value);
-  if (
-    stats.depth > AGUI_PRESENTATION_LIMITS.maximumJsonDepth ||
-    stats.nodes > AGUI_PRESENTATION_LIMITS.maximumJsonNodes ||
-    stats.maximumKeys > AGUI_PRESENTATION_LIMITS.maximumObjectKeys ||
-    stats.maximumItems > AGUI_PRESENTATION_LIMITS.maximumArrayItems
-  ) fail("agui_frame_limit_exceeded", "shape");
+  const stack: Array<Readonly<{ value: unknown; depth: number }>> = [{ value, depth: 0 }];
+  let nodes = 0;
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (current === undefined) break;
+    nodes += 1;
+    if (
+      nodes > AGUI_PRESENTATION_LIMITS.maximumJsonNodes ||
+      current.depth > AGUI_PRESENTATION_LIMITS.maximumJsonDepth
+    ) fail("agui_frame_limit_exceeded", "shape");
+    if (Array.isArray(current.value)) {
+      if (current.value.length > AGUI_PRESENTATION_LIMITS.maximumArrayItems) {
+        fail("agui_frame_limit_exceeded", "shape");
+      }
+      for (const child of current.value) stack.push({ value: child, depth: current.depth + 1 });
+    } else if (current.value !== null && typeof current.value === "object") {
+      const values = Object.values(current.value);
+      if (values.length > AGUI_PRESENTATION_LIMITS.maximumObjectKeys) {
+        fail("agui_frame_limit_exceeded", "shape");
+      }
+      for (const child of values) stack.push({ value: child, depth: current.depth + 1 });
+    }
+  }
 }
 
 function parseBoundedJson(frame: AguiSseFrame): unknown {
@@ -604,7 +603,11 @@ function assertBindingShape(
 export function createAguiPresentationDecoder(options: Readonly<{
   grant: AguiGrantBinding;
   initialCursor: AguiCursorBinding;
-  authorityLimit?: number;
+  limits?: Readonly<{
+    streamIdentities?: number;
+    runs?: number;
+    messages?: number;
+  }>;
 }>): AguiPresentationDecoder {
   const parsedGrant = aguiGrantBindingSchema.safeParse(options.grant);
   if (!parsedGrant.success) fail("agui_grant_profile_binding_invalid");
@@ -615,10 +618,16 @@ export function createAguiPresentationDecoder(options: Readonly<{
     parsedInitialCursor.data.profileRevision !== parsedGrant.data.presentationProfileRevision ||
     parsedInitialCursor.data.cursorProfileRevision !== parsedGrant.data.cursorProfileRevision
   ) fail("agui_cursor_binding_invalid");
-  const authorityLimit = options.authorityLimit ?? AGUI_PRESENTATION_AUTHORITY_LIMIT;
-  if (!Number.isInteger(authorityLimit) || authorityLimit < 2 || authorityLimit > 65_536) {
-    fail("agui_authority_limit_invalid");
-  }
+  if (BigInt(parsedInitialCursor.data.durableSeq) !== 0n) fail("agui_snapshot_authority_required");
+  const streamIdentityLimit = options.limits?.streamIdentities ?? AGUI_PRESENTATION_AUTHORITY_LIMITS.streamIdentities;
+  const runLimit = options.limits?.runs ?? AGUI_PRESENTATION_AUTHORITY_LIMITS.runs;
+  const messageLimit = options.limits?.messages ?? AGUI_PRESENTATION_AUTHORITY_LIMITS.messages;
+  if (
+    !Number.isInteger(streamIdentityLimit) || streamIdentityLimit < 2 ||
+    streamIdentityLimit > AGUI_PRESENTATION_AUTHORITY_LIMITS.streamIdentities ||
+    !Number.isInteger(runLimit) || runLimit < 1 || runLimit > AGUI_PRESENTATION_AUTHORITY_LIMITS.runs ||
+    !Number.isInteger(messageLimit) || messageLimit < 1 || messageLimit > AGUI_PRESENTATION_AUTHORITY_LIMITS.messages
+  ) fail("agui_authority_limit_invalid");
 
   let cursorBinding: AguiCursorBinding = Object.freeze({ ...parsedInitialCursor.data });
   let lastRecordedAt = -1;
@@ -691,7 +700,7 @@ export function createAguiPresentationDecoder(options: Readonly<{
     const recordedAt = Date.parse(data.source.recordedAt);
     if (recordedAt !== data.event.timestamp || recordedAt < lastRecordedAt) fail("agui_event_time_invalid");
     if (sourceEventIds.has(data.source.sourceEventId)) fail("agui_stream_identity_duplicate");
-    if (cursorFingerprints.size >= authorityLimit || sourceEventIds.size >= authorityLimit) {
+    if (cursorFingerprints.size >= streamIdentityLimit || sourceEventIds.size >= streamIdentityLimit) {
       fail("agui_authority_capacity_exceeded");
     }
 
@@ -714,7 +723,7 @@ export function createAguiPresentationDecoder(options: Readonly<{
         event.parentRunId !== undefined &&
         (event.parentRunId === event.runId || !runIds.has(event.parentRunId))
       ) fail("agui_run_parent_lineage_conflict");
-      if (runs.size >= authorityLimit || runIds.size >= authorityLimit) fail("agui_authority_capacity_exceeded");
+      if (runs.size >= runLimit || runIds.size >= runLimit) fail("agui_authority_capacity_exceeded");
       runUpdate = { ref: runRef, authority: { runId: event.runId, threadId: event.threadId, state: "open" } };
     } else if (event.type === EventType.RUN_FINISHED || event.type === EventType.RUN_ERROR) {
       if (runRef === undefined) fail("agui_frame_run_binding_invalid");
@@ -732,7 +741,7 @@ export function createAguiPresentationDecoder(options: Readonly<{
         fail("agui_frame_message_binding_invalid");
       }
       if (messages.has(messageRef) || messageIds.has(event.messageId)) fail("agui_message_reopened", event.messageId);
-      if (messages.size >= authorityLimit || messageIds.size >= authorityLimit) fail("agui_authority_capacity_exceeded");
+      if (messages.size >= messageLimit || messageIds.size >= messageLimit) fail("agui_authority_capacity_exceeded");
       messageUpdate = { ref: messageRef, authority: { messageId: event.messageId, runBindingRef: runRef, state: "open" } };
     } else if (event.type === EventType.TEXT_MESSAGE_CONTENT || event.type === EventType.TEXT_MESSAGE_END) {
       if (runRef === undefined || messageRef === undefined || runs.get(runRef)?.state !== "open") {

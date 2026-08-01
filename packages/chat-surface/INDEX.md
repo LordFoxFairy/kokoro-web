@@ -12,8 +12,11 @@ Owns the browser-safe Kokoro Chat projection and assistant-ui `useExternalStoreR
 
 Assistant UI is a rendering/runtime adapter only: it never becomes persistence or terminal-run authority. Commands cross one explicit `ChatCommandPort` call and do not optimistically mutate the projection. Edit/reload/cancel handlers are advertised only when an authoritative port exists.
 
-The Session-owned strict AG-UI mapping seam is present but **dormant**. It converts only decoded lifecycle, text,
-closed activity, and registered CUSTOM events into a typed `ChatAguiPresentationMutation`; replay produces no
+The Session-owned strict AG-UI mapping seam is present only through the explicit
+`@kokoro/chat-surface/agui-presentation-dormant` subpath; the package main entry does not expose it. Its adapter
+owns the decoder and accepts only raw `AguiSseFrame` values, so callers cannot bypass admission by constructing a
+decoded object. It converts only admitted lifecycle, text,
+closed activity, and registered CUSTOM events into a discriminator-correlated `ChatAguiPresentationMutation`; replay produces no
 mutation and `stream.draining` remains an explicitly non-durable control mutation. It cannot accept Agent/Python
 events, raw/native tool/state/reasoning payloads, or unknown extensions because those are rejected by
 `@kokoro/session-client` before mapping. The seam deliberately does not manufacture a `SessionEvent`, parallel

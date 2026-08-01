@@ -24,6 +24,8 @@ const chatAppPackage = await readPackage("packages/chat-app");
 const siteBffPackage = await readPackage("packages/site-bff");
 const referenceSitePackage = await readPackage("apps/reference-site");
 const workspace = await readFile(resolve(root, "pnpm-workspace.yaml"), "utf8");
+const sessionClientMain = await readFile(resolve(root, "packages/session-client/src/index.ts"), "utf8");
+const chatSurfaceMain = await readFile(resolve(root, "packages/chat-surface/src/index.ts"), "utf8");
 
 test("deployable apps pin the reviewed security patch line", () => {
   for (const app of [adminPackage, referenceSitePackage]) {
@@ -107,6 +109,18 @@ test("new Site packages use one Node 24 toolchain and the generated client owns 
   assert.equal(assetClientPackage.dependencies["@kokoro/site-client"], "workspace:*");
   assert.equal(chatSurfacePackage.exports["."].development, "./src/index.ts");
   assert.equal(chatSurfacePackage.exports["."].import, "./dist/index.js");
+  assert.deepEqual(chatSurfacePackage.exports["./agui-presentation-dormant"], {
+    types: "./src/runtime/agui-presentation-adapter.ts",
+    development: "./src/runtime/agui-presentation-adapter.ts",
+    import: "./dist/runtime/agui-presentation-adapter.js",
+  });
+  assert.deepEqual(sessionClientPackage.exports["./agui-presentation-dormant"], {
+    types: "./src/agui-presentation.ts",
+    development: "./src/agui-presentation.ts",
+    import: "./dist/agui-presentation.js",
+  });
+  assert.doesNotMatch(chatSurfaceMain, /agui-presentation/u);
+  assert.doesNotMatch(sessionClientMain, /agui-presentation/u);
   assert.equal(bffRuntimePackage.exports["."].development, "./src/index.ts");
   assert.equal(bffRuntimePackage.exports["."].import, "./dist/index.js");
   assert.equal(siteClientPackage.exports["./server"].development, "./src/server.ts");

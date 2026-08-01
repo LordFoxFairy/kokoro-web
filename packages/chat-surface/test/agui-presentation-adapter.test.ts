@@ -2,15 +2,15 @@ import {
   AGUI_CURSOR_PROFILE_REVISION,
   AGUI_PRESENTATION_PROFILE_REVISION,
   SESSION_AGUI_CONTRACT_REVISION,
-  createAguiPresentationDecoder,
-  type AguiDecodedFrame,
+  AguiPresentationProtocolError,
   type AguiGrantBinding,
-} from "@kokoro/session-client";
+  type AguiSseFrame,
+} from "@kokoro/session-client/agui-presentation-dormant";
 import { describe, expect, it, vi } from "vitest";
 
 import {
   createDormantAguiProjectionAdapter,
-  mapAguiPresentationFrame,
+  type ChatAguiPresentationMutation,
 } from "../src/runtime/agui-presentation-adapter.js";
 
 const EventType = {
@@ -27,34 +27,34 @@ const grant = {
   cursorProfileRevision: AGUI_CURSOR_PROFILE_REVISION,
 } as const satisfies AguiGrantBinding;
 
-function decode(event: Record<string, unknown>, sourceKind: string, bindings: {
-  run?: string;
-  message?: string;
-} = {}): AguiDecodedFrame {
-  const recordedAt = "2026-08-01T12:00:01.000Z";
-  const decoder = createAguiPresentationDecoder({
-    grant,
-    initialCursor: {
-      cursor: "opaque.cursor.initial",
-      sessionId: grant.sessionId,
-      streamEpoch: "41",
-      durableSeq: "0",
-      profileRevision: AGUI_PRESENTATION_PROFILE_REVISION,
-      cursorProfileRevision: AGUI_CURSOR_PROFILE_REVISION,
-    },
-  });
-  return decoder.decode({
-    id: "opaque.cursor.0001",
+const initialCursor = {
+  cursor: "opaque.cursor.initial",
+  sessionId: grant.sessionId,
+  streamEpoch: "41",
+  durableSeq: "0",
+  profileRevision: AGUI_PRESENTATION_PROFILE_REVISION,
+  cursorProfileRevision: AGUI_CURSOR_PROFILE_REVISION,
+} as const;
+
+function frame(
+  seq: number,
+  sourceKind: string,
+  event: Readonly<Record<string, unknown>>,
+  bindings: Readonly<{ run?: string; message?: string }> = {},
+): AguiSseFrame {
+  const recordedAt = `2026-08-01T12:00:${String(seq).padStart(2, "0")}.000Z`;
+  return {
+    id: `opaque.cursor.${String(seq).padStart(4, "0")}`,
     event: String(event.type),
     data: JSON.stringify({
       profileRevision: AGUI_PRESENTATION_PROFILE_REVISION,
       source: {
-        sourceEventId: "source.01",
+        sourceEventId: `source.${String(seq).padStart(2, "0")}`,
         sourceKind,
         sessionId: grant.sessionId,
         streamEpoch: "41",
-        durableSeq: "1",
-        projectionVersion: 1,
+        durableSeq: String(seq),
+        projectionVersion: seq,
         schemaRevision: 1,
         recordedAt,
       },
@@ -62,141 +62,127 @@ function decode(event: Record<string, unknown>, sourceKind: string, bindings: {
       ...(bindings.message === undefined ? {} : { presentationMessageBindingRef: bindings.message }),
       event: { ...event, timestamp: Date.parse(recordedAt) },
     }),
-  });
+  };
+}
+
+function createAdapter(dispatch = vi.fn()) {
+  return {
+    dispatch,
+    adapter: createDormantAguiProjectionAdapter({ grant, initialCursor, dispatch }),
+  };
 }
 
 describe("dormant AG-UI Chat projection adapter", () => {
-  it("maps lifecycle and text events without manufacturing SessionEvent authority", () => {
-    const decoder = createAguiPresentationDecoder({
-      grant,
-      initialCursor: {
-        cursor: "opaque.cursor.initial",
-        sessionId: grant.sessionId,
-        streamEpoch: "41",
-        durableSeq: "0",
-        profileRevision: AGUI_PRESENTATION_PROFILE_REVISION,
-        cursorProfileRevision: AGUI_CURSOR_PROFILE_REVISION,
-      },
-    });
-    const sequence = (seq: number, sourceKind: string, event: Record<string, unknown>, bindings: { run?: string; message?: string } = {}) => decoder.decode({
-      id: `opaque.cursor.${String(seq).padStart(4, "0")}`,
-      event: String(event.type),
-      data: JSON.stringify({
-        profileRevision: AGUI_PRESENTATION_PROFILE_REVISION,
-        source: {
-          sourceEventId: `source.${String(seq).padStart(2, "0")}`,
-          sourceKind,
-          sessionId: grant.sessionId,
-          streamEpoch: "41",
-          durableSeq: String(seq),
-          projectionVersion: seq,
-          schemaRevision: 1,
-          recordedAt: `2026-08-01T12:00:${String(seq).padStart(2, "0")}.000Z`,
-        },
-        ...(bindings.run === undefined ? {} : { presentationRunBindingRef: bindings.run }),
-        ...(bindings.message === undefined ? {} : { presentationMessageBindingRef: bindings.message }),
-        event: { ...event, timestamp: Date.parse(`2026-08-01T12:00:${String(seq).padStart(2, "0")}.000Z`) },
-      }),
-    });
-    const run = mapAguiPresentationFrame(sequence(1, "presentation.run.started", {
+  it("owns raw admission and maps lifecycle/text without manufacturing SessionEvent authority", () => {
+    const { adapter, dispatch } = createAdapter();
+    adapter.accept(frame(1, "presentation.run.started", {
       type: EventType.RUN_STARTED,
       threadId: "thread.session.01",
       runId: "presentation.run.01",
     }, { run: "run-binding.01" }));
-    expect(run).toMatchObject({
+    adapter.accept(frame(2, "presentation.message.text.started", {
+      type: EventType.TEXT_MESSAGE_START,
+      messageId: "presentation.message.01",
+      role: "assistant",
+    }, { run: "run-binding.01", message: "message-binding.01" }));
+
+    expect(dispatch).toHaveBeenNthCalledWith(1, expect.objectContaining({
       type: "agui.lifecycle",
       phase: "run-started",
       runBindingRef: "run-binding.01",
       runId: "presentation.run.01",
       cursor: "opaque.cursor.0001",
-      source: { sessionId: "session.01", durableSeq: "1" },
-    });
-
-    const start = mapAguiPresentationFrame(sequence(2, "presentation.message.text.started", {
-      type: EventType.TEXT_MESSAGE_START,
-      messageId: "presentation.message.01",
-      role: "assistant",
-    }, { run: "run-binding.01", message: "message-binding.01" }));
-    expect(start).toMatchObject({
+      source: expect.objectContaining({ sessionId: "session.01", durableSeq: "1" }),
+    }));
+    expect(dispatch).toHaveBeenNthCalledWith(2, expect.objectContaining({
       type: "agui.text",
       phase: "start",
       presentationMessageId: "presentation.message.01",
-      runBindingRef: "run-binding.01",
       messageBindingRef: "message-binding.01",
-    });
+    }));
   });
 
-  it("maps only closed activity and registered CUSTOM payloads", () => {
-    const activityDecoder = createAguiPresentationDecoder({
-      grant,
-      initialCursor: {
-        cursor: "opaque.cursor.initial",
-        sessionId: grant.sessionId,
-        streamEpoch: "41",
-        durableSeq: "0",
-        profileRevision: AGUI_PRESENTATION_PROFILE_REVISION,
-        cursorProfileRevision: AGUI_CURSOR_PROFILE_REVISION,
-      },
-    });
-    const frame = (seq: number, sourceKind: string, event: Record<string, unknown>) => activityDecoder.decode({
-      id: `opaque.cursor.${String(seq).padStart(4, "0")}`,
-      event: String(event.type),
-      data: JSON.stringify({
-        profileRevision: AGUI_PRESENTATION_PROFILE_REVISION,
-        source: {
-          sourceEventId: `source.${String(seq).padStart(2, "0")}`,
-          sourceKind,
-          sessionId: grant.sessionId,
-          streamEpoch: "41",
-          durableSeq: String(seq),
-          projectionVersion: seq,
-          schemaRevision: 1,
-          recordedAt: `2026-08-01T12:00:${String(seq).padStart(2, "0")}.000Z`,
-        },
-        presentationRunBindingRef: "run-binding.01",
-        ...(seq === 1 ? {} : { presentationMessageBindingRef: "message-binding.01" }),
-        event: { ...event, timestamp: Date.parse(`2026-08-01T12:00:${String(seq).padStart(2, "0")}.000Z`) },
-      }),
-    });
-    frame(1, "presentation.run.started", { type: EventType.RUN_STARTED, threadId: "thread.01", runId: "run.01" });
-    frame(2, "presentation.message.text.started", { type: EventType.TEXT_MESSAGE_START, messageId: "message.01", role: "assistant" });
-    const activity = mapAguiPresentationFrame(frame(3, "presentation.activity.notice", {
+  it("preserves discriminator/content correlation for activity and CUSTOM mutations", () => {
+    const { adapter, dispatch } = createAdapter();
+    adapter.accept(frame(1, "presentation.run.started", {
+      type: EventType.RUN_STARTED,
+      threadId: "thread.01",
+      runId: "run.01",
+    }, { run: "run-binding.01" }));
+    adapter.accept(frame(2, "presentation.message.text.started", {
+      type: EventType.TEXT_MESSAGE_START,
+      messageId: "message.01",
+      role: "assistant",
+    }, { run: "run-binding.01", message: "message-binding.01" }));
+    adapter.accept(frame(3, "presentation.activity.notice", {
       type: EventType.ACTIVITY_SNAPSHOT,
       messageId: "message.01",
       activityType: "kokoro.notice.v1",
       content: { noticeRef: "notice.01", code: "SAFE_NOTICE", message: "Safe.", severity: "info" },
       replace: true,
-    }));
-    expect(activity).toMatchObject({
-      type: "agui.activity",
-      activityType: "kokoro.notice.v1",
-      content: { code: "SAFE_NOTICE", message: "Safe." },
-    });
+    }, { run: "run-binding.01", message: "message-binding.01" }));
 
-    const custom = mapAguiPresentationFrame(decode({
-      type: EventType.CUSTOM,
-      name: "kokoro.session.replace.v1",
-      value: {
-        sessionId: "session.01",
-        profileRevision: AGUI_PRESENTATION_PROFILE_REVISION,
-        title: "Thread",
-        lifecycle: "active",
-        contextPolicy: "standard",
-        activeBranchId: "branch.01",
-        version: 1,
-      },
-    }, "presentation.custom.session"));
-    expect(custom).toMatchObject({
-      type: "agui.custom",
-      name: "kokoro.session.replace.v1",
-      value: { sessionId: "session.01", contextPolicy: "standard" },
-    });
+    const activity = dispatch.mock.calls[2]?.[0] as ChatAguiPresentationMutation;
+    if (activity.type !== "agui.activity" || activity.activityType !== "kokoro.notice.v1") {
+      throw new Error("fixture mismatch");
+    }
+    expect(activity.content.code).toBe("SAFE_NOTICE");
+
+    type NoticeMutation = Extract<
+      ChatAguiPresentationMutation,
+      { type: "agui.activity"; activityType: "kokoro.notice.v1" }
+    >;
+    const authority = {
+      durable: true,
+      cursor: "opaque.cursor.0003",
+      source: activity.source,
+      runBindingRef: "run-binding.01",
+      messageBindingRef: "message-binding.01",
+      type: "agui.activity",
+      presentationMessageId: "message.01",
+      activityType: "kokoro.notice.v1",
+      replace: true,
+    } as const;
+    const valid: NoticeMutation = { ...authority, content: activity.content };
+    // @ts-expect-error A notice discriminator must not accept a media payload.
+    const invalid: NoticeMutation = { ...authority, content: { operationRef: "operation.01", state: "active", progressBps: 1 } };
+    expect(valid.content.noticeRef).toBe("notice.01");
+    expect(invalid.content).toBeDefined();
   });
 
   it("keeps replay and draining outside durable Chat mutation authority", () => {
-    const dispatch = vi.fn();
-    const adapter = createDormantAguiProjectionAdapter({ dispatch });
-    const control: AguiDecodedFrame = {
+    const { adapter, dispatch } = createAdapter();
+    const durable = frame(1, "presentation.run.started", {
+      type: EventType.RUN_STARTED,
+      threadId: "thread.01",
+      runId: "run.01",
+    }, { run: "run.01" });
+    adapter.accept(durable);
+    adapter.accept(durable);
+    adapter.accept({
+      id: null,
+      event: "kokoro.stream.draining",
+      data: JSON.stringify({
+        type: "stream.draining",
+        profileRevision: AGUI_PRESENTATION_PROFILE_REVISION,
+        sessionId: "session.01",
+        streamEpoch: "41",
+        lastDurableCursor: "opaque.cursor.0001",
+        action: "retry-same-cursor",
+      }),
+    });
+
+    expect(dispatch).toHaveBeenCalledTimes(2);
+    expect(dispatch).toHaveBeenLastCalledWith(expect.objectContaining({
+      type: "agui.control",
+      durable: false,
+      action: "retry-same-cursor",
+    }));
+  });
+
+  it("rejects structured decoded-frame forgeries before dispatch", () => {
+    const { adapter, dispatch } = createAdapter();
+    const forged = {
       kind: "control",
       id: null,
       event: "kokoro.stream.draining",
@@ -205,20 +191,12 @@ describe("dormant AG-UI Chat projection adapter", () => {
         profileRevision: AGUI_PRESENTATION_PROFILE_REVISION,
         sessionId: "session.01",
         streamEpoch: "41",
-        lastDurableCursor: "opaque.cursor.0001",
+        lastDurableCursor: "opaque.cursor.initial",
         action: "retry-same-cursor",
       },
-    };
-    adapter.accept(control);
-    expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({
-      type: "agui.control",
-      durable: false,
-      action: "retry-same-cursor",
-    }));
+    } as unknown as AguiSseFrame;
 
-    const durable = decode({ type: EventType.RUN_STARTED, threadId: "thread.01", runId: "run.01" }, "presentation.run.started", { run: "run.01" });
-    if (durable.kind !== "durable") throw new Error("fixture must be durable");
-    adapter.accept({ kind: "replay", frame: durable });
-    expect(dispatch).toHaveBeenCalledTimes(1);
+    expect(() => adapter.accept(forged)).toThrow(AguiPresentationProtocolError);
+    expect(dispatch).not.toHaveBeenCalled();
   });
 });
