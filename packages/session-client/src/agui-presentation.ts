@@ -1,4 +1,5 @@
 import { EventSchemas, EventType } from "@ag-ui/core";
+import stableStringify from "fast-json-stable-stringify";
 import { z } from "zod";
 
 import { LAST_EVENT_ID_HEADER } from "./contracts.js";
@@ -22,6 +23,20 @@ export const AGUI_PRESENTATION_LIMITS = Object.freeze({
   maximumArrayItems: 256,
   maximumIdBytes: 128,
   maximumCursorBytes: 2_048,
+});
+
+/**
+ * Retained wire payload excludes bounded Set/Map container overhead. Historical
+ * replay identities retain only cursor/source strings; raw frames retain only
+ * the last committed and the one currently awaiting an external acknowledgement.
+ */
+export const AGUI_PRESENTATION_REPLAY_MEMORY_BOUNDS = Object.freeze({
+  retainedWireFrames: 2,
+  maximumRetainedWireBytes: AGUI_PRESENTATION_LIMITS.maximumFrameBytes * 2,
+  historicalCursorIdentityBytes:
+    AGUI_PRESENTATION_AUTHORITY_LIMITS.streamIdentities * AGUI_PRESENTATION_LIMITS.maximumCursorBytes,
+  historicalSourceIdentityBytes:
+    AGUI_PRESENTATION_AUTHORITY_LIMITS.streamIdentities * AGUI_PRESENTATION_LIMITS.maximumIdBytes,
 });
 
 const idPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/u;
@@ -432,12 +447,15 @@ function admitSseFrame(value: unknown): AguiSseFrame {
     if (value === null || typeof value !== "object" || Object.getPrototypeOf(value) !== Object.prototype) {
       fail("agui_sse_frame_shape_invalid");
     }
-    const keys = Reflect.ownKeys(value);
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    const keys = Reflect.ownKeys(descriptors);
     if (
       keys.length !== 3 || keys.some((key) => typeof key !== "string") ||
       !keys.includes("id") || !keys.includes("event") || !keys.includes("data")
     ) fail("agui_sse_frame_shape_invalid");
-    const descriptors = Object.getOwnPropertyDescriptors(value);
+    if ([descriptors.id, descriptors.event, descriptors.data].some(
+      (descriptor) => descriptor === undefined || !Object.hasOwn(descriptor, "value"),
+    )) fail("agui_sse_frame_shape_invalid");
     const id = descriptors.id?.value as unknown;
     const event = descriptors.event?.value as unknown;
     const data = descriptors.data?.value as unknown;
@@ -602,28 +620,101 @@ function validateClosedEventPreSchema(value: unknown): void {
 type RunAuthority = Readonly<{
   runId: string;
   threadId: string;
-  state: "open" | "terminal";
+  state: "open" | "finished" | "error";
 }>;
 type MessageAuthority = Readonly<{
   messageId: string;
   runBindingRef: string;
   state: "open" | "ended";
 }>;
+type RunProjectionState = "starting" | "running" | "waiting" | "canceling" | "finished" | "error";
+type RunProjectionOwner = Readonly<{
+  runBindingRef: string;
+  runId: string;
+  version: number;
+  state: RunProjectionState;
+  fingerprint: string;
+}>;
+type MessageProjectionLifecycle = "created" | "streaming" | "completed" | "partial" | "failed" | "canceled";
+type MessageProjectionOwner = Readonly<{
+  runBindingRef: string;
+  messageBindingRef: string;
+  messageId: string;
+  role: "user" | "assistant" | "system";
+  parentPresentationMessageId: string | null;
+  ordinal: number;
+  version: number;
+  lifecycle: MessageProjectionLifecycle;
+  fingerprint: string;
+}>;
+
+export type AguiDispatchAcknowledgement = "applied" | "replayed";
 
 export type AguiPreparedFrame = Readonly<{
   decoded: AguiDecodedFrame;
-  commit(): void;
+  commit(acknowledgement: AguiDispatchAcknowledgement): void;
 }>;
 
 export type AguiPresentationDecoder = Readonly<{
   prepare(frame: AguiSseFrame): AguiPreparedFrame;
-  decode(frame: AguiSseFrame): AguiDecodedFrame;
   getResumeRequest(): Readonly<{
     headers: Readonly<Record<typeof LAST_EVENT_ID_HEADER, string>>;
     queryCursor: string;
     cursorBinding: AguiCursorBinding;
   }>;
 }>;
+
+function assertCommitAcknowledgement(acknowledgement: AguiDispatchAcknowledgement): void {
+  if (acknowledgement !== "applied" && acknowledgement !== "replayed") {
+    fail("agui_dispatch_ack_invalid");
+  }
+}
+
+function assertOwnerVersion(
+  kind: "run" | "message",
+  currentVersion: number | undefined,
+  nextVersion: number,
+  currentFingerprint: string | undefined,
+  nextFingerprint: string,
+): "replay" | "advance" {
+  if (currentVersion === undefined) {
+    if (nextVersion !== 1) fail(`agui_${kind}_owner_version_gap`);
+    return "advance";
+  }
+  if (nextVersion < currentVersion) fail(`agui_${kind}_owner_version_regression`);
+  if (nextVersion === currentVersion) {
+    if (currentFingerprint !== nextFingerprint) fail(`agui_${kind}_owner_same_version_conflict`);
+    return "replay";
+  }
+  if (nextVersion !== currentVersion + 1) fail(`agui_${kind}_owner_version_gap`);
+  return "advance";
+}
+
+const runProjectionTransitions: Readonly<Record<RunProjectionState, ReadonlySet<RunProjectionState>>> = {
+  starting: new Set(["starting", "running", "waiting", "canceling", "finished", "error"]),
+  running: new Set(["running", "waiting", "canceling", "finished", "error"]),
+  waiting: new Set(["waiting", "running", "canceling", "finished", "error"]),
+  canceling: new Set(["canceling", "finished", "error"]),
+  finished: new Set(["finished"]),
+  error: new Set(["error"]),
+};
+
+const messageProjectionTransitions: Readonly<Record<MessageProjectionLifecycle, ReadonlySet<MessageProjectionLifecycle>>> = {
+  created: new Set(["created", "streaming", "completed", "partial", "failed", "canceled"]),
+  streaming: new Set(["streaming", "completed", "partial", "failed", "canceled"]),
+  completed: new Set(["completed"]),
+  partial: new Set(["partial"]),
+  failed: new Set(["failed"]),
+  canceled: new Set(["canceled"]),
+};
+
+function isRunProjectionTerminal(state: RunProjectionState): boolean {
+  return state === "finished" || state === "error";
+}
+
+function isMessageProjectionTerminal(lifecycle: MessageProjectionLifecycle): boolean {
+  return ["completed", "partial", "failed", "canceled"].includes(lifecycle);
+}
 
 function assertBindingShape(
   data: AguiDurableFrame["data"],
@@ -692,18 +783,23 @@ export function createAguiPresentationDecoder(options: Readonly<{
   let cursorBinding: AguiCursorBinding = Object.freeze({ ...parsedInitialCursor.data });
   let lastRecordedAt = -1;
   let lastDecoded: AguiDurableFrame | undefined;
+  let lastCommittedFrame: AguiSseFrame | undefined;
   let presentationThreadId: string | undefined;
-  const cursorFrames = new Map<string, AguiSseFrame | null>([[cursorBinding.cursor, null]]);
+  const seenCursors = new Set<string>([cursorBinding.cursor]);
   const sourceEventIds = new Set<string>();
   const runs = new Map<string, RunAuthority>();
   const runIds = new Map<string, string>();
   const messages = new Map<string, MessageAuthority>();
   const messageIds = new Map<string, string>();
+  const runProjectionOwners = new Map<string, RunProjectionOwner>();
+  const messageProjectionOwners = new Map<string, MessageProjectionOwner>();
   let pending: Readonly<{ frame: AguiSseFrame; prepared: AguiPreparedFrame }> | undefined;
 
   const settled = (decoded: AguiDecodedFrame): AguiPreparedFrame => Object.freeze({
     decoded,
-    commit() {},
+    commit(acknowledgement) {
+      assertCommitAcknowledgement(acknowledgement);
+    },
   });
 
   const prepare = (candidate: AguiSseFrame): AguiPreparedFrame => {
@@ -730,9 +826,8 @@ export function createAguiPresentationDecoder(options: Readonly<{
     if (bytes(durableCursor) > AGUI_PRESENTATION_LIMITS.maximumCursorBytes || !cursorSchema.safeParse(durableCursor).success) {
       fail("agui_cursor_invalid");
     }
-    if (cursorFrames.has(durableCursor)) {
-      const priorFrame = cursorFrames.get(durableCursor);
-      if (priorFrame !== null && priorFrame !== undefined && sameSseFrame(priorFrame, frame) && lastDecoded?.id === durableCursor) {
+    if (seenCursors.has(durableCursor)) {
+      if (lastCommittedFrame !== undefined && sameSseFrame(lastCommittedFrame, frame) && lastDecoded?.id === durableCursor) {
         return settled(Object.freeze({ kind: "replay", frame: lastDecoded }));
       }
       fail("agui_stream_identity_duplicate");
@@ -771,7 +866,7 @@ export function createAguiPresentationDecoder(options: Readonly<{
     const recordedAt = Date.parse(data.source.recordedAt);
     if (recordedAt !== data.event.timestamp || recordedAt < lastRecordedAt) fail("agui_event_time_invalid");
     if (sourceEventIds.has(data.source.sourceEventId)) fail("agui_stream_identity_duplicate");
-    if (cursorFrames.size >= streamIdentityLimit || sourceEventIds.size >= streamIdentityLimit) {
+    if (seenCursors.size >= streamIdentityLimit || sourceEventIds.size >= streamIdentityLimit) {
       fail("agui_authority_capacity_exceeded");
     }
 
@@ -782,7 +877,8 @@ export function createAguiPresentationDecoder(options: Readonly<{
 
     let runUpdate: Readonly<{ ref: string; authority: RunAuthority }> | undefined;
     let messageUpdate: Readonly<{ ref: string; authority: MessageAuthority }> | undefined;
-    if (runRef !== undefined && runs.get(runRef)?.state === "terminal") fail("agui_terminal_run_revived");
+    let runProjectionUpdate: Readonly<{ ref: string; authority: RunProjectionOwner }> | undefined;
+    let messageProjectionUpdate: Readonly<{ ref: string; authority: MessageProjectionOwner }> | undefined;
 
     if (event.type === EventType.RUN_STARTED) {
       if (runRef === undefined) fail("agui_frame_run_binding_invalid");
@@ -806,34 +902,145 @@ export function createAguiPresentationDecoder(options: Readonly<{
       if (event.type === EventType.RUN_FINISHED && (event.runId !== run.runId || event.threadId !== run.threadId)) {
         fail("agui_run_terminal_binding_conflict");
       }
-      runUpdate = { ref: runRef, authority: { ...run, state: "terminal" } };
+      const terminalState = event.type === EventType.RUN_FINISHED ? "finished" : "error";
+      const projectionOwner = runProjectionOwners.get(runRef);
+      if (
+        projectionOwner !== undefined && isRunProjectionTerminal(projectionOwner.state) &&
+        projectionOwner.state !== terminalState
+      ) fail("agui_run_owner_terminal_conflict");
+      runUpdate = { ref: runRef, authority: { ...run, state: terminalState } };
     } else if (event.type === EventType.TEXT_MESSAGE_START) {
-      if (runRef === undefined || messageRef === undefined || runs.get(runRef)?.state !== "open") {
+      const runOwner = runRef === undefined ? undefined : runProjectionOwners.get(runRef);
+      if (
+        runRef === undefined || messageRef === undefined || runs.get(runRef)?.state !== "open" ||
+        (runOwner !== undefined && isRunProjectionTerminal(runOwner.state))
+      ) {
         fail("agui_frame_message_binding_invalid");
       }
       if (messages.has(messageRef) || messageIds.has(event.messageId)) fail("agui_message_reopened", event.messageId);
       if (messages.size >= messageLimit || messageIds.size >= messageLimit) fail("agui_authority_capacity_exceeded");
       messageUpdate = { ref: messageRef, authority: { messageId: event.messageId, runBindingRef: runRef, state: "open" } };
     } else if (event.type === EventType.TEXT_MESSAGE_CONTENT || event.type === EventType.TEXT_MESSAGE_END) {
-      if (runRef === undefined || messageRef === undefined || runs.get(runRef)?.state !== "open") {
+      const runOwner = runRef === undefined ? undefined : runProjectionOwners.get(runRef);
+      if (
+        runRef === undefined || messageRef === undefined || runs.get(runRef)?.state !== "open" ||
+        (runOwner !== undefined && isRunProjectionTerminal(runOwner.state))
+      ) {
         fail("agui_frame_message_binding_invalid");
       }
       const message = messages.get(messageRef);
       if (message?.state !== "open" || message.messageId !== event.messageId) fail("agui_message_reopened", event.messageId);
+      const projectionOwner = messageProjectionOwners.get(messageRef);
+      if (
+        event.type === EventType.TEXT_MESSAGE_CONTENT && projectionOwner !== undefined &&
+        isMessageProjectionTerminal(projectionOwner.lifecycle)
+      ) fail("agui_message_owner_terminal_conflict");
       if (event.type === EventType.TEXT_MESSAGE_END) {
         messageUpdate = { ref: messageRef, authority: { ...message, state: "ended" } };
       }
     } else if (event.type === EventType.ACTIVITY_SNAPSHOT) {
-      if (runRef === undefined || messageRef === undefined || runs.get(runRef)?.state !== "open" || messages.get(messageRef)?.state !== "open") {
+      const runOwner = runRef === undefined ? undefined : runProjectionOwners.get(runRef);
+      const messageOwner = messageRef === undefined ? undefined : messageProjectionOwners.get(messageRef);
+      if (
+        runRef === undefined || messageRef === undefined || runs.get(runRef)?.state !== "open" ||
+        messages.get(messageRef)?.state !== "open" ||
+        (runOwner !== undefined && isRunProjectionTerminal(runOwner.state)) ||
+        (messageOwner !== undefined && isMessageProjectionTerminal(messageOwner.lifecycle))
+      ) {
         fail("agui_frame_message_binding_invalid");
       }
     } else if (event.type === EventType.CUSTOM) {
       if (event.name === "kokoro.session.replace.v1" && event.value.sessionId !== parsedGrant.data.sessionId) {
         fail("agui_custom_session_scope_conflict");
       }
-      if (runRef !== undefined && runs.get(runRef)?.state !== "open") fail("agui_terminal_run_revived");
-      if (event.name === "kokoro.run.replace.v1" && runs.get(runRef ?? "")?.runId !== event.value.presentationRunId) {
-        fail("agui_frame_run_binding_invalid");
+      if (event.name === "kokoro.run.replace.v1") {
+        if (runRef === undefined) fail("agui_frame_run_binding_invalid");
+        const current = runProjectionOwners.get(runRef);
+        if (current !== undefined && (current.runBindingRef !== runRef || current.runId !== event.value.presentationRunId)) {
+          fail("agui_run_owner_identity_conflict");
+        }
+        const run = runs.get(runRef);
+        if (run === undefined || run.runId !== event.value.presentationRunId) fail("agui_frame_run_binding_invalid");
+        if (run.state !== "open" && run.state !== event.value.state) fail("agui_run_owner_terminal_conflict");
+        if (
+          isRunProjectionTerminal(event.value.state) &&
+          [...messages.values()].some((message) => message.runBindingRef === runRef && message.state === "open")
+        ) fail("agui_run_message_open");
+        const fingerprint = stableStringify(event.value);
+        const versionAdmission = assertOwnerVersion(
+          "run",
+          current?.version,
+          event.value.projectionVersion,
+          current?.fingerprint,
+          fingerprint,
+        );
+        if (versionAdmission === "advance") {
+          if (current === undefined && runProjectionOwners.size >= runLimit) fail("agui_authority_capacity_exceeded");
+          if (current !== undefined && !runProjectionTransitions[current.state].has(event.value.state)) {
+            fail("agui_run_owner_transition_invalid");
+          }
+          runProjectionUpdate = {
+            ref: runRef,
+            authority: {
+              runBindingRef: runRef,
+              runId: event.value.presentationRunId,
+              version: event.value.projectionVersion,
+              state: event.value.state,
+              fingerprint,
+            },
+          };
+        }
+      } else if (event.name === "kokoro.message.replace.v1") {
+        if (runRef === undefined || messageRef === undefined || runs.get(runRef)?.state !== "open") {
+          fail("agui_frame_message_binding_invalid");
+        }
+        const message = messages.get(messageRef);
+        if (message === undefined || message.messageId !== event.value.presentationMessageId) {
+          fail("agui_frame_message_binding_invalid");
+        }
+        if (message.state === "ended" && !isMessageProjectionTerminal(event.value.lifecycle)) {
+          fail("agui_message_owner_terminal_conflict");
+        }
+        const current = messageProjectionOwners.get(messageRef);
+        if (
+          current !== undefined &&
+          (
+            current.runBindingRef !== runRef || current.messageBindingRef !== messageRef ||
+            current.messageId !== event.value.presentationMessageId || current.role !== event.value.role ||
+            current.parentPresentationMessageId !== event.value.parentPresentationMessageId ||
+            current.ordinal !== event.value.ordinal
+          )
+        ) fail("agui_message_owner_identity_conflict");
+        const fingerprint = stableStringify(event.value);
+        const versionAdmission = assertOwnerVersion(
+          "message",
+          current?.version,
+          event.value.version,
+          current?.fingerprint,
+          fingerprint,
+        );
+        if (versionAdmission === "advance") {
+          if (current === undefined && messageProjectionOwners.size >= messageLimit) fail("agui_authority_capacity_exceeded");
+          if (current !== undefined && !messageProjectionTransitions[current.lifecycle].has(event.value.lifecycle)) {
+            fail("agui_message_owner_transition_invalid");
+          }
+          messageProjectionUpdate = {
+            ref: messageRef,
+            authority: {
+              runBindingRef: runRef,
+              messageBindingRef: messageRef,
+              messageId: event.value.presentationMessageId,
+              role: event.value.role,
+              parentPresentationMessageId: event.value.parentPresentationMessageId,
+              ordinal: event.value.ordinal,
+              version: event.value.version,
+              lifecycle: event.value.lifecycle,
+              fingerprint,
+            },
+          };
+        }
+      } else if (runRef !== undefined && runs.get(runRef)?.state !== "open") {
+        fail("agui_terminal_run_revived");
       }
     }
 
@@ -856,7 +1063,8 @@ export function createAguiPresentationDecoder(options: Readonly<{
     let committed = false;
     const prepared: AguiPreparedFrame = Object.freeze({
       decoded,
-      commit() {
+      commit(acknowledgement) {
+        assertCommitAcknowledgement(acknowledgement);
         if (committed) return;
         if (pending?.prepared !== prepared) fail("agui_admission_commit_conflict");
         if (runUpdate !== undefined) {
@@ -868,11 +1076,18 @@ export function createAguiPresentationDecoder(options: Readonly<{
           messages.set(messageUpdate.ref, messageUpdate.authority);
           messageIds.set(messageUpdate.authority.messageId, messageUpdate.ref);
         }
+        if (runProjectionUpdate !== undefined) {
+          runProjectionOwners.set(runProjectionUpdate.ref, runProjectionUpdate.authority);
+        }
+        if (messageProjectionUpdate !== undefined) {
+          messageProjectionOwners.set(messageProjectionUpdate.ref, messageProjectionUpdate.authority);
+        }
         sourceEventIds.add(data.source.sourceEventId);
-        cursorFrames.set(durableCursor, frame);
+        seenCursors.add(durableCursor);
         cursorBinding = nextCursorBinding;
         lastRecordedAt = recordedAt;
         lastDecoded = decoded;
+        lastCommittedFrame = frame;
         committed = true;
         pending = undefined;
       },
@@ -881,15 +1096,8 @@ export function createAguiPresentationDecoder(options: Readonly<{
     return prepared;
   };
 
-  const decode = (frame: AguiSseFrame): AguiDecodedFrame => {
-    const prepared = prepare(frame);
-    prepared.commit();
-    return prepared.decoded;
-  };
-
   return Object.freeze({
     prepare,
-    decode,
     getResumeRequest() {
       return Object.freeze({
         headers: Object.freeze({ [LAST_EVENT_ID_HEADER]: cursorBinding.cursor }),

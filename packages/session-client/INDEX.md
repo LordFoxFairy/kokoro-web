@@ -43,7 +43,17 @@ UTF-8 bytes with an allocation-bounded scan before parsing `data`; circular extr
 instances, and oversized payloads therefore produce stable protocol errors instead of native serialization errors.
 The decoder also exposes a transactional `prepare`/`commit` seam. A prepared durable frame owns one pending slot,
 does not advance cursor or lifecycle authority before commit, permits only an exact retry, and rejects a different
-frame until the pending mutation receives an acknowledgement.
+frame until the pending mutation receives an explicit `applied|replayed` acknowledgement. There is no public
+auto-commit decoder path. CUSTOM Run/message replacements have bounded owner ledgers with canonical closed-payload
+fingerprints, immutable bindings, consecutive versions, irreversible lifecycle transitions, and native
+RUN/TEXT-terminal interlocks; all owner and cursor changes commit atomically only after the external acknowledgement.
+
+Replay admission retains only compact cursor/source identity strings, the last committed raw frame, and at most one
+pending raw frame. The exported byte budgets are ceilings for retained UTF-8 identity/wire payload, not an estimate
+of JavaScript heap usage; `Set`/`Map`/string object overhead remains runtime-dependent but cardinality is separately
+bounded. An exact retry of the last committed cursor is reported as replayed. Any older cursor, including a
+byte-identical frame, fails closed as `agui_stream_identity_duplicate`; Session resume semantics request events
+*after* the committed `Last-Event-ID`, while older recovery requires the future authoritative snapshot-repair path.
 
 Session remains the only browser transport and presentation owner: Web never connects to Agent or trusts an Agent
 raw payload. Agent/Python may become the internal AG-UI producer only after Root pins the Python SDK and TypeScript

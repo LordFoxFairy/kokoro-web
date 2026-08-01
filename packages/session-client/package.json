@@ -41,6 +41,7 @@
   },
   "dependencies": {
     "@ag-ui/core": "0.0.57",
+    "fast-json-stable-stringify": "2.1.0",
     "zod": "4.4.3"
   },
   "devDependencies": {

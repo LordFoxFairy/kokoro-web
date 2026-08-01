@@ -1,6 +1,8 @@
 import { EventType } from "@ag-ui/core";
 import { describe, expect, it } from "vitest";
 
+import * as AguiPresentationModule from "../src/agui-presentation.js";
+
 import {
   AGUI_CURSOR_PROFILE_REVISION,
   AGUI_PRESENTATION_LIMITS,
@@ -9,6 +11,8 @@ import {
   AguiPresentationProtocolError,
   createAguiPresentationDecoder,
   type AguiGrantBinding,
+  type AguiPresentationDecoder,
+  type AguiDecodedFrame,
   type AguiSseFrame,
 } from "../src/agui-presentation.js";
 
@@ -75,6 +79,15 @@ function expectCode(operation: () => unknown, code: string): void {
   throw new Error(`Expected ${code}`);
 }
 
+function admitAfterExternalAck(
+  decoder: AguiPresentationDecoder,
+  frame: AguiSseFrame,
+): AguiDecodedFrame {
+  const prepared = decoder.prepare(frame);
+  prepared.commit("applied");
+  return prepared.decoded;
+}
+
 describe("strict Session-owned AG-UI decoder", () => {
   it("requires authoritative snapshot state before resuming from a nonzero durable cursor", () => {
     expectCode(
@@ -88,7 +101,7 @@ describe("strict Session-owned AG-UI decoder", () => {
 
   it("preserves the Root profile, SSE identity, and Last-Event-ID binding", () => {
     const decoder = createAguiPresentationDecoder({ grant, initialCursor });
-    const decoded = decoder.decode(durableFrame({
+    const decoded = admitAfterExternalAck(decoder, durableFrame({
       seq: 1,
       sourceKind: "presentation.run.started",
       runBindingRef: "run-binding.01.segment.0",
@@ -137,8 +150,8 @@ describe("strict Session-owned AG-UI decoder", () => {
       "agui_admission_pending",
     );
 
-    prepared.commit();
-    prepared.commit();
+    prepared.commit("applied");
+    prepared.commit("replayed");
     expect(decoder.getResumeRequest().cursorBinding.durableSeq).toBe("1");
   });
 
@@ -173,7 +186,7 @@ describe("strict Session-owned AG-UI decoder", () => {
       durableFrame({ seq: 26, sourceKind: "presentation.run.finished", runBindingRef: "run-binding.01.segment.1", event: { type: EventType.RUN_FINISHED, threadId: "thread.session.01", runId: "presentation.run.01.segment.1" } }),
     ];
 
-    expect(frames.map((frame) => decoder.decode(frame).kind)).toEqual(Array.from({ length: 26 }, () => "durable"));
+    expect(frames.map((frame) => admitAfterExternalAck(decoder, frame).kind)).toEqual(Array.from({ length: 26 }, () => "durable"));
   });
 
   it("fails closed on every Root negative presentation vector", () => {
@@ -193,18 +206,18 @@ describe("strict Session-owned AG-UI decoder", () => {
     ] as const) {
       const candidate = structuredClone(parsed);
       mutate(candidate);
-      expectCode(() => createAguiPresentationDecoder({ grant, initialCursor }).decode({ ...base, data: JSON.stringify(candidate) }), expectedCode);
+      expectCode(() => admitAfterExternalAck(createAguiPresentationDecoder({ grant, initialCursor }), { ...base, data: JSON.stringify(candidate) }), expectedCode);
       expect(name).toBeTruthy();
     }
 
     const wrongType = { ...base, event: EventType.RUN_FINISHED };
-    expectCode(() => createAguiPresentationDecoder({ grant, initialCursor }).decode(wrongType), "agui_sse_event_type_mismatch");
+    expectCode(() => admitAfterExternalAck(createAguiPresentationDecoder({ grant, initialCursor }), wrongType), "agui_sse_event_type_mismatch");
 
     const wrongCustom = durableFrame({ seq: 1, sourceKind: "presentation.custom.session", event: { type: EventType.CUSTOM, name: "vendor.unregistered", value: {} } });
-    expectCode(() => createAguiPresentationDecoder({ grant, initialCursor }).decode(wrongCustom), "agui_unknown_custom");
+    expectCode(() => admitAfterExternalAck(createAguiPresentationDecoder({ grant, initialCursor }), wrongCustom), "agui_unknown_custom");
 
     const wrongTool = durableFrame({ seq: 1, sourceKind: "presentation.activity.tool-preview", runBindingRef: "run-binding.01.segment.0", messageBindingRef: "message-binding.01.segment.0", event: { type: EventType.ACTIVITY_SNAPSHOT, messageId: "presentation.message.01.segment.0", activityType: "kokoro.tool-preview.v1", content: { toolCallRef: "tool.01", label: "Search", status: "running", apiKey: "secret" }, replace: true } });
-    expectCode(() => createAguiPresentationDecoder({ grant, initialCursor }).decode(wrongTool), "agui_tool_secret_forbidden");
+    expectCode(() => admitAfterExternalAck(createAguiPresentationDecoder({ grant, initialCursor }), wrongTool), "agui_tool_secret_forbidden");
     expect(event.type).toBe(EventType.RUN_STARTED);
   });
 
@@ -223,7 +236,7 @@ describe("strict Session-owned AG-UI decoder", () => {
         event: { type },
       });
       expectCode(
-        () => createAguiPresentationDecoder({ grant, initialCursor }).decode(frame),
+        () => admitAfterExternalAck(createAguiPresentationDecoder({ grant, initialCursor }), frame),
         "agui_event_type_forbidden",
       );
     }
@@ -232,16 +245,16 @@ describe("strict Session-owned AG-UI decoder", () => {
   it("rejects cursor gaps, epoch or Session scope drift, and duplicate identities", () => {
     const decoder = createAguiPresentationDecoder({ grant, initialCursor });
     const first = durableFrame({ seq: 1, sourceKind: "presentation.run.started", runBindingRef: "run.01", event: { type: EventType.RUN_STARTED, threadId: "thread.01", runId: "presentation.run.01" } });
-    decoder.decode(first);
+    admitAfterExternalAck(decoder, first);
 
     const gap = durableFrame({ seq: 3, sourceKind: "presentation.run.finished", runBindingRef: "run.01", event: { type: EventType.RUN_FINISHED, threadId: "thread.01", runId: "presentation.run.01" } });
-    expectCode(() => decoder.decode(gap), "agui_cursor_gap");
+    expectCode(() => admitAfterExternalAck(decoder, gap), "agui_cursor_gap");
 
     const crossSession = durableFrame({ seq: 2, sourceKind: "presentation.run.finished", runBindingRef: "run.01", sessionId: "session.other", event: { type: EventType.RUN_FINISHED, threadId: "thread.01", runId: "presentation.run.01" } });
-    expectCode(() => decoder.decode(crossSession), "agui_stream_scope_conflict");
+    expectCode(() => admitAfterExternalAck(decoder, crossSession), "agui_stream_scope_conflict");
 
     const wrongEpoch = durableFrame({ seq: 2, sourceKind: "presentation.run.finished", runBindingRef: "run.01", streamEpoch: "42", event: { type: EventType.RUN_FINISHED, threadId: "thread.01", runId: "presentation.run.01" } });
-    expectCode(() => decoder.decode(wrongEpoch), "agui_stream_scope_conflict");
+    expectCode(() => admitAfterExternalAck(decoder, wrongEpoch), "agui_stream_scope_conflict");
   });
 
   it("keeps END and terminal facts irreversible while requiring a new resumed message id", () => {
@@ -254,40 +267,40 @@ describe("strict Session-owned AG-UI decoder", () => {
       durableFrame({ seq: 5, sourceKind: "presentation.run.started", runBindingRef: "run.segment.1", event: { type: EventType.RUN_STARTED, threadId: "thread.01", runId: "run.segment.1" } }),
       durableFrame({ seq: 6, sourceKind: "presentation.message.text.started", runBindingRef: "run.segment.1", messageBindingRef: "message.segment.1", event: { type: EventType.TEXT_MESSAGE_START, messageId: "message.segment.1", role: "assistant" } }),
     ];
-    for (const frame of frames) decoder.decode(frame);
+    for (const frame of frames) admitAfterExternalAck(decoder, frame);
 
     const reopenEnded = durableFrame({ seq: 7, sourceKind: "presentation.message.text.started", runBindingRef: "run.segment.1", messageBindingRef: "message.reused", event: { type: EventType.TEXT_MESSAGE_START, messageId: "message.segment.0", role: "assistant" } });
-    expectCode(() => decoder.decode(reopenEnded), "agui_message_reopened");
+    expectCode(() => admitAfterExternalAck(decoder, reopenEnded), "agui_message_reopened");
 
     const reviveRun = durableFrame({ seq: 7, sourceKind: "presentation.run.started", runBindingRef: "run.segment.0", event: { type: EventType.RUN_STARTED, threadId: "thread.01", runId: "run.segment.0" } });
-    expectCode(() => decoder.decode(reviveRun), "agui_terminal_run_revived");
+    expectCode(() => admitAfterExternalAck(decoder, reviveRun), "agui_terminal_run_revived");
   });
 
   it("locks presentation thread scope and validates visible parent run lineage", () => {
     const decoder = createAguiPresentationDecoder({ grant, initialCursor });
-    decoder.decode(durableFrame({ seq: 1, sourceKind: "presentation.run.started", runBindingRef: "parent.01", event: { type: EventType.RUN_STARTED, threadId: "thread.01", runId: "run.parent.01" } }));
-    decoder.decode(durableFrame({ seq: 2, sourceKind: "presentation.run.finished", runBindingRef: "parent.01", event: { type: EventType.RUN_FINISHED, threadId: "thread.01", runId: "run.parent.01" } }));
-    expect(decoder.decode(durableFrame({ seq: 3, sourceKind: "presentation.run.started", runBindingRef: "child.01", event: { type: EventType.RUN_STARTED, threadId: "thread.01", runId: "run.child.01", parentRunId: "run.parent.01" } }))).toMatchObject({ kind: "durable" });
+    admitAfterExternalAck(decoder, durableFrame({ seq: 1, sourceKind: "presentation.run.started", runBindingRef: "parent.01", event: { type: EventType.RUN_STARTED, threadId: "thread.01", runId: "run.parent.01" } }));
+    admitAfterExternalAck(decoder, durableFrame({ seq: 2, sourceKind: "presentation.run.finished", runBindingRef: "parent.01", event: { type: EventType.RUN_FINISHED, threadId: "thread.01", runId: "run.parent.01" } }));
+    expect(admitAfterExternalAck(decoder, durableFrame({ seq: 3, sourceKind: "presentation.run.started", runBindingRef: "child.01", event: { type: EventType.RUN_STARTED, threadId: "thread.01", runId: "run.child.01", parentRunId: "run.parent.01" } }))).toMatchObject({ kind: "durable" });
 
     const missingParent = createAguiPresentationDecoder({ grant, initialCursor });
-    expectCode(() => missingParent.decode(durableFrame({ seq: 1, sourceKind: "presentation.run.started", runBindingRef: "child.02", event: { type: EventType.RUN_STARTED, threadId: "thread.01", runId: "run.child.02", parentRunId: "run.other-session" } })), "agui_run_parent_lineage_conflict");
+    expectCode(() => admitAfterExternalAck(missingParent, durableFrame({ seq: 1, sourceKind: "presentation.run.started", runBindingRef: "child.02", event: { type: EventType.RUN_STARTED, threadId: "thread.01", runId: "run.child.02", parentRunId: "run.other-session" } })), "agui_run_parent_lineage_conflict");
 
     const selfParent = createAguiPresentationDecoder({ grant, initialCursor });
-    expectCode(() => selfParent.decode(durableFrame({ seq: 1, sourceKind: "presentation.run.started", runBindingRef: "child.03", event: { type: EventType.RUN_STARTED, threadId: "thread.01", runId: "run.child.03", parentRunId: "run.child.03" } })), "agui_run_parent_lineage_conflict");
+    expectCode(() => admitAfterExternalAck(selfParent, durableFrame({ seq: 1, sourceKind: "presentation.run.started", runBindingRef: "child.03", event: { type: EventType.RUN_STARTED, threadId: "thread.01", runId: "run.child.03", parentRunId: "run.child.03" } })), "agui_run_parent_lineage_conflict");
 
-    expectCode(() => decoder.decode(durableFrame({ seq: 4, sourceKind: "presentation.run.started", runBindingRef: "run.thread-drift", event: { type: EventType.RUN_STARTED, threadId: "thread.other", runId: "run.thread-drift" } })), "agui_run_thread_scope_conflict");
+    expectCode(() => admitAfterExternalAck(decoder, durableFrame({ seq: 4, sourceKind: "presentation.run.started", runBindingRef: "run.thread-drift", event: { type: EventType.RUN_STARTED, threadId: "thread.other", runId: "run.thread-drift" } })), "agui_run_thread_scope_conflict");
   });
 
   it("rejects terminal run evidence while one of its messages remains open", () => {
     const decoder = createAguiPresentationDecoder({ grant, initialCursor });
-    decoder.decode(durableFrame({ seq: 1, sourceKind: "presentation.run.started", runBindingRef: "run.01", event: { type: EventType.RUN_STARTED, threadId: "thread.01", runId: "run.01" } }));
-    decoder.decode(durableFrame({ seq: 2, sourceKind: "presentation.message.text.started", runBindingRef: "run.01", messageBindingRef: "message.01", event: { type: EventType.TEXT_MESSAGE_START, messageId: "message.01", role: "assistant" } }));
-    expectCode(() => decoder.decode(durableFrame({ seq: 3, sourceKind: "presentation.run.finished", runBindingRef: "run.01", event: { type: EventType.RUN_FINISHED, threadId: "thread.01", runId: "run.01" } })), "agui_run_message_open");
+    admitAfterExternalAck(decoder, durableFrame({ seq: 1, sourceKind: "presentation.run.started", runBindingRef: "run.01", event: { type: EventType.RUN_STARTED, threadId: "thread.01", runId: "run.01" } }));
+    admitAfterExternalAck(decoder, durableFrame({ seq: 2, sourceKind: "presentation.message.text.started", runBindingRef: "run.01", messageBindingRef: "message.01", event: { type: EventType.TEXT_MESSAGE_START, messageId: "message.01", role: "assistant" } }));
+    expectCode(() => admitAfterExternalAck(decoder, durableFrame({ seq: 3, sourceKind: "presentation.run.finished", runBindingRef: "run.01", event: { type: EventType.RUN_FINISHED, threadId: "thread.01", runId: "run.01" } })), "agui_run_message_open");
 
     const errorDecoder = createAguiPresentationDecoder({ grant, initialCursor });
-    errorDecoder.decode(durableFrame({ seq: 1, sourceKind: "presentation.run.started", runBindingRef: "run.error", event: { type: EventType.RUN_STARTED, threadId: "thread.01", runId: "run.error" } }));
-    errorDecoder.decode(durableFrame({ seq: 2, sourceKind: "presentation.message.text.started", runBindingRef: "run.error", messageBindingRef: "message.error", event: { type: EventType.TEXT_MESSAGE_START, messageId: "message.error", role: "assistant" } }));
-    expectCode(() => errorDecoder.decode(durableFrame({ seq: 3, sourceKind: "presentation.run.error", runBindingRef: "run.error", event: { type: EventType.RUN_ERROR, message: "Safe failure.", code: "RUN_FAILED" } })), "agui_run_message_open");
+    admitAfterExternalAck(errorDecoder, durableFrame({ seq: 1, sourceKind: "presentation.run.started", runBindingRef: "run.error", event: { type: EventType.RUN_STARTED, threadId: "thread.01", runId: "run.error" } }));
+    admitAfterExternalAck(errorDecoder, durableFrame({ seq: 2, sourceKind: "presentation.message.text.started", runBindingRef: "run.error", messageBindingRef: "message.error", event: { type: EventType.TEXT_MESSAGE_START, messageId: "message.error", role: "assistant" } }));
+    expectCode(() => admitAfterExternalAck(errorDecoder, durableFrame({ seq: 3, sourceKind: "presentation.run.error", runBindingRef: "run.error", event: { type: EventType.RUN_ERROR, message: "Safe failure.", code: "RUN_FAILED" } })), "agui_run_message_open");
   });
 
   it("fails closed instead of evicting durable identity and terminal authority", () => {
@@ -296,8 +309,8 @@ describe("strict Session-owned AG-UI decoder", () => {
       initialCursor,
       limits: { streamIdentities: 2 },
     });
-    decoder.decode(durableFrame({ seq: 1, sourceKind: "presentation.run.started", runBindingRef: "run.01", event: { type: EventType.RUN_STARTED, threadId: "thread.01", runId: "run.01" } }));
-    expectCode(() => decoder.decode(durableFrame({ seq: 2, sourceKind: "presentation.run.finished", runBindingRef: "run.01", event: { type: EventType.RUN_FINISHED, threadId: "thread.01", runId: "run.01" } })), "agui_authority_capacity_exceeded");
+    admitAfterExternalAck(decoder, durableFrame({ seq: 1, sourceKind: "presentation.run.started", runBindingRef: "run.01", event: { type: EventType.RUN_STARTED, threadId: "thread.01", runId: "run.01" } }));
+    expectCode(() => admitAfterExternalAck(decoder, durableFrame({ seq: 2, sourceKind: "presentation.run.finished", runBindingRef: "run.01", event: { type: EventType.RUN_FINISHED, threadId: "thread.01", runId: "run.01" } })), "agui_authority_capacity_exceeded");
     expect(decoder.getResumeRequest()).toMatchObject({ cursorBinding: { durableSeq: "1" } });
   });
 
@@ -314,28 +327,28 @@ describe("strict Session-owned AG-UI decoder", () => {
     }
 
     const runDecoder = createAguiPresentationDecoder({ grant, initialCursor, limits: { runs: 1 } });
-    runDecoder.decode(durableFrame({ seq: 1, sourceKind: "presentation.run.started", runBindingRef: "run.01", event: { type: EventType.RUN_STARTED, threadId: "thread.01", runId: "run.01" } }));
-    runDecoder.decode(durableFrame({ seq: 2, sourceKind: "presentation.run.finished", runBindingRef: "run.01", event: { type: EventType.RUN_FINISHED, threadId: "thread.01", runId: "run.01" } }));
+    admitAfterExternalAck(runDecoder, durableFrame({ seq: 1, sourceKind: "presentation.run.started", runBindingRef: "run.01", event: { type: EventType.RUN_STARTED, threadId: "thread.01", runId: "run.01" } }));
+    admitAfterExternalAck(runDecoder, durableFrame({ seq: 2, sourceKind: "presentation.run.finished", runBindingRef: "run.01", event: { type: EventType.RUN_FINISHED, threadId: "thread.01", runId: "run.01" } }));
     expectCode(
-      () => runDecoder.decode(durableFrame({ seq: 3, sourceKind: "presentation.run.started", runBindingRef: "run.02", event: { type: EventType.RUN_STARTED, threadId: "thread.01", runId: "run.02" } })),
+      () => admitAfterExternalAck(runDecoder, durableFrame({ seq: 3, sourceKind: "presentation.run.started", runBindingRef: "run.02", event: { type: EventType.RUN_STARTED, threadId: "thread.01", runId: "run.02" } })),
       "agui_authority_capacity_exceeded",
     );
 
     const messageDecoder = createAguiPresentationDecoder({ grant, initialCursor, limits: { messages: 1 } });
-    messageDecoder.decode(durableFrame({ seq: 1, sourceKind: "presentation.run.started", runBindingRef: "run.01", event: { type: EventType.RUN_STARTED, threadId: "thread.01", runId: "run.01" } }));
-    messageDecoder.decode(durableFrame({ seq: 2, sourceKind: "presentation.message.text.started", runBindingRef: "run.01", messageBindingRef: "message.01", event: { type: EventType.TEXT_MESSAGE_START, messageId: "message.01", role: "assistant" } }));
-    messageDecoder.decode(durableFrame({ seq: 3, sourceKind: "presentation.message.text.ended", runBindingRef: "run.01", messageBindingRef: "message.01", event: { type: EventType.TEXT_MESSAGE_END, messageId: "message.01" } }));
+    admitAfterExternalAck(messageDecoder, durableFrame({ seq: 1, sourceKind: "presentation.run.started", runBindingRef: "run.01", event: { type: EventType.RUN_STARTED, threadId: "thread.01", runId: "run.01" } }));
+    admitAfterExternalAck(messageDecoder, durableFrame({ seq: 2, sourceKind: "presentation.message.text.started", runBindingRef: "run.01", messageBindingRef: "message.01", event: { type: EventType.TEXT_MESSAGE_START, messageId: "message.01", role: "assistant" } }));
+    admitAfterExternalAck(messageDecoder, durableFrame({ seq: 3, sourceKind: "presentation.message.text.ended", runBindingRef: "run.01", messageBindingRef: "message.01", event: { type: EventType.TEXT_MESSAGE_END, messageId: "message.01" } }));
     expectCode(
-      () => messageDecoder.decode(durableFrame({ seq: 4, sourceKind: "presentation.message.text.started", runBindingRef: "run.01", messageBindingRef: "message.02", event: { type: EventType.TEXT_MESSAGE_START, messageId: "message.02", role: "assistant" } })),
+      () => admitAfterExternalAck(messageDecoder, durableFrame({ seq: 4, sourceKind: "presentation.message.text.started", runBindingRef: "run.01", messageBindingRef: "message.02", event: { type: EventType.TEXT_MESSAGE_START, messageId: "message.02", role: "assistant" } })),
       "agui_authority_capacity_exceeded",
     );
   });
 
   it("keeps stream.draining non-durable and bound to the last cursor", () => {
     const decoder = createAguiPresentationDecoder({ grant, initialCursor });
-    decoder.decode(durableFrame({ seq: 1, sourceKind: "presentation.run.started", runBindingRef: "run.01", event: { type: EventType.RUN_STARTED, threadId: "thread.01", runId: "run.01" } }));
+    admitAfterExternalAck(decoder, durableFrame({ seq: 1, sourceKind: "presentation.run.started", runBindingRef: "run.01", event: { type: EventType.RUN_STARTED, threadId: "thread.01", runId: "run.01" } }));
     const before = decoder.getResumeRequest();
-    const draining = decoder.decode({
+    const draining = admitAfterExternalAck(decoder, {
       id: null,
       event: "kokoro.stream.draining",
       data: JSON.stringify({
@@ -355,9 +368,9 @@ describe("strict Session-owned AG-UI decoder", () => {
 
   it("deep-freezes validated payloads so callers cannot inject fields after admission", () => {
     const decoder = createAguiPresentationDecoder({ grant, initialCursor });
-    decoder.decode(durableFrame({ seq: 1, sourceKind: "presentation.run.started", runBindingRef: "run.01", event: { type: EventType.RUN_STARTED, threadId: "thread.01", runId: "run.01" } }));
-    decoder.decode(durableFrame({ seq: 2, sourceKind: "presentation.message.text.started", runBindingRef: "run.01", messageBindingRef: "message.01", event: { type: EventType.TEXT_MESSAGE_START, messageId: "message.01", role: "assistant" } }));
-    const decoded = decoder.decode(durableFrame({ seq: 3, sourceKind: "presentation.activity.tool-preview", runBindingRef: "run.01", messageBindingRef: "message.01", event: { type: EventType.ACTIVITY_SNAPSHOT, messageId: "message.01", activityType: "kokoro.tool-preview.v1", content: { toolCallRef: "tool.01", label: "Search", status: "running" }, replace: true } }));
+    admitAfterExternalAck(decoder, durableFrame({ seq: 1, sourceKind: "presentation.run.started", runBindingRef: "run.01", event: { type: EventType.RUN_STARTED, threadId: "thread.01", runId: "run.01" } }));
+    admitAfterExternalAck(decoder, durableFrame({ seq: 2, sourceKind: "presentation.message.text.started", runBindingRef: "run.01", messageBindingRef: "message.01", event: { type: EventType.TEXT_MESSAGE_START, messageId: "message.01", role: "assistant" } }));
+    const decoded = admitAfterExternalAck(decoder, durableFrame({ seq: 3, sourceKind: "presentation.activity.tool-preview", runBindingRef: "run.01", messageBindingRef: "message.01", event: { type: EventType.ACTIVITY_SNAPSHOT, messageId: "message.01", activityType: "kokoro.tool-preview.v1", content: { toolCallRef: "tool.01", label: "Search", status: "running" }, replace: true } }));
     if (decoded.kind !== "durable" || decoded.data.event.type !== EventType.ACTIVITY_SNAPSHOT) throw new Error("fixture mismatch");
     const unsafe = decoded.data.event.content as { apiKey?: string };
     expect(() => { unsafe.apiKey = "injected-secret"; }).toThrow(TypeError);
@@ -367,30 +380,30 @@ describe("strict Session-owned AG-UI decoder", () => {
   it("enforces frame, event, depth, node, key, array, id, and cursor budgets before official parsing", () => {
     const oversized = "x".repeat(131_072);
     const decoder = createAguiPresentationDecoder({ grant, initialCursor });
-    expectCode(() => decoder.decode({ id: "opaque.cursor.0001", event: EventType.RUN_ERROR, data: oversized }), "agui_frame_limit_exceeded");
+    expectCode(() => admitAfterExternalAck(decoder, { id: "opaque.cursor.0001", event: EventType.RUN_ERROR, data: oversized }), "agui_frame_limit_exceeded");
 
     const deeplyNested = durableFrame({ seq: 1, sourceKind: "presentation.run.error", runBindingRef: "run.01", event: { type: EventType.RUN_ERROR, message: "Safe", code: "RUN_FAILED" } });
     let nested: unknown = "leaf";
     for (let depth = 0; depth < 14; depth += 1) nested = { nested };
     const parsed = JSON.parse(deeplyNested.data) as Record<string, unknown>;
     parsed.extra = nested;
-    expectCode(() => decoder.decode({ ...deeplyNested, data: JSON.stringify(parsed) }), "agui_frame_limit_exceeded");
+    expectCode(() => admitAfterExternalAck(decoder, { ...deeplyNested, data: JSON.stringify(parsed) }), "agui_frame_limit_exceeded");
 
     const hostileDepth = 10_000;
     const hostileJson = `${'{"nested":'.repeat(hostileDepth)}null${"}".repeat(hostileDepth)}`;
     expectCode(
-      () => decoder.decode({ id: "opaque.cursor.0001", event: EventType.RUN_ERROR, data: hostileJson }),
+      () => admitAfterExternalAck(decoder, { id: "opaque.cursor.0001", event: EventType.RUN_ERROR, data: hostileJson }),
       "agui_frame_limit_exceeded",
     );
 
     const tooManyNodes = durableFrame({ seq: 1, sourceKind: "presentation.run.error", runBindingRef: "run.01", event: { type: EventType.RUN_ERROR, message: "Safe", code: "RUN_FAILED" } });
     const nodePayload = JSON.parse(tooManyNodes.data) as Record<string, unknown>;
     nodePayload.extra = Array.from({ length: 256 }, () => Array.from({ length: 16 }, () => 1));
-    expectCode(() => decoder.decode({ ...tooManyNodes, data: JSON.stringify(nodePayload) }), "agui_frame_limit_exceeded");
+    expectCode(() => admitAfterExternalAck(decoder, { ...tooManyNodes, data: JSON.stringify(nodePayload) }), "agui_frame_limit_exceeded");
 
     const eventLimitDecoder = createAguiPresentationDecoder({ grant, initialCursor });
-    eventLimitDecoder.decode(durableFrame({ seq: 1, sourceKind: "presentation.run.started", runBindingRef: "run.01", event: { type: EventType.RUN_STARTED, threadId: "thread.01", runId: "run.01" } }));
-    eventLimitDecoder.decode(durableFrame({ seq: 2, sourceKind: "presentation.message.text.started", runBindingRef: "run.01", messageBindingRef: "message.01", event: { type: EventType.TEXT_MESSAGE_START, messageId: "message.01", role: "assistant" } }));
+    admitAfterExternalAck(eventLimitDecoder, durableFrame({ seq: 1, sourceKind: "presentation.run.started", runBindingRef: "run.01", event: { type: EventType.RUN_STARTED, threadId: "thread.01", runId: "run.01" } }));
+    admitAfterExternalAck(eventLimitDecoder, durableFrame({ seq: 2, sourceKind: "presentation.message.text.started", runBindingRef: "run.01", messageBindingRef: "message.01", event: { type: EventType.TEXT_MESSAGE_START, messageId: "message.01", role: "assistant" } }));
     const hugePlan = durableFrame({
       seq: 3,
       sourceKind: "presentation.activity.plan",
@@ -413,21 +426,21 @@ describe("strict Session-owned AG-UI decoder", () => {
         replace: true,
       },
     });
-    expectCode(() => eventLimitDecoder.decode(hugePlan), "agui_event_limit_exceeded");
+    expectCode(() => admitAfterExternalAck(eventLimitDecoder, hugePlan), "agui_event_limit_exceeded");
 
     const tooManyKeys = JSON.parse(tooManyNodes.data) as Record<string, unknown>;
     for (let index = 0; index < 65; index += 1) tooManyKeys[`extra${index}`] = index;
-    expectCode(() => decoder.decode({ ...tooManyNodes, data: JSON.stringify(tooManyKeys) }), "agui_frame_limit_exceeded");
+    expectCode(() => admitAfterExternalAck(decoder, { ...tooManyNodes, data: JSON.stringify(tooManyKeys) }), "agui_frame_limit_exceeded");
 
     const tooManyItems = JSON.parse(tooManyNodes.data) as Record<string, unknown>;
     tooManyItems.extra = Array.from({ length: 257 }, () => 1);
-    expectCode(() => decoder.decode({ ...tooManyNodes, data: JSON.stringify(tooManyItems) }), "agui_frame_limit_exceeded");
+    expectCode(() => admitAfterExternalAck(decoder, { ...tooManyNodes, data: JSON.stringify(tooManyItems) }), "agui_frame_limit_exceeded");
 
     const longId = durableFrame({ seq: 1, sourceKind: "presentation.run.error", runBindingRef: "run.01", event: { type: EventType.RUN_ERROR, message: "Safe", code: "R".repeat(129) } });
-    expectCode(() => decoder.decode(longId), "agui_event_shape_invalid");
+    expectCode(() => admitAfterExternalAck(decoder, longId), "agui_event_shape_invalid");
 
     const longCursor = durableFrame({ seq: 1, sourceKind: "presentation.run.error", runBindingRef: "run.01", cursor: `opaque.${"x".repeat(2_050)}`, event: { type: EventType.RUN_ERROR, message: "Safe", code: "RUN_FAILED" } });
-    expectCode(() => decoder.decode(longCursor), "agui_cursor_invalid");
+    expectCode(() => admitAfterExternalAck(decoder, longCursor), "agui_cursor_invalid");
   });
 
   it("rejects hostile raw frame objects before serialization or payload copying", () => {
@@ -439,12 +452,12 @@ describe("strict Session-owned AG-UI decoder", () => {
     };
     circular.self = circular;
     expectCode(
-      () => decoder.decode(circular as unknown as AguiSseFrame),
+      () => admitAfterExternalAck(decoder, circular as unknown as AguiSseFrame),
       "agui_sse_frame_shape_invalid",
     );
 
     expectCode(
-      () => decoder.decode({
+      () => admitAfterExternalAck(decoder, {
         id: "opaque.cursor.0001",
         event: EventType.RUN_ERROR,
         data: 1n,
@@ -458,17 +471,238 @@ describe("strict Session-owned AG-UI decoder", () => {
       readonly data = "{}";
     }
     expectCode(
-      () => decoder.decode(new NonPlainFrame() as unknown as AguiSseFrame),
+      () => admitAfterExternalAck(decoder, new NonPlainFrame() as unknown as AguiSseFrame),
       "agui_sse_frame_shape_invalid",
     );
 
     expectCode(
-      () => decoder.decode({
+      () => admitAfterExternalAck(decoder, {
         id: "opaque.cursor.0001",
         event: EventType.RUN_ERROR,
         data: "x".repeat(AGUI_PRESENTATION_LIMITS.maximumFrameBytes + 1),
       }),
       "agui_frame_limit_exceeded",
     );
+  });
+
+  it("exposes only prepare-ack-commit admission on the production decoder", () => {
+    const decoder = createAguiPresentationDecoder({ grant, initialCursor });
+    expect(decoder).not.toHaveProperty("decode");
+  });
+
+  it("publishes a compact replay-memory bound and fails closed for non-latest cursor retries", () => {
+    const replayBounds = (AguiPresentationModule as unknown as Record<string, unknown>)["AGUI_PRESENTATION_REPLAY_MEMORY_BOUNDS"];
+    expect(replayBounds).toEqual({
+      retainedWireFrames: 2,
+      maximumRetainedWireBytes: AGUI_PRESENTATION_LIMITS.maximumFrameBytes * 2,
+      historicalCursorIdentityBytes: 4_096 * AGUI_PRESENTATION_LIMITS.maximumCursorBytes,
+      historicalSourceIdentityBytes: 4_096 * AGUI_PRESENTATION_LIMITS.maximumIdBytes,
+    });
+
+    const decoder = createAguiPresentationDecoder({ grant, initialCursor });
+    const first = durableFrame({ seq: 1, sourceKind: "presentation.run.started", runBindingRef: "run.01", event: { type: EventType.RUN_STARTED, threadId: "thread.01", runId: "run.01" } });
+    const second = durableFrame({ seq: 2, sourceKind: "presentation.run.finished", runBindingRef: "run.01", event: { type: EventType.RUN_FINISHED, threadId: "thread.01", runId: "run.01" } });
+    admitAfterExternalAck(decoder, first);
+    admitAfterExternalAck(decoder, second);
+    expect(admitAfterExternalAck(decoder, second)).toMatchObject({ kind: "replay", frame: { id: second.id } });
+    expectCode(() => admitAfterExternalAck(decoder, first), "agui_stream_identity_duplicate");
+  });
+
+  it("locks CUSTOM run owner versions, identity, and irreversible lifecycle", () => {
+    const decoder = createAguiPresentationDecoder({ grant, initialCursor });
+    admitAfterExternalAck(decoder, durableFrame({
+      seq: 1,
+      sourceKind: "presentation.run.started",
+      runBindingRef: "run-binding.01",
+      event: { type: EventType.RUN_STARTED, threadId: "thread.01", runId: "run.01" },
+    }));
+    const running = durableFrame({
+      seq: 2,
+      sourceKind: "presentation.custom.run",
+      runBindingRef: "run-binding.01",
+      event: {
+        type: EventType.CUSTOM,
+        name: "kokoro.run.replace.v1",
+        value: { presentationRunId: "run.01", state: "running", projectionVersion: 1 },
+      },
+    });
+    admitAfterExternalAck(decoder, running);
+    admitAfterExternalAck(decoder, durableFrame({
+      seq: 3,
+      sourceKind: "presentation.custom.run",
+      runBindingRef: "run-binding.01",
+      event: {
+        type: EventType.CUSTOM,
+        name: "kokoro.run.replace.v1",
+        value: { presentationRunId: "run.01", state: "running", projectionVersion: 1 },
+      },
+    }));
+    expectCode(
+      () => admitAfterExternalAck(decoder, durableFrame({
+        seq: 4,
+        sourceKind: "presentation.custom.run",
+        runBindingRef: "run-binding.01",
+        event: {
+          type: EventType.CUSTOM,
+          name: "kokoro.run.replace.v1",
+          value: { presentationRunId: "run.01", state: "waiting", projectionVersion: 1 },
+        },
+      })),
+      "agui_run_owner_same_version_conflict",
+    );
+    expectCode(
+      () => admitAfterExternalAck(decoder, durableFrame({
+        seq: 4,
+        sourceKind: "presentation.custom.run",
+        runBindingRef: "run-binding.01",
+        event: {
+          type: EventType.CUSTOM,
+          name: "kokoro.run.replace.v1",
+          value: { presentationRunId: "run.other", state: "running", projectionVersion: 2 },
+        },
+      })),
+      "agui_run_owner_identity_conflict",
+    );
+
+    const progression = createAguiPresentationDecoder({ grant, initialCursor });
+    admitAfterExternalAck(progression, durableFrame({ seq: 1, sourceKind: "presentation.run.started", runBindingRef: "run-binding.02", event: { type: EventType.RUN_STARTED, threadId: "thread.01", runId: "run.02" } }));
+    for (const [seq, state, version] of [[2, "running", 1], [3, "waiting", 2]] as const) {
+      admitAfterExternalAck(progression, durableFrame({
+        seq,
+        sourceKind: "presentation.custom.run",
+        runBindingRef: "run-binding.02",
+        event: { type: EventType.CUSTOM, name: "kokoro.run.replace.v1", value: { presentationRunId: "run.02", state, projectionVersion: version } },
+      }));
+    }
+    for (const [version, code] of [[1, "agui_run_owner_version_regression"], [4, "agui_run_owner_version_gap"]] as const) {
+      expectCode(
+        () => admitAfterExternalAck(progression, durableFrame({
+          seq: 4,
+          sourceKind: "presentation.custom.run",
+          runBindingRef: "run-binding.02",
+          event: { type: EventType.CUSTOM, name: "kokoro.run.replace.v1", value: { presentationRunId: "run.02", state: "finished", projectionVersion: version } },
+        })),
+        code,
+      );
+    }
+    admitAfterExternalAck(progression, durableFrame({
+      seq: 4,
+      sourceKind: "presentation.custom.run",
+      runBindingRef: "run-binding.02",
+      event: { type: EventType.CUSTOM, name: "kokoro.run.replace.v1", value: { presentationRunId: "run.02", state: "finished", projectionVersion: 3 } },
+    }));
+    expectCode(
+      () => admitAfterExternalAck(progression, durableFrame({
+        seq: 5,
+        sourceKind: "presentation.custom.run",
+        runBindingRef: "run-binding.02",
+        event: { type: EventType.CUSTOM, name: "kokoro.run.replace.v1", value: { presentationRunId: "run.02", state: "running", projectionVersion: 4 } },
+      })),
+      "agui_run_owner_transition_invalid",
+    );
+  });
+
+  it("interlocks CUSTOM run terminal state with native RUN terminal evidence", () => {
+    const mismatch = createAguiPresentationDecoder({ grant, initialCursor });
+    admitAfterExternalAck(mismatch, durableFrame({ seq: 1, sourceKind: "presentation.run.started", runBindingRef: "run.01", event: { type: EventType.RUN_STARTED, threadId: "thread.01", runId: "run.01" } }));
+    admitAfterExternalAck(mismatch, durableFrame({ seq: 2, sourceKind: "presentation.custom.run", runBindingRef: "run.01", event: { type: EventType.CUSTOM, name: "kokoro.run.replace.v1", value: { presentationRunId: "run.01", state: "finished", projectionVersion: 1 } } }));
+    expectCode(
+      () => admitAfterExternalAck(mismatch, durableFrame({ seq: 3, sourceKind: "presentation.run.error", runBindingRef: "run.01", event: { type: EventType.RUN_ERROR, message: "Safe failure.", code: "RUN_FAILED" } })),
+      "agui_run_owner_terminal_conflict",
+    );
+
+    const matching = createAguiPresentationDecoder({ grant, initialCursor });
+    admitAfterExternalAck(matching, durableFrame({ seq: 1, sourceKind: "presentation.run.started", runBindingRef: "run.02", event: { type: EventType.RUN_STARTED, threadId: "thread.01", runId: "run.02" } }));
+    admitAfterExternalAck(matching, durableFrame({ seq: 2, sourceKind: "presentation.custom.run", runBindingRef: "run.02", event: { type: EventType.CUSTOM, name: "kokoro.run.replace.v1", value: { presentationRunId: "run.02", state: "finished", projectionVersion: 1 } } }));
+    expect(admitAfterExternalAck(matching, durableFrame({ seq: 3, sourceKind: "presentation.run.finished", runBindingRef: "run.02", event: { type: EventType.RUN_FINISHED, threadId: "thread.01", runId: "run.02" } }))).toMatchObject({ kind: "durable" });
+  });
+
+  it("locks CUSTOM message owner identity, version, and terminal lifecycle", () => {
+    const decoder = createAguiPresentationDecoder({ grant, initialCursor });
+    admitAfterExternalAck(decoder, durableFrame({ seq: 1, sourceKind: "presentation.run.started", runBindingRef: "run.01", event: { type: EventType.RUN_STARTED, threadId: "thread.01", runId: "run.01" } }));
+    admitAfterExternalAck(decoder, durableFrame({ seq: 2, sourceKind: "presentation.message.text.started", runBindingRef: "run.01", messageBindingRef: "message.01", event: { type: EventType.TEXT_MESSAGE_START, messageId: "message.01", role: "assistant" } }));
+    admitAfterExternalAck(decoder, durableFrame({ seq: 3, sourceKind: "presentation.custom.message", runBindingRef: "run.01", messageBindingRef: "message.01", event: { type: EventType.CUSTOM, name: "kokoro.message.replace.v1", value: { presentationMessageId: "message.01", role: "assistant", lifecycle: "streaming", parentPresentationMessageId: null, ordinal: 1, version: 1 } } }));
+    admitAfterExternalAck(decoder, durableFrame({ seq: 4, sourceKind: "presentation.custom.message", runBindingRef: "run.01", messageBindingRef: "message.01", event: { type: EventType.CUSTOM, name: "kokoro.message.replace.v1", value: { presentationMessageId: "message.01", role: "assistant", lifecycle: "streaming", parentPresentationMessageId: null, ordinal: 1, version: 1 } } }));
+    expectCode(
+      () => admitAfterExternalAck(decoder, durableFrame({ seq: 5, sourceKind: "presentation.custom.message", runBindingRef: "run.01", messageBindingRef: "message.01", event: { type: EventType.CUSTOM, name: "kokoro.message.replace.v1", value: { presentationMessageId: "message.01", role: "assistant", lifecycle: "completed", parentPresentationMessageId: null, ordinal: 1, version: 1 } } })),
+      "agui_message_owner_same_version_conflict",
+    );
+    expectCode(
+      () => admitAfterExternalAck(decoder, durableFrame({ seq: 5, sourceKind: "presentation.custom.message", runBindingRef: "run.01", messageBindingRef: "message.01", event: { type: EventType.CUSTOM, name: "kokoro.message.replace.v1", value: { presentationMessageId: "message.01", role: "assistant", lifecycle: "streaming", parentPresentationMessageId: "message.parent", ordinal: 1, version: 2 } } })),
+      "agui_message_owner_identity_conflict",
+    );
+
+    const terminal = createAguiPresentationDecoder({ grant, initialCursor });
+    admitAfterExternalAck(terminal, durableFrame({ seq: 1, sourceKind: "presentation.run.started", runBindingRef: "run.02", event: { type: EventType.RUN_STARTED, threadId: "thread.01", runId: "run.02" } }));
+    admitAfterExternalAck(terminal, durableFrame({ seq: 2, sourceKind: "presentation.message.text.started", runBindingRef: "run.02", messageBindingRef: "message.02", event: { type: EventType.TEXT_MESSAGE_START, messageId: "message.02", role: "assistant" } }));
+    admitAfterExternalAck(terminal, durableFrame({ seq: 3, sourceKind: "presentation.custom.message", runBindingRef: "run.02", messageBindingRef: "message.02", event: { type: EventType.CUSTOM, name: "kokoro.message.replace.v1", value: { presentationMessageId: "message.02", role: "assistant", lifecycle: "completed", parentPresentationMessageId: null, ordinal: 1, version: 1 } } }));
+    expectCode(
+      () => admitAfterExternalAck(terminal, durableFrame({ seq: 4, sourceKind: "presentation.custom.message", runBindingRef: "run.02", messageBindingRef: "message.02", event: { type: EventType.CUSTOM, name: "kokoro.message.replace.v1", value: { presentationMessageId: "message.02", role: "assistant", lifecycle: "streaming", parentPresentationMessageId: null, ordinal: 1, version: 2 } } })),
+      "agui_message_owner_transition_invalid",
+    );
+    expectCode(
+      () => admitAfterExternalAck(terminal, durableFrame({ seq: 4, sourceKind: "presentation.message.text.content", runBindingRef: "run.02", messageBindingRef: "message.02", event: { type: EventType.TEXT_MESSAGE_CONTENT, messageId: "message.02", delta: "late" } })),
+      "agui_message_owner_terminal_conflict",
+    );
+  });
+
+  it("never reopens a CUSTOM message after native TEXT END", () => {
+    const decoder = createAguiPresentationDecoder({ grant, initialCursor });
+    admitAfterExternalAck(decoder, durableFrame({ seq: 1, sourceKind: "presentation.run.started", runBindingRef: "run.01", event: { type: EventType.RUN_STARTED, threadId: "thread.01", runId: "run.01" } }));
+    admitAfterExternalAck(decoder, durableFrame({ seq: 2, sourceKind: "presentation.message.text.started", runBindingRef: "run.01", messageBindingRef: "message.01", event: { type: EventType.TEXT_MESSAGE_START, messageId: "message.01", role: "assistant" } }));
+    admitAfterExternalAck(decoder, durableFrame({ seq: 3, sourceKind: "presentation.message.text.ended", runBindingRef: "run.01", messageBindingRef: "message.01", event: { type: EventType.TEXT_MESSAGE_END, messageId: "message.01" } }));
+    expectCode(
+      () => admitAfterExternalAck(decoder, durableFrame({ seq: 4, sourceKind: "presentation.custom.message", runBindingRef: "run.01", messageBindingRef: "message.01", event: { type: EventType.CUSTOM, name: "kokoro.message.replace.v1", value: { presentationMessageId: "message.01", role: "assistant", lifecycle: "streaming", parentPresentationMessageId: null, ordinal: 1, version: 1 } } })),
+      "agui_message_owner_terminal_conflict",
+    );
+  });
+
+  it("reads hostile raw frame descriptors once and enforces exact UTF-8 boundaries", () => {
+    const decoder = createAguiPresentationDecoder({ grant, initialCursor });
+    let getterCalls = 0;
+    const accessor = Object.create(Object.prototype, {
+      id: { enumerable: true, get() { getterCalls += 1; return "opaque.cursor.0001"; } },
+      event: { enumerable: true, value: EventType.RUN_ERROR },
+      data: { enumerable: true, value: "{}" },
+    });
+    expectCode(() => admitAfterExternalAck(decoder, accessor as AguiSseFrame), "agui_sse_frame_shape_invalid");
+    expect(getterCalls).toBe(0);
+
+    let ownKeysCalls = 0;
+    const proxy = new Proxy({ id: "opaque.cursor.0001", event: EventType.RUN_ERROR, data: "{}" }, {
+      ownKeys(target) {
+        ownKeysCalls += 1;
+        return Reflect.ownKeys(target);
+      },
+    });
+    expectCode(() => admitAfterExternalAck(decoder, proxy), "agui_projection_payload_invalid");
+    expect(ownKeysCalls).toBe(1);
+
+    expectCode(
+      () => admitAfterExternalAck(decoder, new Proxy({}, { ownKeys() { throw new Error("hostile"); } }) as AguiSseFrame),
+      "agui_sse_frame_shape_invalid",
+    );
+    const symbolExtra = { id: "opaque.cursor.0001", event: EventType.RUN_ERROR, data: "{}", [Symbol("extra")]: true };
+    expectCode(() => admitAfterExternalAck(decoder, symbolExtra), "agui_sse_frame_shape_invalid");
+    const hiddenExtra = Object.create(Object.prototype, {
+      id: { enumerable: true, value: "opaque.cursor.0001" },
+      event: { enumerable: true, value: EventType.RUN_ERROR },
+      data: { enumerable: true, value: "{}" },
+      hidden: { enumerable: false, value: true },
+    });
+    expectCode(() => admitAfterExternalAck(decoder, hiddenExtra as AguiSseFrame), "agui_sse_frame_shape_invalid");
+
+    const id = "opaque.cursor.0001";
+    const event = EventType.RUN_ERROR;
+    const prefix = '{"padding":"';
+    const suffix = '"}';
+    const fixedBytes = new TextEncoder().encode(id + event + prefix + suffix + "😀").byteLength;
+    const padding = "a".repeat(AGUI_PRESENTATION_LIMITS.maximumFrameBytes - fixedBytes);
+    const exact = { id, event, data: `${prefix}${padding}😀${suffix}` };
+    expectCode(() => admitAfterExternalAck(decoder, exact), "agui_projection_payload_invalid");
+    expectCode(() => admitAfterExternalAck(decoder, { ...exact, data: `${prefix}${padding}a😀${suffix}` }), "agui_frame_limit_exceeded");
+
+    const loneSurrogate = { id, event, data: `${prefix}\ud800${suffix}` };
+    expectCode(() => admitAfterExternalAck(decoder, loneSurrogate), "agui_projection_payload_invalid");
   });
 });

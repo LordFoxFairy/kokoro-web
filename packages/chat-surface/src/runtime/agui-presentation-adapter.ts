@@ -279,14 +279,14 @@ export function createDormantAguiProjectionAdapter(port: DormantAguiProjectionPo
       const prepared = decoder.prepare(frame)
       const mutation = mapAguiPresentationFrame(prepared.decoded)
       if (mutation === null) {
-        prepared.commit()
+        prepared.commit(prepared.decoded.kind === "replay" ? "replayed" : "applied")
         return
       }
       const acknowledgement = port.dispatch(mutation)
       if (acknowledgement !== "applied" && acknowledgement !== "replayed") {
         throw new AguiPresentationProtocolError("agui_dispatch_ack_invalid")
       }
-      prepared.commit()
+      prepared.commit(acknowledgement)
     },
     getResumeRequest: decoder.getResumeRequest,
   })

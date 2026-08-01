@@ -16,5 +16,8 @@
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm run test:repository && pnpm -r test",
     "test:repository": "node --test test/repository/*.test.mjs"
+  },
+  "devDependencies": {
+    "rolldown": "1.1.4"
   }
 }
