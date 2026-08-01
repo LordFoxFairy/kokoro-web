@@ -792,32 +792,79 @@ function assertTrustedSnapshotBinding(
   data: AguiDurableFrame["data"],
   trustedRuns: ReadonlyMap<string, AguiPresentationRunBinding>,
   trustedMessages: ReadonlyMap<string, AguiPresentationMessageBinding>,
-): void {
+): Readonly<{
+  run?: AguiPresentationRunBinding;
+  message?: AguiPresentationMessageBinding;
+}> {
   const event = data.event;
   const runRef = data.presentationRunBindingRef;
   const messageRef = data.presentationMessageBindingRef;
-  const run = runRef === undefined ? undefined : trustedRuns.get(runRef);
-  const message = messageRef === undefined ? undefined : trustedMessages.get(messageRef);
+  const messageBound = [
+    EventType.TEXT_MESSAGE_START,
+    EventType.TEXT_MESSAGE_CONTENT,
+    EventType.TEXT_MESSAGE_END,
+    EventType.ACTIVITY_SNAPSHOT,
+  ].includes(event.type) || (event.type === EventType.CUSTOM && event.name === "kokoro.message.replace.v1");
+  const runBound = messageBound || [
+    EventType.RUN_STARTED,
+    EventType.RUN_FINISHED,
+    EventType.RUN_ERROR,
+  ].includes(event.type) || (
+    event.type === EventType.CUSTOM &&
+    ["kokoro.run.replace.v1", "kokoro.control.replace.v1", "kokoro.receipt.replace.v1"].includes(event.name)
+  );
 
-  if (run !== undefined) {
-    if (event.type === EventType.RUN_STARTED) {
-      if (
+  if (!runBound) {
+    if (runRef !== undefined || messageRef !== undefined) fail("agui_frame_binding_unexpected");
+    return Object.freeze({});
+  }
+  if (runRef === undefined) {
+    fail(messageBound ? "agui_frame_message_binding_invalid" : "agui_frame_run_binding_invalid");
+  }
+  if (!messageBound && messageRef !== undefined) fail("agui_frame_run_binding_invalid");
+  const run = trustedRuns.get(runRef);
+  if (run === undefined) fail("agui_run_binding_authority_missing", runRef);
+
+  let message: AguiPresentationMessageBinding | undefined;
+  if (messageBound) {
+    if (messageRef === undefined) fail("agui_frame_message_binding_invalid");
+    message = trustedMessages.get(messageRef);
+    if (message === undefined) fail("agui_message_binding_authority_missing", messageRef);
+    if (message.presentationRunBindingRef !== runRef) fail("agui_frame_message_binding_invalid");
+  }
+
+  return Object.freeze({ run, ...(message === undefined ? {} : { message }) });
+}
+
+function assertTrustedSnapshotBindingEvidence(
+  data: AguiDurableFrame["data"],
+  trusted: Readonly<{
+    run?: AguiPresentationRunBinding;
+    message?: AguiPresentationMessageBinding;
+  }>,
+): void {
+  const event = data.event;
+  const runRef = data.presentationRunBindingRef;
+  const run = trusted.run;
+  const message = trusted.message;
+
+  if (run !== undefined && event.type === EventType.RUN_STARTED) {
+    if (
+      event.runId !== run.presentationRunId || event.threadId !== run.presentationThreadId ||
+      (event.parentRunId ?? null) !== run.parentLineage.parentPresentationRunId ||
+      data.source.sourceEventId !== run.openedBySourceEventId || data.source.recordedAt !== run.openedAt
+    ) fail("agui_run_start_binding_conflict", run.bindingRef);
+  } else if (run !== undefined && (event.type === EventType.RUN_FINISHED || event.type === EventType.RUN_ERROR)) {
+    const expectedState = event.type === EventType.RUN_FINISHED ? "finished" : "error";
+    if (
+      run.state !== expectedState || data.source.sourceEventId !== run.terminalSourceEventId ||
+      data.source.recordedAt !== run.terminalAt ||
+      (event.type === EventType.RUN_ERROR && run.terminalDisposition !== "error") ||
+      (event.type === EventType.RUN_FINISHED && (
         event.runId !== run.presentationRunId || event.threadId !== run.presentationThreadId ||
-        (event.parentRunId ?? null) !== run.parentLineage.parentPresentationRunId ||
-        data.source.sourceEventId !== run.openedBySourceEventId || data.source.recordedAt !== run.openedAt
-      ) fail("agui_run_start_binding_conflict", run.bindingRef);
-    } else if (event.type === EventType.RUN_FINISHED || event.type === EventType.RUN_ERROR) {
-      const expectedState = event.type === EventType.RUN_FINISHED ? "finished" : "error";
-      if (
-        run.state !== expectedState || data.source.sourceEventId !== run.terminalSourceEventId ||
-        data.source.recordedAt !== run.terminalAt ||
-        (event.type === EventType.RUN_ERROR && run.terminalDisposition !== "error") ||
-        (event.type === EventType.RUN_FINISHED && (
-          event.runId !== run.presentationRunId || event.threadId !== run.presentationThreadId ||
-          run.terminalDisposition === "error" || run.terminalDisposition === null
-        ))
-      ) fail("agui_run_terminal_binding_conflict", run.bindingRef);
-    }
+        run.terminalDisposition === "error" || run.terminalDisposition === null
+      ))
+    ) fail("agui_run_terminal_binding_conflict", run.bindingRef);
   }
 
   if (message !== undefined) {
@@ -1146,6 +1193,7 @@ export function createAguiPresentationDecoder(options: Readonly<{
       fail("agui_authority_capacity_exceeded");
     }
 
+    const trustedBinding = assertTrustedSnapshotBinding(data, trustedRuns, trustedMessages);
     assertBindingShape(data, runs, messages);
     const runRef = data.presentationRunBindingRef;
     const messageRef = data.presentationMessageBindingRef;
@@ -1319,7 +1367,7 @@ export function createAguiPresentationDecoder(options: Readonly<{
       }
     }
 
-    assertTrustedSnapshotBinding(data, trustedRuns, trustedMessages);
+    assertTrustedSnapshotBindingEvidence(data, trustedBinding);
 
     const nextCursorBinding: AguiCursorBinding = Object.freeze({
       cursor: durableCursor,

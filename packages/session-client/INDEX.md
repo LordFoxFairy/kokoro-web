@@ -67,6 +67,9 @@ evidence. `@ag-ui/client`, `useAgUiRuntime`, and stock browser transports remain
 preserve Kokoro cursor/snapshot/repair authority. Decoder construction requires a closed, trusted Session HTTP
 snapshot even at durable sequence zero. That snapshot seeds cursor, Run, message, lineage, segment, source/time, and
 terminal evidence; missing, malformed, cross-scope, discontinuous, or contradictory binding authority fails closed.
+Every Run-bound frame must resolve its Run binding in that snapshot, and every message-bound frame must resolve a
+message binding owned by the same trusted Run. An unknown binding requests snapshot repair before Web can create a
+ledger entry, dispatch a Chat mutation, or advance its cursor.
 No active Web controller opens the AG-UI stream until provider compatibility and the Session snapshot endpoint are
 promoted together.
 

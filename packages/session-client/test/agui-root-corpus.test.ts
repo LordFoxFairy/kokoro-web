@@ -229,6 +229,62 @@ describe("Root AG-UI conformance corpus mirror", () => {
     );
   });
 
+  it("does not admit an untrusted Run binding from an empty zero snapshot", () => {
+    const base = corpus.positiveCases[0];
+    const firstFrame = base?.frames[0];
+    if (base === undefined || firstFrame === undefined) throw new Error("Root corpus case missing");
+    const decoder = createAguiPresentationDecoder({
+      grant: base.grantBinding,
+      snapshotAuthority: {
+        ...base.snapshot,
+        runBindings: [],
+        messageBindings: [],
+      },
+    });
+    expectCode(() => admit(decoder, firstFrame), "agui_run_binding_authority_missing");
+    expect(decoder.getResumeRequest().cursorBinding.durableSeq).toBe("0");
+  });
+
+  it("does not create an unknown message ledger under a trusted Run", () => {
+    const base = corpus.positiveCases[0];
+    const runStart = base?.frames[0];
+    const messageStart = base?.frames[1];
+    if (base === undefined || runStart === undefined || messageStart === undefined) {
+      throw new Error("Root corpus message chain missing");
+    }
+    const decoder = createCorpusDecoder(base);
+    admit(decoder, runStart);
+    const attack = structuredClone(messageStart) as {
+      kind: "durable";
+      id: string;
+      event: string;
+      data: Record<string, unknown>;
+    };
+    attack.data["presentationMessageBindingRef"] = "message-binding.untrusted";
+    expectCode(() => admit(decoder, attack), "agui_message_binding_authority_missing");
+    expect(decoder.getResumeRequest().cursorBinding.durableSeq).toBe("1");
+  });
+
+  it("rejects a trusted message binding presented under a different trusted Run", () => {
+    const base = corpus.positiveCases[0];
+    const runStart = base?.frames[0];
+    const messageStart = base?.frames[1];
+    if (base === undefined || runStart === undefined || messageStart === undefined) {
+      throw new Error("Root corpus message chain missing");
+    }
+    const decoder = createCorpusDecoder(base);
+    admit(decoder, runStart);
+    const attack = structuredClone(messageStart) as {
+      kind: "durable";
+      id: string;
+      event: string;
+      data: Record<string, unknown>;
+    };
+    attack.data["presentationRunBindingRef"] = "run-binding.01.segment.1";
+    expectCode(() => admit(decoder, attack), "agui_frame_message_binding_invalid");
+    expect(decoder.getResumeRequest().cursorBinding.durableSeq).toBe("1");
+  });
+
   it("replays the Root parent-lineage attack against constructor authority", () => {
     const attack = corpus.negativeCases.find(({ id }) => id === "resume-parent-lineage-confusion");
     const base = corpus.positiveCases.find(({ id }) => id === attack?.baseCaseId);

@@ -4,6 +4,9 @@ import {
   SESSION_AGUI_CONTRACT_REVISION,
   AguiPresentationProtocolError,
   type AguiGrantBinding,
+  type AguiPresentationMessageBinding,
+  type AguiPresentationRunBinding,
+  type AguiPresentationSnapshotAuthority,
   type AguiSseFrame,
 } from "@kokoro/session-client/agui-presentation-dormant";
 import { describe, expect, it, vi } from "vitest";
@@ -37,19 +40,6 @@ const initialCursor = {
   cursorProfileRevision: AGUI_CURSOR_PROFILE_REVISION,
 } as const;
 
-const snapshotAuthority = {
-  authority: "session-browser-v3-http-snapshot",
-  hydrate: true,
-  repair: true,
-  profileRevision: initialCursor.profileRevision,
-  sessionId: initialCursor.sessionId,
-  streamEpoch: initialCursor.streamEpoch,
-  durableSeq: initialCursor.durableSeq,
-  cursor: initialCursor.cursor,
-  runBindings: [],
-  messageBindings: [],
-} as const;
-
 function frame(
   seq: number,
   sourceKind: string,
@@ -79,12 +69,79 @@ function frame(
   };
 }
 
+function snapshotAuthorityFor(frames: readonly AguiSseFrame[]): AguiPresentationSnapshotAuthority {
+  const runBindings: AguiPresentationRunBinding[] = [];
+  const messageBindings: AguiPresentationMessageBinding[] = [];
+  for (const candidate of frames) {
+    if (typeof candidate.data !== "string") continue;
+    const data = JSON.parse(candidate.data) as Record<string, unknown>;
+    const event = data["event"] as Record<string, unknown>;
+    const source = data["source"] as Record<string, unknown>;
+    const runRef = data["presentationRunBindingRef"];
+    const messageRef = data["presentationMessageBindingRef"];
+    if (event["type"] === EventType.RUN_STARTED && typeof runRef === "string") {
+      runBindings.push({
+        bindingRef: runRef,
+        profileRevision: AGUI_PRESENTATION_PROFILE_REVISION,
+        sessionId: grant.sessionId,
+        internalRunRef: runRef,
+        presentationThreadId: String(event["threadId"]),
+        presentationRunId: String(event["runId"]),
+        segmentOrdinal: 0,
+        resumeOfPresentationRunId: null,
+        parentLineage: { parentInternalRunRef: null, parentPresentationRunId: null },
+        state: "open",
+        terminalDisposition: null,
+        openedBySourceEventId: String(source["sourceEventId"]),
+        terminalSourceEventId: null,
+        openedAt: String(source["recordedAt"]),
+        terminalAt: null,
+      });
+    } else if (
+      event["type"] === EventType.TEXT_MESSAGE_START &&
+      typeof runRef === "string" && typeof messageRef === "string"
+    ) {
+      messageBindings.push({
+        bindingRef: messageRef,
+        profileRevision: AGUI_PRESENTATION_PROFILE_REVISION,
+        sessionId: grant.sessionId,
+        internalMessageRef: messageRef,
+        presentationRunBindingRef: runRef,
+        presentationMessageId: String(event["messageId"]),
+        resumeSegmentOrdinal: 0,
+        state: "open",
+        openedBySourceEventId: String(source["sourceEventId"]),
+        endedBySourceEventId: null,
+        openedAt: String(source["recordedAt"]),
+        endedAt: null,
+      });
+    }
+  }
+  return {
+    authority: "session-browser-v3-http-snapshot",
+    hydrate: true,
+    repair: true,
+    profileRevision: initialCursor.profileRevision,
+    sessionId: initialCursor.sessionId,
+    streamEpoch: initialCursor.streamEpoch,
+    durableSeq: initialCursor.durableSeq,
+    cursor: initialCursor.cursor,
+    runBindings,
+    messageBindings,
+  } as const;
+}
+
 function createAdapter(
   dispatch: DormantAguiProjectionPort["dispatch"] = vi.fn(() => "applied" as const),
+  authorityFrames: readonly AguiSseFrame[] = [],
 ) {
   return {
     dispatch,
-    adapter: createDormantAguiProjectionAdapter({ grant, snapshotAuthority, dispatch }),
+    adapter: createDormantAguiProjectionAdapter({
+      grant,
+      snapshotAuthority: snapshotAuthorityFor(authorityFrames),
+      dispatch,
+    }),
   };
 }
 
@@ -101,17 +158,19 @@ function expectProtocolCode(operation: () => unknown, code: string): void {
 
 describe("dormant AG-UI Chat projection adapter", () => {
   it("owns raw admission and maps lifecycle/text without manufacturing SessionEvent authority", () => {
-    const { adapter, dispatch } = createAdapter();
-    adapter.accept(frame(1, "presentation.run.started", {
+    const runStarted = frame(1, "presentation.run.started", {
       type: EventType.RUN_STARTED,
       threadId: "thread.session.01",
       runId: "presentation.run.01",
-    }, { run: "run-binding.01" }));
-    adapter.accept(frame(2, "presentation.message.text.started", {
+    }, { run: "run-binding.01" });
+    const messageStarted = frame(2, "presentation.message.text.started", {
       type: EventType.TEXT_MESSAGE_START,
       messageId: "presentation.message.01",
       role: "assistant",
-    }, { run: "run-binding.01", message: "message-binding.01" }));
+    }, { run: "run-binding.01", message: "message-binding.01" });
+    const { adapter, dispatch } = createAdapter(undefined, [runStarted, messageStarted]);
+    adapter.accept(runStarted);
+    adapter.accept(messageStarted);
 
     expect(dispatch).toHaveBeenNthCalledWith(1, expect.objectContaining({
       type: "agui.lifecycle",
@@ -134,17 +193,19 @@ describe("dormant AG-UI Chat projection adapter", () => {
       void mutation;
       return "applied" as const;
     });
-    const { adapter } = createAdapter(dispatch);
-    adapter.accept(frame(1, "presentation.run.started", {
+    const runStarted = frame(1, "presentation.run.started", {
       type: EventType.RUN_STARTED,
       threadId: "thread.01",
       runId: "run.01",
-    }, { run: "run-binding.01" }));
-    adapter.accept(frame(2, "presentation.message.text.started", {
+    }, { run: "run-binding.01" });
+    const messageStarted = frame(2, "presentation.message.text.started", {
       type: EventType.TEXT_MESSAGE_START,
       messageId: "message.01",
       role: "assistant",
-    }, { run: "run-binding.01", message: "message-binding.01" }));
+    }, { run: "run-binding.01", message: "message-binding.01" });
+    const { adapter } = createAdapter(dispatch, [runStarted, messageStarted]);
+    adapter.accept(runStarted);
+    adapter.accept(messageStarted);
     adapter.accept(frame(3, "presentation.activity.notice", {
       type: EventType.ACTIVITY_SNAPSHOT,
       messageId: "message.01",
@@ -182,12 +243,12 @@ describe("dormant AG-UI Chat projection adapter", () => {
   });
 
   it("keeps replay and draining outside durable Chat mutation authority", () => {
-    const { adapter, dispatch } = createAdapter();
     const durable = frame(1, "presentation.run.started", {
       type: EventType.RUN_STARTED,
       threadId: "thread.01",
       runId: "run.01",
     }, { run: "run.01" });
+    const { adapter, dispatch } = createAdapter(undefined, [durable]);
     adapter.accept(durable);
     adapter.accept(durable);
     adapter.accept({
@@ -219,12 +280,12 @@ describe("dormant AG-UI Chat projection adapter", () => {
       appliedCursor = mutation.cursor;
       throw new Error("consumer applied the mutation but lost its acknowledgement");
     });
-    const { adapter } = createAdapter(dispatch);
     const durable = frame(1, "presentation.run.started", {
       type: EventType.RUN_STARTED,
       threadId: "thread.01",
       runId: "run.01",
     }, { run: "run.01" });
+    const { adapter } = createAdapter(dispatch, [durable]);
 
     expect(() => adapter.accept(durable)).toThrow("lost its acknowledgement");
     expect(adapter.getResumeRequest().cursorBinding.durableSeq).toBe("0");
@@ -239,12 +300,12 @@ describe("dormant AG-UI Chat projection adapter", () => {
     const dispatch = vi.fn(() => {
       throw new Error("ack unavailable");
     });
-    const { adapter } = createAdapter(dispatch);
     const first = frame(1, "presentation.run.started", {
       type: EventType.RUN_STARTED,
       threadId: "thread.01",
       runId: "run.01",
     }, { run: "run.01" });
+    const { adapter } = createAdapter(dispatch, [first]);
     expect(() => adapter.accept(first)).toThrow("ack unavailable");
 
     expectProtocolCode(
@@ -261,13 +322,14 @@ describe("dormant AG-UI Chat projection adapter", () => {
 
   it("requires an explicit applied or replayed dispatch acknowledgement", () => {
     const dispatch = vi.fn(() => undefined) as unknown as DormantAguiProjectionPort["dispatch"];
-    const { adapter } = createAdapter(dispatch);
+    const runStarted = frame(1, "presentation.run.started", {
+      type: EventType.RUN_STARTED,
+      threadId: "thread.01",
+      runId: "run.01",
+    }, { run: "run.01" });
+    const { adapter } = createAdapter(dispatch, [runStarted]);
     expectProtocolCode(
-      () => adapter.accept(frame(1, "presentation.run.started", {
-        type: EventType.RUN_STARTED,
-        threadId: "thread.01",
-        runId: "run.01",
-      }, { run: "run.01" })),
+      () => adapter.accept(runStarted),
       "agui_dispatch_ack_invalid",
     );
     expect(adapter.getResumeRequest().cursorBinding.durableSeq).toBe("0");
