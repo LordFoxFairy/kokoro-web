@@ -26,4 +26,18 @@ Snapshot fetch and hydration accept an optional `AbortSignal` and forward the ex
 transport. Product controllers use it to cancel superseded, unmounted, and closed authority requests; cancellation
 does not create a second Session endpoint or a transport-specific escape hatch.
 
+The strict AG-UI presentation consumer is present but **dormant**. `@ag-ui/core@0.0.57` is pinned exactly and
+`EventSchemas` is used only after Kokoro's smaller closed profile has passed UTF-8 byte, JSON depth/node/key/array,
+event, source-mapping, grant, cursor, Session, epoch, sequence, timestamp, binding, thread, message-END, and terminal
+checks. RAW, native tool, state/delta, reasoning/thinking, unknown activity/custom, extra fields, provider payload,
+and secret-bearing previews fail closed. The decoder preserves SSE `id`/`event`, emits the exact opaque cursor as
+both `Last-Event-ID` and the matching query cursor, and never treats `stream.draining` as durable progress. Its
+identity/run/message authority ledgers are bounded at 4096 facts and fail closed to future HTTP snapshot repair
+instead of evicting irreversible facts.
+
+Session remains the only browser presentation owner. The Python `ag-ui-protocol` package and Agent raw events are
+not participants, and `@ag-ui/client`, `useAgUiRuntime`, and stock AG-UI transports are forbidden because they do
+not preserve Kokoro cursor/snapshot/repair authority. No active Web controller opens the AG-UI stream until a real
+Session provider and cross-repository compatibility evidence are promoted.
+
 Verification: `pnpm --filter @kokoro/session-client lint && pnpm --filter @kokoro/session-client typecheck && pnpm --filter @kokoro/session-client test && pnpm --filter @kokoro/session-client build`.

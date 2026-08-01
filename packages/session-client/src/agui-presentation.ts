@@ -1,0 +1,803 @@
+import { EventSchemas, EventType } from "@ag-ui/core";
+import { z } from "zod";
+
+import { LAST_EVENT_ID_HEADER } from "./contracts.js";
+import type { SessionCursor } from "./cursor-policy.js";
+
+export const AGUI_PRESENTATION_PROFILE_REVISION = "kokoro-agui-presentation.v1" as const;
+export const AGUI_CURSOR_PROFILE_REVISION = "opaque-session-cursor-v1" as const;
+export const SESSION_AGUI_CONTRACT_REVISION = "session-agui-stream.v1" as const;
+export const AGUI_PRESENTATION_AUTHORITY_LIMIT = 4_096;
+
+export const AGUI_PRESENTATION_LIMITS = Object.freeze({
+  maximumFrameBytes: 131_072,
+  maximumEventBytes: 65_536,
+  maximumJsonDepth: 12,
+  maximumJsonNodes: 4_096,
+  maximumObjectKeys: 64,
+  maximumArrayItems: 256,
+  maximumIdBytes: 128,
+  maximumCursorBytes: 2_048,
+});
+
+const idPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/u;
+const cursorPattern = /^(?=.*[A-Za-z._~-])[A-Za-z0-9._~-]+$/u;
+const dateTimePattern = /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{3})?(?:Z|[+-][0-9]{2}:[0-9]{2})$/u;
+const uint64Pattern = /^(?:0|[1-9][0-9]{0,19})$/u;
+const uint64Maximum = 18_446_744_073_709_551_615n;
+
+const idSchema = z.string().min(1).max(128).regex(idPattern);
+const cursorSchema = z.string().min(16).max(2_048).regex(cursorPattern);
+const dateTimeSchema = z.string().min(20).max(35).regex(dateTimePattern).refine(
+  (value) => Number.isFinite(Date.parse(value)),
+  "invalid timestamp",
+);
+const uint64Schema = z.string().regex(uint64Pattern).refine(
+  (value) => BigInt(value) <= uint64Maximum,
+  "outside uint64",
+);
+const positiveUint64Schema = uint64Schema.refine((value) => value !== "0", "must be positive");
+const timestampSchema = z.number().int().min(0).max(8_640_000_000_000_000);
+const shortTextSchema = z.string().min(1).max(1_024);
+const safeTextSchema = z.string().max(16_384);
+
+export const aguiGrantBindingSchema = z.strictObject({
+  sessionId: idSchema,
+  sessionContractRevision: z.literal(SESSION_AGUI_CONTRACT_REVISION),
+  presentationProfileRevision: z.literal(AGUI_PRESENTATION_PROFILE_REVISION),
+  cursorProfileRevision: z.literal(AGUI_CURSOR_PROFILE_REVISION),
+});
+
+export type AguiGrantBinding = Readonly<z.infer<typeof aguiGrantBindingSchema>>;
+
+export const aguiCursorBindingSchema = z.strictObject({
+  cursor: cursorSchema,
+  sessionId: idSchema,
+  streamEpoch: positiveUint64Schema,
+  durableSeq: uint64Schema,
+  profileRevision: z.literal(AGUI_PRESENTATION_PROFILE_REVISION),
+  cursorProfileRevision: z.literal(AGUI_CURSOR_PROFILE_REVISION),
+});
+
+export type AguiCursorBinding = Readonly<z.infer<typeof aguiCursorBindingSchema>>;
+
+const runStartedSchema = z.strictObject({
+  type: z.literal(EventType.RUN_STARTED),
+  timestamp: timestampSchema,
+  threadId: idSchema,
+  runId: idSchema,
+  parentRunId: idSchema.optional(),
+});
+const runFinishedSchema = z.strictObject({
+  type: z.literal(EventType.RUN_FINISHED),
+  timestamp: timestampSchema,
+  threadId: idSchema,
+  runId: idSchema,
+});
+const runErrorSchema = z.strictObject({
+  type: z.literal(EventType.RUN_ERROR),
+  timestamp: timestampSchema,
+  message: safeTextSchema,
+  code: idSchema,
+});
+const textStartSchema = z.strictObject({
+  type: z.literal(EventType.TEXT_MESSAGE_START),
+  timestamp: timestampSchema,
+  messageId: idSchema,
+  role: z.literal("assistant"),
+});
+const textContentSchema = z.strictObject({
+  type: z.literal(EventType.TEXT_MESSAGE_CONTENT),
+  timestamp: timestampSchema,
+  messageId: idSchema,
+  delta: z.string().min(1).max(16_384),
+});
+const textEndSchema = z.strictObject({
+  type: z.literal(EventType.TEXT_MESSAGE_END),
+  timestamp: timestampSchema,
+  messageId: idSchema,
+});
+
+const activityBase = {
+  type: z.literal(EventType.ACTIVITY_SNAPSHOT),
+  timestamp: timestampSchema,
+  messageId: idSchema,
+  replace: z.literal(true),
+} as const;
+const safeSummaryActivitySchema = z.strictObject({
+  ...activityBase,
+  activityType: z.literal("kokoro.safe-summary.v1"),
+  content: z.strictObject({
+    partRef: idSchema,
+    summary: safeTextSchema,
+    status: z.enum(["streaming", "complete", "partial", "failed", "canceled"]),
+  }),
+});
+const toolPreviewActivitySchema = z.strictObject({
+  ...activityBase,
+  activityType: z.literal("kokoro.tool-preview.v1"),
+  content: z.strictObject({
+    toolCallRef: idSchema,
+    label: shortTextSchema,
+    status: z.enum(["pending", "running", "awaiting-user", "completed", "failed", "canceled"]),
+    summary: safeTextSchema.optional(),
+    resultPreview: safeTextSchema.optional(),
+    isError: z.boolean().optional(),
+    truncated: z.boolean().optional(),
+  }),
+});
+const hitlActivitySchema = z.strictObject({
+  ...activityBase,
+  activityType: z.literal("kokoro.hitl.v1"),
+  content: z.strictObject({
+    ownerRef: idSchema,
+    expectedVersion: z.number().int().min(1),
+    kind: z.enum(["approval", "interaction"]),
+    title: shortTextSchema,
+    description: safeTextSchema,
+    allowedActions: z.array(idSchema).min(1).max(16).refine((values) => new Set(values).size === values.length),
+    status: z.enum(["pending", "accepted", "rejected", "expired", "canceled"]),
+    deadline: dateTimeSchema.optional(),
+    receiptRef: idSchema.optional(),
+  }),
+});
+const planActivitySchema = z.strictObject({
+  ...activityBase,
+  activityType: z.literal("kokoro.plan.v1"),
+  content: z.strictObject({
+    planRef: idSchema,
+    summary: safeTextSchema,
+    status: z.enum(["proposed", "active", "completed", "failed", "canceled"]),
+    steps: z.array(z.strictObject({
+      stepRef: idSchema,
+      label: shortTextSchema,
+      status: z.enum(["pending", "in-progress", "completed", "failed", "canceled"]),
+    })).max(256),
+  }),
+});
+const subagentActivitySchema = z.strictObject({
+  ...activityBase,
+  activityType: z.literal("kokoro.subagent.v1"),
+  content: z.strictObject({
+    subagentRef: idSchema,
+    status: z.enum(["pending", "running", "completed", "failed", "canceled"]),
+    summary: safeTextSchema.optional(),
+  }),
+});
+const mediaActivitySchema = z.strictObject({
+  ...activityBase,
+  activityType: z.literal("kokoro.media.v1"),
+  content: z.strictObject({
+    operationRef: idSchema,
+    state: z.enum(["pending", "queued", "active", "finalizing", "completed", "partial", "failed", "canceled", "unknown"]),
+    progressBps: z.number().int().min(0).max(10_000),
+    summary: safeTextSchema.optional(),
+  }),
+});
+const artifactActivitySchema = z.strictObject({
+  ...activityBase,
+  activityType: z.literal("kokoro.artifact.v1"),
+  content: z.strictObject({
+    artifactRef: idSchema,
+    artifactVersionRef: idSchema,
+    availability: z.enum(["processing", "ready", "restricted", "unavailable", "deleted"]),
+    mediaClass: z.enum(["image", "audio", "video", "document", "other"]),
+    title: shortTextSchema.optional(),
+  }),
+});
+const costActivitySchema = z.strictObject({
+  ...activityBase,
+  activityType: z.literal("kokoro.cost.v1"),
+  content: z.strictObject({
+    costProjectionRef: idSchema,
+    state: z.enum(["pending", "estimated", "final", "corrected", "unavailable"]),
+    displayAmount: z.string().min(1).max(64).regex(/^(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/u).optional(),
+    unit: idSchema.optional(),
+    freshness: dateTimeSchema,
+  }),
+});
+const noticeActivitySchema = z.strictObject({
+  ...activityBase,
+  activityType: z.literal("kokoro.notice.v1"),
+  content: z.strictObject({
+    noticeRef: idSchema,
+    code: idSchema,
+    message: safeTextSchema,
+    severity: z.enum(["info", "warning"]),
+    retryClass: z.enum(["never", "after-delay", "after-user-action", "reconcile-receipt"]).optional(),
+  }),
+});
+const errorActivitySchema = z.strictObject({
+  ...activityBase,
+  activityType: z.literal("kokoro.error.v1"),
+  content: z.strictObject({
+    errorRef: idSchema,
+    code: idSchema,
+    message: safeTextSchema,
+    retryClass: z.enum(["never", "after-delay", "after-user-action", "reconcile-receipt"]),
+    supportCorrelationRef: idSchema.optional(),
+  }),
+});
+
+const activitySchema = z.union([
+  safeSummaryActivitySchema,
+  toolPreviewActivitySchema,
+  hitlActivitySchema,
+  planActivitySchema,
+  subagentActivitySchema,
+  mediaActivitySchema,
+  artifactActivitySchema,
+  costActivitySchema,
+  noticeActivitySchema,
+  errorActivitySchema,
+]);
+
+const sessionCustomSchema = z.strictObject({
+  type: z.literal(EventType.CUSTOM),
+  timestamp: timestampSchema,
+  name: z.literal("kokoro.session.replace.v1"),
+  value: z.strictObject({
+    sessionId: idSchema,
+    profileRevision: z.literal(AGUI_PRESENTATION_PROFILE_REVISION),
+    title: shortTextSchema,
+    lifecycle: z.enum(["active", "archived", "deleted"]),
+    contextPolicy: z.enum(["standard", "temporary"]),
+    activeBranchId: idSchema.nullable(),
+    version: z.number().int().min(1),
+  }),
+});
+const branchCustomSchema = z.strictObject({
+  type: z.literal(EventType.CUSTOM),
+  timestamp: timestampSchema,
+  name: z.literal("kokoro.branch.replace.v1"),
+  value: z.strictObject({
+    branchId: idSchema,
+    parentBranchId: idSchema.optional(),
+    rootMessageId: idSchema.nullable(),
+    leafMessageId: idSchema.nullable(),
+    version: z.number().int().min(1),
+  }),
+});
+const messageCustomSchema = z.strictObject({
+  type: z.literal(EventType.CUSTOM),
+  timestamp: timestampSchema,
+  name: z.literal("kokoro.message.replace.v1"),
+  value: z.strictObject({
+    presentationMessageId: idSchema,
+    role: z.enum(["user", "assistant", "system"]),
+    lifecycle: z.enum(["created", "streaming", "completed", "partial", "failed", "canceled"]),
+    parentPresentationMessageId: idSchema.nullable(),
+    ordinal: z.number().int().min(0),
+    version: z.number().int().min(1),
+  }),
+});
+const runCustomSchema = z.strictObject({
+  type: z.literal(EventType.CUSTOM),
+  timestamp: timestampSchema,
+  name: z.literal("kokoro.run.replace.v1"),
+  value: z.strictObject({
+    presentationRunId: idSchema,
+    state: z.enum(["starting", "running", "waiting", "canceling", "finished", "error"]),
+    projectionVersion: z.number().int().min(1),
+  }),
+});
+const controlCustomSchema = z.strictObject({
+  type: z.literal(EventType.CUSTOM),
+  timestamp: timestampSchema,
+  name: z.literal("kokoro.control.replace.v1"),
+  value: z.strictObject({
+    controlRef: idSchema,
+    kind: z.enum(["approval", "interaction", "plan", "cancellation"]),
+    state: z.enum(["pending", "accepted", "rejected", "expired", "canceled"]),
+    expectedVersion: z.number().int().min(1),
+    allowedActions: z.array(idSchema).max(16).refine((values) => new Set(values).size === values.length),
+  }),
+});
+const receiptCustomSchema = z.strictObject({
+  type: z.literal(EventType.CUSTOM),
+  timestamp: timestampSchema,
+  name: z.literal("kokoro.receipt.replace.v1"),
+  value: z.strictObject({
+    receiptRef: idSchema,
+    commandId: idSchema,
+    operation: idSchema,
+    state: z.enum(["pending", "accepted", "committed", "rejected", "unknown"]),
+    version: z.number().int().min(1),
+  }),
+});
+const customSchema = z.union([
+  sessionCustomSchema,
+  branchCustomSchema,
+  messageCustomSchema,
+  runCustomSchema,
+  controlCustomSchema,
+  receiptCustomSchema,
+]);
+
+export const aguiPresentationEventSchema = z.union([
+  runStartedSchema,
+  runFinishedSchema,
+  runErrorSchema,
+  textStartSchema,
+  textContentSchema,
+  textEndSchema,
+  activitySchema,
+  customSchema,
+]);
+
+export type AguiPresentationEvent = Readonly<z.infer<typeof aguiPresentationEventSchema>>;
+export type AguiActivityEvent = Extract<AguiPresentationEvent, { readonly type: "ACTIVITY_SNAPSHOT" }>;
+export type AguiCustomEvent = Extract<AguiPresentationEvent, { readonly type: "CUSTOM" }>;
+
+const sourceSchema = z.strictObject({
+  sourceEventId: idSchema,
+  sourceKind: idSchema,
+  sessionId: idSchema,
+  streamEpoch: positiveUint64Schema,
+  durableSeq: positiveUint64Schema,
+  projectionVersion: z.number().int().min(1),
+  schemaRevision: z.literal(1),
+  recordedAt: dateTimeSchema,
+});
+
+const projectionEnvelopeSchema = z.strictObject({
+  profileRevision: z.literal(AGUI_PRESENTATION_PROFILE_REVISION),
+  source: sourceSchema,
+  presentationRunBindingRef: idSchema.optional(),
+  presentationMessageBindingRef: idSchema.optional(),
+  event: z.unknown(),
+});
+
+const drainingSchema = z.strictObject({
+  type: z.literal("stream.draining"),
+  profileRevision: z.literal(AGUI_PRESENTATION_PROFILE_REVISION),
+  sessionId: idSchema,
+  streamEpoch: positiveUint64Schema,
+  lastDurableCursor: cursorSchema,
+  action: z.literal("retry-same-cursor"),
+  retryAfterMs: z.number().int().min(0).max(30_000).optional(),
+});
+
+export type AguiSseFrame = Readonly<{
+  id: string | null;
+  event: string | null;
+  data: string;
+}>;
+
+export type AguiDurableFrame = Readonly<{
+  kind: "durable";
+  id: SessionCursor;
+  event: AguiPresentationEvent["type"];
+  data: Readonly<{
+    profileRevision: typeof AGUI_PRESENTATION_PROFILE_REVISION;
+    source: Readonly<z.infer<typeof sourceSchema>>;
+    presentationRunBindingRef?: string;
+    presentationMessageBindingRef?: string;
+    event: AguiPresentationEvent;
+  }>;
+  cursorBinding: AguiCursorBinding;
+}>;
+
+export type AguiDrainingFrame = Readonly<{
+  kind: "control";
+  id: null;
+  event: "kokoro.stream.draining";
+  data: Readonly<z.infer<typeof drainingSchema>>;
+}>;
+
+export type AguiDecodedFrame = AguiDurableFrame | AguiDrainingFrame | Readonly<{
+  kind: "replay";
+  frame: AguiDurableFrame;
+}>;
+
+export class AguiPresentationProtocolError extends Error {
+  constructor(readonly code: string, detail = "") {
+    super(detail.length === 0 ? code : `${code}: ${detail}`);
+    this.name = "AguiPresentationProtocolError";
+  }
+}
+
+function fail(code: string, detail = ""): never {
+  throw new AguiPresentationProtocolError(code, detail);
+}
+
+function bytes(value: string): number {
+  return new TextEncoder().encode(value).byteLength;
+}
+
+function deepFreeze<T>(value: T): T {
+  if (value !== null && typeof value === "object" && !Object.isFrozen(value)) {
+    for (const child of Object.values(value)) deepFreeze(child);
+    Object.freeze(value);
+  }
+  return value;
+}
+
+type JsonStats = { nodes: number; depth: number; maximumKeys: number; maximumItems: number };
+
+function collectJsonStats(value: unknown, depth = 0, result: JsonStats = {
+  nodes: 0,
+  depth: 0,
+  maximumKeys: 0,
+  maximumItems: 0,
+}): JsonStats {
+  result.nodes += 1;
+  result.depth = Math.max(result.depth, depth);
+  if (Array.isArray(value)) {
+    result.maximumItems = Math.max(result.maximumItems, value.length);
+    for (const child of value) collectJsonStats(child, depth + 1, result);
+  } else if (value !== null && typeof value === "object") {
+    const values = Object.values(value);
+    result.maximumKeys = Math.max(result.maximumKeys, values.length);
+    for (const child of values) collectJsonStats(child, depth + 1, result);
+  }
+  return result;
+}
+
+function assertJsonBudget(value: unknown): void {
+  const stats = collectJsonStats(value);
+  if (
+    stats.depth > AGUI_PRESENTATION_LIMITS.maximumJsonDepth ||
+    stats.nodes > AGUI_PRESENTATION_LIMITS.maximumJsonNodes ||
+    stats.maximumKeys > AGUI_PRESENTATION_LIMITS.maximumObjectKeys ||
+    stats.maximumItems > AGUI_PRESENTATION_LIMITS.maximumArrayItems
+  ) fail("agui_frame_limit_exceeded", "shape");
+}
+
+function parseBoundedJson(frame: AguiSseFrame): unknown {
+  const frameBytes = bytes(JSON.stringify(frame));
+  if (frameBytes > AGUI_PRESENTATION_LIMITS.maximumFrameBytes) fail("agui_frame_limit_exceeded", "bytes");
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(frame.data) as unknown;
+  } catch {
+    fail("agui_frame_json_invalid");
+  }
+  assertJsonBudget(parsed);
+  return parsed;
+}
+
+const sourceMappings = new Map<string, Readonly<{ type: AguiPresentationEvent["type"]; discriminator?: string }>>([
+  ["presentation.run.started", { type: EventType.RUN_STARTED }],
+  ["presentation.run.finished", { type: EventType.RUN_FINISHED }],
+  ["presentation.run.error", { type: EventType.RUN_ERROR }],
+  ["presentation.message.text.started", { type: EventType.TEXT_MESSAGE_START }],
+  ["presentation.message.text.content", { type: EventType.TEXT_MESSAGE_CONTENT }],
+  ["presentation.message.text.ended", { type: EventType.TEXT_MESSAGE_END }],
+  ["presentation.activity.safe-summary", { type: EventType.ACTIVITY_SNAPSHOT, discriminator: "kokoro.safe-summary.v1" }],
+  ["presentation.activity.tool-preview", { type: EventType.ACTIVITY_SNAPSHOT, discriminator: "kokoro.tool-preview.v1" }],
+  ["presentation.activity.hitl", { type: EventType.ACTIVITY_SNAPSHOT, discriminator: "kokoro.hitl.v1" }],
+  ["presentation.activity.plan", { type: EventType.ACTIVITY_SNAPSHOT, discriminator: "kokoro.plan.v1" }],
+  ["presentation.activity.subagent", { type: EventType.ACTIVITY_SNAPSHOT, discriminator: "kokoro.subagent.v1" }],
+  ["presentation.activity.media", { type: EventType.ACTIVITY_SNAPSHOT, discriminator: "kokoro.media.v1" }],
+  ["presentation.activity.artifact", { type: EventType.ACTIVITY_SNAPSHOT, discriminator: "kokoro.artifact.v1" }],
+  ["presentation.activity.cost", { type: EventType.ACTIVITY_SNAPSHOT, discriminator: "kokoro.cost.v1" }],
+  ["presentation.activity.notice", { type: EventType.ACTIVITY_SNAPSHOT, discriminator: "kokoro.notice.v1" }],
+  ["presentation.activity.error", { type: EventType.ACTIVITY_SNAPSHOT, discriminator: "kokoro.error.v1" }],
+  ["presentation.custom.session", { type: EventType.CUSTOM, discriminator: "kokoro.session.replace.v1" }],
+  ["presentation.custom.branch", { type: EventType.CUSTOM, discriminator: "kokoro.branch.replace.v1" }],
+  ["presentation.custom.message", { type: EventType.CUSTOM, discriminator: "kokoro.message.replace.v1" }],
+  ["presentation.custom.run", { type: EventType.CUSTOM, discriminator: "kokoro.run.replace.v1" }],
+  ["presentation.custom.control", { type: EventType.CUSTOM, discriminator: "kokoro.control.replace.v1" }],
+  ["presentation.custom.receipt", { type: EventType.CUSTOM, discriminator: "kokoro.receipt.replace.v1" }],
+]);
+
+const allowedEventFields = new Map<string, ReadonlySet<string>>([
+  [EventType.RUN_STARTED, new Set(["type", "timestamp", "threadId", "runId", "parentRunId"])],
+  [EventType.RUN_FINISHED, new Set(["type", "timestamp", "threadId", "runId"])],
+  [EventType.RUN_ERROR, new Set(["type", "timestamp", "message", "code"])],
+  [EventType.TEXT_MESSAGE_START, new Set(["type", "timestamp", "messageId", "role"])],
+  [EventType.TEXT_MESSAGE_CONTENT, new Set(["type", "timestamp", "messageId", "delta"])],
+  [EventType.TEXT_MESSAGE_END, new Set(["type", "timestamp", "messageId"])],
+  [EventType.ACTIVITY_SNAPSHOT, new Set(["type", "timestamp", "messageId", "activityType", "content", "replace"])],
+  [EventType.CUSTOM, new Set(["type", "timestamp", "name", "value"])],
+]);
+const allowedActivityTypes = new Set([
+  "kokoro.safe-summary.v1",
+  "kokoro.tool-preview.v1",
+  "kokoro.hitl.v1",
+  "kokoro.plan.v1",
+  "kokoro.subagent.v1",
+  "kokoro.media.v1",
+  "kokoro.artifact.v1",
+  "kokoro.cost.v1",
+  "kokoro.notice.v1",
+  "kokoro.error.v1",
+]);
+const allowedCustomNames = new Set([
+  "kokoro.session.replace.v1",
+  "kokoro.branch.replace.v1",
+  "kokoro.message.replace.v1",
+  "kokoro.run.replace.v1",
+  "kokoro.control.replace.v1",
+  "kokoro.receipt.replace.v1",
+]);
+const forbiddenReasoningKey = /^(?:chain[_-]?of[_-]?thought|cot|private[_-]?reasoning|hidden[_-]?reasoning|reasoning[_-]?(?:content|trace|tokens))$/iu;
+const forbiddenToolKey = /^(?:api[_-]?key|authorization|credential|headers?|password|private[_-]?key|provider[_-]?url|raw[_-]?(?:input|output|result)|secret|token|args|arguments|input)$/iu;
+
+function containsKey(value: unknown, pattern: RegExp): boolean {
+  if (Array.isArray(value)) return value.some((entry) => containsKey(entry, pattern));
+  if (value === null || typeof value !== "object") return false;
+  return Object.entries(value).some(([key, child]) => pattern.test(key) || containsKey(child, pattern));
+}
+
+function validateClosedEventPreSchema(value: unknown): void {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) fail("agui_event_shape_invalid");
+  const event = value as Record<string, unknown>;
+  if (Object.hasOwn(event, "rawEvent")) fail("agui_raw_event_forbidden");
+  if (containsKey(event, forbiddenReasoningKey)) fail("agui_cot_forbidden");
+  if (typeof event.type !== "string" || !allowedEventFields.has(event.type)) {
+    fail("agui_event_type_forbidden", String(event.type));
+  }
+  if (event.type === EventType.CUSTOM && (typeof event.name !== "string" || !allowedCustomNames.has(event.name))) {
+    fail("agui_unknown_custom", String(event.name));
+  }
+  if (
+    event.type === EventType.ACTIVITY_SNAPSHOT &&
+    (typeof event.activityType !== "string" || !allowedActivityTypes.has(event.activityType))
+  ) fail("agui_unknown_activity", String(event.activityType));
+  if (
+    event.type === EventType.ACTIVITY_SNAPSHOT &&
+    event.activityType === "kokoro.tool-preview.v1" &&
+    containsKey(event.content, forbiddenToolKey)
+  ) fail("agui_tool_secret_forbidden");
+  const fields = allowedEventFields.get(event.type);
+  const extra = Object.keys(event).find((field) => !fields?.has(field));
+  if (extra !== undefined) fail("agui_event_extra_forbidden", extra);
+}
+
+type RunAuthority = Readonly<{
+  runId: string;
+  threadId: string;
+  state: "open" | "terminal";
+}>;
+type MessageAuthority = Readonly<{
+  messageId: string;
+  runBindingRef: string;
+  state: "open" | "ended";
+}>;
+
+export type AguiPresentationDecoder = Readonly<{
+  decode(frame: AguiSseFrame): AguiDecodedFrame;
+  getResumeRequest(): Readonly<{
+    headers: Readonly<Record<typeof LAST_EVENT_ID_HEADER, string>>;
+    queryCursor: string;
+    cursorBinding: AguiCursorBinding;
+  }>;
+}>;
+
+function assertBindingShape(
+  data: AguiDurableFrame["data"],
+  runs: ReadonlyMap<string, RunAuthority>,
+  messages: ReadonlyMap<string, MessageAuthority>,
+): void {
+  const event = data.event;
+  const runRef = data.presentationRunBindingRef;
+  const messageRef = data.presentationMessageBindingRef;
+  if ([EventType.RUN_STARTED, EventType.RUN_FINISHED, EventType.RUN_ERROR].includes(event.type)) {
+    if (runRef === undefined || messageRef !== undefined) fail("agui_frame_run_binding_invalid");
+    return;
+  }
+  if ([EventType.TEXT_MESSAGE_START, EventType.TEXT_MESSAGE_CONTENT, EventType.TEXT_MESSAGE_END, EventType.ACTIVITY_SNAPSHOT].includes(event.type)) {
+    if (runRef === undefined || messageRef === undefined) fail("agui_frame_message_binding_invalid");
+    const messageId = "messageId" in event ? event.messageId : undefined;
+    const message = messages.get(messageRef);
+    if (message !== undefined && (message.runBindingRef !== runRef || message.messageId !== messageId)) {
+      fail("agui_frame_message_binding_invalid");
+    }
+    return;
+  }
+  if (event.type !== EventType.CUSTOM) return;
+  if (event.name === "kokoro.message.replace.v1") {
+    const message = messageRef === undefined ? undefined : messages.get(messageRef);
+    if (
+      runRef === undefined || messageRef === undefined || message === undefined ||
+      message.runBindingRef !== runRef || message.messageId !== event.value.presentationMessageId
+    ) fail("agui_frame_message_binding_invalid");
+  } else if (["kokoro.run.replace.v1", "kokoro.control.replace.v1", "kokoro.receipt.replace.v1"].includes(event.name)) {
+    if (runRef === undefined || messageRef !== undefined || !runs.has(runRef)) fail("agui_frame_run_binding_invalid");
+  } else if (runRef !== undefined || messageRef !== undefined) {
+    fail("agui_frame_binding_unexpected");
+  }
+}
+
+export function createAguiPresentationDecoder(options: Readonly<{
+  grant: AguiGrantBinding;
+  initialCursor: AguiCursorBinding;
+  authorityLimit?: number;
+}>): AguiPresentationDecoder {
+  const parsedGrant = aguiGrantBindingSchema.safeParse(options.grant);
+  if (!parsedGrant.success) fail("agui_grant_profile_binding_invalid");
+  const parsedInitialCursor = aguiCursorBindingSchema.safeParse(options.initialCursor);
+  if (!parsedInitialCursor.success) fail("agui_cursor_binding_invalid");
+  if (
+    parsedInitialCursor.data.sessionId !== parsedGrant.data.sessionId ||
+    parsedInitialCursor.data.profileRevision !== parsedGrant.data.presentationProfileRevision ||
+    parsedInitialCursor.data.cursorProfileRevision !== parsedGrant.data.cursorProfileRevision
+  ) fail("agui_cursor_binding_invalid");
+  const authorityLimit = options.authorityLimit ?? AGUI_PRESENTATION_AUTHORITY_LIMIT;
+  if (!Number.isInteger(authorityLimit) || authorityLimit < 2 || authorityLimit > 65_536) {
+    fail("agui_authority_limit_invalid");
+  }
+
+  let cursorBinding: AguiCursorBinding = Object.freeze({ ...parsedInitialCursor.data });
+  let lastRecordedAt = -1;
+  let lastDecoded: AguiDurableFrame | undefined;
+  let presentationThreadId: string | undefined;
+  const cursorFingerprints = new Map<string, string>([[cursorBinding.cursor, "snapshot"]]);
+  const sourceEventIds = new Set<string>();
+  const runs = new Map<string, RunAuthority>();
+  const runIds = new Map<string, string>();
+  const messages = new Map<string, MessageAuthority>();
+  const messageIds = new Map<string, string>();
+
+  const decode = (frame: AguiSseFrame): AguiDecodedFrame => {
+    const raw = parseBoundedJson(frame);
+    if (frame.event === "kokoro.stream.draining") {
+      if (frame.id !== null) fail("agui_draining_not_nondurable");
+      const parsed = drainingSchema.safeParse(raw);
+      if (!parsed.success) fail("agui_draining_shape_invalid");
+      if (
+        parsed.data.sessionId !== parsedGrant.data.sessionId ||
+        parsed.data.streamEpoch !== cursorBinding.streamEpoch ||
+        parsed.data.lastDurableCursor !== cursorBinding.cursor
+      ) fail("agui_draining_cursor_conflict");
+      return deepFreeze({ kind: "control", id: null, event: "kokoro.stream.draining", data: parsed.data });
+    }
+
+    if (frame.id === null || frame.event === null) fail("agui_durable_sse_identity_missing");
+    if (bytes(frame.id) > AGUI_PRESENTATION_LIMITS.maximumCursorBytes || !cursorSchema.safeParse(frame.id).success) {
+      fail("agui_cursor_invalid");
+    }
+    const frameFingerprint = JSON.stringify(frame);
+    const priorFingerprint = cursorFingerprints.get(frame.id);
+    if (priorFingerprint !== undefined) {
+      if (priorFingerprint === frameFingerprint && lastDecoded?.id === frame.id) {
+        return Object.freeze({ kind: "replay", frame: lastDecoded });
+      }
+      fail("agui_stream_identity_duplicate");
+    }
+
+    const envelope = projectionEnvelopeSchema.safeParse(raw);
+    if (!envelope.success) fail("agui_projection_payload_invalid");
+    validateClosedEventPreSchema(envelope.data.event);
+    const strictEvent = aguiPresentationEventSchema.safeParse(envelope.data.event);
+    if (!strictEvent.success) fail("agui_event_shape_invalid");
+    if (bytes(JSON.stringify(strictEvent.data)) > AGUI_PRESENTATION_LIMITS.maximumEventBytes) {
+      fail("agui_event_limit_exceeded");
+    }
+    if (!EventSchemas.safeParse(strictEvent.data).success) fail("agui_official_event_schema_invalid");
+
+    const data: AguiDurableFrame["data"] = deepFreeze({
+      ...envelope.data,
+      event: strictEvent.data,
+    });
+    if (frame.event !== data.event.type) fail("agui_sse_event_type_mismatch");
+    const mapping = sourceMappings.get(data.source.sourceKind);
+    const discriminator = data.event.type === EventType.ACTIVITY_SNAPSHOT
+      ? data.event.activityType
+      : data.event.type === EventType.CUSTOM ? data.event.name : undefined;
+    if (
+      mapping === undefined || mapping.type !== data.event.type ||
+      mapping.discriminator !== discriminator
+    ) fail("agui_closed_mapping_missing", data.source.sourceKind);
+    if (
+      data.source.sessionId !== parsedGrant.data.sessionId ||
+      data.source.streamEpoch !== cursorBinding.streamEpoch ||
+      data.profileRevision !== parsedGrant.data.presentationProfileRevision
+    ) fail("agui_stream_scope_conflict");
+    const expectedSeq = BigInt(cursorBinding.durableSeq) + 1n;
+    if (BigInt(data.source.durableSeq) !== expectedSeq) fail("agui_cursor_gap", data.source.durableSeq);
+    const recordedAt = Date.parse(data.source.recordedAt);
+    if (recordedAt !== data.event.timestamp || recordedAt < lastRecordedAt) fail("agui_event_time_invalid");
+    if (sourceEventIds.has(data.source.sourceEventId)) fail("agui_stream_identity_duplicate");
+    if (cursorFingerprints.size >= authorityLimit || sourceEventIds.size >= authorityLimit) {
+      fail("agui_authority_capacity_exceeded");
+    }
+
+    assertBindingShape(data, runs, messages);
+    const runRef = data.presentationRunBindingRef;
+    const messageRef = data.presentationMessageBindingRef;
+    const event = data.event;
+
+    let runUpdate: Readonly<{ ref: string; authority: RunAuthority }> | undefined;
+    let messageUpdate: Readonly<{ ref: string; authority: MessageAuthority }> | undefined;
+    if (runRef !== undefined && runs.get(runRef)?.state === "terminal") fail("agui_terminal_run_revived");
+
+    if (event.type === EventType.RUN_STARTED) {
+      if (runRef === undefined) fail("agui_frame_run_binding_invalid");
+      if (runs.has(runRef) || runIds.has(event.runId)) fail("agui_terminal_run_revived", event.runId);
+      if (presentationThreadId !== undefined && event.threadId !== presentationThreadId) {
+        fail("agui_run_thread_scope_conflict");
+      }
+      if (
+        event.parentRunId !== undefined &&
+        (event.parentRunId === event.runId || !runIds.has(event.parentRunId))
+      ) fail("agui_run_parent_lineage_conflict");
+      if (runs.size >= authorityLimit || runIds.size >= authorityLimit) fail("agui_authority_capacity_exceeded");
+      runUpdate = { ref: runRef, authority: { runId: event.runId, threadId: event.threadId, state: "open" } };
+    } else if (event.type === EventType.RUN_FINISHED || event.type === EventType.RUN_ERROR) {
+      if (runRef === undefined) fail("agui_frame_run_binding_invalid");
+      const run = runs.get(runRef);
+      if (run?.state !== "open") fail("agui_terminal_run_revived");
+      if ([...messages.values()].some((message) => message.runBindingRef === runRef && message.state === "open")) {
+        fail("agui_run_message_open");
+      }
+      if (event.type === EventType.RUN_FINISHED && (event.runId !== run.runId || event.threadId !== run.threadId)) {
+        fail("agui_run_terminal_binding_conflict");
+      }
+      runUpdate = { ref: runRef, authority: { ...run, state: "terminal" } };
+    } else if (event.type === EventType.TEXT_MESSAGE_START) {
+      if (runRef === undefined || messageRef === undefined || runs.get(runRef)?.state !== "open") {
+        fail("agui_frame_message_binding_invalid");
+      }
+      if (messages.has(messageRef) || messageIds.has(event.messageId)) fail("agui_message_reopened", event.messageId);
+      if (messages.size >= authorityLimit || messageIds.size >= authorityLimit) fail("agui_authority_capacity_exceeded");
+      messageUpdate = { ref: messageRef, authority: { messageId: event.messageId, runBindingRef: runRef, state: "open" } };
+    } else if (event.type === EventType.TEXT_MESSAGE_CONTENT || event.type === EventType.TEXT_MESSAGE_END) {
+      if (runRef === undefined || messageRef === undefined || runs.get(runRef)?.state !== "open") {
+        fail("agui_frame_message_binding_invalid");
+      }
+      const message = messages.get(messageRef);
+      if (message?.state !== "open" || message.messageId !== event.messageId) fail("agui_message_reopened", event.messageId);
+      if (event.type === EventType.TEXT_MESSAGE_END) {
+        messageUpdate = { ref: messageRef, authority: { ...message, state: "ended" } };
+      }
+    } else if (event.type === EventType.ACTIVITY_SNAPSHOT) {
+      if (runRef === undefined || messageRef === undefined || runs.get(runRef)?.state !== "open" || messages.get(messageRef)?.state !== "open") {
+        fail("agui_frame_message_binding_invalid");
+      }
+    } else if (event.type === EventType.CUSTOM) {
+      if (event.name === "kokoro.session.replace.v1" && event.value.sessionId !== parsedGrant.data.sessionId) {
+        fail("agui_custom_session_scope_conflict");
+      }
+      if (runRef !== undefined && runs.get(runRef)?.state !== "open") fail("agui_terminal_run_revived");
+      if (event.name === "kokoro.run.replace.v1" && runs.get(runRef ?? "")?.runId !== event.value.presentationRunId) {
+        fail("agui_frame_run_binding_invalid");
+      }
+    }
+
+    const nextCursorBinding: AguiCursorBinding = Object.freeze({
+      cursor: frame.id,
+      sessionId: data.source.sessionId,
+      streamEpoch: data.source.streamEpoch,
+      durableSeq: data.source.durableSeq,
+      profileRevision: data.profileRevision,
+      cursorProfileRevision: parsedGrant.data.cursorProfileRevision,
+    });
+    const decoded: AguiDurableFrame = deepFreeze({
+      kind: "durable",
+      id: frame.id as SessionCursor,
+      event: data.event.type,
+      data,
+      cursorBinding: nextCursorBinding,
+    });
+
+    if (runUpdate !== undefined) {
+      runs.set(runUpdate.ref, runUpdate.authority);
+      runIds.set(runUpdate.authority.runId, runUpdate.ref);
+      presentationThreadId ??= runUpdate.authority.threadId;
+    }
+    if (messageUpdate !== undefined) {
+      messages.set(messageUpdate.ref, messageUpdate.authority);
+      messageIds.set(messageUpdate.authority.messageId, messageUpdate.ref);
+    }
+    sourceEventIds.add(data.source.sourceEventId);
+    cursorFingerprints.set(frame.id, frameFingerprint);
+    cursorBinding = nextCursorBinding;
+    lastRecordedAt = recordedAt;
+    lastDecoded = decoded;
+    return decoded;
+  };
+
+  return Object.freeze({
+    decode,
+    getResumeRequest() {
+      return Object.freeze({
+        headers: Object.freeze({ [LAST_EVENT_ID_HEADER]: cursorBinding.cursor }),
+        queryCursor: cursorBinding.cursor,
+        cursorBinding,
+      });
+    },
+  });
+}
