@@ -91,6 +91,45 @@ function admit(decoder: AguiPresentationDecoder, corpusFrame: CorpusFrame): void
   prepared.commit("applied");
 }
 
+function liveSessionFrame(
+  base: CorpusCase,
+  sourceEventId: string,
+  recordedAt: string,
+): CorpusFrame {
+  return {
+    kind: "durable",
+    id: "opaque.live.cursor.0010",
+    event: "CUSTOM",
+    data: {
+      profileRevision: AGUI_PRESENTATION_PROFILE_REVISION,
+      source: {
+        sourceEventId,
+        sourceKind: "presentation.custom.session",
+        sessionId: base.snapshot.sessionId,
+        streamEpoch: base.snapshot.streamEpoch,
+        durableSeq: "10",
+        projectionVersion: 10,
+        schemaRevision: 1,
+        recordedAt,
+      },
+      event: {
+        type: "CUSTOM",
+        timestamp: Date.parse(recordedAt),
+        name: "kokoro.session.replace.v1",
+        value: {
+          sessionId: base.snapshot.sessionId,
+          profileRevision: AGUI_PRESENTATION_PROFILE_REVISION,
+          title: "Resumed",
+          lifecycle: "active",
+          contextPolicy: "standard",
+          activeBranchId: "branch.01",
+          version: 2,
+        },
+      },
+    },
+  };
+}
+
 function expectCode(operation: () => unknown, code: string): void {
   try {
     operation();
@@ -226,6 +265,170 @@ describe("Root AG-UI conformance corpus mirror", () => {
         },
       } as unknown as Parameters<typeof createAguiPresentationDecoder>[0]),
       "agui_snapshot_authority_required",
+    );
+  });
+
+  it("seeds snapshot binding source identities and evidence time before a nonzero resume", () => {
+    const base = corpus.positiveCases[0];
+    const firstRun = base?.runBindings[0] as { openedBySourceEventId?: string } | undefined;
+    if (base === undefined || firstRun?.openedBySourceEventId === undefined) {
+      throw new Error("Root corpus snapshot evidence missing");
+    }
+    const openedBySourceEventId = firstRun.openedBySourceEventId;
+    const resumedAuthority = {
+      ...snapshotAuthority(base),
+      durableSeq: "9",
+      cursor: "opaque.snapshot.cursor.0009",
+    };
+
+    const reused = createAguiPresentationDecoder({ grant: base.grantBinding, snapshotAuthority: resumedAuthority });
+    expectCode(
+      () => admit(reused, liveSessionFrame(base, openedBySourceEventId, "2026-08-01T12:00:27.000Z")),
+      "agui_stream_identity_duplicate",
+    );
+    expect(reused.getResumeRequest().cursorBinding.durableSeq).toBe("9");
+
+    const regressed = createAguiPresentationDecoder({ grant: base.grantBinding, snapshotAuthority: resumedAuthority });
+    expectCode(
+      () => admit(regressed, liveSessionFrame(base, "source.live.10", "2026-08-01T12:00:00.000Z")),
+      "agui_event_time_invalid",
+    );
+    expect(regressed.getResumeRequest().cursorBinding.durableSeq).toBe("9");
+
+    expectCode(
+      () => createAguiPresentationDecoder({
+        grant: base.grantBinding,
+        snapshotAuthority: resumedAuthority,
+        limits: { streamIdentities: 2 },
+      }),
+      "agui_authority_capacity_exceeded",
+    );
+    expectCode(
+      () => createAguiPresentationDecoder({
+        grant: base.grantBinding,
+        snapshotAuthority: resumedAuthority,
+        limits: { streamIdentities: 8 },
+      }),
+      "agui_authority_capacity_exceeded",
+    );
+  });
+
+  it("rejects a terminal Run snapshot that still owns an open message", () => {
+    const base = corpus.positiveCases[0];
+    if (base === undefined) throw new Error("Root corpus case missing");
+    const candidate = structuredClone(base);
+    const message = candidate.messageBindings[1] as {
+      state: string;
+      endedBySourceEventId: string | null;
+      endedAt: string | null;
+    };
+    message.state = "open";
+    message.endedBySourceEventId = null;
+    message.endedAt = null;
+    expectCode(() => createCorpusDecoder(candidate), "agui_run_message_open");
+  });
+
+  it("rejects message evidence outside its owning Run time interval", () => {
+    const base = corpus.positiveCases[0];
+    if (base === undefined) throw new Error("Root corpus case missing");
+    const beforeRun = structuredClone(base);
+    (beforeRun.messageBindings[0] as { openedAt: string }).openedAt = "2026-08-01T12:00:00.000Z";
+    expectCode(() => createCorpusDecoder(beforeRun), "agui_message_binding_time_invalid");
+
+    const afterRun = structuredClone(base);
+    (afterRun.messageBindings[0] as { endedAt: string }).endedAt = "2026-08-01T12:00:22.000Z";
+    expectCode(() => createCorpusDecoder(afterRun), "agui_message_binding_time_invalid");
+  });
+
+  it("normalizes hostile snapshot accessors and proxies to protocol errors", () => {
+    const base = corpus.positiveCases[0];
+    if (base === undefined) throw new Error("Root corpus case missing");
+    let getterCalls = 0;
+    const accessor = Object.create(Object.prototype, {
+      ...Object.fromEntries(Object.entries(snapshotAuthority(base)).map(([key, value]) => [
+        key,
+        { enumerable: true, value },
+      ])),
+      runBindings: {
+        enumerable: true,
+        get() {
+          getterCalls += 1;
+          throw new Error("hostile getter");
+        },
+      },
+    });
+    expectCode(
+      () => createAguiPresentationDecoder({ grant: base.grantBinding, snapshotAuthority: accessor }),
+      "agui_snapshot_authority_invalid",
+    );
+    expect(getterCalls).toBe(0);
+
+    const proxy = new Proxy({}, {
+      getPrototypeOf() {
+        throw new Error("hostile proxy");
+      },
+    });
+    expectCode(
+      () => createAguiPresentationDecoder({ grant: base.grantBinding, snapshotAuthority: proxy }),
+      "agui_snapshot_authority_invalid",
+    );
+
+    const oversizedNestedArrayTarget: unknown[] = [];
+    oversizedNestedArrayTarget.length = 513;
+    let oversizedOwnKeysCalls = 0;
+    const oversizedNestedArray = new Proxy(oversizedNestedArrayTarget, {
+      ownKeys(target) {
+        oversizedOwnKeysCalls += 1;
+        return Reflect.ownKeys(target);
+      },
+    });
+    const oversizedGraph = structuredClone(snapshotAuthority(base));
+    const runBindings = oversizedGraph["runBindings"];
+    if (!Array.isArray(runBindings) || runBindings[0] === null || typeof runBindings[0] !== "object") {
+      throw new Error("Root corpus run binding missing");
+    }
+    (runBindings[0] as Record<string, unknown>).hostile = oversizedNestedArray;
+    expectCode(
+      () => createAguiPresentationDecoder({ grant: base.grantBinding, snapshotAuthority: oversizedGraph }),
+      "agui_authority_capacity_exceeded",
+    );
+    expect(oversizedOwnKeysCalls).toBe(0);
+
+    let oversizedEnvelopeDescriptorCalls = 0;
+    const oversizedEnvelope = new Proxy({}, {
+      getOwnPropertyDescriptor(_target, property) {
+        oversizedEnvelopeDescriptorCalls += 1;
+        return { configurable: true, enumerable: true, value: property };
+      },
+      ownKeys() {
+        return Array.from({ length: 11 }, (_, index) => `field${index}`);
+      },
+    });
+    expectCode(
+      () => createAguiPresentationDecoder({ grant: base.grantBinding, snapshotAuthority: oversizedEnvelope }),
+      "agui_snapshot_authority_invalid",
+    );
+    expect(oversizedEnvelopeDescriptorCalls).toBe(0);
+
+    let sharedFanout: unknown = "leaf";
+    for (let level = 0; level < 3; level += 1) {
+      sharedFanout = Object.fromEntries(
+        Array.from({ length: 32 }, (_, index) => [`branch${index}`, sharedFanout]),
+      );
+    }
+    const amplifiedGraph = structuredClone(snapshotAuthority(base));
+    const amplifiedRunBindings = amplifiedGraph["runBindings"];
+    if (
+      !Array.isArray(amplifiedRunBindings) ||
+      amplifiedRunBindings[0] === null ||
+      typeof amplifiedRunBindings[0] !== "object"
+    ) {
+      throw new Error("Root corpus run binding missing");
+    }
+    (amplifiedRunBindings[0] as Record<string, unknown>).hostile = sharedFanout;
+    expectCode(
+      () => createAguiPresentationDecoder({ grant: base.grantBinding, snapshotAuthority: amplifiedGraph }),
+      "agui_authority_capacity_exceeded",
     );
   });
 

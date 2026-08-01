@@ -477,22 +477,22 @@ describe("strict Session-owned AG-UI decoder", () => {
     expectCode(() => admitAfterExternalAck(decoder, threadDrift), "agui_run_thread_scope_conflict");
   });
 
-  it("rejects terminal run evidence while one of its messages remains open", () => {
+  it("rejects snapshot terminal run evidence while one of its messages remains open", () => {
     const runStarted = durableFrame({ seq: 1, sourceKind: "presentation.run.started", runBindingRef: "run.01", event: { type: EventType.RUN_STARTED, threadId: "thread.01", runId: "run.01" } });
     const messageStarted = durableFrame({ seq: 2, sourceKind: "presentation.message.text.started", runBindingRef: "run.01", messageBindingRef: "message.01", event: { type: EventType.TEXT_MESSAGE_START, messageId: "message.01", role: "assistant" } });
     const runFinished = durableFrame({ seq: 3, sourceKind: "presentation.run.finished", runBindingRef: "run.01", event: { type: EventType.RUN_FINISHED, threadId: "thread.01", runId: "run.01" } });
-    const decoder = createAguiPresentationDecoder({ grant, initialCursor, authorityFrames: [runStarted, messageStarted, runFinished] });
-    admitAfterExternalAck(decoder, runStarted);
-    admitAfterExternalAck(decoder, messageStarted);
-    expectCode(() => admitAfterExternalAck(decoder, runFinished), "agui_run_message_open");
+    expectCode(
+      () => createAguiPresentationDecoder({ grant, initialCursor, authorityFrames: [runStarted, messageStarted, runFinished] }),
+      "agui_run_message_open",
+    );
 
     const errorRunStarted = durableFrame({ seq: 1, sourceKind: "presentation.run.started", runBindingRef: "run.error", event: { type: EventType.RUN_STARTED, threadId: "thread.01", runId: "run.error" } });
     const errorMessageStarted = durableFrame({ seq: 2, sourceKind: "presentation.message.text.started", runBindingRef: "run.error", messageBindingRef: "message.error", event: { type: EventType.TEXT_MESSAGE_START, messageId: "message.error", role: "assistant" } });
     const runError = durableFrame({ seq: 3, sourceKind: "presentation.run.error", runBindingRef: "run.error", event: { type: EventType.RUN_ERROR, message: "Safe failure.", code: "RUN_FAILED" } });
-    const errorDecoder = createAguiPresentationDecoder({ grant, initialCursor, authorityFrames: [errorRunStarted, errorMessageStarted, runError] });
-    admitAfterExternalAck(errorDecoder, errorRunStarted);
-    admitAfterExternalAck(errorDecoder, errorMessageStarted);
-    expectCode(() => admitAfterExternalAck(errorDecoder, runError), "agui_run_message_open");
+    expectCode(
+      () => createAguiPresentationDecoder({ grant, initialCursor, authorityFrames: [errorRunStarted, errorMessageStarted, runError] }),
+      "agui_run_message_open",
+    );
   });
 
   it("fails closed instead of evicting durable identity and terminal authority", () => {

@@ -30,9 +30,11 @@ The strict AG-UI presentation consumer is present only through the explicit
 `@kokoro/session-client/agui-presentation-dormant` subpath; the package main entry does not expose it.
 Its Run/message binding validators are a committed static TypeScript runtime mirror generated from Root's
 `presentation-run-binding-v1` and `presentation-message-binding-v1` JSON Schemas, with both Root source SHA-256
-digests embedded in the artifact. The federated test gate compares those digests to the Root sources when they are
-present; an independently built Web package never reads a parent checkout or treats the conformance corpus as a
-schema authority.
+digests embedded in the artifact. The deterministic Web-local generator accepts only the reviewed v1 schema shape;
+the federated repository gate regenerates the complete artifact and compares it byte-for-byte, rather than allowing
+a digest-only mirror to conceal validator drift. Run `pnpm generate:agui-binding-authority` from a federated checkout
+after an approved Root contract change. An independently built Web package skips that repository-only gate and never
+reads a parent checkout at build time or runtime, nor treats the conformance corpus as a schema authority.
 `@ag-ui/core@0.0.57` is pinned exactly and
 `EventSchemas` is used only after Kokoro's smaller closed profile has passed UTF-8 byte, JSON depth/node/key/array,
 event, source-mapping, grant, cursor, Session, epoch, sequence, timestamp, binding, thread, message-END, and terminal
@@ -70,6 +72,10 @@ terminal evidence; missing, malformed, cross-scope, discontinuous, or contradict
 Every Run-bound frame must resolve its Run binding in that snapshot, and every message-bound frame must resolve a
 message binding owned by the same trusted Run. An unknown binding requests snapshot repair before Web can create a
 ledger entry, dispatch a Chat mutation, or advance its cursor.
+Activation remains blocked until the Root/Session snapshot authority exports the stream's canonical durable-head
+`lastRecordedAt` (`null` at sequence zero). Web currently seeds every source identity and timestamp carried by the
+Run/message binding evidence, but their maximum timestamp is intentionally not represented as the complete durable
+watermark: a later CUSTOM or ACTIVITY row may own the durable head without changing a binding.
 No active Web controller opens the AG-UI stream until provider compatibility and the Session snapshot endpoint are
 promoted together.
 

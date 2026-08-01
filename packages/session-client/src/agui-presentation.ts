@@ -568,6 +568,114 @@ function parseBoundedJson(frame: AguiSseFrame): unknown {
   return parsed;
 }
 
+const snapshotAuthorityKeys = new Set([
+  "authority",
+  "hydrate",
+  "repair",
+  "profileRevision",
+  "sessionId",
+  "streamEpoch",
+  "durableSeq",
+  "cursor",
+  "runBindings",
+  "messageBindings",
+]);
+
+const maximumSnapshotAuthorityNodes =
+  64 +
+  AGUI_PRESENTATION_AUTHORITY_LIMITS.runs * 20 +
+  AGUI_PRESENTATION_AUTHORITY_LIMITS.messages * 15;
+
+function descriptorSafeJsonClone(
+  value: unknown,
+  budget: { remaining: number } = { remaining: maximumSnapshotAuthorityNodes },
+  depth = 0,
+): unknown {
+  budget.remaining -= 1;
+  if (budget.remaining < 0) fail("agui_authority_capacity_exceeded");
+  if (value === null || ["string", "number", "boolean", "undefined"].includes(typeof value)) return value;
+  if (typeof value !== "object" || depth > 6) fail("agui_snapshot_authority_invalid");
+  if (Array.isArray(value)) {
+    if (Object.getPrototypeOf(value) !== Array.prototype) fail("agui_snapshot_authority_invalid");
+    const length = Reflect.getOwnPropertyDescriptor(value, "length")?.value as unknown;
+    if (!Number.isInteger(length) || (length as number) < 0) fail("agui_snapshot_authority_invalid");
+    if ((length as number) > AGUI_PRESENTATION_AUTHORITY_LIMITS.messages) {
+      fail("agui_authority_capacity_exceeded");
+    }
+    const keys = Reflect.ownKeys(value);
+    const keySet = new Set(keys);
+    if (
+      keys.some((key) => typeof key !== "string") ||
+      keys.length !== (length as number) + 1 ||
+      Array.from({ length: length as number }, (_, index) => String(index)).some((key) => !keySet.has(key))
+    ) fail("agui_snapshot_authority_invalid");
+    return Array.from({ length: length as number }, (_, index) => {
+      const descriptor = Reflect.getOwnPropertyDescriptor(value, String(index));
+      if (descriptor === undefined || !Object.hasOwn(descriptor, "value")) {
+        fail("agui_snapshot_authority_invalid");
+      }
+      return descriptorSafeJsonClone(descriptor.value, budget, depth + 1);
+    });
+  }
+  if (Object.getPrototypeOf(value) !== Object.prototype) fail("agui_snapshot_authority_invalid");
+  const keys = Reflect.ownKeys(value);
+  if (keys.length > 32 || keys.some((key) => typeof key !== "string")) {
+    fail("agui_snapshot_authority_invalid");
+  }
+  const clone: Record<string, unknown> = {};
+  for (const key of keys as string[]) {
+    const descriptor = Reflect.getOwnPropertyDescriptor(value, key);
+    if (descriptor === undefined || !Object.hasOwn(descriptor, "value")) {
+      fail("agui_snapshot_authority_invalid");
+    }
+    Object.defineProperty(clone, key, {
+      configurable: true,
+      enumerable: true,
+      value: descriptorSafeJsonClone(descriptor.value, budget, depth + 1),
+      writable: true,
+    });
+  }
+  return clone;
+}
+
+function admitSnapshotAuthority(
+  value: unknown,
+  limits: Readonly<{ runs: number; messages: number }>,
+): unknown {
+  try {
+    if (value === null || typeof value !== "object" || Object.getPrototypeOf(value) !== Object.prototype) {
+      fail("agui_snapshot_authority_invalid");
+    }
+    const keys = Reflect.ownKeys(value);
+    if (
+      keys.length !== snapshotAuthorityKeys.size || keys.some((key) => typeof key !== "string") ||
+      keys.some((key) => typeof key === "string" && !snapshotAuthorityKeys.has(key))
+    ) fail("agui_snapshot_authority_invalid");
+    const descriptors = new Map<string, PropertyDescriptor>();
+    for (const key of keys as string[]) {
+      const descriptor = Reflect.getOwnPropertyDescriptor(value, key);
+      if (descriptor === undefined || !Object.hasOwn(descriptor, "value")) {
+        fail("agui_snapshot_authority_invalid");
+      }
+      descriptors.set(key, descriptor);
+    }
+    for (const [field, maximum] of [["runBindings", limits.runs], ["messageBindings", limits.messages]] as const) {
+      const bindings = descriptors.get(field)?.value as unknown;
+      if (!Array.isArray(bindings) || Object.getPrototypeOf(bindings) !== Array.prototype) {
+        fail("agui_snapshot_authority_invalid");
+      }
+      const length = Object.getOwnPropertyDescriptor(bindings, "length")?.value as unknown;
+      if (!Number.isInteger(length) || (length as number) < 0 || (length as number) > maximum) {
+        fail("agui_authority_capacity_exceeded");
+      }
+    }
+    return descriptorSafeJsonClone(value);
+  } catch (error) {
+    if (error instanceof AguiPresentationProtocolError) throw error;
+    fail("agui_snapshot_authority_invalid");
+  }
+}
+
 const sourceMappings = new Map<string, Readonly<{ type: AguiPresentationEvent["type"]; discriminator?: string }>>([
   ["presentation.run.started", { type: EventType.RUN_STARTED }],
   ["presentation.run.finished", { type: EventType.RUN_FINISHED }],
@@ -896,13 +1004,16 @@ function assertTrustedSnapshotBindingEvidence(
 function validateSnapshotAuthority(
   value: unknown,
   grant: AguiGrantBinding,
-  limits: Readonly<{ runs: number; messages: number }>,
+  limits: Readonly<{ streamIdentities: number; runs: number; messages: number }>,
 ): Readonly<{
   snapshot: AguiPresentationSnapshotAuthority;
   runRefs: ReadonlyMap<string, AguiPresentationRunBinding>;
   messageRefs: ReadonlyMap<string, AguiPresentationMessageBinding>;
+  sourceEventIds: ReadonlySet<string>;
+  bindingEvidenceRecordedAt: number;
 }> {
-  const envelope = aguiSnapshotAuthorityEnvelopeSchema.safeParse(value);
+  const admitted = admitSnapshotAuthority(value, limits);
+  const envelope = aguiSnapshotAuthorityEnvelopeSchema.safeParse(admitted);
   if (!envelope.success) fail("agui_snapshot_authority_invalid");
   if (
     envelope.data.sessionId !== grant.sessionId ||
@@ -917,6 +1028,7 @@ function validateSnapshotAuthority(
   const runSegments = new Set<string>();
   const runGroups = new Map<string, AguiPresentationRunBinding[]>();
   const evidenceSourceIds = new Set<string>();
+  let authorityRecordedAt = -1;
   for (const candidate of envelope.data.runBindings) {
     const parsed = aguiPresentationRunBindingSchema.safeParse(candidate);
     if (!parsed.success) fail("agui_run_binding_schema_invalid");
@@ -933,6 +1045,7 @@ function validateSnapshotAuthority(
     if (!Number.isFinite(openedAt) || !Number.isFinite(terminalAt) || openedAt > terminalAt) {
       fail("agui_run_binding_time_invalid", binding.bindingRef);
     }
+    authorityRecordedAt = Math.max(authorityRecordedAt, openedAt, terminalAt);
     for (const sourceId of [binding.openedBySourceEventId, binding.terminalSourceEventId]) {
       if (sourceId === null) continue;
       if (evidenceSourceIds.has(sourceId)) fail("agui_binding_source_identity_duplicate", sourceId);
@@ -1006,6 +1119,14 @@ function validateSnapshotAuthority(
     if (!Number.isFinite(openedAt) || !Number.isFinite(endedAt) || openedAt > endedAt) {
       fail("agui_message_binding_time_invalid", binding.bindingRef);
     }
+    const runOpenedAt = Date.parse(run.openedAt);
+    const runTerminalAt = Date.parse(run.terminalAt ?? run.openedAt);
+    if (run.terminalAt !== null && binding.endedAt === null) fail("agui_run_message_open", binding.bindingRef);
+    if (openedAt < runOpenedAt) fail("agui_message_binding_time_invalid", binding.bindingRef);
+    if (run.terminalAt !== null && endedAt > runTerminalAt) {
+      fail("agui_message_binding_time_invalid", binding.bindingRef);
+    }
+    authorityRecordedAt = Math.max(authorityRecordedAt, openedAt, endedAt);
     for (const sourceId of [binding.openedBySourceEventId, binding.endedBySourceEventId]) {
       if (sourceId === null) continue;
       if (evidenceSourceIds.has(sourceId)) fail("agui_binding_source_identity_duplicate", sourceId);
@@ -1037,12 +1158,25 @@ function validateSnapshotAuthority(
     }
   }
 
+  if (
+    BigInt(envelope.data.durableSeq) !== 0n &&
+    evidenceSourceIds.size >= limits.streamIdentities
+  ) {
+    fail("agui_authority_capacity_exceeded");
+  }
+
   const snapshot: AguiPresentationSnapshotAuthority = deepFreeze({
     ...envelope.data,
     runBindings: [...runRefs.values()],
     messageBindings: [...messageRefs.values()],
   });
-  return Object.freeze({ snapshot, runRefs, messageRefs });
+  return Object.freeze({
+    snapshot,
+    runRefs,
+    messageRefs,
+    sourceEventIds: evidenceSourceIds,
+    bindingEvidenceRecordedAt: authorityRecordedAt,
+  });
 }
 
 export function createAguiPresentationDecoder(options: Readonly<{
@@ -1070,7 +1204,7 @@ export function createAguiPresentationDecoder(options: Readonly<{
   const snapshotValidation = validateSnapshotAuthority(
     options.snapshotAuthority,
     parsedGrant.data,
-    { runs: runLimit, messages: messageLimit },
+    { streamIdentities: streamIdentityLimit, runs: runLimit, messages: messageLimit },
   );
   const snapshot = snapshotValidation.snapshot;
 
@@ -1082,12 +1216,13 @@ export function createAguiPresentationDecoder(options: Readonly<{
     profileRevision: snapshot.profileRevision,
     cursorProfileRevision: parsedGrant.data.cursorProfileRevision,
   });
-  let lastRecordedAt = -1;
+  const resumesFromSnapshot = BigInt(snapshot.durableSeq) !== 0n;
+  let lastRecordedAt = resumesFromSnapshot ? snapshotValidation.bindingEvidenceRecordedAt : -1;
   let lastDecoded: AguiDurableFrame | undefined;
   let lastCommittedFrame: AguiSseFrame | undefined;
   let presentationThreadId: string | undefined;
   const seenCursors = new Set<string>([cursorBinding.cursor]);
-  const sourceEventIds = new Set<string>();
+  const sourceEventIds = new Set<string>(resumesFromSnapshot ? snapshotValidation.sourceEventIds : []);
   const runs = new Map<string, RunAuthority>();
   const runIds = new Map<string, string>();
   const messages = new Map<string, MessageAuthority>();
@@ -1098,7 +1233,7 @@ export function createAguiPresentationDecoder(options: Readonly<{
   const messageProjectionOwners = new Map<string, MessageProjectionOwner>();
   let pending: Readonly<{ frame: AguiSseFrame; prepared: AguiPreparedFrame }> | undefined;
 
-  if (BigInt(snapshot.durableSeq) !== 0n) {
+  if (resumesFromSnapshot) {
     for (const binding of trustedRuns.values()) {
       runs.set(binding.bindingRef, {
         runId: binding.presentationRunId,
