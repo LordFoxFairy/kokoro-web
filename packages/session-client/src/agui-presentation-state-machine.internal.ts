@@ -906,6 +906,20 @@ export type AguiPresentationDecoder = Readonly<{
   }>;
 }>;
 
+const aguiPresentationSnapshotReadersForTesting = new WeakMap<
+  AguiPresentationDecoder,
+  () => AguiPresentationSnapshotAuthority
+>();
+
+/** Internal test inspector. Deliberately absent from the public package façade. */
+export function readAguiPresentationSnapshotForTesting(
+  decoder: AguiPresentationDecoder,
+): AguiPresentationSnapshotAuthority {
+  const read = aguiPresentationSnapshotReadersForTesting.get(decoder);
+  if (read === undefined) throw new Error("Unknown AG-UI presentation decoder");
+  return read();
+}
+
 function assertCommitAcknowledgement(acknowledgement: AguiDispatchAcknowledgement): void {
   if (acknowledgement !== "applied" && acknowledgement !== "replayed") {
     fail("agui_dispatch_ack_invalid");
@@ -1121,15 +1135,15 @@ function applyBindingAuthorityDelta(
 
   if (delta.kind === "run.replace") {
     const binding = delta.binding;
+    if (
+      binding.bindingRef !== data.presentationRunBindingRef ||
+      data.presentationMessageBindingRef !== undefined
+    ) fail("agui_binding_delta_ref_conflict", binding.bindingRef);
     assertBindingDeltaScope(data, binding);
     if (
       (binding.state === "finished" && binding.terminalDisposition !== "success") ||
       (binding.state === "error" && binding.terminalDisposition !== "error")
     ) fail("agui_run_terminal_state_invalid", binding.bindingRef);
-    if (
-      binding.bindingRef !== data.presentationRunBindingRef ||
-      data.presentationMessageBindingRef !== undefined
-    ) fail("agui_binding_delta_ref_conflict", binding.bindingRef);
     const existing = runBindings.get(binding.bindingRef);
     if (event.type === EventType.RUN_STARTED) {
       if (existing !== undefined) fail("agui_binding_delta_run_duplicate", binding.bindingRef);
@@ -1185,11 +1199,25 @@ function applyBindingAuthorityDelta(
     if (existing === undefined || existing.state !== "open") {
       fail("agui_binding_delta_terminal_without_open", binding.bindingRef);
     }
+    const state = event.type === EventType.RUN_FINISHED ? "finished" : "error";
+    const terminalDisposition = event.type === EventType.RUN_FINISHED ? "success" : "error";
+    if (binding.terminalSourceEventId !== data.source.sourceEventId) {
+      fail("agui_binding_delta_source_conflict", binding.bindingRef);
+    }
+    if (
+      binding.terminalAt === null || !canonicalUtcMsSchema.safeParse(binding.terminalAt).success ||
+      binding.terminalAt !== data.source.recordedAt
+    ) fail("agui_binding_delta_time_conflict", binding.bindingRef);
+    if (binding.state !== state || binding.terminalDisposition !== terminalDisposition) {
+      fail("agui_binding_delta_state_conflict", binding.bindingRef);
+    }
+    if (
+      event.type === EventType.RUN_FINISHED &&
+      (event.runId !== binding.presentationRunId || event.threadId !== binding.presentationThreadId)
+    ) fail("agui_binding_delta_event_identity_conflict", binding.bindingRef);
     if ([...messageBindings.values()].some(
       (message) => message.presentationRunBindingRef === binding.bindingRef && message.state === "open",
     )) fail("agui_run_message_open");
-    const state = event.type === EventType.RUN_FINISHED ? "finished" : "error";
-    const terminalDisposition = event.type === EventType.RUN_FINISHED ? "success" : "error";
     const expected: AguiPresentationRunBinding = {
       ...existing,
       state,
@@ -1200,20 +1228,16 @@ function applyBindingAuthorityDelta(
     if (stableStringify(binding) !== stableStringify(expected)) {
       fail("agui_binding_delta_replacement_conflict", binding.bindingRef);
     }
-    if (
-      event.type === EventType.RUN_FINISHED &&
-      (event.runId !== binding.presentationRunId || event.threadId !== binding.presentationThreadId)
-    ) fail("agui_binding_delta_event_identity_conflict", binding.bindingRef);
     runBindings.set(binding.bindingRef, binding);
     return;
   }
 
   const binding = delta.binding;
-  assertBindingDeltaScope(data, binding);
   if (
     binding.bindingRef !== data.presentationMessageBindingRef ||
     binding.presentationRunBindingRef !== data.presentationRunBindingRef
   ) fail("agui_binding_delta_ref_conflict", binding.bindingRef);
+  assertBindingDeltaScope(data, binding);
   const existing = messageBindings.get(binding.bindingRef);
   if (event.type === EventType.TEXT_MESSAGE_START) {
     const run = runBindings.get(binding.presentationRunBindingRef);
@@ -1243,6 +1267,17 @@ function applyBindingAuthorityDelta(
   if (existing === undefined || existing.state !== "open") {
     fail("agui_binding_delta_message_end_without_open", binding.bindingRef);
   }
+  if (binding.endedBySourceEventId !== data.source.sourceEventId) {
+    fail("agui_binding_delta_source_conflict", binding.bindingRef);
+  }
+  if (
+    binding.endedAt === null || !canonicalUtcMsSchema.safeParse(binding.endedAt).success ||
+    binding.endedAt !== data.source.recordedAt
+  ) fail("agui_binding_delta_time_conflict", binding.bindingRef);
+  if (binding.state !== "ended") fail("agui_binding_delta_state_conflict", binding.bindingRef);
+  if (event.messageId !== binding.presentationMessageId) {
+    fail("agui_binding_delta_event_identity_conflict", binding.bindingRef);
+  }
   const expected: AguiPresentationMessageBinding = {
     ...existing,
     state: "ended",
@@ -1251,9 +1286,6 @@ function applyBindingAuthorityDelta(
   };
   if (stableStringify(binding) !== stableStringify(expected)) {
     fail("agui_binding_delta_replacement_conflict", binding.bindingRef);
-  }
-  if (event.messageId !== binding.presentationMessageId) {
-    fail("agui_binding_delta_event_identity_conflict", binding.bindingRef);
   }
   messageBindings.set(binding.bindingRef, binding);
 }
@@ -1623,10 +1655,12 @@ function createAguiPresentationDecoderInternal(options: Readonly<{
     const discriminator = data.event.type === EventType.ACTIVITY_SNAPSHOT
       ? data.event.activityType
       : data.event.type === EventType.CUSTOM ? data.event.name : undefined;
-    if (
-      mapping === undefined || mapping.type !== data.event.type ||
-      mapping.discriminator !== discriminator
-    ) fail("agui_closed_mapping_missing", data.source.sourceKind);
+    if (mapping === undefined || mapping.type !== data.event.type) {
+      fail("agui_closed_mapping_missing", data.source.sourceKind);
+    }
+    if (mapping.discriminator !== discriminator) {
+      fail("agui_mapping_discriminator_conflict", data.source.sourceKind);
+    }
     if (
       data.source.sessionId !== parsedGrant.data.sessionId ||
       data.source.streamEpoch !== cursorBinding.streamEpoch ||
@@ -1902,7 +1936,7 @@ function createAguiPresentationDecoderInternal(options: Readonly<{
     return prepared;
   };
 
-  return Object.freeze({
+  const decoder: AguiPresentationDecoder = Object.freeze({
     prepare,
     getResumeRequest() {
       return Object.freeze({
@@ -1912,6 +1946,22 @@ function createAguiPresentationDecoderInternal(options: Readonly<{
       });
     },
   });
+  aguiPresentationSnapshotReadersForTesting.set(decoder, () => deepFreeze({
+    authority: snapshot.authority,
+    hydrate: snapshot.hydrate,
+    repair: snapshot.repair,
+    profileRevision: state.cursorBinding.profileRevision,
+    sessionId: state.cursorBinding.sessionId,
+    streamEpoch: state.cursorBinding.streamEpoch,
+    durableSeq: state.cursorBinding.durableSeq,
+    lastRecordedAt: state.lastRecordedAt < 0
+      ? null
+      : canonicalUtcMsSchema.parse(new Date(state.lastRecordedAt).toISOString()),
+    cursor: state.cursorBinding.cursor,
+    runBindings: [...state.trustedRuns.values()],
+    messageBindings: [...state.trustedMessages.values()],
+  }));
+  return decoder;
 }
 
 export function createAguiPresentationDecoder(options: Readonly<{

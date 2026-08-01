@@ -13,6 +13,7 @@ import {
   type AguiPresentationDecoder,
   type AguiSseFrame,
 } from "../src/agui-presentation.js";
+import { readAguiPresentationSnapshotForTesting } from "../src/agui-presentation-state-machine.internal.js";
 
 type CorpusFrame = Readonly<{
   kind: "durable";
@@ -235,10 +236,132 @@ describe("Root AG-UI conformance corpus mirror", () => {
     for (const contractCase of corpus.positiveCases) {
       const decoder = decoderFor(contractCase);
       for (const frame of contractCase.frames) admit(decoder, frame);
-      expect(decoder.getResumeRequest()).toMatchObject({
-        queryCursor: contractCase.expectedFinalSnapshot["cursor"],
-        cursorBinding: { durableSeq: contractCase.expectedFinalSnapshot["durableSeq"] },
-      });
+      expect(readAguiPresentationSnapshotForTesting(decoder)).toEqual(contractCase.expectedFinalSnapshot);
+    }
+  });
+
+  it("reports a registered source/discriminator mismatch distinctly from a missing mapping", () => {
+    const base = corpus.positiveCases[0];
+    if (base === undefined) throw new Error("Root corpus case missing");
+    const frames = structuredClone(base.frames) as CorpusFrame[];
+    const customSession = frames.find(({ data }) => {
+      const event = data["event"];
+      return event !== null && typeof event === "object" &&
+        Reflect.get(event, "name") === "kokoro.session.replace.v1";
+    });
+    const source = customSession?.data["source"];
+    if (source === null || typeof source !== "object") throw new Error("Root CUSTOM source missing");
+    Reflect.set(source, "sourceKind", "presentation.custom.branch");
+    expectCode(() => {
+      const decoder = decoderFor(base);
+      for (const frame of frames) admit(decoder, frame);
+    }, "agui_mapping_discriminator_conflict");
+  });
+
+  it("validates terminal delta facts before complete-replacement continuity", () => {
+    const base = corpus.positiveCases[0];
+    if (base === undefined) throw new Error("Root corpus case missing");
+    const runTerminalIndex = base.frames.findIndex(({ event }) => event === "RUN_FINISHED");
+    const messageTerminalIndex = base.frames.findIndex(({ event }) => event === "TEXT_MESSAGE_END");
+    if (runTerminalIndex < 0 || messageTerminalIndex < 0) throw new Error("Root terminal frames missing");
+
+    const cases: readonly Readonly<{
+      id: string;
+      frameIndex: number;
+      expectedCode: string;
+      mutate(frame: CorpusFrame): void;
+    }>[] = [
+      {
+        id: "run-source",
+        frameIndex: runTerminalIndex,
+        expectedCode: "agui_binding_delta_source_conflict",
+        mutate(frame) {
+          setAtPath(frame, "data.bindingAuthorityDelta.binding.terminalSourceEventId", `presentation.event:${"c".repeat(64)}`);
+          setAtPath(frame, "data.bindingAuthorityDelta.binding.openedAt", "2026-08-01T11:59:59.000Z");
+        },
+      },
+      {
+        id: "run-time",
+        frameIndex: runTerminalIndex,
+        expectedCode: "agui_binding_delta_time_conflict",
+        mutate(frame) {
+          setAtPath(frame, "data.bindingAuthorityDelta.binding.terminalAt", "2026-08-01T12:00:20.000Z");
+          setAtPath(frame, "data.bindingAuthorityDelta.binding.openedAt", "2026-08-01T11:59:59.000Z");
+        },
+      },
+      {
+        id: "run-state",
+        frameIndex: runTerminalIndex,
+        expectedCode: "agui_binding_delta_state_conflict",
+        mutate(frame) {
+          setAtPath(frame, "data.bindingAuthorityDelta.binding.state", "error");
+          setAtPath(frame, "data.bindingAuthorityDelta.binding.terminalDisposition", "error");
+          setAtPath(frame, "data.bindingAuthorityDelta.binding.openedAt", "2026-08-01T11:59:59.000Z");
+        },
+      },
+      {
+        id: "run-event",
+        frameIndex: runTerminalIndex,
+        expectedCode: "agui_binding_delta_event_identity_conflict",
+        mutate(frame) {
+          setAtPath(frame, "data.event.runId", `presentation.run:${"d".repeat(64)}`);
+          setAtPath(frame, "data.bindingAuthorityDelta.binding.openedAt", "2026-08-01T11:59:59.000Z");
+        },
+      },
+      {
+        id: "run-replacement",
+        frameIndex: runTerminalIndex,
+        expectedCode: "agui_binding_delta_replacement_conflict",
+        mutate(frame) {
+          setAtPath(frame, "data.bindingAuthorityDelta.binding.openedAt", "2026-08-01T11:59:59.000Z");
+        },
+      },
+      {
+        id: "message-source",
+        frameIndex: messageTerminalIndex,
+        expectedCode: "agui_binding_delta_source_conflict",
+        mutate(frame) {
+          setAtPath(frame, "data.bindingAuthorityDelta.binding.endedBySourceEventId", `presentation.event:${"e".repeat(64)}`);
+          setAtPath(frame, "data.bindingAuthorityDelta.binding.openedAt", "2026-08-01T11:59:59.000Z");
+        },
+      },
+      {
+        id: "message-time",
+        frameIndex: messageTerminalIndex,
+        expectedCode: "agui_binding_delta_time_conflict",
+        mutate(frame) {
+          setAtPath(frame, "data.bindingAuthorityDelta.binding.endedAt", "2026-08-01T12:00:19.000Z");
+          setAtPath(frame, "data.bindingAuthorityDelta.binding.openedAt", "2026-08-01T11:59:59.000Z");
+        },
+      },
+      {
+        id: "message-event",
+        frameIndex: messageTerminalIndex,
+        expectedCode: "agui_binding_delta_event_identity_conflict",
+        mutate(frame) {
+          setAtPath(frame, "data.event.messageId", `presentation.message:${"f".repeat(64)}`);
+          setAtPath(frame, "data.bindingAuthorityDelta.binding.openedAt", "2026-08-01T11:59:59.000Z");
+        },
+      },
+      {
+        id: "message-replacement",
+        frameIndex: messageTerminalIndex,
+        expectedCode: "agui_binding_delta_replacement_conflict",
+        mutate(frame) {
+          setAtPath(frame, "data.bindingAuthorityDelta.binding.openedAt", "2026-08-01T11:59:59.000Z");
+        },
+      },
+    ];
+
+    for (const attack of cases) {
+      const frames = structuredClone(base.frames) as CorpusFrame[];
+      const target = frames[attack.frameIndex];
+      if (target === undefined) throw new Error(`Root terminal attack missing: ${attack.id}`);
+      attack.mutate(target);
+      expectCode(() => {
+        const decoder = decoderFor(base);
+        for (const frame of frames) admit(decoder, frame);
+      }, attack.expectedCode);
     }
   });
 
