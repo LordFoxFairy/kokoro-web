@@ -183,6 +183,22 @@ describe("AG-UI Chat projection adapter", () => {
     expect(adapter.getResumeRequest().cursorBinding.durableSeq).toBe("0");
   });
 
+  it("does not acknowledge or advance decoder authority when projection rejects admission", () => {
+    const dispatch = vi.fn()
+      .mockReturnValueOnce("rejected" as const)
+      .mockReturnValueOnce("applied" as const);
+    const { adapter } = createAdapter(dispatch);
+    const first = rootFrame(1);
+
+    expectProtocolCode(() => adapter.accept(first), "agui_projection_rejected");
+    expect(adapter.getResumeRequest().cursorBinding.durableSeq).toBe("0");
+
+    adapter.accept(first);
+    expect(dispatch).toHaveBeenCalledTimes(2);
+    expect(dispatch.mock.calls[0]?.[0]).toEqual(dispatch.mock.calls[1]?.[0]);
+    expect(adapter.getResumeRequest().cursorBinding.durableSeq).toBe("1");
+  });
+
   it("rejects structured decoded-frame forgeries before dispatch", () => {
     const { adapter, dispatch } = createAdapter();
     const forged = {

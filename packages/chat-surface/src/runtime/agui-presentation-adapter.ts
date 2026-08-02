@@ -264,7 +264,7 @@ export type AguiProjectionPort = Readonly<{
    * after an uncertain acknowledgement must return `replayed` once that cursor
    * is already present, rather than applying the mutation twice.
    */
-  dispatch(mutation: ChatAguiPresentationMutation): "applied" | "replayed"
+  dispatch(mutation: ChatAguiPresentationMutation): "applied" | "replayed" | "rejected"
 }>
 
 /**
@@ -290,6 +290,12 @@ export function createAguiProjectionAdapter(port: AguiProjectionPort): Readonly<
         return Object.freeze({ kind: "replay" })
       }
       const acknowledgement = port.dispatch(mutation)
+      if (acknowledgement === "rejected") {
+        // Rejection is an admission decision, never a durable acknowledgement.
+        // Leaving the decoder's prepared frame uncommitted keeps resume authority
+        // on the last accepted cursor and permits an exact retry after rehydrate.
+        throw new AguiPresentationProtocolError("agui_projection_rejected")
+      }
       if (acknowledgement !== "applied" && acknowledgement !== "replayed") {
         throw new AguiPresentationProtocolError("agui_dispatch_ack_invalid")
       }

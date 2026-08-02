@@ -158,10 +158,12 @@ export type SessionClient = {
 type SseFrame = Readonly<{ id: string | null; event: string | null; data: string | null }>;
 type SessionOperationId = keyof typeof SESSION_HTTP_ENDPOINTS;
 const AGUI_REHYDRATION_CODES = new Set([
+  "agui_authority_capacity_exceeded",
   "agui_cursor_gap",
   "agui_draining_cursor_conflict",
   "agui_stream_identity_duplicate",
   "agui_stream_scope_conflict",
+  "agui_projection_rejected",
 ]);
 
 export const SESSION_CLIENT_OPERATION_SURFACE = {

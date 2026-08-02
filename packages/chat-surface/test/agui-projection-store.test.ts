@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest"
 import fixtureJson from "../../session-client/test/fixtures/root-agui-presentation-v1.json"
 import { createChatProjectionStore } from "../src/projection/store.js"
 import { createAguiProjectionAdapter } from "../src/runtime/agui-presentation-adapter.js"
+import type { ChatAguiPresentationMutation } from "../src/runtime/agui-presentation-adapter.js"
 
 type FixtureFrame = Readonly<{ id: string; event: string; data: Readonly<Record<string, unknown>> }>
 type FixtureCase = Readonly<{
@@ -105,5 +106,131 @@ describe("production AG-UI Chat projection", () => {
     adapter.accept(frame(3))
 
     expect(store.getSnapshot()).toBe(before)
+  })
+
+  it("tracks concurrent parent and child presentation runs by binding without inventing a Session run", () => {
+    const store = createChatProjectionStore()
+    store.hydrate(sessionSnapshot())
+    const source = {
+      sourceEventId: "presentation.event:test-event-00000000000000000001",
+      sourceKind: "presentation.test",
+      projectionVersion: "1",
+      recordedAt: "2026-08-01T12:00:00.000Z",
+      durableSeq: "1",
+    }
+    const parent = {
+      type: "agui.lifecycle", phase: "run-started", durable: true, cursor: "cursor.parent",
+      source, runBindingRef: "presentation.run-binding:parent", threadId: "presentation.thread:test",
+      runId: "presentation.run:parent",
+    } as unknown as ChatAguiPresentationMutation
+    const child = {
+      ...parent, cursor: "cursor.child", runBindingRef: "presentation.run-binding:child",
+      runId: "presentation.run:child", parentRunId: "presentation.run:parent",
+    } as unknown as ChatAguiPresentationMutation
+    const childMessage = {
+      type: "agui.text", phase: "start", durable: true, cursor: "cursor.message", source,
+      runBindingRef: "presentation.run-binding:child",
+      messageBindingRef: "presentation.message-binding:child",
+      presentationMessageId: "presentation.message:child", role: "assistant",
+    } as unknown as ChatAguiPresentationMutation
+    const finishParent = {
+      type: "agui.lifecycle", phase: "run-finished", durable: true, cursor: "cursor.parent.finished",
+      source: { ...source, projectionVersion: "3" },
+      runBindingRef: "presentation.run-binding:parent", threadId: "presentation.thread:test",
+      runId: "presentation.run:parent",
+    } as unknown as ChatAguiPresentationMutation
+
+    expect(store.dispatchPresentation(parent)).toBe("applied")
+    expect(store.dispatchPresentation(child)).toBe("applied")
+    expect(store.dispatchPresentation(childMessage)).toBe("applied")
+    expect(store.dispatchPresentation(finishParent)).toBe("applied")
+
+    expect(store.getSnapshot().presentationRuns).toEqual([
+      expect.objectContaining({ bindingRef: "presentation.run-binding:parent", state: "finished" }),
+      expect.objectContaining({
+        bindingRef: "presentation.run-binding:child",
+        parentPresentationRunId: "presentation.run:parent",
+        state: "running",
+      }),
+    ])
+    expect(store.getSnapshot().messages[0]).toMatchObject({
+      runId: null,
+      presentationRunId: "presentation.run:child",
+      presentationRunBindingRef: "presentation.run-binding:child",
+      presentationMessageBindingRef: "presentation.message-binding:child",
+      status: "running",
+    })
+  })
+
+  it("rejects a terminal presentation run regression without recording its cursor", () => {
+    const store = createChatProjectionStore()
+    store.hydrate(sessionSnapshot())
+    const source = {
+      sourceEventId: "presentation.event:test-event-00000000000000000002",
+      sourceKind: "presentation.test",
+      projectionVersion: "2",
+      recordedAt: "2026-08-01T12:00:00.000Z",
+      durableSeq: "2",
+    }
+    const started = {
+      type: "agui.lifecycle", phase: "run-started", durable: true, cursor: "cursor.started", source,
+      runBindingRef: "presentation.run-binding:sealed", threadId: "presentation.thread:test",
+      runId: "presentation.run:sealed",
+    } as unknown as ChatAguiPresentationMutation
+    const finished = {
+      ...started, phase: "run-finished", cursor: "cursor.finished",
+      source: { ...source, projectionVersion: "3" },
+    } as unknown as ChatAguiPresentationMutation
+    const regression = {
+      ...started, cursor: "cursor.regression", source: { ...source, projectionVersion: "4" },
+    } as unknown as ChatAguiPresentationMutation
+
+    expect(store.dispatchPresentation(started)).toBe("applied")
+    expect(store.dispatchPresentation(finished)).toBe("applied")
+    expect(store.dispatchPresentation(regression)).toBe("rejected")
+    expect(store.getSnapshot()).toMatchObject({
+      presentationRuns: [expect.objectContaining({ state: "finished" })],
+      repair: { required: true, reason: "agui_run_terminal_regression" },
+    })
+  })
+
+  it("seals ended presentation messages against late content and binding drift", () => {
+    const store = createChatProjectionStore()
+    store.hydrate(sessionSnapshot())
+    const source = {
+      sourceEventId: "presentation.event:test-event-00000000000000000003",
+      sourceKind: "presentation.test",
+      projectionVersion: "3",
+      recordedAt: "2026-08-01T12:00:00.000Z",
+      durableSeq: "3",
+    }
+    const run = {
+      type: "agui.lifecycle", phase: "run-started", durable: true, cursor: "cursor.run", source,
+      runBindingRef: "presentation.run-binding:message", threadId: "presentation.thread:test",
+      runId: "presentation.run:message",
+    } as unknown as ChatAguiPresentationMutation
+    const start = {
+      type: "agui.text", phase: "start", durable: true, cursor: "cursor.text.start", source,
+      runBindingRef: "presentation.run-binding:message",
+      messageBindingRef: "presentation.message-binding:message",
+      presentationMessageId: "presentation.message:message", role: "assistant",
+    } as unknown as ChatAguiPresentationMutation
+    const end = {
+      ...start, phase: "end", cursor: "cursor.text.end",
+      source: { ...source, projectionVersion: "4" },
+    } as unknown as ChatAguiPresentationMutation
+    const late = {
+      ...start, phase: "content", cursor: "cursor.text.late", delta: "late",
+      source: { ...source, projectionVersion: "5" },
+    } as unknown as ChatAguiPresentationMutation
+
+    expect(store.dispatchPresentation(run)).toBe("applied")
+    expect(store.dispatchPresentation(start)).toBe("applied")
+    expect(store.dispatchPresentation(end)).toBe("applied")
+    expect(store.dispatchPresentation(late)).toBe("rejected")
+    expect(store.getSnapshot()).toMatchObject({
+      messages: [{ status: "complete", parts: [{ kind: "text", text: "" }] }],
+      repair: { required: true, reason: "agui_message_terminal_regression" },
+    })
   })
 })

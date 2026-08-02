@@ -6,6 +6,7 @@ import {
   SESSION_CLIENT_OPERATION_SURFACE,
   type SessionTransport,
 } from "../src/client.js";
+import { AguiPresentationProtocolError } from "../src/agui-presentation.js";
 import {
   SESSION_HTTP_ENDPOINTS,
   submitMessageRequestSchema,
@@ -238,6 +239,46 @@ describe("contract-bound Session AG-UI client", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("treats exhausted AG-UI authority capacity as rehydration instead of incompatibility", async () => {
+    const onConnection = vi.fn();
+    const client = createSessionClient({
+      transport: {
+        request: async () => jsonResponse(500, {}),
+        stream: async () => ({
+          status: 200,
+          headers: new Headers({ "content-type": "text/event-stream" }),
+          body: new Response("id: next.opaque\nevent: RUN_STARTED\ndata: {}\n\n").body,
+        }),
+      },
+    });
+    const handle = client.openPresentation({
+      sessionId: SESSION_ID,
+      resume: () => ({
+        headers: { "last-event-id": fixture.snapshot.cursor },
+        queryCursor: fixture.snapshot.cursor,
+        cursorBinding: {
+          cursor: fixture.snapshot.cursor,
+          sessionId: SESSION_ID,
+          streamEpoch: "41",
+          durableSeq: "0",
+          profileRevision: "kokoro-agui-presentation.v1",
+          cursorProfileRevision: "opaque-session-cursor-v1",
+        },
+      }),
+      onFrame: () => {
+        throw new AguiPresentationProtocolError("agui_authority_capacity_exceeded");
+      },
+      onConnection,
+    });
+
+    await handle.ready;
+    await vi.waitFor(() => expect(onConnection).toHaveBeenCalledWith(expect.objectContaining({
+      kind: "repair_required",
+    })));
+    expect(onConnection).not.toHaveBeenCalledWith(expect.objectContaining({ kind: "contract_incompatible" }));
+    handle.close();
   });
 
   it("bounded-decodes an SSE upgrade problem with stable recovery fields", async () => {

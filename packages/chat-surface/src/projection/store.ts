@@ -136,6 +136,8 @@ export type ChatProjectionMessage = {
   readonly triggerMessageId?: string
   readonly runId: string | null
   readonly presentationRunId?: string
+  readonly presentationRunBindingRef?: string
+  readonly presentationMessageBindingRef?: string
   readonly role: "user" | "assistant"
   readonly createdAt: string
   readonly parts: readonly ChatPart[]
@@ -146,6 +148,14 @@ export type ChatProjectionMessage = {
   }[]
   readonly status: "running" | "complete" | "incomplete"
 }
+
+export type ChatPresentationRun = Readonly<{
+  bindingRef: string
+  presentationRunId: string
+  parentPresentationRunId: string | null
+  state: "starting" | "running" | "waiting" | "canceling" | "finished" | "error"
+  ownerVersion: number
+}>
 
 export type ChatSessionMetadata = {
   readonly id: string
@@ -180,6 +190,8 @@ export type ChatProjection = {
   /** Browser presentation identity; never valid as a Session command Run ID. */
   readonly presentationRunId: string | null
   readonly presentationRunState: "starting" | "running" | "waiting" | "canceling" | null
+  /** Authoritative presentation lineage, keyed semantically by bindingRef. */
+  readonly presentationRuns: readonly ChatPresentationRun[]
   readonly connection: SessionConnectionState | { readonly kind: "idle" }
   readonly command: {
     readonly state: "idle" | "pending" | "conflict" | "failed"
@@ -390,6 +402,7 @@ export function createChatProjection(): ChatProjection {
     activeRunState: null,
     presentationRunId: null,
     presentationRunState: null,
+    presentationRuns: [],
     connection: { kind: "idle" },
     command: { state: "idle" },
     repair: { required: false },
@@ -807,19 +820,28 @@ function appendPresentationMessage(
   if (presentationMessageIndex(state, mutation.presentationMessageId) >= 0) return state
   const branchId = state.activeBranchId
   const session = state.session
-  if (branchId === null || session === null || mutation.runBindingRef === undefined) {
+  if (
+    branchId === null || session === null || mutation.runBindingRef === undefined ||
+    mutation.messageBindingRef === undefined
+  ) {
     return { ...state, repair: { required: true, reason: "agui_message_owner_missing" } }
+  }
+  const presentationRun = state.presentationRuns.find((run) => run.bindingRef === mutation.runBindingRef)
+  if (presentationRun === undefined || ["finished", "error"].includes(presentationRun.state)) {
+    return { ...state, repair: { required: true, reason: "agui_message_run_binding_missing" } }
   }
   const branchIndex = state.branches.findIndex((branch) => branch.id === branchId)
   const branch = state.branches[branchIndex]
   if (branch === undefined) return { ...state, repair: { required: true, reason: "agui_branch_owner_missing" } }
-  const parentMessageId = state.messages.at(-1)?.id
   const message: ChatProjectionMessage = {
     id: mutation.presentationMessageId,
     branchId,
-    ...(parentMessageId === undefined ? {} : { parentMessageId }),
-    runId: state.activeRunId,
-    ...(state.presentationRunId === null ? {} : { presentationRunId: state.presentationRunId }),
+    // Presentation authority has no Session run binding. Never infer one from
+    // the independently projected active command run.
+    runId: null,
+    presentationRunId: presentationRun.presentationRunId,
+    presentationRunBindingRef: mutation.runBindingRef,
+    presentationMessageBindingRef: mutation.messageBindingRef,
     role: "assistant",
     createdAt: mutation.source.recordedAt,
     parts: [{
@@ -845,6 +867,27 @@ function appendPresentationMessage(
     branches,
     messages: [...state.messages, message],
   }
+}
+
+function withPresentationRuns(
+  state: ChatProjection,
+  presentationRuns: readonly ChatPresentationRun[],
+): ChatProjection {
+  const active = [...presentationRuns].reverse().find((run) =>
+    run.state !== "finished" && run.state !== "error")
+  const presentationRunState = active === undefined || active.state === "finished" || active.state === "error"
+    ? null
+    : active.state
+  return {
+    ...state,
+    presentationRuns,
+    presentationRunId: active?.presentationRunId ?? null,
+    presentationRunState,
+  }
+}
+
+function rejectPresentation(state: ChatProjection, reason: string): ChatProjection {
+  return { ...state, repair: { required: true, reason } }
 }
 
 function updatePresentationMessage(
@@ -878,24 +921,75 @@ function reducePresentation(
   if (version === null) return { ...state, repair: { required: true, reason: "agui_projection_version_invalid" } }
   switch (mutation.type) {
     case "agui.lifecycle": {
+      const bindingRef = mutation.runBindingRef
+      if (bindingRef === undefined) return rejectPresentation(state, "agui_run_binding_missing")
+      const index = state.presentationRuns.findIndex((run) => run.bindingRef === bindingRef)
+      const current = state.presentationRuns[index]
       if (mutation.phase === "run-started") {
-        return {
-          ...state,
-          presentationRunId: mutation.runId,
-          presentationRunState: "running",
+        if (current !== undefined) {
+          return rejectPresentation(state, ["finished", "error"].includes(current.state)
+            ? "agui_run_terminal_regression"
+            : "agui_run_identity_conflict")
         }
+        const parent = mutation.parentRunId === undefined
+          ? undefined
+          : state.presentationRuns.find((run) => run.presentationRunId === mutation.parentRunId)
+        if (mutation.parentRunId !== undefined && parent === undefined) {
+          return rejectPresentation(state, "agui_run_parent_missing")
+        }
+        return withPresentationRuns(state, [...state.presentationRuns, {
+          bindingRef,
+          presentationRunId: mutation.runId,
+          parentPresentationRunId: mutation.parentRunId ?? null,
+          state: "running",
+          ownerVersion: version,
+        }])
+      }
+      if (current === undefined) return rejectPresentation(state, "agui_run_binding_missing")
+      if (mutation.phase === "run-finished" && current.presentationRunId !== mutation.runId) {
+        return rejectPresentation(state, "agui_run_identity_conflict")
+      }
+      if (version < current.ownerVersion) {
+        return rejectPresentation(state, "agui_run_owner_version_regression")
+      }
+      if (version === current.ownerVersion) {
+        return rejectPresentation(state, "agui_run_owner_version_conflict")
+      }
+      if (["finished", "error"].includes(current.state)) {
+        return rejectPresentation(state, "agui_run_terminal_regression")
       }
       const status = mutation.phase === "run-finished" ? "complete" as const : "incomplete" as const
-      return {
-        ...state,
-        presentationRunId: null,
-        presentationRunState: null,
-        messages: state.messages.map((message) =>
-          message.presentationRunId === state.presentationRunId ? { ...message, status } : message),
+      const presentationRuns = [...state.presentationRuns]
+      presentationRuns[index] = {
+        ...current,
+        state: mutation.phase === "run-finished" ? "finished" : "error",
+        ownerVersion: version,
       }
+      return withPresentationRuns({
+        ...state,
+        messages: state.messages.map((message) =>
+          message.presentationRunBindingRef === bindingRef ? { ...message, status } : message),
+      }, presentationRuns)
     }
     case "agui.text": {
       if (mutation.phase === "start") return appendPresentationMessage(state, mutation)
+      const message = state.messages[presentationMessageIndex(state, mutation.presentationMessageId)]
+      if (message === undefined) return rejectPresentation(state, "agui_message_owner_missing")
+      if (
+        mutation.runBindingRef === undefined || mutation.messageBindingRef === undefined ||
+        message.presentationRunBindingRef !== mutation.runBindingRef ||
+        message.presentationMessageBindingRef !== mutation.messageBindingRef
+      ) return rejectPresentation(state, "agui_message_binding_conflict")
+      if (message.status !== "running") {
+        return rejectPresentation(state, "agui_message_terminal_regression")
+      }
+      const text = message.parts.find((part): part is Extract<ChatPart, { kind: "text" }> => part.kind === "text")
+      if (text === undefined) return rejectPresentation(state, "agui_message_owner_missing")
+      if (version <= text.version) {
+        return rejectPresentation(state, version < text.version
+          ? "agui_message_version_regression"
+          : "agui_message_version_conflict")
+      }
       if (mutation.phase === "content") {
         return updatePresentationMessage(state, mutation.presentationMessageId, (message) => ({
           ...message,
@@ -913,8 +1007,23 @@ function reducePresentation(
       }))
     }
     case "agui.activity": {
+      const owner = state.messages[presentationMessageIndex(state, mutation.presentationMessageId)]
+      if (owner === undefined) return rejectPresentation(state, "agui_message_owner_missing")
+      if (
+        mutation.runBindingRef === undefined || mutation.messageBindingRef === undefined ||
+        owner.presentationRunBindingRef !== mutation.runBindingRef ||
+        owner.presentationMessageBindingRef !== mutation.messageBindingRef
+      ) return rejectPresentation(state, "agui_message_binding_conflict")
+      if (owner.status !== "running") return rejectPresentation(state, "agui_message_terminal_regression")
+      const activityId = `agui.activity:${mutation.activityType}:${activityIdentity(mutation)}`
+      const currentActivity = owner.parts.find((part) => part.id === activityId)
+      if (currentActivity !== undefined && version <= currentActivity.version) {
+        return rejectPresentation(state, version < currentActivity.version
+          ? "agui_activity_version_regression"
+          : "agui_activity_version_conflict")
+      }
       return updatePresentationMessage(state, mutation.presentationMessageId, (message) => {
-        const id = `agui.activity:${mutation.activityType}:${activityIdentity(mutation)}`
+        const id = activityId
         const existingIndex = message.parts.findIndex((part) => part.id === id)
         const part: ChatActivityPart = {
           id,
@@ -987,21 +1096,25 @@ function reducePresentation(
           if (ownerVersion === null) {
             return { ...state, repair: { required: true, reason: "agui_run_owner_version_invalid" } }
           }
-          switch (mutation.value.state) {
-            case "finished":
-            case "error":
-              return { ...state, presentationRunId: null, presentationRunState: null }
-            case "starting":
-            case "running":
-            case "waiting":
-            case "canceling":
-              return {
-                ...state,
-                presentationRunId: mutation.value.presentationRunId,
-                presentationRunState: mutation.value.state,
-              }
+          const bindingRef = mutation.runBindingRef
+          if (bindingRef === undefined) return rejectPresentation(state, "agui_run_binding_missing")
+          const index = state.presentationRuns.findIndex((run) => run.bindingRef === bindingRef)
+          const current = state.presentationRuns[index]
+          if (current === undefined || current.presentationRunId !== mutation.value.presentationRunId) {
+            return rejectPresentation(state, "agui_run_identity_conflict")
           }
-          return state
+          if (ownerVersion < current.ownerVersion) {
+            return rejectPresentation(state, "agui_run_owner_version_regression")
+          }
+          if (["finished", "error"].includes(current.state) && mutation.value.state !== current.state) {
+            return rejectPresentation(state, "agui_run_terminal_regression")
+          }
+          if (ownerVersion === current.ownerVersion && mutation.value.state !== current.state) {
+            return rejectPresentation(state, "agui_run_owner_version_conflict")
+          }
+          const presentationRuns = [...state.presentationRuns]
+          presentationRuns[index] = { ...current, state: mutation.value.state, ownerVersion }
+          return withPresentationRuns(state, presentationRuns)
         }
         case "kokoro.control.replace.v1":
         case "kokoro.receipt.replace.v1":
@@ -1017,7 +1130,7 @@ export type ChatProjectionStore = {
   readonly hydrate: (snapshot: SessionSnapshot) => void
   readonly reset: () => void
   readonly dispatch: (action: ChatProjectionMutation) => void
-  readonly dispatchPresentation: (mutation: ChatAguiPresentationMutation) => "applied" | "replayed"
+  readonly dispatchPresentation: (mutation: ChatAguiPresentationMutation) => "applied" | "replayed" | "rejected"
 }
 
 type BranchAuthorityFence = Readonly<{
@@ -1450,16 +1563,21 @@ export function createChatProjectionStore(options: ChatProjectionStoreOptions = 
         commit(reducePresentation(state, mutation))
         return "applied"
       }
+      if (state.repair.required) return "rejected"
       const fingerprint = stableStringify(mutation)
       const existing = presentationReceipts.get(mutation.cursor)
       if (existing !== undefined) {
         if (existing !== fingerprint) {
           commit({ ...state, repair: { required: true, reason: "agui_cursor_identity_conflict" } })
-          return "applied"
+          return "rejected"
         }
         return "replayed"
       }
       const next = reducePresentation(state, mutation)
+      if (next.repair.required) {
+        commit(next)
+        return "rejected"
+      }
       presentationReceipts.set(mutation.cursor, fingerprint)
       commit(next)
       return "applied"
