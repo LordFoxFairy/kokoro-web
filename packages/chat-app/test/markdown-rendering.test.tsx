@@ -83,6 +83,78 @@ describe("Chat Markdown rendering", () => {
     expect(html).toContain("data-result-error=\"true\"")
   })
 
+  it("renders title, context policy, and branches only from the Chat projection", () => {
+    const projection: ChatProjection = {
+      ...createChatProjection(),
+      session: {
+        id: "session-12345678",
+        projectRef: "project-12345678",
+        title: "Renamed live",
+        lifecycle: "active",
+        contextPolicy: "temporary",
+        version: 3,
+      },
+      branches: [{
+        id: "branch-original-12345678",
+        origin: "original",
+        version: 1,
+        createdAt: "2026-07-29T00:00:00.000Z",
+      }, {
+        id: "branch-fork-12345678",
+        parentId: "branch-original-12345678",
+        origin: "fork",
+        version: 1,
+        createdAt: "2026-07-29T00:01:00.000Z",
+      }],
+      activeBranchId: "branch-fork-12345678",
+      snapshotRevision: "signed.cursor.3",
+      connection: { kind: "live" },
+    }
+    const state: ChatState = {
+      phase: "ready",
+      sessionId: "session-12345678",
+      projection,
+      failure: null,
+      chatCatalog: null,
+      selectedModelOptionRevisionRef: null,
+      selectedEffort: null,
+      appliedDraft: null,
+      hitlDecisionSupported: true,
+    }
+    const unavailable = async (..._args: readonly unknown[]): Promise<never> => {
+      throw new Error("not used during server rendering")
+    }
+    const controller = {
+      getSnapshot: () => state,
+      subscribe: () => () => undefined,
+      create: unavailable,
+      open: unavailable,
+      submit: unavailable,
+      editMessage: unavailable,
+      regenerateMessage: unavailable,
+      forkBranch: unavailable,
+      activateBranch: unavailable,
+      cancel: unavailable,
+      recover: async () => true,
+      resumePendingCommand: async () => false,
+      selectModelOption: () => undefined,
+      selectEffort: () => undefined,
+      decideAction: unavailable,
+      decidePlan: unavailable,
+      close: () => undefined,
+    } satisfies ChatController
+
+    const html = renderToStaticMarkup(
+      <ChatView brandName="Fallback brand" controller={controller} state={state} copy={DEFAULT_CHAT_COPY} sessionId="session-12345678" />,
+    )
+
+    expect(html).toContain("Renamed live")
+    expect(html).toContain("Temporary chat")
+    expect(html).toContain("value=\"branch-original-12345678\"")
+    expect(html).toContain("value=\"branch-fork-12345678\"")
+    expect(html).not.toContain("Fallback brand</h1>")
+  })
+
   it("renders a safe recovery control instead of an internal action token", () => {
     const projection: ChatProjection = {
       ...createChatProjection(),
@@ -92,7 +164,6 @@ describe("Chat Markdown rendering", () => {
     const state: ChatState = {
       phase: "ready",
       sessionId: "session-12345678",
-      snapshot: null,
       projection,
       failure: {
         code: "INTERNAL_UNAVAILABLE",
@@ -121,6 +192,7 @@ describe("Chat Markdown rendering", () => {
       activateBranch: unavailable,
       cancel: unavailable,
       recover: async () => true,
+      resumePendingCommand: async () => false,
       selectModelOption: () => undefined,
       selectEffort: () => undefined,
       decideAction: unavailable,

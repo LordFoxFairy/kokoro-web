@@ -69,7 +69,6 @@ export type ChatFailure = Readonly<{
 export type ChatState = Readonly<{
   phase: "idle" | "loading" | "ready" | "not_found"
   sessionId: string | null
-  snapshot: SessionSnapshot | null
   projection: ChatProjection
   failure: ChatFailure | null
   chatCatalog: ModelOptionCatalog | null
@@ -214,7 +213,6 @@ export function createChatController(options: {
   let state: ChatState = {
     phase: "idle",
     sessionId: null,
-    snapshot: null,
     projection: projectionStore.getSnapshot(),
     failure: null,
     chatCatalog: options.chatCatalog,
@@ -267,7 +265,6 @@ export function createChatController(options: {
       ...state,
       phase: "not_found",
       sessionId: null,
-      snapshot: null,
       projection: projectionStore.getSnapshot(),
       failure: describeSessionFailure({
         stableCode: "CLIENT_CONTRACT_UPGRADE_REQUIRED",
@@ -304,7 +301,7 @@ export function createChatController(options: {
         const snapshot = await options.client.fetchSnapshot(sessionId)
         if (expectedGeneration !== generation) return false
         if (snapshot === null) {
-          publish({ ...state, phase: "not_found", snapshot: null, failure: null })
+          publish({ ...state, phase: "not_found", failure: null })
           return false
         }
         return attach(sessionId, snapshot, expectedGeneration)
@@ -372,7 +369,6 @@ export function createChatController(options: {
       ...state,
       phase: "ready",
       sessionId,
-      snapshot,
       failure: null,
       selectedModelOptionRevisionRef,
       selectedEffort,
@@ -482,7 +478,6 @@ export function createChatController(options: {
       ...state,
       phase: "loading",
       sessionId: normalized,
-      snapshot: null,
       failure: null,
       projection: projectionStore.getSnapshot(),
     })
@@ -583,7 +578,7 @@ export function createChatController(options: {
     pendingCode: StableCode,
     sender: (command: CommandIdentity) => Promise<SessionCommandResponse>,
     clientDraftRevision?: string,
-    contextPolicy: SessionContextPolicy | null = state.snapshot?.session.context_policy ?? null,
+    contextPolicy: SessionContextPolicy | null = state.projection.session?.contextPolicy ?? null,
   ): Promise<SessionCommandResponse | null> => {
     const commandGeneration = generation
     const failIfCurrent = (failure: ChatFailure): void => {
@@ -730,20 +725,20 @@ export function createChatController(options: {
   }
 
   const inputParts = (messageId: string): MessageInputPart[] | null => {
-    const message = state.snapshot?.messages.find((candidate) => candidate.message_id === messageId)
+    const message = state.projection.messages.find((candidate) => candidate.id === messageId)
     if (message === undefined) return null
     const parts = message.parts.flatMap((part): MessageInputPart[] => part.kind === "text"
-      ? [{ schema_version: 1, kind: "text", payload: { text: part.payload.spans.map(({ text }) => text).join("") } }]
+      ? [{ schema_version: 1, kind: "text", payload: { text: part.text } }]
       : [])
     return parts.length === 0 ? null : parts
   }
 
   const attachmentIntents = (messageId: string) => {
-    const message = state.snapshot?.messages.find((candidate) => candidate.message_id === messageId)
-    return message?.attachments.map(({ asset_ref, asset_version_ref, asset_grant_ref }) => ({
-      asset_ref,
-      asset_version_ref,
-      asset_grant_ref,
+    const message = state.projection.messages.find((candidate) => candidate.id === messageId)
+    return message?.attachments.map(({ assetRef, assetVersionRef, assetGrantRef }) => ({
+      asset_ref: assetRef,
+      asset_version_ref: assetVersionRef,
+      asset_grant_ref: assetGrantRef,
     })) ?? []
   }
 
@@ -825,11 +820,13 @@ export function createChatController(options: {
     attachments: readonly AttachmentIntent[] = [],
     clientDraftRevision?: string,
   ): Promise<boolean> => {
-    const snapshot = state.snapshot
+    const session = state.projection.session
+    const branchId = state.projection.activeBranchId
     const sessionId = state.sessionId
     const text = content.trim()
     if (
-      snapshot === null ||
+      session === null ||
+      branchId === null ||
       sessionId === null ||
       (text.length === 0 && attachments.length === 0) ||
       attachments.length > 64
@@ -846,9 +843,9 @@ export function createChatController(options: {
     const execution = selectedExecutionInput()
     if (execution === null) return false
     const effect = {
-      expected_session_version: snapshot.session.version,
-      branch_id: snapshot.session.active_branch_id,
-      parent_message_id: snapshot.session.active_leaf_message_id ?? null,
+      expected_session_version: session.version,
+      branch_id: branchId,
+      parent_message_id: session.activeLeafMessageId ?? null,
       trusted_locale: options.trustedLocale,
       parts: text.length === 0
         ? []
@@ -875,33 +872,33 @@ export function createChatController(options: {
   }
 
   const editMessage = async (messageId: string, content: string): Promise<boolean> => {
-    const snapshot = state.snapshot
+    const session = state.projection.session
     const sessionId = state.sessionId
-    const source = snapshot?.messages.find((message) => message.message_id === messageId)
-    const branch = snapshot?.branches.find((candidate) => candidate.branch_id === source?.branch_id)
+    const source = state.projection.messages.find((message) => message.id === messageId)
+    const branch = state.projection.branches.find((candidate) => candidate.id === source?.branchId)
     const text = content.trim()
     const execution = selectedExecutionInput()
     if (
-      snapshot === null || sessionId === null || source?.role !== "user" || branch === undefined ||
+      session === null || sessionId === null || source?.role !== "user" || branch === undefined ||
       text.length === 0 || execution === null || state.projection.activeRunId !== null
     ) return false
     const commandGeneration = generation
     const effect = {
-      expected_session_version: snapshot.session.version,
+      expected_session_version: session.version,
       expected_branch_version: branch.version,
-      source_branch_id: source.branch_id,
-      source_message_id: source.message_id,
-      parent_message_id: source.parent_message_id ?? null,
+      source_branch_id: source.branchId,
+      source_message_id: source.id,
+      parent_message_id: source.parentMessageId ?? null,
       trusted_locale: options.trustedLocale,
       replacement_parts: [{ schema_version: 1 as const, kind: "text" as const, payload: { text } }],
-      replacement_attachment_refs: attachmentIntents(source.message_id),
+      replacement_attachment_refs: attachmentIntents(source.id),
       model_option_revision_ref: execution.modelOptionRevisionRef,
       ...(execution.effort === undefined ? {} : { effort: execution.effort }),
     }
     project({ type: "command", state: "pending" })
     try {
-      const response = await sendCommand("edit_message", { session_id: sessionId, message_id: source.message_id }, effect, "LAUNCH_OUTCOME_UNKNOWN", (command) =>
-        options.client.editMessage(sessionId, source.message_id, { command, ...effect }))
+      const response = await sendCommand("edit_message", { session_id: sessionId, message_id: source.id }, effect, "LAUNCH_OUTCOME_UNKNOWN", (command) =>
+        options.client.editMessage(sessionId, source.id, { command, ...effect }))
       return response === null ? false : await finishMutation(sessionId, commandGeneration)
     } catch (error) {
       fail(failureFromError(error))
@@ -910,35 +907,35 @@ export function createChatController(options: {
   }
 
   const regenerateMessage = async (messageId: string): Promise<boolean> => {
-    const snapshot = state.snapshot
+    const session = state.projection.session
     const sessionId = state.sessionId
-    const source = snapshot?.messages.find((message) => message.message_id === messageId)
-    const trigger = snapshot?.messages.find((message) => message.message_id === source?.trigger_message_id)
-    const branch = snapshot?.branches.find((candidate) => candidate.branch_id === source?.branch_id)
-    const parts = trigger === undefined ? null : inputParts(trigger.message_id)
+    const source = state.projection.messages.find((message) => message.id === messageId)
+    const trigger = state.projection.messages.find((message) => message.id === source?.triggerMessageId)
+    const branch = state.projection.branches.find((candidate) => candidate.id === source?.branchId)
+    const parts = trigger === undefined ? null : inputParts(trigger.id)
     const execution = selectedExecutionInput()
     if (
-      snapshot === null || sessionId === null || source?.role !== "assistant" || trigger?.role !== "user" ||
+      session === null || sessionId === null || source?.role !== "assistant" || trigger?.role !== "user" ||
       branch === undefined || parts === null || execution === null || state.projection.activeRunId !== null
     ) return false
     const commandGeneration = generation
     const effect = {
-      expected_session_version: snapshot.session.version,
+      expected_session_version: session.version,
       expected_branch_version: branch.version,
-      source_branch_id: source.branch_id,
-      source_assistant_message_id: source.message_id,
-      trigger_message_id: trigger.message_id,
-      parent_message_id: trigger.parent_message_id ?? null,
+      source_branch_id: source.branchId,
+      source_assistant_message_id: source.id,
+      trigger_message_id: trigger.id,
+      parent_message_id: trigger.parentMessageId ?? null,
       trusted_locale: options.trustedLocale,
       input_parts: parts,
-      attachment_refs: attachmentIntents(trigger.message_id),
+      attachment_refs: attachmentIntents(trigger.id),
       model_option_revision_ref: execution.modelOptionRevisionRef,
       ...(execution.effort === undefined ? {} : { effort: execution.effort }),
     }
     project({ type: "command", state: "pending" })
     try {
-      const response = await sendCommand("regenerate_message", { session_id: sessionId, message_id: source.message_id }, effect, "LAUNCH_OUTCOME_UNKNOWN", (command) =>
-        options.client.regenerateMessage(sessionId, source.message_id, { command, ...effect }))
+      const response = await sendCommand("regenerate_message", { session_id: sessionId, message_id: source.id }, effect, "LAUNCH_OUTCOME_UNKNOWN", (command) =>
+        options.client.regenerateMessage(sessionId, source.id, { command, ...effect }))
       return response === null ? false : await finishMutation(sessionId, commandGeneration)
     } catch (error) {
       fail(failureFromError(error))
@@ -950,13 +947,13 @@ export function createChatController(options: {
     branchId: string,
     operation: "fork_branch" | "activate_branch",
   ): Promise<boolean> => {
-    const snapshot = state.snapshot
+    const session = state.projection.session
     const sessionId = state.sessionId
-    const branch = snapshot?.branches.find((candidate) => candidate.branch_id === branchId)
-    if (snapshot === null || sessionId === null || branch === undefined || state.projection.activeRunId !== null) return false
+    const branch = state.projection.branches.find((candidate) => candidate.id === branchId)
+    if (session === null || sessionId === null || branch === undefined || state.projection.activeRunId !== null) return false
     const commandGeneration = generation
     const effect = {
-      expected_session_version: snapshot.session.version,
+      expected_session_version: session.version,
       expected_branch_version: branch.version,
     }
     project({ type: "command", state: "pending" })
@@ -998,11 +995,11 @@ export function createChatController(options: {
   }
 
   const decideAction: ChatController["decideAction"] = async ({ runId, part, decision }) => {
-    const snapshot = state.snapshot
+    const session = state.projection.session
     const sessionId = state.sessionId
     const runVersion = runProjectionVersions.get(runId)
     if (
-      snapshot === null || sessionId === null || runVersion === undefined ||
+      session === null || sessionId === null || runVersion === undefined ||
       part.status !== "pending" || !part.allowedActions.includes(decision.kind) ||
       part.deadline !== undefined && Date.parse(part.deadline) <= Date.now()
     ) {
@@ -1010,7 +1007,7 @@ export function createChatController(options: {
       return
     }
     const effect = {
-      expected_session_version: snapshot.session.version,
+      expected_session_version: session.version,
       expected_run_projection_version: runVersion,
       owner_kind: part.kind,
       owner_ref: part.ownerRef,
@@ -1030,11 +1027,11 @@ export function createChatController(options: {
   }
 
   const decidePlan: ChatController["decidePlan"] = async ({ runId, part, decision }) => {
-    const snapshot = state.snapshot
+    const session = state.projection.session
     const sessionId = state.sessionId
     const runVersion = runProjectionVersions.get(runId)
     if (
-      snapshot === null || sessionId === null || runVersion === undefined ||
+      session === null || sessionId === null || runVersion === undefined ||
       part.status !== "pending" || !part.allowedActions.includes(decision.kind) ||
       part.deadline !== undefined && Date.parse(part.deadline) <= Date.now()
     ) {
@@ -1042,7 +1039,7 @@ export function createChatController(options: {
       return
     }
     const effect = {
-      expected_session_version: snapshot.session.version,
+      expected_session_version: session.version,
       expected_run_projection_version: runVersion,
       plan_proposal_ref: part.planProposalRef,
       expected_plan_version: part.planVersion,

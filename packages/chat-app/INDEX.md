@@ -16,6 +16,10 @@ ephemeral recovery store that is discarded when the Session or browser runtime s
 An active Run keeps the next-turn draft editable but cannot submit or become `run.steer`. A reconciled submit
 clears only the exact local revision bound to its receipt, never text entered while that receipt was pending.
 
+The controller publishes no raw `SessionSnapshot`. Hydration replaces `ChatProjection`, and live `session.updated` / `branch.created`
+events update that same browser authority. Title, context policy, branch selector, viewport remount revision, edit/regenerate source metadata,
+and attachment command references are all read from the projection; `ChatProduct` and `ChatView` never maintain a second stale UI model.
+
 The product supports model/effort selection, Markdown/GFM output, human approval and plan controls,
 message edit/regenerate, and explicit branch fork/activation. Every mutation uses the generated Browser
 command-digest preimage, a stable command identity, exact receipt reconciliation after an ambiguous

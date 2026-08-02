@@ -600,7 +600,7 @@ export function ChatView(props: {
   readonly draftStore?: ComposerDraftStore
   readonly assetUploader?: SessionAssetUploader | null
 }) {
-  const contextPolicy = props.state.snapshot?.session.context_policy ?? "standard"
+  const contextPolicy = props.state.projection.session?.contextPolicy ?? "standard"
   const [composer, setComposerState] = useState<ComposerDraft>(() => props.draftStore?.load(props.sessionId) ?? {
     schemaVersion: 1 as const,
     sessionId: props.sessionId,
@@ -652,7 +652,7 @@ export function ChatView(props: {
   const attachmentPending = attachments.some(({ status }) => status !== "ready")
   const sendDisabled = !hasModel || !connected || activeRun || commandPending || attachmentPending ||
     !hasSubmittableComposerContent(composer.text, attachments)
-  const branch = props.state.snapshot?.branches.find(({ branch_id }) => branch_id === props.state.projection.activeBranchId)
+  const branch = props.state.projection.branches.find(({ id }) => id === props.state.projection.activeBranchId)
   const currentOption = props.state.chatCatalog?.options.find(({ modelOptionRevisionRef }) => modelOptionRevisionRef === props.state.selectedModelOptionRevisionRef)
 
   useEffect(() => {
@@ -753,15 +753,15 @@ export function ChatView(props: {
   const mutationDisabled = activeRun || commandPending || !connected
 
   return <main className={styles.shell}>
-    <header className={styles.header}><div><span className={styles.eyebrow}>{props.copy.workspaceLabel}</span><h1>{props.state.snapshot?.session.title ?? props.brandName}</h1></div><nav className={styles.headerNav} aria-label="Workspace"><a href="/account">{props.copy.account}</a></nav></header>
+    <header className={styles.header}><div><span className={styles.eyebrow}>{props.copy.workspaceLabel}</span><h1>{props.state.projection.session?.title ?? props.brandName}</h1></div><nav className={styles.headerNav} aria-label="Workspace"><a href="/account">{props.copy.account}</a></nav></header>
     {contextPolicy === "temporary" ? <TemporaryChatStatus copy={props.copy} /> : null}
-    <section className={styles.runBand} data-run={props.state.projection.activeRunState ?? "idle"} aria-live="polite"><div><span className={styles.liveDot} aria-hidden /><strong>{runLabel(props.state, props.copy)}</strong><small>{connectionLabel(props.state, props.copy)}</small></div><div className={styles.branchControls}><label><span>{props.copy.branch}</span><select aria-label={props.copy.switchBranch} disabled={mutationDisabled} onChange={(event) => void props.controller.activateBranch(event.target.value)} value={props.state.projection.activeBranchId ?? ""}>{props.state.snapshot?.branches.map((candidate, index) => <option key={candidate.branch_id} value={candidate.branch_id}>{candidate.branch_id === props.state.projection.activeBranchId ? `${props.copy.currentBranch} · ` : ""}${candidate.origin} ${index + 1}</option>)}</select></label>{branch ? <button type="button" disabled={mutationDisabled} onClick={() => void props.controller.forkBranch(branch.branch_id)}>{props.copy.forkBranch}</button> : null}{activeRun ? <button type="button" className={styles.stop} onClick={() => void props.controller.cancel()} disabled={commandPending}>{props.copy.stop}</button> : null}</div></section>
+    <section className={styles.runBand} data-run={props.state.projection.activeRunState ?? "idle"} aria-live="polite"><div><span className={styles.liveDot} aria-hidden /><strong>{runLabel(props.state, props.copy)}</strong><small>{connectionLabel(props.state, props.copy)}</small></div><div className={styles.branchControls}><label><span>{props.copy.branch}</span><select aria-label={props.copy.switchBranch} disabled={mutationDisabled} onChange={(event) => void props.controller.activateBranch(event.target.value)} value={props.state.projection.activeBranchId ?? ""}>{props.state.projection.branches.map((candidate, index) => <option key={candidate.id} value={candidate.id}>{candidate.id === props.state.projection.activeBranchId ? `${props.copy.currentBranch} · ` : ""}${candidate.origin} ${index + 1}</option>)}</select></label>{branch ? <button type="button" disabled={mutationDisabled} onClick={() => void props.controller.forkBranch(branch.id)}>{props.copy.forkBranch}</button> : null}{activeRun ? <button type="button" className={styles.stop} onClick={() => void props.controller.cancel()} disabled={commandPending}>{props.copy.stop}</button> : null}</div></section>
     {props.state.failure ? <section className={styles.failure} role="alert"><strong>{props.state.failure.message}</strong>{["refetch_snapshot", "refresh_grant", "retry_same_cursor", "poll_or_stream", "reconcile_receipt"].includes(props.state.failure.action) ? <button type="button" onClick={() => void props.controller.recover()}>{props.copy.refreshConversation}</button> : null}</section> : null}
     {props.state.projection.repair.required ? <section className={styles.repair} role="status">{props.copy.repairRequired}</section> : null}
     <ConversationThread
       copy={props.copy}
       isStreaming={activeRun}
-      key={`${props.sessionId}:${props.state.projection.activeBranchId ?? "no-branch"}:${props.state.snapshot?.snapshot_watermark.cursor ?? "no-snapshot"}`}
+      key={`${props.sessionId}:${props.state.projection.activeBranchId ?? "no-branch"}:${props.state.projection.snapshotRevision ?? "no-snapshot"}`}
       messages={props.state.projection.messages}
       phase={props.state.phase}
       renderMessage={(message) => <ConversationMessageView commandPending={commandPending} controller={props.controller} copy={props.copy} key={message.id} message={message} mutationDisabled={mutationDisabled} />}
@@ -832,7 +832,7 @@ function ChatProductRuntime(props: ChatProductProps) {
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot)
   const organizer = useMemo(() => createSessionOrganizer({ client, projectRef: props.bootstrap?.defaultProjectRef ?? null }), [client, props.bootstrap?.defaultProjectRef])
   const organizerState = useSyncExternalStore(organizer.subscribe, organizer.getSnapshot, organizer.getSnapshot)
-  const contextPolicy = state.phase === "ready" ? state.snapshot?.session.context_policy ?? null : null
+  const contextPolicy = state.phase === "ready" ? state.projection.session?.contextPolicy ?? null : null
   const persistence = contextPolicy === null ? null : sessionBrowserPersistence(contextPolicy)
   const assetUploader = useSessionAssetUploader({
     ...(props.csrfToken === undefined ? {} : { csrfToken: props.csrfToken }),

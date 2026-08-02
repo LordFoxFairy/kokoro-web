@@ -168,6 +168,19 @@ describe("Chat projection", () => {
     expect(assertInvalidInputs).toBeTypeOf("function")
   })
 
+  it("does not fabricate message ownership for unsupported content before hydration", () => {
+    const store = createChatProjectionStore()
+
+    store.dispatch({ type: "unsupported", runId: "run-12345678", originalKind: "future-kind" })
+
+    expect(store.getSnapshot()).toMatchObject({
+      session: null,
+      activeBranchId: null,
+      messages: [],
+      repair: { required: true, reason: "unsupported_without_active_branch" },
+    })
+  })
+
   it("hydrates JSON-roundtripped authoritative snapshots without false replay conflicts", () => {
     const store = createChatProjectionStore()
 
@@ -199,6 +212,218 @@ describe("Chat projection", () => {
     })
 
     expect(store.getSnapshot().repair).toEqual({ required: true, reason: "part_version_conflict" })
+  })
+
+  it("replaces all browser metadata from an authoritative snapshot", () => {
+    const store = createChatProjectionStore()
+    const initial = snapshot()
+    store.hydrate(initial)
+
+    expect(store.getSnapshot()).toMatchObject({
+      session: {
+        id: "session-12345678",
+        projectRef: "project-12345678",
+        title: "Thread",
+        contextPolicy: "standard",
+        lifecycle: "active",
+        version: 2,
+      },
+      branches: [{
+        id: "branch-12345678",
+        origin: "original",
+        version: 2,
+      }],
+      snapshotRevision: "signed.cursor.7",
+    })
+
+    const replacement: SessionSnapshot = {
+      ...initial,
+      session: {
+        ...initial.session,
+        title: "Replacement",
+        active_branch_id: "branch-replacement-12345678",
+        active_leaf_message_id: undefined,
+        version: 9,
+      },
+      branches: [{
+        branch_id: "branch-replacement-12345678",
+        origin: "fork",
+        version: 1,
+        created_at: NOW,
+      }],
+      messages: [],
+      runs: [],
+      snapshot_watermark: {
+        cursor: "signed.cursor.9",
+        stream_epoch: "epoch-12345678",
+        durable_seq: "9",
+        projection_version: 9,
+      },
+    }
+    store.hydrate(replacement)
+
+    expect(store.getSnapshot()).toMatchObject({
+      session: { title: "Replacement", contextPolicy: "standard", version: 9 },
+      branches: [{ id: "branch-replacement-12345678", origin: "fork" }],
+      activeBranchId: "branch-replacement-12345678",
+      messages: [],
+      snapshotRevision: "signed.cursor.9",
+    })
+    expect(store.getSnapshot().branches).toHaveLength(1)
+  })
+
+  it("projects safe session metadata updates without retaining a stale snapshot authority", () => {
+    const store = createChatProjectionStore()
+    const initial = snapshot()
+    store.hydrate(initial)
+
+    store.dispatch({
+      type: "event",
+      event: event({
+        kind: "session.updated",
+        projection_version: 3,
+        payload: {
+          session: {
+            ...initial.session,
+            title: "Renamed in real time",
+            version: 3,
+          },
+        },
+      }),
+    })
+
+    expect(store.getSnapshot()).toMatchObject({
+      session: {
+        id: "session-12345678",
+        title: "Renamed in real time",
+        contextPolicy: "standard",
+        version: 3,
+      },
+      activeBranchId: "branch-12345678",
+      snapshotRevision: "signed.cursor.7",
+      repair: { required: false },
+    })
+  })
+
+  it("retains only attachment command references needed by edit and regenerate", () => {
+    const initial = snapshot()
+    const first = initial.messages[0]
+    if (first === undefined) throw new Error("user message fixture missing")
+    const withAttachment: SessionSnapshot = {
+      ...initial,
+      messages: [{
+        ...first,
+        attachments: [{
+          ordinal: 0,
+          asset_ref: "asset-12345678",
+          asset_version_ref: "asset-version-12345678",
+          asset_grant_ref: "asset-grant-12345678",
+          readiness: "ready",
+          media_type: "image/png",
+          display_name: "private-name.png",
+          size_bytes: 1024,
+        }],
+      }, ...initial.messages.slice(1)],
+    }
+    const store = createChatProjectionStore()
+
+    store.hydrate(withAttachment)
+
+    expect(store.getSnapshot().messages[0]?.attachments).toEqual([{
+      assetRef: "asset-12345678",
+      assetVersionRef: "asset-version-12345678",
+      assetGrantRef: "asset-grant-12345678",
+    }])
+  })
+
+  it("adds a newly created branch to the projection before activation", () => {
+    const store = createChatProjectionStore()
+    store.hydrate(snapshot())
+
+    store.dispatch({
+      type: "event",
+      event: event({
+        kind: "branch.created",
+        projection_version: 1,
+        payload: {
+          branch: {
+            branch_id: "branch-fork-12345678",
+            parent_branch_id: "branch-12345678",
+            forked_from_message_id: "message-user-12345678",
+            origin: "fork",
+            version: 1,
+            created_at: NOW,
+          },
+        },
+      }),
+    })
+
+    expect(store.getSnapshot()).toMatchObject({
+      branches: [
+        { id: "branch-12345678", origin: "original" },
+        {
+          id: "branch-fork-12345678",
+          parentId: "branch-12345678",
+          forkedFromMessageId: "message-user-12345678",
+          origin: "fork",
+        },
+      ],
+      activeBranchId: "branch-12345678",
+      repair: { required: false },
+    })
+  })
+
+  it("fails closed on event identity or context-policy drift", () => {
+    const initial = snapshot()
+    const wrongSession = createChatProjectionStore()
+    wrongSession.hydrate(initial)
+    wrongSession.dispatch({
+      type: "event",
+      event: {
+        ...event({
+          kind: "session.updated",
+          payload: { session: { ...initial.session, version: 3 } },
+        }),
+        session_id: "session-other-12345678",
+      },
+    })
+    expect(wrongSession.getSnapshot()).toMatchObject({
+      session: { title: "Thread", contextPolicy: "standard" },
+      repair: { required: true, reason: "session_identity_conflict" },
+    })
+
+    const contextDrift = createChatProjectionStore()
+    contextDrift.hydrate(initial)
+    contextDrift.dispatch({
+      type: "event",
+      event: event({
+        kind: "session.updated",
+        payload: {
+          session: { ...initial.session, context_policy: "temporary", version: 3 },
+        },
+      }),
+    })
+    expect(contextDrift.getSnapshot()).toMatchObject({
+      session: { title: "Thread", contextPolicy: "standard" },
+      repair: { required: true, reason: "session_metadata_conflict" },
+    })
+
+    const incompatibleRevision = createChatProjectionStore()
+    incompatibleRevision.hydrate(initial)
+    incompatibleRevision.dispatch({
+      type: "event",
+      event: {
+        ...event({
+          kind: "session.updated",
+          payload: { session: { ...initial.session, title: "Do not apply", version: 3 } },
+        }),
+        schema_revision: 4,
+      },
+    })
+    expect(incompatibleRevision.getSnapshot()).toMatchObject({
+      session: { title: "Thread" },
+      repair: { required: true, reason: "event_schema_revision_conflict" },
+    })
   })
 
   it("rehydrates the active v3 message lineage and active run without legacy repair", () => {
@@ -568,6 +793,22 @@ describe("Chat projection", () => {
     store.dispatch({
       type: "event",
       event: event({
+        kind: "branch.created",
+        projection_version: 1,
+        payload: {
+          branch: {
+            branch_id: "branch-other-12345678",
+            parent_branch_id: "branch-12345678",
+            origin: "fork",
+            version: 1,
+            created_at: NOW,
+          },
+        },
+      }),
+    })
+    store.dispatch({
+      type: "event",
+      event: event({
         kind: "branch.activated",
         payload: { branch_id: "branch-other-12345678", session_version: 3 },
       }),
@@ -578,6 +819,26 @@ describe("Chat projection", () => {
       activeRunId: null,
       repair: { required: true, reason: "active_branch_changed_refetch_snapshot" },
     })
+  })
+
+  it("does not activate an unknown branch before authoritative branch creation", () => {
+    const store = createChatProjectionStore()
+    store.hydrate(snapshot())
+    const messages = store.getSnapshot().messages
+
+    store.dispatch({
+      type: "event",
+      event: event({
+        kind: "branch.activated",
+        payload: { branch_id: "branch-unknown-12345678", session_version: 3 },
+      }),
+    })
+
+    expect(store.getSnapshot()).toMatchObject({
+      activeBranchId: "branch-12345678",
+      repair: { required: true, reason: "branch_activation_unknown" },
+    })
+    expect(store.getSnapshot().messages).toBe(messages)
   })
 
   it("projects every authoritative typed part and preserves HITL routing identity", () => {

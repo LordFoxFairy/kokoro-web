@@ -1,11 +1,13 @@
 import type { SessionConnectionState } from "@kokoro/session-client"
 import stableStringify from "fast-json-stable-stringify"
 import type {
+  ConversationBranch,
   MessagePartEnvelope,
   MessageRecord,
   SessionEvent,
   SessionSnapshot,
 } from "@kokoro/session-client/contracts"
+import { sessionEventContractMetadata } from "@kokoro/session-client/contracts"
 
 import {
   projectArtifactOwnerState,
@@ -122,16 +124,48 @@ export type ChatPart = ChatPartBase & (
 
 export type ChatProjectionMessage = {
   readonly id: string
+  readonly branchId: string
+  readonly parentMessageId?: string
+  readonly triggerMessageId?: string
   readonly runId: string | null
   readonly role: "user" | "assistant"
   readonly createdAt: string
   readonly parts: readonly ChatPart[]
+  readonly attachments: readonly {
+    readonly assetRef: string
+    readonly assetVersionRef: string
+    readonly assetGrantRef: string
+  }[]
   readonly status: "running" | "complete" | "incomplete"
 }
 
+export type ChatSessionMetadata = {
+  readonly id: string
+  readonly projectRef: string
+  readonly title: string
+  readonly lifecycle: SessionSnapshot["session"]["lifecycle"]
+  readonly contextPolicy: SessionSnapshot["session"]["context_policy"]
+  readonly version: number
+  readonly activeLeafMessageId?: string
+}
+
+export type ChatBranchSummary = {
+  readonly id: string
+  readonly parentId?: string
+  readonly forkedFromMessageId?: string
+  readonly rootMessageId?: string
+  readonly leafMessageId?: string
+  readonly origin: ConversationBranch["origin"]
+  readonly version: number
+  readonly createdAt: string
+}
+
 export type ChatProjection = {
+  readonly session: ChatSessionMetadata | null
+  readonly branches: readonly ChatBranchSummary[]
   readonly messages: readonly ChatProjectionMessage[]
   readonly activeBranchId: string | null
+  readonly snapshotRevision: string | null
   readonly activeRunId: string | null
   readonly activeRunState: "launching" | "running" | "paused" | "cancelling" | "outcome_unknown" | null
   readonly connection: SessionConnectionState | { readonly kind: "idle" }
@@ -204,14 +238,42 @@ function deepFreeze<Value>(value: Value): Value {
 
 export function createChatProjection(): ChatProjection {
   return deepFreeze({
+    session: null,
+    branches: [],
     messages: [],
     activeBranchId: null,
+    snapshotRevision: null,
     activeRunId: null,
     activeRunState: null,
     connection: { kind: "idle" },
     command: { state: "idle" },
     repair: { required: false },
   })
+}
+
+function projectSessionMetadata(session: SessionSnapshot["session"]): ChatSessionMetadata {
+  return {
+    id: session.session_id,
+    projectRef: session.project_ref,
+    title: session.title,
+    lifecycle: session.lifecycle,
+    contextPolicy: session.context_policy,
+    version: session.version,
+    ...(session.active_leaf_message_id === undefined ? {} : { activeLeafMessageId: session.active_leaf_message_id }),
+  }
+}
+
+function projectBranchSummary(branch: ConversationBranch): ChatBranchSummary {
+  return {
+    id: branch.branch_id,
+    origin: branch.origin,
+    version: branch.version,
+    createdAt: branch.created_at,
+    ...(branch.parent_branch_id === undefined ? {} : { parentId: branch.parent_branch_id }),
+    ...(branch.forked_from_message_id === undefined ? {} : { forkedFromMessageId: branch.forked_from_message_id }),
+    ...(branch.root_message_id === undefined ? {} : { rootMessageId: branch.root_message_id }),
+    ...(branch.leaf_message_id === undefined ? {} : { leafMessageId: branch.leaf_message_id }),
+  }
 }
 
 function messageStatus(lifecycle: MessageRecord["lifecycle"]): ChatProjectionMessage["status"] {
@@ -384,10 +446,18 @@ function projectMessage(
   if (message.role === "system") return null
   return deepFreeze({
     id: message.message_id,
+    branchId: message.branch_id,
+    ...(message.parent_message_id === undefined ? {} : { parentMessageId: message.parent_message_id }),
+    ...(message.trigger_message_id === undefined ? {} : { triggerMessageId: message.trigger_message_id }),
     runId: message.run_id ?? null,
     role: message.role,
     createdAt: message.created_at,
     parts: sortParts(message.parts.map((part) => projectPart(part, fingerprints))),
+    attachments: [...message.attachments].sort((left, right) => left.ordinal - right.ordinal).map((attachment) => ({
+      assetRef: attachment.asset_ref,
+      assetVersionRef: attachment.asset_version_ref,
+      assetGrantRef: attachment.asset_grant_ref,
+    })),
     status: messageStatus(message.lifecycle),
   })
 }
@@ -525,14 +595,29 @@ function reduceEvent(
   fingerprints: PartEnvelopeFingerprints,
   indexes: ProjectionIndexes,
 ): ChatProjection {
+  const session = state.session
+  if (session === null) {
+    return { ...state, repair: { required: true, reason: "event_without_snapshot" } }
+  }
+  if (event.schema_revision !== sessionEventContractMetadata.schemaVersion) {
+    return { ...state, repair: { required: true, reason: "event_schema_revision_conflict" } }
+  }
+  if (event.session_id !== session.id) {
+    return { ...state, repair: { required: true, reason: "session_identity_conflict" } }
+  }
+  let next: ChatProjection
   switch (event.kind) {
     case "message.created": {
-      if (event.payload.message.branch_id !== state.activeBranchId) return state
+      if (event.payload.message.branch_id !== state.activeBranchId) {
+        next = state
+        break
+      }
       const message = projectMessage(event.payload.message, fingerprints)
-      return message === null ? state : {
+      next = message === null ? state : {
         ...state,
         messages: upsertMessage(state.messages, message, indexes.messageIndexById.get(message.id)),
       }
+      break
     }
     case "message.part.updated": {
       const part = event.payload.part
@@ -549,35 +634,47 @@ function reduceEvent(
       if (result.conflict !== undefined) {
         return { ...state, repair: { required: true, reason: result.conflict } }
       }
-      if (result.message === currentMessage) return state
-      const messages = [...state.messages]
-      messages[index] = deepFreeze(result.message)
-      return { ...state, messages: Object.freeze(messages) }
+      if (result.message === currentMessage) {
+        next = state
+      } else {
+        const messages = [...state.messages]
+        messages[index] = deepFreeze(result.message)
+        next = { ...state, messages: Object.freeze(messages) }
+      }
+      break
     }
     case "run.launch.updated": {
       const launch = event.payload.launch
-      if (launch.branch_id !== state.activeBranchId) return state
+      if (launch.branch_id !== state.activeBranchId) {
+        next = state
+        break
+      }
       if (ACTIVE_LAUNCH_STATUSES.has(launch.status)) {
-        return {
+        next = {
           ...state,
           activeRunId: launch.proposed_run_id,
           activeRunState: launch.status === "outcome_unknown" ? "outcome_unknown" : "launching",
         }
+        break
       }
-      return state.activeRunId === launch.proposed_run_id
+      next = state.activeRunId === launch.proposed_run_id
         ? { ...state, activeRunId: null, activeRunState: null }
         : state
+      break
     }
     case "run.view.updated": {
       const run = event.payload.run
-      if (run.branch_id !== state.activeBranchId) return state
+      if (run.branch_id !== state.activeBranchId) {
+        next = state
+        break
+      }
       const active = ACTIVE_RUN_STATUSES.has(run.execution_status)
       const messages = state.messages.map((message) =>
         message.runId === run.run_id && !active
           ? { ...message, status: run.execution_status === "completed" ? "complete" as const : "incomplete" as const }
           : message,
       )
-      return {
+      next = {
         ...state,
         messages,
         activeRunId: active ? run.run_id : state.activeRunId === run.run_id ? null : state.activeRunId,
@@ -587,40 +684,123 @@ function reduceEvent(
             : "running"
           : state.activeRunId === run.run_id ? null : state.activeRunState,
       }
+      break
     }
     case "run.control.updated": {
       const control = event.payload.control
-      if (control.run_id !== state.activeRunId || control.kind !== "cancel") return state
-      if (["pending", "persisted", "applied", "outcome_unknown"].includes(control.status)) {
-        return { ...state, activeRunState: control.status === "outcome_unknown" ? "outcome_unknown" : "cancelling" }
+      if (control.run_id !== state.activeRunId || control.kind !== "cancel") {
+        next = state
+        break
       }
-      return control.status === "failed" ? { ...state, activeRunState: "running" } : state
+      if (["pending", "persisted", "applied", "outcome_unknown"].includes(control.status)) {
+        next = { ...state, activeRunState: control.status === "outcome_unknown" ? "outcome_unknown" : "cancelling" }
+        break
+      }
+      next = control.status === "failed" ? { ...state, activeRunState: "running" } : state
+      break
     }
-    case "branch.activated":
-      return {
+    case "branch.activated": {
+      if (!state.branches.some((branch) => branch.id === event.payload.branch_id)) {
+        return { ...state, repair: { required: true, reason: "branch_activation_unknown" } }
+      }
+      if (event.payload.session_version < session.version) {
+        return { ...state, repair: { required: true, reason: "session_version_regression" } }
+      }
+      if (event.payload.session_version > session.version + 1) {
+        return { ...state, repair: { required: true, reason: "session_version_gap" } }
+      }
+      if (event.payload.session_version === session.version) {
+        const activeLeafMessageId = event.payload.active_leaf_message_id
+        if (
+          event.payload.branch_id !== state.activeBranchId ||
+          activeLeafMessageId !== session.activeLeafMessageId
+        ) {
+          return { ...state, repair: { required: true, reason: "session_version_conflict" } }
+        }
+        next = state
+        break
+      }
+      next = {
         ...state,
+        session: {
+          ...session,
+          version: event.payload.session_version,
+          ...(event.payload.active_leaf_message_id === undefined
+            ? { activeLeafMessageId: undefined }
+            : { activeLeafMessageId: event.payload.active_leaf_message_id }),
+        },
         messages: [],
         activeBranchId: event.payload.branch_id,
         activeRunId: null,
         activeRunState: null,
         repair: { required: true, reason: "active_branch_changed_refetch_snapshot" },
       }
-    case "session.updated":
-      return event.payload.session.active_branch_id === state.activeBranchId
-        ? state
-        : {
-            ...state,
-            messages: [],
-            activeBranchId: event.payload.session.active_branch_id,
-            activeRunId: null,
-            activeRunState: null,
-            repair: { required: true, reason: "active_branch_changed_refetch_snapshot" },
-          }
-    case "branch.created":
+      break
+    }
+    case "session.updated": {
+      const updated = projectSessionMetadata(event.payload.session)
+      if (
+        updated.id !== session.id ||
+        updated.projectRef !== session.projectRef ||
+        updated.contextPolicy !== session.contextPolicy ||
+        updated.version < session.version ||
+        updated.version > session.version + 1
+      ) {
+        return { ...state, repair: { required: true, reason: "session_metadata_conflict" } }
+      }
+      if (updated.version === session.version) {
+        if (
+          stableStringify(updated) !== stableStringify(session) ||
+          event.payload.session.active_branch_id !== state.activeBranchId
+        ) {
+          return { ...state, repair: { required: true, reason: "session_metadata_conflict" } }
+        }
+        next = state
+        break
+      }
+      if (event.payload.session.active_branch_id === state.activeBranchId) {
+        next = { ...state, session: updated }
+        break
+      }
+      if (!state.branches.some((branch) => branch.id === event.payload.session.active_branch_id)) {
+        return { ...state, repair: { required: true, reason: "session_active_branch_unknown" } }
+      }
+      next = {
+        ...state,
+        session: updated,
+        messages: [],
+        activeBranchId: event.payload.session.active_branch_id,
+        activeRunId: null,
+        activeRunState: null,
+        repair: { required: true, reason: "active_branch_changed_refetch_snapshot" },
+      }
+      break
+    }
+    case "branch.created": {
+      const branch = projectBranchSummary(event.payload.branch)
+      if (branch.version !== 1) {
+        return { ...state, repair: { required: true, reason: "branch_initial_version_conflict" } }
+      }
+      const existing = state.branches.find((candidate) => candidate.id === branch.id)
+      if (existing !== undefined) {
+        if (stableStringify(existing) !== stableStringify(branch)) {
+          return { ...state, repair: { required: true, reason: "branch_identity_conflict" } }
+        }
+        next = state
+        break
+      }
+      if (branch.parentId !== undefined && !state.branches.some((candidate) => candidate.id === branch.parentId)) {
+        return { ...state, repair: { required: true, reason: "branch_parent_unknown" } }
+      }
+      next = { ...state, branches: Object.freeze([...state.branches, deepFreeze(branch)]) }
+      break
+    }
     case "run.cost.updated":
     case "command.receipt.updated":
-      return state
+      next = state
+      break
   }
+  return next
 }
 
 function reduceChatProjection(
@@ -631,18 +811,33 @@ function reduceChatProjection(
 ): ChatProjection {
   switch (action.type) {
     case "snapshot": {
+      const base = createChatProjection()
+      const session = projectSessionMetadata(action.snapshot.session)
+      const branches = action.snapshot.branches.map(projectBranchSummary)
+      const branchIds = new Set(branches.map((branch) => branch.id))
+      const branchIdentityComplete = branchIds.size === branches.length
+      const activeBranchExists = branchIds.has(action.snapshot.session.active_branch_id)
       const active = activeMessageRecords(action.snapshot)
       const activeExecution = activeRun(action.snapshot)
       return {
-        ...state,
-        messages: active.messages
+        ...base,
+        connection: state.connection,
+        command: state.command,
+        session,
+        branches,
+        messages: activeBranchExists ? active.messages
           .map((message) => projectMessage(message, fingerprints))
-          .filter((message): message is ChatProjectionMessage => message !== null),
+          .filter((message): message is ChatProjectionMessage => message !== null) : [],
         activeBranchId: action.snapshot.session.active_branch_id,
+        snapshotRevision: action.snapshot.snapshot_watermark.cursor,
         ...activeExecution,
-        repair: active.complete
-          ? { required: false }
-          : { required: true, reason: "snapshot_active_lineage_incomplete" },
+        repair: !branchIdentityComplete
+          ? { required: true, reason: "branch_identity_conflict" }
+          : !activeBranchExists
+            ? { required: true, reason: "snapshot_active_branch_missing" }
+            : active.complete
+              ? { required: false }
+              : { required: true, reason: "snapshot_active_lineage_incomplete" },
       }
     }
     case "event":
@@ -654,13 +849,18 @@ function reduceChatProjection(
     case "repair":
       return { ...state, repair: { required: true, reason: action.reason } }
     case "unsupported": {
+      if (state.session === null || state.activeBranchId === null) {
+        return { ...state, repair: { required: true, reason: "unsupported_without_active_branch" } }
+      }
       const existing = state.messages.find((message) => message.role === "assistant" && message.runId === action.runId)
       const message = existing ?? {
         id: `assistant:${action.runId}`,
+        branchId: state.activeBranchId,
         runId: action.runId,
         role: "assistant" as const,
         createdAt: new Date(0).toISOString(),
         parts: [],
+        attachments: [],
         status: "running" as const,
       }
       return {
