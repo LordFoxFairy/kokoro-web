@@ -8,7 +8,7 @@ owners: ["@LordFoxFairy"]
 
 Brand-neutral client over Root-generated Session HTTP/SSE schemas. Callers inject a path-only transport; this package accepts no raw Session URL, Site identity, namespace, bearer token, or credential resolver.
 
-The Root-generated Session browser v3 mirror is live. The client exposes the complete browser command surface, including typed action/plan decisions and receipt reconciliation, validates the full projection snapshot, and hydrates only from its opaque snapshot watermark.
+The Root-generated Session browser contract is live. The client exposes the complete browser command surface, including typed action/plan decisions and receipt reconciliation. One `/snapshot` response carries the complete projection, a snapshot revision watermark, and mandatory Session-owned `presentation_authority`; hydration is ready only after the strict AG-UI decoder validates that authority.
 Session creation requires an explicit immutable `standard|temporary` `context_policy`; both the create receipt
 and every owner snapshot carry the policy. The client does not infer a default or offer an update operation.
 The generated HTTP mirror carries the full durable part union, including reasoning summaries, plan progress,
@@ -17,7 +17,7 @@ fallback. Generated control and HTTP sources remain Root-owned artifacts and are
 Submit keeps renderable `parts` and Asset-owned `attachment_refs` separate. Its generated cross-field constraint
 accepts either source while rejecting a truly empty command; any text part that is present remains non-empty.
 
-SSE resume tokens are opaque and travel only in `Last-Event-ID`. Numeric/empty cursors, event/id/cursor mismatches, epoch/order gaps, and sequence reuse under another event identity fail closed; exact cursor/event replays are suppressed. `stream.draining` cannot advance beyond continuously delivered data. Non-success SSE bodies are bounded and decoded through the generated problem schema, preserving stable code/action/retry fields (including contract upgrade). Auth, conflict, contract, and repair outcomes remain distinct.
+SSE resume tokens are opaque and come only from committed decoder authority. Every attach sends the exact same token in `Last-Event-ID` and Root-generated `after`; Web never derives it from `snapshot_watermark`. The transport forwards bounded raw `{id,event,data}` frames to the strict decoder instead of parsing a second `SessionEvent` protocol. Cursor gaps/scope conflicts request snapshot repair, malformed or incompatible frames fail closed, exact uncertain-ack replay is idempotent, and admitted `stream.draining` cannot advance durable authority. Non-success SSE bodies remain bounded and typed.
 
 The initial effect-free SSE attach uses the same bounded full-jitter reconnect policy as later disconnects;
 a temporary network failure cannot terminalize a freshly hydrated Chat view. Authentication, contract and
@@ -26,8 +26,9 @@ Snapshot fetch and hydration accept an optional `AbortSignal` and forward the ex
 transport. Product controllers use it to cancel superseded, unmounted, and closed authority requests; cancellation
 does not create a second Session endpoint or a transport-specific escape hatch.
 
-The strict AG-UI presentation consumer is present only through the explicit
-`@kokoro/session-client/agui-presentation-dormant` subpath; the package main entry does not expose it.
+The strict AG-UI presentation consumer is public through the explicit production
+`@kokoro/session-client/agui-presentation` subpath. It exports the transport-independent
+`AguiPresentationSource` port implemented directly by `SessionClient`; concrete snapshot/SSE paths and the `after` query remain Root-generated and Web never handwrites them.
 That subpath is a whitelist façade over one production state-machine implementation; there is no synthetic,
 future-authority, preload, or test-only decoder variant.
 Its Run/message binding and atomic binding-delta validators are a committed static TypeScript runtime mirror generated
@@ -89,8 +90,9 @@ Prepare stages the complete next decoder state—including cursor/replay ledgers
 binding authority, and Run/message owner records—as one immutable value. After dispatch acknowledges `applied|replayed`,
 commit performs one state-reference swap; a parse, validation, dispatch, or acknowledgement failure leaves every
 authority fact unchanged. Root's positive corpus is rebuilt from a real empty sequence-zero snapshot, and all
-browser-facing corpus attacks plus snapshot-authority attacks run against this production decoder. Product activation
-still requires the Session provider and compatibility evidence to be promoted with the snapshot endpoint; Web has no
-fallback that talks to Agent, repairs per event, preloads future bindings, or derives private topology.
+browser-facing corpus attacks plus snapshot-authority attacks run against this production decoder. The active Chat
+Controller constructs exactly one adapter from each validated hydration and opens exactly one AG-UI presentation
+stream. Web has no fallback that talks to Agent, opens a parallel `SessionEvent` stream, preloads future bindings,
+or derives private topology.
 
 Verification: `pnpm --filter @kokoro/session-client lint && pnpm --filter @kokoro/session-client typecheck && pnpm --filter @kokoro/session-client test && pnpm --filter @kokoro/session-client build`.

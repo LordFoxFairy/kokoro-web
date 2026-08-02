@@ -4,8 +4,6 @@ import {
   LAST_EVENT_ID_HEADER,
   errorEnvelopeSchema,
   SESSION_HTTP_ENDPOINTS,
-  snapshotWatermarkSchema,
-  sessionStreamFrameSchema,
   type ActionDecisionRequest,
   type BranchCommandRequest,
   type CancellationRequest,
@@ -22,22 +20,27 @@ import {
   type PlanDecisionRequest,
   type RegenerateMessageRequest,
   type SessionCommandResponse,
-  type SessionEvent,
   type SessionLifecycleCommandRequest,
   type SessionList,
   type SessionSnapshot,
-  type SnapshotWatermark,
-  type StreamControlFrame,
   type SubmitMessageRequest,
   type UpdateFolderRequest,
   type UpdateSessionRequest,
 } from "./contracts.js";
 import {
-  createCursorPolicy,
-  type CursorPolicy,
-  type CursorRecovery,
-  type SessionCursor,
-} from "./cursor-policy.js";
+  AGUI_CURSOR_PROFILE_REVISION,
+  AGUI_PRESENTATION_PROFILE_REVISION,
+  SESSION_AGUI_CONTRACT_REVISION,
+  AguiPresentationProtocolError,
+  createAguiPresentationDecoder,
+  type AguiGrantBinding,
+  type AguiPresentationSnapshotAuthority,
+} from "./agui-presentation-state-machine.internal.js";
+import type {
+  AguiPresentationHydration,
+  OpenAguiPresentationInput,
+} from "./agui-presentation.js";
+import type { CursorRecovery } from "./cursor-policy.js";
 
 export type SessionRequest = {
   readonly method: (typeof SESSION_HTTP_ENDPOINTS)[keyof typeof SESSION_HTTP_ENDPOINTS]["method"];
@@ -106,27 +109,16 @@ export class SessionClientError extends Error {
 }
 
 export type SessionHydration =
-  | { readonly kind: "ready"; readonly snapshot: SessionSnapshot; readonly watermark: SnapshotWatermark; readonly cursor: SessionCursor }
+  | ({ readonly kind: "ready" } & AguiPresentationHydration)
   | { readonly kind: "not_found" }
-  | {
-      readonly kind: "repair_required" | "contract_incompatible";
-      readonly snapshot: SessionSnapshot;
-      readonly reason: string;
-    };
+  | { readonly kind: "contract_incompatible"; readonly snapshot: SessionSnapshot; readonly reason: string };
 
 export type SessionConnectionState =
   | { readonly kind: "connecting" | "live" | "reconnecting" | "closed" }
   | { readonly kind: "auth_required" }
-  | { readonly kind: "draining"; readonly control: StreamControlFrame }
+  | { readonly kind: "draining"; readonly retryAfterMs?: number }
   | { readonly kind: "repair_required"; readonly recovery: CursorRecovery }
   | { readonly kind: "contract_incompatible"; readonly reason: string };
-
-export type OpenEventsInput = {
-  readonly sessionId: string;
-  readonly watermark: SnapshotWatermark;
-  readonly onEvent: (event: SessionEvent, cursor: SessionCursor) => void;
-  readonly onConnection: (state: SessionConnectionState) => void;
-};
 
 export type EventStreamHandle = {
   readonly ready: Promise<void>;
@@ -160,17 +152,23 @@ export type SessionClient = {
   readonly createFolder: (body: CreateFolderRequest) => Promise<SessionCommandResponse>;
   readonly updateFolder: (folderId: string, body: UpdateFolderRequest) => Promise<SessionCommandResponse>;
   readonly deleteFolder: (folderId: string, body: FolderDeleteRequest) => Promise<SessionCommandResponse>;
-  readonly openEvents: (input: OpenEventsInput) => EventStreamHandle;
+  readonly openPresentation: (input: OpenAguiPresentationInput) => EventStreamHandle;
 };
 
 type SseFrame = Readonly<{ id: string | null; event: string | null; data: string | null }>;
 type SessionOperationId = keyof typeof SESSION_HTTP_ENDPOINTS;
+const AGUI_REHYDRATION_CODES = new Set([
+  "agui_cursor_gap",
+  "agui_draining_cursor_conflict",
+  "agui_stream_identity_duplicate",
+  "agui_stream_scope_conflict",
+]);
 
 export const SESSION_CLIENT_OPERATION_SURFACE = {
   createSession: "createSession",
   listSessions: "listSessions",
   snapshot: "fetchSnapshot",
-  stream: "openEvents",
+  stream: "openPresentation",
   submitMessage: "submitMessage",
   editMessage: "editMessage",
   regenerateMessage: "regenerateMessage",
@@ -461,14 +459,12 @@ async function decodeProblemStream(
 
 export function createSessionClient(options: {
   readonly transport: SessionTransport;
-  readonly cursorPolicy?: CursorPolicy;
   readonly reconnectDelayMs?: number;
   readonly reconnectMaxDelayMs?: number;
   readonly random?: () => number;
   readonly maximumSseBufferBytes?: number;
   readonly maximumSseFrameBytes?: number;
 }): SessionClient {
-  const cursorPolicy = options.cursorPolicy ?? createCursorPolicy();
   const reconnectDelayMs = options.reconnectDelayMs ?? 1_000;
   const reconnectMaxDelayMs = options.reconnectMaxDelayMs ?? 30_000;
   const random = options.random ?? Math.random;
@@ -529,9 +525,25 @@ export function createSessionClient(options: {
     async hydrate(sessionId, requestOptions = {}) {
       const snapshot = await fetchSnapshot(sessionId, requestOptions);
       if (snapshot === null) return { kind: "not_found" };
-      const acceptance = cursorPolicy.accept(snapshot.snapshot_watermark.cursor);
-      if (acceptance.kind !== "ready") return { ...acceptance, snapshot };
-      return { kind: "ready", snapshot, watermark: snapshot.snapshot_watermark, cursor: acceptance.cursor };
+      const grant: AguiGrantBinding = Object.freeze({
+        sessionId,
+        sessionContractRevision: SESSION_AGUI_CONTRACT_REVISION,
+        presentationProfileRevision: AGUI_PRESENTATION_PROFILE_REVISION,
+        cursorProfileRevision: AGUI_CURSOR_PROFILE_REVISION,
+      });
+      try {
+        const authorityDecoder = createAguiPresentationDecoder({
+          grant,
+          snapshotAuthority: snapshot.presentation_authority,
+        });
+        const snapshotAuthority: AguiPresentationSnapshotAuthority = authorityDecoder.getSnapshotAuthority();
+        return { kind: "ready", snapshot, grant, snapshotAuthority };
+      } catch (error) {
+        if (error instanceof AguiPresentationProtocolError) {
+          return { kind: "contract_incompatible", snapshot, reason: error.code };
+        }
+        throw error;
+      }
     },
     listSessions(query) {
       return executeOperation("listSessions", { query });
@@ -589,21 +601,8 @@ export function createSessionClient(options: {
     deleteFolder: (folderId, body) => executeOperation("deleteFolder", {
       pathParameters: { folder_id: folderId }, body,
     }),
-    openEvents(input) {
-      const watermark = parseContract(input.watermark, snapshotWatermarkSchema);
-      const initialCursor = cursorPolicy.accept(watermark.cursor);
-      if (initialCursor.kind !== "ready") {
-        throw new SessionClientError("contract_incompatible", initialCursor.reason);
-      }
-      const streamRequest = operationRequest("stream", {
-        pathParameters: { session_id: input.sessionId },
-      });
-      const path = streamRequest.path;
+    openPresentation(input) {
       const streamEndpoint = SESSION_HTTP_ENDPOINTS.stream;
-      let cursor = initialCursor.cursor;
-      const streamEpoch = watermark.stream_epoch;
-      let durableSeq: bigint = BigInt(watermark.durable_seq);
-      let durableEventId: string | null = null;
       let closed = false;
       let controller: AbortController | null = null;
       let retryTimer: ReturnType<typeof setTimeout> | null = null;
@@ -617,6 +616,7 @@ export function createSessionClient(options: {
       });
 
       const fail = (error: SessionClientError): void => {
+        controller?.abort();
         if (firstConnection) rejectReady(error);
         if (error.kind === "auth_required") input.onConnection({ kind: "auth_required" });
         else if (error.kind === "contract_incompatible") {
@@ -624,7 +624,7 @@ export function createSessionClient(options: {
         } else {
           input.onConnection({
             kind: "repair_required",
-            recovery: error.recovery ?? cursorPolicy.onRejected(error.status ?? 500),
+            recovery: error.recovery ?? { kind: "repair_required", reason: "cursor_rejected" },
           });
         }
       };
@@ -656,15 +656,33 @@ export function createSessionClient(options: {
 
       const connect = async (): Promise<void> => {
         if (closed) return;
-        const connectionStartCursor = cursor;
+        let resume: ReturnType<OpenAguiPresentationInput["resume"]>;
+        let streamRequest: SessionRequest;
+        try {
+          resume = input.resume();
+          if (
+            resume.headers[LAST_EVENT_ID_HEADER] !== resume.queryCursor ||
+            resume.cursorBinding.cursor !== resume.queryCursor ||
+            resume.cursorBinding.sessionId !== input.sessionId
+          ) {
+            throw new SessionClientError("contract_incompatible", "AG-UI resume authority is internally inconsistent");
+          }
+          streamRequest = operationRequest("stream", {
+            pathParameters: { session_id: input.sessionId },
+            query: { after: resume.queryCursor },
+          });
+        } catch (error) {
+          fail(new SessionClientError("contract_incompatible", "AG-UI resume authority is invalid", { cause: error }));
+          return;
+        }
         controller = new AbortController();
         input.onConnection({ kind: firstConnection ? "connecting" : "reconnecting" });
         let response: SessionStreamResponse;
         try {
           response = await options.transport.stream({
             method: streamEndpoint.method,
-            path,
-            headers: { accept: "text/event-stream", [LAST_EVENT_ID_HEADER]: cursor },
+            path: streamRequest.path,
+            headers: { accept: "text/event-stream", ...resume.headers },
             signal: controller.signal,
           });
         } catch {
@@ -686,7 +704,7 @@ export function createSessionClient(options: {
               : new SessionClientError("protocol", "Session stream problem decoding failed", { cause: error }));
             return;
           }
-          const error = responseError(streamEndpoint.method, path, {
+          const error = responseError(streamEndpoint.method, streamRequest.path, {
             status: response.status,
             headers: response.headers,
             body: problem,
@@ -716,57 +734,36 @@ export function createSessionClient(options: {
         let terminalError: SessionClientError | null = null;
         let draining = false;
         let drainingRetryAfterMs: number | undefined;
-        let deliveredThisConnection = false;
         const parser = createSseParser((frame) => {
-          if (frame.data === null || frame.event === null) return;
-          let raw: unknown;
+          if (frame.data === null) {
+            throw new SessionClientError("protocol", "AG-UI SSE frame is missing data");
+          }
           try {
-            raw = JSON.parse(frame.data);
+            const disposition = input.onFrame(Object.freeze({
+              id: frame.id,
+              event: frame.event,
+              data: frame.data,
+            }));
+            if (disposition.kind === "draining") {
+              draining = true;
+              drainingRetryAfterMs = disposition.retryAfterMs;
+              input.onConnection({
+                kind: "draining",
+                ...(disposition.retryAfterMs === undefined ? {} : { retryAfterMs: disposition.retryAfterMs }),
+              });
+              controller?.abort();
+            } else if (disposition.kind === "durable") {
+              reconnectAttempt = 0;
+            }
           } catch (error) {
-            throw new SessionClientError("protocol", "SSE data is not JSON", { cause: error });
-          }
-          const parsed = parseContract(raw, sessionStreamFrameSchema);
-          if (parsed.kind !== frame.event || parsed.session_id !== input.sessionId) {
-            throw new SessionClientError("contract_incompatible", "SSE identity mismatch");
-          }
-          if (parsed.kind === "stream.draining") {
-            if (frame.id !== null) throw new SessionClientError("protocol", "Control frame advanced durable cursor");
-            const accepted = cursorPolicy.accept(parsed.last_durable_cursor);
-            if (accepted.kind !== "ready") throw new SessionClientError("contract_incompatible", accepted.reason);
-            if (parsed.stream_epoch !== streamEpoch) {
-              throw new SessionClientError("contract_incompatible", "SSE epoch mismatch");
+            if (error instanceof AguiPresentationProtocolError && AGUI_REHYDRATION_CODES.has(error.code)) {
+              throw new SessionClientError("repair_required", "AG-UI presentation authority requires rehydration", {
+                cause: error,
+                recovery: { kind: "repair_required", reason: "cursor_conflict" },
+              });
             }
-            if (accepted.cursor !== (deliveredThisConnection ? cursor : connectionStartCursor)) {
-              throw new SessionClientError("contract_incompatible", "SSE draining cursor advanced without delivery");
-            }
-            draining = true;
-            drainingRetryAfterMs = parsed.retry_after_ms;
-            input.onConnection({ kind: "draining", control: parsed });
-            controller?.abort();
-            return;
+            throw new SessionClientError("contract_incompatible", "AG-UI presentation frame rejected", { cause: error });
           }
-          const accepted = cursorPolicy.accept(frame.id);
-          if (accepted.kind !== "ready" || frame.id !== parsed.cursor) {
-            throw new SessionClientError("contract_incompatible", "SSE cursor mismatch");
-          }
-          const nextSeq = BigInt(parsed.durable_seq);
-          const exactReplay =
-            nextSeq === durableSeq &&
-            parsed.cursor === cursor &&
-            parsed.event_id === durableEventId;
-          if (
-            parsed.stream_epoch !== streamEpoch ||
-            !exactReplay && nextSeq !== durableSeq + 1n
-          ) {
-            throw new SessionClientError("contract_incompatible", "SSE durable order mismatch");
-          }
-          durableSeq = nextSeq;
-          durableEventId = parsed.event_id;
-          cursor = accepted.cursor;
-          reconnectAttempt = 0;
-          if (exactReplay) return;
-          deliveredThisConnection = true;
-          input.onEvent(parsed, cursor);
         }, maximumSseBufferBytes, maximumSseFrameBytes);
 
         const reader = response.body.getReader();

@@ -1,23 +1,44 @@
 import {
   SessionClientError,
   type EventStreamHandle,
-  type OpenEventsInput,
   type SessionClient,
-  type SessionCursor,
   type SessionHydration,
 } from "@kokoro/session-client"
+import {
+  createAguiPresentationDecoder,
+  type OpenAguiPresentationInput,
+} from "@kokoro/session-client/agui-presentation"
 import type {
   SessionCommandResponse,
-  SessionEvent,
   SessionSnapshot,
 } from "@kokoro/session-client/contracts"
 import type { ChatPart } from "@kokoro/chat-surface"
 import { describe, expect, it, vi } from "vitest"
 
+import fixtureJson from "../../session-client/test/fixtures/root-agui-presentation-v1.json"
+
 import { createChatController } from "../src/chat-controller.js"
 import type { SessionCommandRecoveryRecord, SessionCommandRecoveryStore } from "../src/command-recovery.js"
 
 const NOW = "2026-07-29T00:00:00.000Z"
+const TEST_SESSION_ID = "session-12345678"
+const testGrant = (sessionId: string) => Object.freeze({
+  sessionId,
+  sessionContractRevision: "session-agui-stream.v1" as const,
+  presentationProfileRevision: "kokoro-agui-presentation.v1" as const,
+  cursorProfileRevision: "opaque-session-cursor-v1" as const,
+})
+const fixtureAuthority = fixtureJson.positiveCases[0]?.snapshot
+if (fixtureAuthority === undefined) throw new Error("Root AG-UI fixture missing")
+const testPresentationAuthority = (sessionId: string) => createAguiPresentationDecoder({
+  grant: testGrant(sessionId),
+  snapshotAuthority: {
+    ...fixtureAuthority,
+    sessionId,
+    runBindings: [],
+    messageBindings: [],
+  },
+}).getSnapshotAuthority()
 
 function snapshot(
   branchId: string,
@@ -50,11 +71,10 @@ function snapshot(
     costs: [],
     model_history: [],
     snapshot_watermark: {
-      cursor,
-      stream_epoch: "epoch-12345678",
-      durable_seq: durableSeq,
+      snapshot_revision_ref: cursor,
       projection_version: Number(durableSeq),
     },
+    presentation_authority: testPresentationAuthority(TEST_SESSION_ID),
   }
 }
 
@@ -85,60 +105,6 @@ function withAssistantText(base: SessionSnapshot, text: string): SessionSnapshot
       attachments: [],
       created_at: NOW,
     }],
-  }
-}
-
-function branchActivated(branchId: string): SessionEvent {
-  return {
-    kind: "branch.activated",
-    event_id: "event-12345678",
-    cursor: "signed.cursor.2",
-    session_id: "session-12345678",
-    stream_epoch: "epoch-12345678",
-    durable_seq: "2",
-    projection_version: 2,
-    schema_revision: 3,
-    recorded_at: NOW,
-    payload: { branch_id: branchId, session_version: 2 },
-  }
-}
-
-function sessionUpdated(contextPolicy: "standard" | "temporary"): SessionEvent {
-  const current = snapshot("branch-original-12345678", "signed.cursor.2", "2", contextPolicy)
-  return {
-    kind: "session.updated",
-    event_id: "event-session-updated-12345678",
-    cursor: "signed.cursor.2",
-    session_id: current.session.session_id,
-    stream_epoch: "epoch-12345678",
-    durable_seq: "2",
-    projection_version: 2,
-    schema_revision: 3,
-    recorded_at: NOW,
-    payload: { session: current.session },
-  }
-}
-
-function branchCreated(branchId: string): SessionEvent {
-  return {
-    kind: "branch.created",
-    event_id: "event-branch-created-12345678",
-    cursor: "signed.cursor.2",
-    session_id: "session-12345678",
-    stream_epoch: "epoch-12345678",
-    durable_seq: "2",
-    projection_version: 1,
-    schema_revision: 3,
-    recorded_at: NOW,
-    payload: {
-      branch: {
-        branch_id: branchId,
-        parent_branch_id: "branch-original-12345678",
-        origin: "fork",
-        version: 1,
-        created_at: NOW,
-      },
-    },
   }
 }
 
@@ -210,19 +176,27 @@ function clientFixture(input: Readonly<{
   decideAction?: SessionClient["decideAction"]
   decidePlan?: SessionClient["decidePlan"]
 }>) {
-  const streams: OpenEventsInput[] = []
+  const streams: OpenAguiPresentationInput[] = []
   const streamHandles: EventStreamHandle[] = []
   const unavailable = async (..._args: readonly unknown[]): Promise<never> => {
     throw new Error("operation is outside this fixture")
   }
+  let hydrationCount = 0
   const client = {
     fetchSnapshot: input.fetchSnapshot,
-    hydrate: input.hydrate ?? vi.fn(async (): Promise<SessionHydration> => ({
-      kind: "ready",
-      snapshot: input.initial,
-      watermark: input.initial.snapshot_watermark,
-      cursor: input.initial.snapshot_watermark.cursor as SessionCursor,
-    })),
+    hydrate: input.hydrate ?? vi.fn(async (_sessionId, options): Promise<SessionHydration> => {
+      const next = hydrationCount === 0
+        ? input.initial
+        : await input.fetchSnapshot(input.initial.session.session_id, options)
+      hydrationCount += 1
+      if (next === null) return { kind: "not_found" }
+      return {
+        kind: "ready",
+        snapshot: next,
+        grant: testGrant(next.session.session_id),
+        snapshotAuthority: testPresentationAuthority(next.session.session_id),
+      }
+    }),
     listSessions: unavailable,
     createSession: input.createSession ?? unavailable,
     submitMessage: input.submitMessage ?? unavailable,
@@ -243,7 +217,7 @@ function clientFixture(input: Readonly<{
     createFolder: unavailable,
     updateFolder: unavailable,
     deleteFolder: unavailable,
-    openEvents(eventInput: OpenEventsInput): EventStreamHandle {
+    openPresentation(eventInput: OpenAguiPresentationInput): EventStreamHandle {
       streams.push(eventInput)
       const handle = { ready: Promise.resolve(), close: vi.fn() }
       streamHandles.push(handle)
@@ -263,7 +237,6 @@ describe("Chat recovery controller", () => {
       assistant_message_id: "message-assistant-12345678",
       execution_status: "running" as const,
       cost_status: "committed" as const,
-      last_durable_cursor: "signed.cursor.1",
       projection_version: 1,
     }
     const invalid: SessionSnapshot = { ...withAssistantText(valid, "must not render"), branches: [] }
@@ -530,8 +503,8 @@ describe("Chat recovery controller", () => {
     const hydrate = vi.fn<SessionClient["hydrate"]>(async () => ({
       kind: "ready",
       snapshot: initial,
-      watermark: initial.snapshot_watermark,
-      cursor: initial.snapshot_watermark.cursor as SessionCursor,
+      grant: testGrant(initial.session.session_id),
+      snapshotAuthority: testPresentationAuthority(initial.session.session_id),
     }))
     const createSession = vi.fn<SessionClient["createSession"]>(async (body) =>
       appliedSessionCreation(body.command, "standard"))
@@ -625,8 +598,8 @@ describe("Chat recovery controller", () => {
         return Promise.resolve({
           kind: "ready",
           snapshot: initial,
-          watermark: initial.snapshot_watermark,
-          cursor: initial.snapshot_watermark.cursor as SessionCursor,
+          grant: testGrant(initial.session.session_id),
+          snapshotAuthority: testPresentationAuthority(initial.session.session_id),
         })
       }
       firstSignal = requestOptions?.signal
@@ -716,7 +689,6 @@ describe("Chat recovery controller", () => {
         assistant_message_id: messageId,
         execution_status: "paused",
         cost_status: "committed",
-        last_durable_cursor: base.snapshot_watermark.cursor,
         projection_version: 2,
       }],
       run_launches: [{
@@ -823,7 +795,6 @@ describe("Chat recovery controller", () => {
         assistant_message_id: messageId,
         execution_status: "paused",
         cost_status: "committed",
-        last_durable_cursor: base.snapshot_watermark.cursor,
         projection_version: 1,
       }],
     }
@@ -891,7 +862,7 @@ describe("Chat recovery controller", () => {
     matching.close()
   })
 
-  it("exposes one projection authority for live session and branch metadata", async () => {
+  it("exposes one projection authority for snapshot session and branch metadata", async () => {
     const initial: SessionSnapshot = {
       ...snapshot("branch-original-12345678", "signed.cursor.1", "1", "standard"),
       branches: [{
@@ -901,7 +872,7 @@ describe("Chat recovery controller", () => {
         created_at: NOW,
       }],
     }
-    const { client, streams } = clientFixture({
+    const { client } = clientFixture({
       initial,
       fetchSnapshot: vi.fn(async () => initial),
     })
@@ -920,27 +891,41 @@ describe("Chat recovery controller", () => {
       snapshotRevision: "signed.cursor.1",
     })
 
-    streams[0]?.onEvent({
-      ...sessionUpdated("standard"),
-      payload: {
-        session: {
-          ...initial.session,
-          title: "Renamed live",
-          version: 2,
-        },
-      },
-    }, "signed.cursor.2" as SessionCursor)
-    expect(controller.getSnapshot().projection.session).toMatchObject({
-      title: "Renamed live",
-      contextPolicy: "standard",
-      version: 2,
+    controller.close()
+  })
+
+  it("projects an official AG-UI frame through the active Controller stream", async () => {
+    const initialBase = snapshot("branch-agui-12345678", "snapshot.agui.1", "1")
+    const initial: SessionSnapshot = {
+      ...initialBase,
+      session: { ...initialBase.session, session_id: fixtureAuthority.sessionId },
+    }
+    const { client, streams } = clientFixture({
+      initial,
+      fetchSnapshot: vi.fn(async () => initial),
+    })
+    const controller = createChatController({
+      client,
+      trustedLocale: "en-US",
+      chatCatalog: null,
+      defaultProjectRef: initial.session.project_ref,
     })
 
-    streams[0]?.onEvent(branchCreated("branch-fork-12345678"), "signed.cursor.3" as SessionCursor)
-    expect(controller.getSnapshot().projection.branches).toEqual([
-      expect.objectContaining({ id: "branch-original-12345678", origin: "original" }),
-      expect.objectContaining({ id: "branch-fork-12345678", origin: "fork" }),
-    ])
+    await controller.open(initial.session.session_id)
+    const firstFrame = fixtureJson.positiveCases[0]?.frames[0]
+    if (firstFrame === undefined) throw new Error("Root AG-UI frame missing")
+    const disposition = streams[0]?.onFrame({
+      id: firstFrame.id,
+      event: firstFrame.event,
+      data: JSON.stringify(firstFrame.data),
+    })
+
+    expect(disposition).toEqual({ kind: "durable" })
+    expect(controller.getSnapshot().projection).toMatchObject({
+      presentationRunId: firstFrame.data.event.runId,
+      presentationRunState: "running",
+      connection: { kind: "live" },
+    })
     controller.close()
   })
 
@@ -1115,16 +1100,6 @@ describe("Chat recovery controller", () => {
       hydrate: vi.fn<SessionClient["hydrate"]>(async () => ({ kind: "not_found" })),
       expectedPhase: "not_found" as const,
       expectedFailure: null,
-    },
-    {
-      caseName: "snapshot repair",
-      hydrate: vi.fn<SessionClient["hydrate"]>(async () => ({
-        kind: "repair_required",
-        snapshot: snapshot("branch-temporary-12345678", "signed.cursor.1", "1", "temporary"),
-        reason: "cursor rejected",
-      })),
-      expectedPhase: "loading" as const,
-      expectedFailure: { code: "INTERNAL_UNAVAILABLE", action: "refetch_snapshot" },
     },
   ])("keeps the applied creation identity when first hydration ends in $caseName", async ({ hydrate, expectedPhase, expectedFailure }) => {
     const temporary = snapshot("branch-temporary-12345678", "signed.cursor.1", "1", "temporary")
@@ -1327,38 +1302,9 @@ describe("Chat recovery controller", () => {
       digest_algorithm: submittedCommand?.digest_algorithm,
       request_digest: submittedCommand?.request_digest,
     })
-    expect(controller.getSnapshot().projection.snapshotRevision).toBe(refreshed.snapshot_watermark.cursor)
+    expect(controller.getSnapshot().projection.snapshotRevision).toBe(refreshed.snapshot_watermark.snapshot_revision_ref)
     expect(recoveryStore.save).not.toHaveBeenCalled()
     expect(recoveryStore.clear).not.toHaveBeenCalled()
-    controller.close()
-  })
-
-  it("fails closed when an owner event changes a Session context policy", async () => {
-    const standard = withAssistantText(
-      snapshot("branch-original-12345678", "signed.cursor.1", "1", "standard"),
-      "sensitive plaintext",
-    )
-    const { client, streams, streamHandles } = clientFixture({
-      initial: standard,
-      fetchSnapshot: vi.fn(async () => standard),
-    })
-    const controller = createChatController({
-      client,
-      trustedLocale: "en-US",
-      chatCatalog: null,
-      defaultProjectRef: "project-12345678",
-    })
-
-    await controller.open(standard.session.session_id)
-    streams[0]?.onEvent(sessionUpdated("temporary"), "signed.cursor.2" as SessionCursor)
-
-    expect(streamHandles[0]?.close).toHaveBeenCalledOnce()
-    expect(controller.getSnapshot()).toMatchObject({
-      phase: "not_found",
-      sessionId: null,
-      projection: { messages: [] },
-      failure: { code: "CLIENT_CONTRACT_UPGRADE_REQUIRED", action: "upgrade_client" },
-    })
     controller.close()
   })
 
@@ -1408,8 +1354,8 @@ describe("Chat recovery controller", () => {
       return {
         kind: "ready",
         snapshot: selected,
-        watermark: selected.snapshot_watermark,
-        cursor: selected.snapshot_watermark.cursor as SessionCursor,
+        grant: testGrant(selected.session.session_id),
+        snapshotAuthority: testPresentationAuthority(selected.session.session_id),
       }
     })
     const { client } = clientFixture({ initial: first, fetchSnapshot: vi.fn(async () => first), hydrate })
@@ -1440,12 +1386,14 @@ describe("Chat recovery controller", () => {
     expect(published.find((value) =>
       value.phase === "loading" && value.sessionId === "session-second-12345678",
     )?.projection).toMatchObject({ messages: [], connection: { kind: "connecting" } })
-    expect(published.find((value) => value.projection.snapshotRevision === second.snapshot_watermark.cursor)?.projection.messages[0]?.parts[0])
+    expect(published.find((value) =>
+      value.projection.snapshotRevision === second.snapshot_watermark.snapshot_revision_ref,
+    )?.projection.messages[0]?.parts[0])
       .toMatchObject({ text: "second session" })
     controller.close()
   })
 
-  it("repairs a conflicting Run projection version instead of regressing visible state", async () => {
+  it("rehydrates a terminal Run from authoritative snapshot repair", async () => {
     const base = snapshot("branch-original-12345678", "signed.cursor.1", "1")
     const initial: SessionSnapshot = {
       ...base,
@@ -1466,14 +1414,17 @@ describe("Chat recovery controller", () => {
         assistant_message_id: "message-assistant-12345678",
         execution_status: "running",
         cost_status: "committed",
-        last_durable_cursor: "signed.cursor.1",
         projection_version: 2,
       }],
     }
     const repaired: SessionSnapshot = {
       ...initial,
       runs: [{ ...initial.runs[0]!, execution_status: "completed", projection_version: 3 }],
-      snapshot_watermark: { ...initial.snapshot_watermark, cursor: "signed.cursor.2", durable_seq: "2" },
+      snapshot_watermark: {
+        ...initial.snapshot_watermark,
+        snapshot_revision_ref: "signed.cursor.2",
+        projection_version: 2,
+      },
     }
     const fetchSnapshot = vi.fn(async () => repaired)
     const { client, streams } = clientFixture({ initial, fetchSnapshot })
@@ -1485,26 +1436,16 @@ describe("Chat recovery controller", () => {
     })
 
     await controller.open("session-12345678")
-    streams[0]?.onEvent({
-      kind: "run.view.updated",
-      event_id: "event-conflict-12345678",
-      cursor: "signed.cursor.2",
-      session_id: "session-12345678",
-      stream_epoch: "epoch-12345678",
-      durable_seq: "2",
-      projection_version: 2,
-      schema_revision: 3,
-      recorded_at: NOW,
-      payload: { run: { ...initial.runs[0]!, execution_status: "failed" } },
-    }, "signed.cursor.2" as SessionCursor)
+    streams[0]?.onConnection({ kind: "repair_required", recovery: { kind: "rehydrate", reason: "cursor_conflict" } })
 
     await vi.waitFor(() => expect(fetchSnapshot).toHaveBeenCalledOnce())
-    await vi.waitFor(() => expect(controller.getSnapshot().projection.snapshotRevision).toBe(repaired.snapshot_watermark.cursor))
+    await vi.waitFor(() => expect(controller.getSnapshot().projection.snapshotRevision)
+      .toBe(repaired.snapshot_watermark.snapshot_revision_ref))
     expect(controller.getSnapshot().projection.activeRunId).toBeNull()
     controller.close()
   })
 
-  it("repairs a projection-invalidating event from a fresh authoritative snapshot", async () => {
+  it("repairs from a fresh authoritative snapshot when the AG-UI lane requests rehydration", async () => {
     const initial = snapshot("branch-original-12345678", "signed.cursor.1", "1")
     const repairedBranch = snapshot("branch-repaired-12345678", "signed.cursor.2", "2")
     const repaired = { ...repairedBranch, branches: [...initial.branches, ...repairedBranch.branches] }
@@ -1518,9 +1459,9 @@ describe("Chat recovery controller", () => {
     })
 
     await controller.open("session-12345678")
-    streams[0]?.onEvent(branchActivated("branch-repaired-12345678"), "signed.cursor.2" as SessionCursor)
+    streams[0]?.onConnection({ kind: "repair_required", recovery: { kind: "rehydrate", reason: "cursor_conflict" } })
     await vi.waitFor(() => expect(fetchSnapshot).toHaveBeenCalledOnce())
-    await vi.waitFor(() => expect(controller.getSnapshot().projection.snapshotRevision).toBe(repaired.snapshot_watermark.cursor))
+    await vi.waitFor(() => expect(controller.getSnapshot().projection.snapshotRevision).toBe(repaired.snapshot_watermark.snapshot_revision_ref))
 
     expect(streams).toHaveLength(2)
     expect(controller.getSnapshot().projection).toMatchObject({
@@ -1566,8 +1507,7 @@ describe("Chat recovery controller", () => {
       }],
       snapshot_watermark: {
         ...initial.snapshot_watermark,
-        cursor: "signed.cursor.3",
-        durable_seq: "3",
+        snapshot_revision_ref: "signed.cursor.3",
         projection_version: 3,
       },
     }
@@ -1585,33 +1525,19 @@ describe("Chat recovery controller", () => {
     })
 
     await controller.open("session-12345678")
-    const gap: SessionEvent = {
-      kind: "message.part.updated",
-      event_id: "event-gap-12345678",
-      cursor: "signed.cursor.2",
-      session_id: "session-12345678",
-      stream_epoch: "epoch-12345678",
-      durable_seq: "2",
-      projection_version: 2,
-      schema_revision: 3,
-      recorded_at: NOW,
-      payload: {
-        part: { ...message.parts[0]!, version: 3, lifecycle: "completed", payload: { spans: [{ text: "skipped" }] } },
-      },
-    }
-    streams[0]?.onEvent(gap, "signed.cursor.2" as SessionCursor)
-    streams[0]?.onEvent(gap, "signed.cursor.2" as SessionCursor)
+    streams[0]?.onConnection({ kind: "repair_required", recovery: { kind: "rehydrate", reason: "cursor_gap" } })
+    streams[0]?.onConnection({ kind: "repair_required", recovery: { kind: "rehydrate", reason: "cursor_gap" } })
 
     await vi.waitFor(() => expect(fetchSnapshot).toHaveBeenCalledOnce())
     expect(streams).toHaveLength(1)
     expect(controller.getSnapshot().projection).toMatchObject({
       messages: [{ parts: [{ version: 1, text: "hello" }] }],
-      repair: { required: true, reason: "part_version_gap" },
+      repair: { required: true, reason: "snapshot_repair_in_progress" },
     })
 
     if (resolveRepair === undefined) throw new Error("repair resolver missing")
     resolveRepair(repaired)
-    await vi.waitFor(() => expect(controller.getSnapshot().projection.snapshotRevision).toBe(repaired.snapshot_watermark.cursor))
+    await vi.waitFor(() => expect(controller.getSnapshot().projection.snapshotRevision).toBe(repaired.snapshot_watermark.snapshot_revision_ref))
     expect(fetchSnapshot).toHaveBeenCalledOnce()
     expect(streams).toHaveLength(2)
     expect(controller.getSnapshot().projection).toMatchObject({
@@ -1619,22 +1545,6 @@ describe("Chat recovery controller", () => {
       repair: { required: false },
     })
 
-    const repairedProjection = controller.getSnapshot().projection
-    streams[1]?.onEvent({
-      kind: "message.part.updated",
-      event_id: "event-exact-replay-12345678",
-      cursor: "signed.cursor.4",
-      session_id: "session-12345678",
-      stream_epoch: "epoch-12345678",
-      durable_seq: "4",
-      projection_version: 4,
-      schema_revision: 3,
-      recorded_at: NOW,
-      payload: { part: repaired.messages[0]!.parts[0]! },
-    }, "signed.cursor.4" as SessionCursor)
-    await Promise.resolve()
-    expect(fetchSnapshot).toHaveBeenCalledOnce()
-    expect(controller.getSnapshot().projection).toBe(repairedProjection)
     controller.close()
   })
 
@@ -1662,7 +1572,7 @@ describe("Chat recovery controller", () => {
     }))
 
     await expect(controller.recover()).resolves.toBe(true)
-    expect(controller.getSnapshot().projection.snapshotRevision).toBe(repaired.snapshot_watermark.cursor)
+    expect(controller.getSnapshot().projection.snapshotRevision).toBe(repaired.snapshot_watermark.snapshot_revision_ref)
     expect(controller.getSnapshot().failure).toBeNull()
     controller.close()
   })
@@ -1733,7 +1643,7 @@ describe("Chat recovery controller", () => {
       request_digest: record.command.request_digest,
     })
     expect(clear).toHaveBeenCalledWith(record.command.command_id)
-    expect(controller.getSnapshot().projection.snapshotRevision).toBe(refreshed.snapshot_watermark.cursor)
+    expect(controller.getSnapshot().projection.snapshotRevision).toBe(refreshed.snapshot_watermark.snapshot_revision_ref)
     expect(controller.getSnapshot().appliedDraft).toEqual({
       sessionId: "session-12345678",
       revision: "draft-revision-12345678",

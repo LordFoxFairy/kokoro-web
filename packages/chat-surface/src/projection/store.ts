@@ -1,26 +1,22 @@
 import type { SessionConnectionState } from "@kokoro/session-client"
+import type { AguiActivityEvent } from "@kokoro/session-client/agui-presentation"
 import stableStringify from "fast-json-stable-stringify"
 import type {
   ConversationBranch,
   MessagePartEnvelope,
   MessageRecord,
-  SessionEvent,
   SessionSnapshot,
 } from "@kokoro/session-client/contracts"
-import { sessionEventContractMetadata } from "@kokoro/session-client/contracts"
 
 import {
   projectArtifactOwnerState,
   projectCostOwnerState,
   projectMediaOperationOwnerState,
-  validateArtifactTransition,
-  validateCostTransition,
-  validateMediaOperationTransition,
   type ChatArtifactOwnerState,
   type ChatCostOwnerState,
   type ChatMediaOperationOwnerState,
-  type OwnerTransitionConflict,
 } from "./owner-state.js"
+import type { ChatAguiPresentationMutation } from "../runtime/agui-presentation-adapter.js"
 
 type ChatPartBase = {
   readonly id: string
@@ -29,12 +25,23 @@ type ChatPartBase = {
   readonly lifecycle: MessagePartEnvelope["lifecycle"]
 }
 
+type ChatActivityPart<Event extends AguiActivityEvent = AguiActivityEvent> =
+  Event extends AguiActivityEvent
+    ? ChatPartBase & Readonly<{
+        kind: "activity"
+        activityType: Event["activityType"]
+        content: Event["content"]
+        replace: true
+      }>
+    : never
+
 type PartPayload<Kind extends MessagePartEnvelope["kind"]> =
   Extract<MessagePartEnvelope, { readonly kind: Kind }>["payload"]
 
 export type ChatPart = ChatPartBase & (
   | { readonly kind: "text"; readonly text: string }
   | { readonly kind: "reasoning-summary"; readonly partRef: string; readonly text: string }
+  | ChatActivityPart
   | {
       readonly kind: "citation"
       readonly sourceRef: string
@@ -128,6 +135,7 @@ export type ChatProjectionMessage = {
   readonly parentMessageId?: string
   readonly triggerMessageId?: string
   readonly runId: string | null
+  readonly presentationRunId?: string
   readonly role: "user" | "assistant"
   readonly createdAt: string
   readonly parts: readonly ChatPart[]
@@ -169,6 +177,9 @@ export type ChatProjection = {
   readonly activeRunId: string | null
   readonly activeRunProjectionVersion: number | null
   readonly activeRunState: "launching" | "running" | "paused" | "cancelling" | "outcome_unknown" | null
+  /** Browser presentation identity; never valid as a Session command Run ID. */
+  readonly presentationRunId: string | null
+  readonly presentationRunState: "starting" | "running" | "waiting" | "canceling" | null
   readonly connection: SessionConnectionState | { readonly kind: "idle" }
   readonly command: {
     readonly state: "idle" | "pending" | "conflict" | "failed"
@@ -178,7 +189,6 @@ export type ChatProjection = {
 }
 
 export type ChatProjectionMutation =
-  | { readonly type: "event"; readonly event: SessionEvent }
   | { readonly type: "connection"; readonly connection: SessionConnectionState }
   | {
       readonly type: "command"
@@ -240,31 +250,6 @@ const ACTIVE_LAUNCH_STATUSES = new Set([
 const TERMINAL_RUN_STATUSES = new Set<RunStatus>(["completed", "failed", "canceled"])
 const TERMINAL_LAUNCH_STATUSES = new Set<RunLaunchStatus>(["released", "denied", "failed"])
 
-const RUN_TRANSITIONS: Readonly<Record<Exclude<RunStatus, "outcome_unknown">, ReadonlySet<RunStatus>>> = {
-  admission_pending: new Set(["admission_pending", "waiting_prerequisite", "running", "failed", "outcome_unknown"]),
-  waiting_prerequisite: new Set(["waiting_prerequisite", "admission_pending", "running", "failed", "outcome_unknown"]),
-  running: new Set(["running", "paused", "cancelling", "completed", "failed", "canceled", "outcome_unknown"]),
-  paused: new Set(["paused", "running", "cancelling", "completed", "failed", "canceled", "outcome_unknown"]),
-  cancelling: new Set(["cancelling", "running", "completed", "failed", "canceled", "outcome_unknown"]),
-  completed: new Set(["completed"]),
-  failed: new Set(["failed"]),
-  canceled: new Set(["canceled"]),
-}
-
-const LAUNCH_TRANSITIONS: Readonly<Record<Exclude<RunLaunchStatus, "outcome_unknown">, ReadonlySet<RunLaunchStatus>>> = {
-  intent_recorded: new Set(["intent_recorded", "admission_pending", "denied", "failed", "outcome_unknown"]),
-  admission_pending: new Set(["admission_pending", "waiting_prerequisite", "reserved", "denied", "failed", "outcome_unknown"]),
-  waiting_prerequisite: new Set(["waiting_prerequisite", "admission_pending", "reserved", "denied", "failed", "outcome_unknown"]),
-  reserved: new Set(["reserved", "committed", "released", "failed", "outcome_unknown"]),
-  committed: new Set(["committed", "dispatch_pending", "released", "failed", "outcome_unknown"]),
-  dispatch_pending: new Set(["dispatch_pending", "dispatched", "released", "failed", "outcome_unknown"]),
-  dispatched: new Set(["dispatched", "event_observed", "failed", "outcome_unknown"]),
-  event_observed: new Set(["event_observed"]),
-  released: new Set(["released"]),
-  denied: new Set(["denied"]),
-  failed: new Set(["failed"]),
-}
-
 function runBinding(run: RunView): string {
   return stableStringify({
     run_id: run.run_id,
@@ -282,18 +267,6 @@ function launchBinding(launch: RunLaunch): string {
     proposed_run_id: launch.proposed_run_id,
     command_receipt_ref: launch.command_receipt_ref,
   })
-}
-
-function runTransitionAllowed(previous: RunStatus, next: RunStatus): boolean {
-  if (previous === "outcome_unknown") return true
-  if (TERMINAL_RUN_STATUSES.has(previous)) return previous === next
-  return RUN_TRANSITIONS[previous].has(next)
-}
-
-function launchTransitionAllowed(previous: RunLaunchStatus, next: RunLaunchStatus): boolean {
-  if (previous === "outcome_unknown") return true
-  if (TERMINAL_LAUNCH_STATUSES.has(previous)) return previous === next
-  return LAUNCH_TRANSITIONS[previous].has(next)
 }
 
 function emptyEnvelopeAuthority(): ProjectionEnvelopeAuthority {
@@ -385,40 +358,6 @@ function snapshotEnvelopeAuthority(snapshot: SessionSnapshot): Readonly<{
   return { authority, ...(conflict === undefined ? {} : { conflict }) }
 }
 
-type VersionedEnvelopeAdmission<Status extends string> =
-  | Readonly<{ admission: "accepted"; next: VersionedEnvelopeFingerprint<Status> }>
-  | Readonly<{ admission: "exact_replay" }>
-  | Readonly<{ admission: "conflict" }>
-
-function inspectVersionedEnvelope<Status extends string>(
-  authority: Map<string, VersionedEnvelopeFingerprint<Status>>,
-  id: string,
-  version: number,
-  envelope: unknown,
-  bindingFingerprint: string,
-  status: Status,
-  transitionAllowed: (previous: Status, next: Status) => boolean,
-): VersionedEnvelopeAdmission<Status> {
-  const fingerprint = stableStringify(envelope)
-  const current = authority.get(id)
-  if (current === undefined) {
-    if (version !== 1) return { admission: "conflict" }
-    return {
-      admission: "accepted",
-      next: { version, fingerprint, bindingFingerprint, status },
-    }
-  }
-  if (bindingFingerprint !== current.bindingFingerprint) return { admission: "conflict" }
-  if (version === current.version && fingerprint === current.fingerprint) return { admission: "exact_replay" }
-  if (version !== current.version + 1 || !transitionAllowed(current.status, status)) {
-    return { admission: "conflict" }
-  }
-  return {
-    admission: "accepted",
-    next: { version, fingerprint, bindingFingerprint, status },
-  }
-}
-
 function copyUnknown(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(copyUnknown)
   if (value !== null && typeof value === "object") {
@@ -449,6 +388,8 @@ export function createChatProjection(): ChatProjection {
     activeRunId: null,
     activeRunProjectionVersion: null,
     activeRunState: null,
+    presentationRunId: null,
+    presentationRunState: null,
     connection: { kind: "idle" },
     command: { state: "idle" },
     repair: { required: false },
@@ -666,13 +607,6 @@ function projectMessage(
   })
 }
 
-function appendMessage(
-  messages: readonly ChatProjectionMessage[],
-  message: ChatProjectionMessage,
-): readonly ChatProjectionMessage[] {
-  return Object.freeze([...messages, deepFreeze(message)])
-}
-
 function buildProjectionIndexes(messages: readonly ChatProjectionMessage[]): Readonly<{
   indexes: ProjectionIndexes
   conflict?: "message_identity_conflict" | "part_identity_conflict"
@@ -692,50 +626,6 @@ function buildProjectionIndexes(messages: readonly ChatProjectionMessage[]): Rea
     indexes: Object.freeze({ messageIndexById, partOwnerById }),
     ...(conflict === undefined ? {} : { conflict }),
   }
-}
-
-function upsertPart(
-  message: ChatProjectionMessage,
-  part: ChatPart,
-  fingerprints: PartEnvelopeFingerprints,
-): {
-  readonly message: ChatProjectionMessage
-  readonly conflict?:
-    | "part_identity_conflict"
-    | "part_version_regression"
-    | "part_version_conflict"
-    | "part_version_gap"
-    | OwnerTransitionConflict
-} {
-  const index = message.parts.findIndex((candidate) => candidate.id === part.id)
-  if (index < 0) {
-    return part.version === 1
-      ? { message: { ...message, parts: sortParts([...message.parts, part]) } }
-      : { message, conflict: "part_version_gap" }
-  }
-  const current = message.parts[index] as ChatPart
-  if (part.ordinal !== current.ordinal || part.kind !== current.kind) {
-    return { message, conflict: "part_identity_conflict" }
-  }
-  if (part.version < current.version) return { message, conflict: "part_version_regression" }
-  if (part.version === current.version) {
-    const currentFingerprint = fingerprints.get(current)
-    return currentFingerprint !== undefined && currentFingerprint === fingerprints.get(part)
-      ? { message }
-      : { message, conflict: "part_version_conflict" }
-  }
-  if (part.version !== current.version + 1) return { message, conflict: "part_version_gap" }
-  const ownerConflict = current.kind === "media-operation" && part.kind === "media-operation"
-    ? validateMediaOperationTransition(current, part)
-    : current.kind === "artifact" && part.kind === "artifact"
-      ? validateArtifactTransition(current, part)
-      : current.kind === "cost" && part.kind === "cost"
-        ? validateCostTransition(current, part)
-        : undefined
-  if (ownerConflict !== undefined) return { message, conflict: ownerConflict }
-  const next = [...message.parts]
-  next[index] = part
-  return { message: { ...message, parts: sortParts(next) } }
 }
 
 function activeMessageRecords(snapshot: SessionSnapshot): Readonly<{
@@ -836,389 +726,11 @@ function activeRun(
   }
 }
 
-function updateActivePairProjection(
-  state: ChatProjection,
-  authority: ProjectionEnvelopeAuthority,
-  pair: RunLaunchPairBinding,
-): ChatProjection | "conflict" {
-  if (pair.branchId !== state.activeBranchId) return state
-  const run = authority.runs.get(pair.runId)
-  const launch = authority.launches.get(pair.launchId)
-  if (run === undefined || launch === undefined) {
-    if (run === undefined && launch !== undefined && state.activeRunId === pair.runId && state.activeRunProjectionVersion === null) {
-      if (TERMINAL_LAUNCH_STATUSES.has(launch.status)) return { ...state, ...NO_ACTIVE_EXECUTION }
-      return {
-        ...state,
-        activeRunState: launch.status === "outcome_unknown" ? "outcome_unknown" : "launching",
-      }
-    }
-    return state
-  }
-  if (TERMINAL_RUN_STATUSES.has(run.status)) {
-    return state.activeRunId === pair.runId ? { ...state, ...NO_ACTIVE_EXECUTION } : state
-  }
-  if (
-    TERMINAL_LAUNCH_STATUSES.has(launch.status) &&
-    state.activeRunId !== pair.runId
-  ) return state
-  if (state.activeRunId !== null && state.activeRunId !== pair.runId) return "conflict"
-  return {
-    ...state,
-    activeRunId: pair.runId,
-    activeRunProjectionVersion: run.version,
-    activeRunState: run.status === "paused" || run.status === "cancelling" || run.status === "outcome_unknown"
-      ? run.status
-      : "running",
-  }
-}
-
-function activePairProjectionWouldConflict(
-  state: ChatProjection,
-  authority: ProjectionEnvelopeAuthority,
-  pair: RunLaunchPairBinding,
-  nextRun?: VersionedEnvelopeFingerprint<RunStatus>,
-  nextLaunch?: VersionedEnvelopeFingerprint<RunLaunchStatus>,
-): boolean {
-  if (pair.branchId !== state.activeBranchId) return false
-  const run = nextRun ?? authority.runs.get(pair.runId)
-  const launch = nextLaunch ?? authority.launches.get(pair.launchId)
-  if (run === undefined || launch === undefined || TERMINAL_RUN_STATUSES.has(run.status)) return false
-  if (TERMINAL_LAUNCH_STATUSES.has(launch.status) && state.activeRunId !== pair.runId) return false
-  return state.activeRunId !== null && state.activeRunId !== pair.runId
-}
-
-function activeMessageExtension(
-  state: ChatProjection,
-  record: MessageRecord,
-): Readonly<{
-  session: ChatSessionMetadata
-  branches: readonly ChatBranchSummary[]
-}> | null {
-  const session = state.session
-  const activeBranchId = state.activeBranchId
-  if (session === null || activeBranchId === null || record.branch_id !== activeBranchId || record.role === "system") {
-    return null
-  }
-  const branchIndex = state.branches.findIndex((branch) => branch.id === activeBranchId)
-  const branch = state.branches[branchIndex]
-  if (branch === undefined) return null
-  const first = state.messages[0]
-  const leaf = state.messages.at(-1)
-  const empty = state.messages.length === 0
-  const lineageComplete = empty
-    ? branch.rootMessageId === undefined && branch.leafMessageId === undefined && session.activeLeafMessageId === undefined
-    : first !== undefined && leaf !== undefined &&
-      branch.rootMessageId === first.id &&
-      branch.leafMessageId === leaf.id &&
-      session.activeLeafMessageId === leaf.id &&
-      state.messages.every((message, index) =>
-        message.branchId === activeBranchId &&
-        (index === 0 ? message.parentMessageId === undefined : message.parentMessageId === state.messages[index - 1]?.id))
-  if (
-    !lineageComplete ||
-    record.ordinal !== state.messages.length ||
-    (empty ? record.parent_message_id !== undefined : record.parent_message_id !== leaf?.id)
-  ) return null
-  const nextBranch: ChatBranchSummary = {
-    ...branch,
-    rootMessageId: branch.rootMessageId ?? record.message_id,
-    leafMessageId: record.message_id,
-  }
-  const branches = [...state.branches]
-  branches[branchIndex] = deepFreeze(nextBranch)
-  return {
-    session: { ...session, activeLeafMessageId: record.message_id },
-    branches: Object.freeze(branches),
-  }
-}
-
-function reduceEvent(
-  state: ChatProjection,
-  event: SessionEvent,
-  fingerprints: PartEnvelopeFingerprints,
-  envelopes: ProjectionEnvelopeAuthority,
-  indexes: ProjectionIndexes,
-): ChatProjection {
-  const session = state.session
-  if (session === null) {
-    return { ...state, repair: { required: true, reason: "event_without_snapshot" } }
-  }
-  if (event.schema_revision !== sessionEventContractMetadata.schemaVersion) {
-    return { ...state, repair: { required: true, reason: "event_schema_revision_conflict" } }
-  }
-  if (event.session_id !== session.id) {
-    return { ...state, repair: { required: true, reason: "session_identity_conflict" } }
-  }
-  let next: ChatProjection
-  switch (event.kind) {
-    case "message.created": {
-      const record = event.payload.message
-      const fingerprint = stableStringify(record)
-      const currentFingerprint = envelopes.messages.get(record.message_id)
-      if (currentFingerprint !== undefined) {
-        if (currentFingerprint !== fingerprint) {
-          return { ...state, repair: { required: true, reason: "message_identity_conflict" } }
-        }
-        next = state
-        break
-      }
-      if (record.branch_id !== state.activeBranchId) {
-        if (!state.branches.some((branch) => branch.id === record.branch_id)) {
-          return { ...state, repair: { required: true, reason: "message_lineage_conflict" } }
-        }
-        envelopes.messages.set(record.message_id, fingerprint)
-        next = state
-        break
-      }
-      const extension = activeMessageExtension(state, record)
-      if (extension === null) {
-        return { ...state, repair: { required: true, reason: "message_lineage_conflict" } }
-      }
-      const message = projectMessage(record, fingerprints)
-      if (message === null) {
-        return { ...state, repair: { required: true, reason: "message_lineage_conflict" } }
-      }
-      envelopes.messages.set(record.message_id, fingerprint)
-      next = {
-        ...state,
-        session: extension.session,
-        branches: extension.branches,
-        messages: appendMessage(state.messages, message),
-        repair: state.repair.required
-          ? state.repair
-          : { required: true, reason: "active_branch_authority_stale" },
-      }
-      break
-    }
-    case "message.part.updated": {
-      const part = event.payload.part
-      const ownerId = indexes.partOwnerById.get(part.part_id)
-      if (ownerId !== undefined && ownerId !== part.message_id) {
-        return { ...state, repair: { required: true, reason: "part_identity_conflict" } }
-      }
-      const index = indexes.messageIndexById.get(part.message_id)
-      if (index === undefined) {
-        return { ...state, repair: { required: true, reason: "message_part_without_message" } }
-      }
-      const currentMessage = state.messages[index] as ChatProjectionMessage
-      const result = upsertPart(currentMessage, projectPart(part, fingerprints), fingerprints)
-      if (result.conflict !== undefined) {
-        return { ...state, repair: { required: true, reason: result.conflict } }
-      }
-      if (result.message === currentMessage) {
-        next = state
-      } else {
-        const messages = [...state.messages]
-        messages[index] = deepFreeze(result.message)
-        next = { ...state, messages: Object.freeze(messages) }
-      }
-      break
-    }
-    case "run.launch.updated": {
-      const launch = event.payload.launch
-      const pair = launchPair(launch)
-      if (!pairBindingMatches(envelopes, pair)) {
-        return { ...state, repair: { required: true, reason: "run_launch_binding_conflict" } }
-      }
-      const inspected = inspectVersionedEnvelope(
-        envelopes.launches,
-        launch.launch_id,
-        launch.version,
-        launch,
-        launchBinding(launch),
-        launch.status,
-        launchTransitionAllowed,
-      )
-      if (inspected.admission === "conflict") {
-        return { ...state, repair: { required: true, reason: "run_launch_version_conflict" } }
-      }
-      if (inspected.admission === "exact_replay") return state
-      if (activePairProjectionWouldConflict(state, envelopes, pair, undefined, inspected.next)) {
-        return { ...state, repair: { required: true, reason: "run_launch_binding_conflict" } }
-      }
-      commitPairBinding(envelopes, pair)
-      envelopes.launches.set(launch.launch_id, inspected.next)
-      const projected = updateActivePairProjection(state, envelopes, pair)
-      if (projected === "conflict") {
-        return { ...state, repair: { required: true, reason: "run_launch_binding_conflict" } }
-      }
-      next = projected
-      break
-    }
-    case "run.view.updated": {
-      const run = event.payload.run
-      const pair = runPair(run)
-      if (!pairBindingMatches(envelopes, pair)) {
-        return { ...state, repair: { required: true, reason: "run_launch_binding_conflict" } }
-      }
-      const inspected = inspectVersionedEnvelope(
-        envelopes.runs,
-        run.run_id,
-        run.projection_version,
-        run,
-        runBinding(run),
-        run.execution_status,
-        runTransitionAllowed,
-      )
-      if (inspected.admission === "conflict") {
-        return { ...state, repair: { required: true, reason: "run_projection_version_conflict" } }
-      }
-      if (inspected.admission === "exact_replay") return state
-      if (activePairProjectionWouldConflict(state, envelopes, pair, inspected.next)) {
-        return { ...state, repair: { required: true, reason: "run_launch_binding_conflict" } }
-      }
-      if (run.branch_id !== state.activeBranchId) {
-        commitPairBinding(envelopes, pair)
-        envelopes.runs.set(run.run_id, inspected.next)
-        next = state
-        break
-      }
-      commitPairBinding(envelopes, pair)
-      envelopes.runs.set(run.run_id, inspected.next)
-      const projected = updateActivePairProjection(state, envelopes, pair)
-      if (projected === "conflict") {
-        return { ...state, repair: { required: true, reason: "run_launch_binding_conflict" } }
-      }
-      const active = ACTIVE_RUN_STATUSES.has(run.execution_status)
-      const messages = state.messages.map((message) =>
-        message.runId === run.run_id && !active
-          ? { ...message, status: run.execution_status === "completed" ? "complete" as const : "incomplete" as const }
-          : message,
-      )
-      next = {
-        ...projected,
-        messages,
-      }
-      break
-    }
-    case "run.control.updated": {
-      const control = event.payload.control
-      if (control.run_id !== state.activeRunId || control.kind !== "cancel") {
-        next = state
-        break
-      }
-      if (["pending", "persisted", "applied", "outcome_unknown"].includes(control.status)) {
-        next = { ...state, activeRunState: control.status === "outcome_unknown" ? "outcome_unknown" : "cancelling" }
-        break
-      }
-      next = control.status === "failed" ? { ...state, activeRunState: "running" } : state
-      break
-    }
-    case "branch.activated": {
-      if (!state.branches.some((branch) => branch.id === event.payload.branch_id)) {
-        return { ...state, repair: { required: true, reason: "branch_activation_unknown" } }
-      }
-      if (event.payload.session_version < session.version) {
-        return { ...state, repair: { required: true, reason: "session_version_regression" } }
-      }
-      if (event.payload.session_version > session.version + 1) {
-        return { ...state, repair: { required: true, reason: "session_version_gap" } }
-      }
-      if (event.payload.session_version === session.version) {
-        const activeLeafMessageId = event.payload.active_leaf_message_id
-        if (
-          event.payload.branch_id !== state.activeBranchId ||
-          activeLeafMessageId !== session.activeLeafMessageId
-        ) {
-          return { ...state, repair: { required: true, reason: "session_version_conflict" } }
-        }
-        next = state
-        break
-      }
-      next = {
-        ...state,
-        session: {
-          ...session,
-          version: event.payload.session_version,
-          ...(event.payload.active_leaf_message_id === undefined
-            ? { activeLeafMessageId: undefined }
-            : { activeLeafMessageId: event.payload.active_leaf_message_id }),
-        },
-        messages: [],
-        activeBranchId: event.payload.branch_id,
-        activeRunId: null,
-        activeRunProjectionVersion: null,
-        activeRunState: null,
-        repair: { required: true, reason: "active_branch_changed_refetch_snapshot" },
-      }
-      break
-    }
-    case "session.updated": {
-      const updated = projectSessionMetadata(event.payload.session)
-      if (
-        updated.id !== session.id ||
-        updated.projectRef !== session.projectRef ||
-        updated.contextPolicy !== session.contextPolicy ||
-        updated.version < session.version ||
-        updated.version > session.version + 1
-      ) {
-        return { ...state, repair: { required: true, reason: "session_metadata_conflict" } }
-      }
-      if (updated.version === session.version) {
-        if (
-          stableStringify(updated) !== stableStringify(session) ||
-          event.payload.session.active_branch_id !== state.activeBranchId
-        ) {
-          return { ...state, repair: { required: true, reason: "session_metadata_conflict" } }
-        }
-        next = state
-        break
-      }
-      if (event.payload.session.active_branch_id === state.activeBranchId) {
-        if (updated.activeLeafMessageId !== session.activeLeafMessageId) {
-          return { ...state, repair: { required: true, reason: "active_leaf_changed_refetch_snapshot" } }
-        }
-        next = { ...state, session: updated }
-        break
-      }
-      if (!state.branches.some((branch) => branch.id === event.payload.session.active_branch_id)) {
-        return { ...state, repair: { required: true, reason: "session_active_branch_unknown" } }
-      }
-      next = {
-        ...state,
-        session: updated,
-        messages: [],
-        activeBranchId: event.payload.session.active_branch_id,
-        activeRunId: null,
-        activeRunProjectionVersion: null,
-        activeRunState: null,
-        repair: { required: true, reason: "active_branch_changed_refetch_snapshot" },
-      }
-      break
-    }
-    case "branch.created": {
-      const branch = projectBranchSummary(event.payload.branch)
-      if (branch.version !== 1) {
-        return { ...state, repair: { required: true, reason: "branch_initial_version_conflict" } }
-      }
-      const existing = state.branches.find((candidate) => candidate.id === branch.id)
-      if (existing !== undefined) {
-        if (stableStringify(existing) !== stableStringify(branch)) {
-          return { ...state, repair: { required: true, reason: "branch_identity_conflict" } }
-        }
-        next = state
-        break
-      }
-      if (branch.parentId !== undefined && !state.branches.some((candidate) => candidate.id === branch.parentId)) {
-        return { ...state, repair: { required: true, reason: "branch_parent_unknown" } }
-      }
-      next = { ...state, branches: Object.freeze([...state.branches, deepFreeze(branch)]) }
-      break
-    }
-    case "run.cost.updated":
-    case "command.receipt.updated":
-      next = state
-      break
-  }
-  return next
-}
-
 function reduceChatProjection(
   state: ChatProjection,
   action: ChatProjectionAction,
   fingerprints: PartEnvelopeFingerprints,
   envelopes: ProjectionEnvelopeAuthority,
-  indexes: ProjectionIndexes,
 ): ChatProjection {
   switch (action.type) {
     case "snapshot": {
@@ -1240,7 +752,7 @@ function reduceChatProjection(
           .map((message) => projectMessage(message, fingerprints))
           .filter((message): message is ChatProjectionMessage => message !== null) : [],
         activeBranchId: action.snapshot.session.active_branch_id,
-        snapshotRevision: action.snapshot.snapshot_watermark.cursor,
+        snapshotRevision: action.snapshot.snapshot_watermark.snapshot_revision_ref,
         ...activeExecution.execution,
         repair: !branchIdentityComplete
           ? { required: true, reason: "branch_identity_conflict" }
@@ -1253,8 +765,6 @@ function reduceChatProjection(
                 : { required: true, reason: activeExecution.conflict },
       }
     }
-    case "event":
-      return reduceEvent(state, action.event, fingerprints, envelopes, indexes)
     case "connection":
       return { ...state, connection: copyUnknown(action.connection) as SessionConnectionState }
     case "command":
@@ -1264,12 +774,250 @@ function reduceChatProjection(
   }
 }
 
+function presentationVersion(value: string): number | null {
+  const version = Number(value)
+  return Number.isSafeInteger(version) && version > 0 ? version : null
+}
+
+function activityIdentity(
+  event: Extract<ChatAguiPresentationMutation, { type: "agui.activity" }>,
+): string {
+  switch (event.activityType) {
+    case "kokoro.safe-summary.v1": return event.content.partRef
+    case "kokoro.tool-preview.v1": return event.content.toolCallRef
+    case "kokoro.hitl.v1": return event.content.ownerRef
+    case "kokoro.plan.v1": return event.content.planRef
+    case "kokoro.subagent.v1": return event.content.subagentRef
+    case "kokoro.media.v1": return event.content.operationRef
+    case "kokoro.artifact.v1": return event.content.artifactVersionRef
+    case "kokoro.cost.v1": return event.content.costProjectionRef
+    case "kokoro.notice.v1": return event.content.noticeRef
+    case "kokoro.error.v1": return event.content.errorRef
+  }
+}
+
+function presentationMessageIndex(state: ChatProjection, messageId: string): number {
+  return state.messages.findIndex((message) => message.id === messageId)
+}
+
+function appendPresentationMessage(
+  state: ChatProjection,
+  mutation: Extract<ChatAguiPresentationMutation, { type: "agui.text"; phase: "start" }>,
+): ChatProjection {
+  if (presentationMessageIndex(state, mutation.presentationMessageId) >= 0) return state
+  const branchId = state.activeBranchId
+  const session = state.session
+  if (branchId === null || session === null || mutation.runBindingRef === undefined) {
+    return { ...state, repair: { required: true, reason: "agui_message_owner_missing" } }
+  }
+  const branchIndex = state.branches.findIndex((branch) => branch.id === branchId)
+  const branch = state.branches[branchIndex]
+  if (branch === undefined) return { ...state, repair: { required: true, reason: "agui_branch_owner_missing" } }
+  const parentMessageId = state.messages.at(-1)?.id
+  const message: ChatProjectionMessage = {
+    id: mutation.presentationMessageId,
+    branchId,
+    ...(parentMessageId === undefined ? {} : { parentMessageId }),
+    runId: state.activeRunId,
+    ...(state.presentationRunId === null ? {} : { presentationRunId: state.presentationRunId }),
+    role: "assistant",
+    createdAt: mutation.source.recordedAt,
+    parts: [{
+      id: `agui.text:${mutation.presentationMessageId}`,
+      ordinal: 0,
+      version: presentationVersion(mutation.source.projectionVersion) ?? 1,
+      lifecycle: "streaming",
+      kind: "text",
+      text: "",
+    }],
+    attachments: [],
+    status: "running",
+  }
+  const branches = [...state.branches]
+  branches[branchIndex] = {
+    ...branch,
+    rootMessageId: branch.rootMessageId ?? message.id,
+    leafMessageId: message.id,
+  }
+  return {
+    ...state,
+    session: { ...session, activeLeafMessageId: message.id },
+    branches,
+    messages: [...state.messages, message],
+  }
+}
+
+function updatePresentationMessage(
+  state: ChatProjection,
+  messageId: string,
+  update: (message: ChatProjectionMessage) => ChatProjectionMessage,
+): ChatProjection {
+  const index = presentationMessageIndex(state, messageId)
+  if (index < 0) return { ...state, repair: { required: true, reason: "agui_message_owner_missing" } }
+  const current = state.messages[index]
+  if (current === undefined) return state
+  const messages = [...state.messages]
+  messages[index] = update(current)
+  return { ...state, messages }
+}
+
+function reducePresentation(
+  state: ChatProjection,
+  mutation: ChatAguiPresentationMutation,
+): ChatProjection {
+  if (!mutation.durable) {
+    return {
+      ...state,
+      connection: {
+        kind: "draining",
+        ...(mutation.retryAfterMs === undefined ? {} : { retryAfterMs: mutation.retryAfterMs }),
+      },
+    }
+  }
+  const version = presentationVersion(mutation.source.projectionVersion)
+  if (version === null) return { ...state, repair: { required: true, reason: "agui_projection_version_invalid" } }
+  switch (mutation.type) {
+    case "agui.lifecycle": {
+      if (mutation.phase === "run-started") {
+        return {
+          ...state,
+          presentationRunId: mutation.runId,
+          presentationRunState: "running",
+        }
+      }
+      const status = mutation.phase === "run-finished" ? "complete" as const : "incomplete" as const
+      return {
+        ...state,
+        presentationRunId: null,
+        presentationRunState: null,
+        messages: state.messages.map((message) =>
+          message.presentationRunId === state.presentationRunId ? { ...message, status } : message),
+      }
+    }
+    case "agui.text": {
+      if (mutation.phase === "start") return appendPresentationMessage(state, mutation)
+      if (mutation.phase === "content") {
+        return updatePresentationMessage(state, mutation.presentationMessageId, (message) => ({
+          ...message,
+          parts: message.parts.map((part) => part.kind === "text"
+            ? { ...part, text: part.text + mutation.delta, version }
+            : part),
+        }))
+      }
+      return updatePresentationMessage(state, mutation.presentationMessageId, (message) => ({
+        ...message,
+        parts: message.parts.map((part) => part.kind === "text"
+          ? { ...part, lifecycle: "completed" as const, version }
+          : part),
+        status: "complete",
+      }))
+    }
+    case "agui.activity": {
+      return updatePresentationMessage(state, mutation.presentationMessageId, (message) => {
+        const id = `agui.activity:${mutation.activityType}:${activityIdentity(mutation)}`
+        const existingIndex = message.parts.findIndex((part) => part.id === id)
+        const part: ChatActivityPart = {
+          id,
+          ordinal: existingIndex < 0 ? message.parts.length : message.parts[existingIndex]?.ordinal ?? 0,
+          version,
+          lifecycle: "streaming",
+          kind: "activity",
+          activityType: mutation.activityType,
+          content: mutation.content,
+          replace: true,
+        } as ChatActivityPart
+        if (existingIndex < 0) return { ...message, parts: [...message.parts, part] }
+        const parts = [...message.parts]
+        parts[existingIndex] = part
+        return { ...message, parts }
+      })
+    }
+    case "agui.custom": {
+      switch (mutation.name) {
+        case "kokoro.session.replace.v1": {
+          const session = state.session
+          if (session === null || session.id !== mutation.value.sessionId || mutation.value.version < session.version) {
+            return { ...state, repair: { required: true, reason: "agui_session_owner_conflict" } }
+          }
+          return {
+            ...state,
+            session: {
+              ...session,
+              title: mutation.value.title,
+              lifecycle: mutation.value.lifecycle === "deleted" ? "trashed" : mutation.value.lifecycle,
+              contextPolicy: mutation.value.contextPolicy,
+              version: mutation.value.version,
+            },
+            activeBranchId: mutation.value.activeBranchId,
+          }
+        }
+        case "kokoro.branch.replace.v1": {
+          const index = state.branches.findIndex((branch) => branch.id === mutation.value.branchId)
+          const branch = state.branches[index]
+          if (index < 0 || branch === undefined || mutation.value.version < branch.version) {
+            return { ...state, repair: { required: true, reason: "agui_branch_owner_conflict" } }
+          }
+          const branches = [...state.branches]
+          branches[index] = {
+            ...branch,
+            version: mutation.value.version,
+            ...(mutation.value.rootMessageId === null ? { rootMessageId: undefined } : { rootMessageId: mutation.value.rootMessageId }),
+            ...(mutation.value.leafMessageId === null ? { leafMessageId: undefined } : { leafMessageId: mutation.value.leafMessageId }),
+          }
+          return { ...state, branches }
+        }
+        case "kokoro.message.replace.v1": {
+          if (mutation.value.role === "system") return state
+          const role = mutation.value.role
+          return updatePresentationMessage(state, mutation.value.presentationMessageId, (message) => ({
+            ...message,
+            role,
+            ...(mutation.value.parentPresentationMessageId === null
+              ? { parentMessageId: undefined }
+              : { parentMessageId: mutation.value.parentPresentationMessageId }),
+            status: ["completed"].includes(mutation.value.lifecycle)
+              ? "complete"
+              : ["partial", "failed", "canceled"].includes(mutation.value.lifecycle)
+                ? "incomplete"
+                : "running",
+          }))
+        }
+        case "kokoro.run.replace.v1": {
+          const ownerVersion = presentationVersion(mutation.value.ownerVersion)
+          if (ownerVersion === null) {
+            return { ...state, repair: { required: true, reason: "agui_run_owner_version_invalid" } }
+          }
+          switch (mutation.value.state) {
+            case "finished":
+            case "error":
+              return { ...state, presentationRunId: null, presentationRunState: null }
+            case "starting":
+            case "running":
+            case "waiting":
+            case "canceling":
+              return {
+                ...state,
+                presentationRunId: mutation.value.presentationRunId,
+                presentationRunState: mutation.value.state,
+              }
+          }
+          return state
+        }
+        case "kokoro.control.replace.v1":
+        case "kokoro.receipt.replace.v1":
+          return state
+      }
+    }
+  }
+}
+
 export type ChatProjectionStore = {
   readonly getSnapshot: () => ChatProjection
   readonly subscribe: (listener: () => void) => () => void
   readonly hydrate: (snapshot: SessionSnapshot) => void
   readonly reset: () => void
   readonly dispatch: (action: ChatProjectionMutation) => void
+  readonly dispatchPresentation: (mutation: ChatAguiPresentationMutation) => "applied" | "replayed"
 }
 
 type BranchAuthorityFence = Readonly<{
@@ -1372,19 +1120,6 @@ function sessionOwnerRecordFromSnapshot(session: SessionSnapshot["session"]): Se
     }),
     projectedStateFingerprint: sessionProjectedStateFingerprint(projected, session.active_branch_id),
     updatedAtEpochMs: ownerTimestamp(session.updated_at),
-  }
-}
-
-function sessionOwnerRecordFromProjection(
-  session: ChatSessionMetadata,
-  activeBranchId: string,
-  current: SessionOwnerRecord,
-): SessionOwnerRecord {
-  return {
-    version: session.version,
-    identityFingerprint: current.identityFingerprint,
-    projectedStateFingerprint: sessionProjectedStateFingerprint(session, activeBranchId),
-    updatedAtEpochMs: current.updatedAtEpochMs,
   }
 }
 
@@ -1554,64 +1289,6 @@ function terminalAuthorityCapacityExceeded(
   return runIds.size + launchIds.size > limit
 }
 
-function liveTerminalOwnerConflict(
-  scope: ProjectionOwnerScope,
-  event: SessionEvent,
-  limit: number,
-): HydrationOwnerConflict | undefined {
-  if (event.kind === "run.view.updated") {
-    const run = event.payload.run
-    const pair = runPair(run)
-    const pairConflict = terminalPairConflict(scope, pair)
-    if (pairConflict !== undefined) return pairConflict
-    const candidate: VersionedEnvelopeFingerprint<RunStatus> = {
-      version: run.projection_version,
-      fingerprint: stableStringify(run),
-      bindingFingerprint: runBinding(run),
-      status: run.execution_status,
-    }
-    const terminal = scope.terminalRuns.get(run.run_id)
-    if (terminal !== undefined && terminalEnvelopeConflicts(terminal.envelope, candidate)) {
-      return "run_terminal_authority_conflict"
-    }
-    if (
-      terminal === undefined &&
-      TERMINAL_RUN_STATUSES.has(run.execution_status) &&
-      scope.terminalRuns.size + scope.terminalLaunches.size >= limit
-    ) return "terminal_authority_capacity_exceeded"
-  }
-  if (event.kind === "run.launch.updated") {
-    const launch = event.payload.launch
-    const pair = launchPair(launch)
-    const pairConflict = terminalPairConflict(scope, pair)
-    if (pairConflict !== undefined) return pairConflict
-    const candidate: VersionedEnvelopeFingerprint<RunLaunchStatus> = {
-      version: launch.version,
-      fingerprint: stableStringify(launch),
-      bindingFingerprint: launchBinding(launch),
-      status: launch.status,
-    }
-    const terminal = scope.terminalLaunches.get(launch.launch_id)
-    if (terminal !== undefined && terminalEnvelopeConflicts(terminal.envelope, candidate)) {
-      return "run_launch_terminal_authority_conflict"
-    }
-    if (
-      terminal === undefined &&
-      TERMINAL_LAUNCH_STATUSES.has(launch.status) &&
-      scope.terminalRuns.size + scope.terminalLaunches.size >= limit
-    ) return "terminal_authority_capacity_exceeded"
-  }
-  return undefined
-}
-
-function liveOwnerConflict(
-  scope: ProjectionOwnerScope,
-  event: SessionEvent,
-): HydrationOwnerConflict | undefined {
-  if (event.kind !== "session.updated") return undefined
-  return sessionOwnerConflict(scope.sessionOwner, sessionOwnerRecordFromSnapshot(event.payload.session))
-}
-
 function rememberTerminalAuthority(
   scope: ProjectionOwnerScope,
   authority: ProjectionEnvelopeAuthority,
@@ -1674,8 +1351,8 @@ export function createChatProjectionStore(options: ChatProjectionStoreOptions = 
   let state = createChatProjection()
   let fingerprints: PartEnvelopeFingerprints = new WeakMap()
   let envelopes = emptyEnvelopeAuthority()
-  let indexes = buildProjectionIndexes(state.messages).indexes
   let ownerScope: ProjectionOwnerScope | null = null
+  const presentationReceipts = new Map<string, string>()
   const listeners = new Set<() => void>()
   const commit = (next: ChatProjection): void => {
     if (next === state) return
@@ -1697,7 +1374,6 @@ export function createChatProjectionStore(options: ChatProjectionStoreOptions = 
         { type: "snapshot", snapshot },
         nextFingerprints,
         nextEnvelopes.authority,
-        indexes,
       )
       const built = buildProjectionIndexes(next.messages)
       const conflict = nextEnvelopes.conflict ?? built.conflict
@@ -1744,9 +1420,9 @@ export function createChatProjectionStore(options: ChatProjectionStoreOptions = 
         commit(ownerScope === null ? { ...next, repair: rejected.repair } : rejected)
         return
       }
+      presentationReceipts.clear()
       fingerprints = nextFingerprints
       envelopes = nextEnvelopes.authority
-      indexes = built.indexes
       if (currentScope === null) {
         ownerScope = createProjectionOwnerScope(snapshot, nextEnvelopes.authority)
       } else {
@@ -1763,95 +1439,30 @@ export function createChatProjectionStore(options: ChatProjectionStoreOptions = 
       fingerprints = new WeakMap()
       envelopes = emptyEnvelopeAuthority()
       const next = createChatProjection()
-      indexes = buildProjectionIndexes(next.messages).indexes
+      presentationReceipts.clear()
       commit(next)
     },
     dispatch(action) {
-      const previous = state
-      if (
-        action.type === "event" &&
-        ownerScope !== null &&
-        action.event.session_id === ownerScope.sessionId
-      ) {
-        const conflict = liveOwnerConflict(ownerScope, action.event) ??
-          liveTerminalOwnerConflict(ownerScope, action.event, terminalAuthorityLimit)
-        if (conflict !== undefined) {
-          commit({ ...state, repair: { required: true, reason: conflict } })
-          return
-        }
+      commit(reduceChatProjection(state, action, fingerprints, envelopes))
+    },
+    dispatchPresentation(mutation) {
+      if (!mutation.durable) {
+        commit(reducePresentation(state, mutation))
+        return "applied"
       }
-      let next = reduceChatProjection(state, action, fingerprints, envelopes, indexes)
-      if (
-        action.type === "event" &&
-        action.event.kind === "message.created" &&
-        next.messages !== previous.messages &&
-        next.session?.activeLeafMessageId === action.event.payload.message.message_id
-      ) {
-        const message = action.event.payload.message
-        const session = previous.session
-        const branch = previous.branches.find((candidate) => candidate.id === message.branch_id)
-        const scope = ownerScope
-        const branchOwner = scope?.branchOwners.get(message.branch_id)
-        if (session !== null && branch !== undefined && scope?.sessionId === session.id && branchOwner !== undefined) {
-          scope.branchAuthorityFence = scope.branchAuthorityFence !== null &&
-              scope.branchAuthorityFence.sessionId === session.id &&
-              scope.branchAuthorityFence.branchId === branch.id
-            ? {
-                ...scope.branchAuthorityFence,
-                expectedLeafMessageId: message.message_id,
-              }
-            : {
-                sessionId: session.id,
-                branchId: branch.id,
-                previousSessionVersion: scope.sessionOwner.version,
-                previousBranchVersion: branchOwner.version,
-                expectedLeafMessageId: message.message_id,
-              }
+      const fingerprint = stableStringify(mutation)
+      const existing = presentationReceipts.get(mutation.cursor)
+      if (existing !== undefined) {
+        if (existing !== fingerprint) {
+          commit({ ...state, repair: { required: true, reason: "agui_cursor_identity_conflict" } })
+          return "applied"
         }
+        return "replayed"
       }
-      if (next !== state && next.messages !== state.messages) {
-        if (action.type === "event" && action.event.kind === "message.part.updated") {
-          indexes.partOwnerById.set(action.event.payload.part.part_id, action.event.payload.part.message_id)
-        } else if (action.type === "event" && ["message.created", "branch.activated", "session.updated"].includes(action.event.kind)) {
-          const built = buildProjectionIndexes(next.messages)
-          indexes = built.indexes
-          if (built.conflict !== undefined) {
-            next = { ...next, repair: { required: true, reason: built.conflict } }
-          }
-        }
-      }
-      if (ownerScope !== null && next.session?.id === ownerScope.sessionId && action.type === "event") {
-        if (
-          action.event.kind === "session.updated" &&
-          next.session.version > (previous.session?.version ?? 0)
-        ) {
-          ownerScope.sessionOwner = sessionOwnerRecordFromSnapshot(action.event.payload.session)
-        }
-        if (
-          action.event.kind === "branch.activated" &&
-          next.activeBranchId !== null &&
-          next.session.version > (previous.session?.version ?? 0)
-        ) {
-          ownerScope.sessionOwner = sessionOwnerRecordFromProjection(
-            next.session,
-            next.activeBranchId,
-            ownerScope.sessionOwner,
-          )
-        }
-        if (
-          action.event.kind === "branch.created" &&
-          next.branches.length > previous.branches.length
-        ) {
-          ownerScope.branchOwners.set(
-            action.event.payload.branch.branch_id,
-            branchOwnerRecord(action.event.payload.branch),
-          )
-        }
-        if (["run.launch.updated", "run.view.updated"].includes(action.event.kind)) {
-          rememberTerminalAuthority(ownerScope, envelopes)
-        }
-      }
+      const next = reducePresentation(state, mutation)
+      presentationReceipts.set(mutation.cursor, fingerprint)
       commit(next)
+      return "applied"
     },
   }
 }

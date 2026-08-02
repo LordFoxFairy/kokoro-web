@@ -176,7 +176,7 @@ function costData(part: ChatCostOwnerState): Record<string, JsonValue> {
   }
 }
 
-function dataPart(part: Exclude<ChatPart, { kind: "text" | "reasoning-summary" | "tool" | "unsupported" }>): ThreadMessagePartLike {
+function dataPart(part: Exclude<ChatPart, { kind: "text" | "reasoning-summary" | "tool" | "activity" | "unsupported" }>): ThreadMessagePartLike {
   const common = { ordinal: part.ordinal, version: part.version, lifecycle: part.lifecycle }
   switch (part.kind) {
     case "citation":
@@ -285,6 +285,46 @@ function convertMessage(message: ChatProjectionMessage): ThreadMessageLike {
         ...(part.isError === undefined ? {} : { isError: part.isError }),
       },
     }]
+    if (part.kind === "activity") {
+      if (part.activityType === "kokoro.tool-preview.v1") {
+        const status = part.content.status
+        return [{
+          type: "tool-call" as const,
+          toolCallId: part.content.toolCallRef,
+          toolName: part.content.label,
+          args: {},
+          argsText: "{}",
+          ...(part.content.resultPreview === undefined ? {} : { result: part.content.resultPreview }),
+          ...(part.content.isError === undefined ? {} : { isError: part.content.isError }),
+          ...(status === "awaiting-user" ? { interrupt: { type: "human" as const, payload: {
+            activityType: part.activityType,
+            toolCallRef: part.content.toolCallRef,
+          } } } : {}),
+        }, {
+          type: "data" as const,
+          name: "kokoro:tool-preview",
+          data: {
+            ordinal: part.ordinal,
+            version: part.version,
+            lifecycle: part.lifecycle,
+            status,
+            ...(part.content.summary === undefined ? {} : { summary: part.content.summary }),
+            ...(part.content.truncated === undefined ? {} : { truncated: part.content.truncated }),
+          },
+        }]
+      }
+      return [{
+        type: "data" as const,
+        name: `kokoro:${part.activityType.slice("kokoro.".length, -".v1".length)}`,
+        data: {
+          ordinal: part.ordinal,
+          version: part.version,
+          lifecycle: part.lifecycle,
+          activityType: part.activityType,
+          content: jsonObject(part.content),
+        },
+      }]
+    }
     if (part.kind === "unsupported") return [{
       type: "data" as const,
       name: "kokoro:unsupported",
@@ -299,7 +339,11 @@ function convertMessage(message: ChatProjectionMessage): ThreadMessageLike {
     }]
     return [dataPart(part)]
   })
-  const custom = { kokoro: { runId: message.runId, integrity: message.status } }
+  const custom = { kokoro: {
+    runId: message.runId,
+    presentationRunId: message.presentationRunId ?? null,
+    integrity: message.status,
+  } }
   if (message.role === "user") {
     return { id: message.id, role: "user", createdAt: new Date(message.createdAt), content, attachments: [], metadata: { custom } }
   }
@@ -324,7 +368,7 @@ export function createKokoroExternalStoreAdapter(
   return {
     messages: projection.messages,
     convertMessage,
-    isRunning: projection.activeRunId !== null,
+    isRunning: projection.activeRunId !== null || projection.presentationRunId !== null,
     isLoading: projection.connection.kind === "connecting" || projection.connection.kind === "reconnecting",
     isSendDisabled: projection.repair.required || projection.connection.kind === "auth_required" || projection.command.state === "pending",
     extras: {

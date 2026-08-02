@@ -308,6 +308,9 @@ importers:
 
   packages/chat-surface:
     dependencies:
+      '@ag-ui/core':
+        specifier: 0.0.57
+        version: 0.0.57
       '@assistant-ui/react':
         specifier: 0.14.28
         version: 0.14.28(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8))

@@ -3,6 +3,7 @@ import {
   type EventStreamHandle,
   type SessionClient,
 } from "@kokoro/session-client"
+import type { AguiPresentationHydration } from "@kokoro/session-client/agui-presentation"
 import type {
   ActionDecision,
   AttachmentIntent,
@@ -12,8 +13,6 @@ import type {
   MessageInputPart,
   PlanDecision,
   SessionCommandResponse,
-  SessionEvent,
-  SessionSnapshot,
 } from "@kokoro/session-client/contracts"
 import {
   createChatProjectionStore,
@@ -21,6 +20,7 @@ import {
   type ChatProjection,
   type ChatProjectionMutation,
 } from "@kokoro/chat-surface"
+import { createAguiProjectionAdapter } from "@kokoro/chat-surface/agui-presentation"
 
 import {
   createCommandIdentity,
@@ -325,13 +325,21 @@ export function createChatController(options: {
 
     const task = (async (): Promise<boolean> => {
       try {
-        const snapshot = await options.client.fetchSnapshot(sessionId, { signal: request.signal })
+        const hydration = await options.client.hydrate(sessionId, { signal: request.signal })
         if (disposed || expectedGeneration !== generation) return false
-        if (snapshot === null) {
+        if (hydration.kind === "not_found") {
           resetMissingOwner()
           return false
         }
-        return attach(sessionId, snapshot, expectedGeneration)
+        if (hydration.kind === "contract_incompatible") {
+          fail(describeSessionFailure({
+            stableCode: "CLIENT_CONTRACT_UPGRADE_REQUIRED",
+            action: "upgrade_client",
+            retryClass: "after_user_action",
+          }))
+          return false
+        }
+        return attach(sessionId, hydration, expectedGeneration)
       } catch (error) {
         if (!disposed && expectedGeneration === generation && !request.signal.aborted) fail(failureFromError(error))
         return false
@@ -347,8 +355,13 @@ export function createChatController(options: {
     return task
   }
 
-  const attach = (sessionId: string, snapshot: SessionSnapshot, currentGeneration: number): boolean => {
+  const attach = (
+    sessionId: string,
+    hydration: AguiPresentationHydration,
+    currentGeneration: number,
+  ): boolean => {
     if (disposed || currentGeneration !== generation) return false
+    const { snapshot } = hydration
     if (snapshot.session.session_id !== sessionId) {
       failClosedForOwnerContract()
       return false
@@ -432,20 +445,22 @@ export function createChatController(options: {
     let nextStream: EventStreamHandle | null = null
     const isCurrentStream = (): boolean =>
       !disposed && currentGeneration === generation && (nextStream === null ? stream === null : stream === nextStream)
-    nextStream = options.client.openEvents({
+    const adapter = createAguiProjectionAdapter({
+      grant: hydration.grant,
+      snapshotAuthority: hydration.snapshotAuthority,
+      dispatch(mutation) {
+        return projectionStore.dispatchPresentation(mutation)
+      },
+    })
+    nextStream = options.client.openPresentation({
       sessionId,
-      watermark: snapshot.snapshot_watermark,
-      onEvent(event: SessionEvent) {
-        if (!isCurrentStream()) return
-        if (event.session_id !== sessionId) {
-          failClosedForOwnerContract()
-          return
-        }
-        if (event.kind === "session.updated") {
-          if (!observeOwnerPolicy(sessionId, event.payload.session.session_id, event.payload.session.context_policy)) return
-        }
-        project({ type: "event", event })
+      resume: adapter.getResumeRequest,
+      onFrame(frame) {
+        if (!isCurrentStream()) return Object.freeze({ kind: "replay" as const })
+        const disposition = adapter.accept(frame)
+        publish({ ...state, projection: projectionStore.getSnapshot() })
         if (state.projection.repair.required) void repairFromSnapshot(currentGeneration)
+        return disposition
       },
       onConnection(connection) {
         if (!isCurrentStream()) return
@@ -510,14 +525,6 @@ export function createChatController(options: {
         publish({ ...state, phase: "not_found", failure: null })
         return
       }
-      if (hydration.kind === "repair_required") {
-        fail(describeSessionFailure({
-          stableCode: "INTERNAL_UNAVAILABLE",
-          action: "refetch_snapshot",
-          retryClass: "after_user_action",
-        }))
-        return
-      }
       if (hydration.kind === "contract_incompatible") {
         fail(describeSessionFailure({
           stableCode: "CLIENT_CONTRACT_UPGRADE_REQUIRED",
@@ -526,7 +533,7 @@ export function createChatController(options: {
         }))
         return
       }
-      attach(normalized, hydration.snapshot, currentGeneration)
+      attach(normalized, hydration, currentGeneration)
     } catch (error) {
       if (!disposed && currentGeneration === generation && !request.signal.aborted) fail(failureFromError(error))
     } finally {
@@ -539,19 +546,19 @@ export function createChatController(options: {
     snapshotRequest?.abort()
     const request = new AbortController()
     snapshotRequest = request
-    let snapshot: SessionSnapshot | null
+    let hydration: Awaited<ReturnType<SessionClient["hydrate"]>>
     try {
-      snapshot = await options.client.fetchSnapshot(sessionId, { signal: request.signal })
+      hydration = await options.client.hydrate(sessionId, { signal: request.signal })
     } finally {
       if (snapshotRequest === request) snapshotRequest = null
     }
     if (
-      snapshot === null ||
+      hydration.kind !== "ready" ||
       disposed ||
       generation !== expectedGeneration ||
       state.sessionId !== sessionId
     ) return false
-    return attach(sessionId, snapshot, expectedGeneration)
+    return attach(sessionId, hydration, expectedGeneration)
   }
 
   const reconcileReceipt = (

@@ -6,7 +6,7 @@ import {
   createAguiPresentationDecoder,
   type AguiGrantBinding,
   type AguiPresentationSnapshotAuthority,
-} from "@kokoro/session-client/agui-presentation-dormant"
+} from "@kokoro/session-client/agui-presentation"
 import {
   AGUI_COMPATIBILITY_CONSUMER_MAXIMUM_INPUT_BYTES,
   consumeAguiCompatibilityProviderOutput,

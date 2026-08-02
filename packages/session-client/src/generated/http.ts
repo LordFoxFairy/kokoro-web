@@ -6,7 +6,7 @@ import { z } from "zod"
 export const sessionHttpContractMetadata = Object.freeze({
   schemaId: "kokoro.session.browser.v3",
   schemaVersion: 3,
-  sourceDigestSha256: "a20433e4c48f119a45685d2c2879f1fe04612ed19cd5cf4f818a4abad7e86e73",
+  sourceDigestSha256: "3da4e2e268b1a2c81f54f35fef1a127ebb88bf0319b15549d13f0d46aa15c50c",
 })
 
 export const commandIdentitySchema = z
@@ -1228,7 +1228,6 @@ export const runViewSchema = z
     execution_status: z.enum(["admission_pending", "waiting_prerequisite", "running", "paused", "cancelling", "completed", "failed", "canceled", "outcome_unknown"]),
     cost_status: z.enum(["none", "reserved", "committed", "cost_pending", "settled", "released", "reconciliation_required"]),
     terminal_outcome: z.string().min(1).optional(),
-    last_durable_cursor: z.string().min(1),
     projection_version: z.number().int().positive(),
   })
   .strict()
@@ -1282,9 +1281,7 @@ export type ModelDisplaySnapshot = z.infer<typeof modelDisplaySnapshotSchema>
 
 export const snapshotWatermarkSchema = z
   .object({
-    cursor: z.string().min(1),
-    stream_epoch: z.string().min(1),
-    durable_seq: z.string().regex(/^(0|[1-9][0-9]{0,19})$/u).refine((value) => value.length < 20 || value <= "18446744073709551615"),
+    snapshot_revision_ref: z.string().min(1),
     projection_version: z.number().int().positive(),
   })
   .strict()
@@ -1302,6 +1299,7 @@ export const sessionSnapshotSchema = z
     capability_display: capabilityDisplaySnapshotSchema.optional(),
     model_history: z.array(modelDisplaySnapshotSchema),
     snapshot_watermark: snapshotWatermarkSchema,
+    presentation_authority: z.record(z.string(), z.unknown()),
     next_page_cursor: z.string().min(1).optional(),
   })
   .strict()

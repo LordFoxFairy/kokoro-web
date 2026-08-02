@@ -7,10 +7,10 @@ import {
   AGUI_PRESENTATION_PROFILE_REVISION,
   SESSION_AGUI_CONTRACT_REVISION,
   type AguiPresentationSnapshotAuthority,
-} from "@kokoro/session-client/agui-presentation-dormant"
+} from "@kokoro/session-client/agui-presentation"
 
 import {
-  createDormantAguiProjectionAdapter,
+  createAguiProjectionAdapter,
   type ChatAguiPresentationMutation,
 } from "./agui-presentation-adapter.js"
 
@@ -210,7 +210,7 @@ function validateSnapshot(
   errorCode: "AGUI_COMPATIBILITY_INITIAL_AUTHORITY_INVALID" | "AGUI_COMPATIBILITY_FINAL_AUTHORITY_MISMATCH",
 ): AguiPresentationSnapshotAuthority {
   try {
-    const probe = createDormantAguiProjectionAdapter({
+    const probe = createAguiProjectionAdapter({
       grant: {
         sessionId: input.scope.sessionId,
         sessionContractRevision: SESSION_AGUI_CONTRACT_REVISION,
@@ -260,7 +260,7 @@ export async function consumeAguiCompatibilityProviderOutput(
   let durableDispatchCount = 0
   let dispatchBeforeCommit = true
   const coverage = { runStart: false, textStart: false, textContent: false, textEnd: false, terminal: false }
-  const adapter = createDormantAguiProjectionAdapter({
+  const adapter = createAguiProjectionAdapter({
     grant: {
       sessionId: input.scope.sessionId,
       sessionContractRevision: SESSION_AGUI_CONTRACT_REVISION,

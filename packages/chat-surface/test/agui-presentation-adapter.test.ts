@@ -3,15 +3,15 @@ import {
   type AguiGrantBinding,
   type AguiPresentationSnapshotAuthority,
   type AguiSseFrame,
-} from "@kokoro/session-client/agui-presentation-dormant";
+} from "@kokoro/session-client/agui-presentation";
 import { describe, expect, it, vi } from "vitest";
 
 import fixtureJson from "../../session-client/test/fixtures/root-agui-presentation-v1.json";
 
 import {
-  createDormantAguiProjectionAdapter,
+  createAguiProjectionAdapter,
   type ChatAguiPresentationMutation,
-  type DormantAguiProjectionPort,
+  type AguiProjectionPort,
 } from "../src/runtime/agui-presentation-adapter.js";
 
 type FixtureFrame = Readonly<{
@@ -51,11 +51,11 @@ function rootFrame(sequence: number): AguiSseFrame {
 }
 
 function createAdapter(
-  dispatch: DormantAguiProjectionPort["dispatch"] = vi.fn(() => "applied" as const),
+  dispatch: AguiProjectionPort["dispatch"] = vi.fn(() => "applied" as const),
 ) {
   return {
     dispatch,
-    adapter: createDormantAguiProjectionAdapter({
+    adapter: createAguiProjectionAdapter({
       grant: contractCase.grantBinding,
       snapshotAuthority: snapshotAuthority(),
       dispatch,

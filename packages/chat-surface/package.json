@@ -12,7 +12,7 @@
       "development": "./src/index.ts",
       "import": "./dist/index.js"
     },
-    "./agui-presentation-dormant": {
+    "./agui-presentation": {
       "types": "./src/runtime/agui-presentation-adapter.ts",
       "development": "./src/runtime/agui-presentation-adapter.ts",
       "import": "./dist/runtime/agui-presentation-adapter.js"
@@ -34,6 +34,7 @@
   },
   "publishConfig": { "access": "public", "provenance": true },
   "dependencies": {
+    "@ag-ui/core": "0.0.57",
     "@assistant-ui/react": "0.14.28",
     "@kokoro/session-client": "workspace:*",
     "fast-json-stable-stringify": "2.1.0",

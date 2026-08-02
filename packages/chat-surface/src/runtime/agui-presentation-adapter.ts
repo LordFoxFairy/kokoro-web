@@ -12,11 +12,13 @@ import type {
   AguiPresentationSnapshotAuthority,
   AguiPresentationThreadId,
   AguiSseFrame,
-} from "@kokoro/session-client/agui-presentation-dormant"
+  AguiFrameDisposition,
+} from "@kokoro/session-client/agui-presentation"
 import {
   AguiPresentationProtocolError,
   createAguiPresentationDecoder,
-} from "@kokoro/session-client/agui-presentation-dormant"
+} from "@kokoro/session-client/agui-presentation"
+import { EventType } from "@ag-ui/core"
 
 type DurableMutationAuthority = Readonly<{
   durable: true
@@ -171,8 +173,7 @@ function mapCustomMutation(
 
 /**
  * Converts only the Session-owned strict presentation subset into a typed Chat
- * boundary mutation. It deliberately does not manufacture a SessionEvent or
- * mutate the active ChatProjection store.
+ * boundary mutation. It never manufactures a parallel durable protocol.
  */
 function mapAguiPresentationFrame(
   frame: AguiDecodedFrame,
@@ -193,7 +194,7 @@ function mapAguiPresentationFrame(
   const authority = durableAuthority(frame)
   const event = frame.data.event
   switch (event.type) {
-    case "RUN_STARTED":
+    case EventType.RUN_STARTED:
       return Object.freeze({
         ...authority,
         type: "agui.lifecycle",
@@ -202,7 +203,7 @@ function mapAguiPresentationFrame(
         runId: event.runId,
         ...(event.parentRunId === undefined ? {} : { parentRunId: event.parentRunId }),
       })
-    case "RUN_FINISHED":
+    case EventType.RUN_FINISHED:
       return Object.freeze({
         ...authority,
         type: "agui.lifecycle",
@@ -210,7 +211,7 @@ function mapAguiPresentationFrame(
         threadId: event.threadId,
         runId: event.runId,
       })
-    case "RUN_ERROR":
+    case EventType.RUN_ERROR:
       return Object.freeze({
         ...authority,
         type: "agui.lifecycle",
@@ -218,7 +219,7 @@ function mapAguiPresentationFrame(
         code: event.code,
         message: event.message,
       })
-    case "TEXT_MESSAGE_START":
+    case EventType.TEXT_MESSAGE_START:
       return Object.freeze({
         ...authority,
         type: "agui.text",
@@ -226,7 +227,7 @@ function mapAguiPresentationFrame(
         presentationMessageId: event.messageId,
         role: event.role,
       })
-    case "TEXT_MESSAGE_CONTENT":
+    case EventType.TEXT_MESSAGE_CONTENT:
       return Object.freeze({
         ...authority,
         type: "agui.text",
@@ -234,23 +235,23 @@ function mapAguiPresentationFrame(
         presentationMessageId: event.messageId,
         delta: event.delta,
       })
-    case "TEXT_MESSAGE_END":
+    case EventType.TEXT_MESSAGE_END:
       return Object.freeze({
         ...authority,
         type: "agui.text",
         phase: "end",
         presentationMessageId: event.messageId,
       })
-    case "ACTIVITY_SNAPSHOT":
+    case EventType.ACTIVITY_SNAPSHOT:
       return mapActivityMutation(authority, event)
-    case "CUSTOM":
+    case EventType.CUSTOM:
       return mapCustomMutation(authority, event)
     default:
       return unreachableEvent(event)
   }
 }
 
-export type DormantAguiProjectionPort = Readonly<{
+export type AguiProjectionPort = Readonly<{
   grant: AguiGrantBinding
   snapshotAuthority: AguiPresentationSnapshotAuthority
   limits?: Readonly<{
@@ -267,11 +268,11 @@ export type DormantAguiProjectionPort = Readonly<{
 }>
 
 /**
- * Dormant composition seam. No product controller instantiates this adapter
- * until the Session provider and cross-repository compatibility evidence ship.
+ * Production projection seam. The caller owns the one ChatProjection store and
+ * must durably acknowledge each cursor before decoder authority advances.
  */
-export function createDormantAguiProjectionAdapter(port: DormantAguiProjectionPort): Readonly<{
-  accept(frame: AguiSseFrame): void
+export function createAguiProjectionAdapter(port: AguiProjectionPort): Readonly<{
+  accept(frame: AguiSseFrame): AguiFrameDisposition
   getSnapshotAuthority: AguiPresentationDecoder["getSnapshotAuthority"]
   getResumeRequest: AguiPresentationDecoder["getResumeRequest"]
 }> {
@@ -286,13 +287,22 @@ export function createDormantAguiProjectionAdapter(port: DormantAguiProjectionPo
       const mutation = mapAguiPresentationFrame(prepared.decoded)
       if (mutation === null) {
         prepared.commit(prepared.decoded.kind === "replay" ? "replayed" : "applied")
-        return
+        return Object.freeze({ kind: "replay" })
       }
       const acknowledgement = port.dispatch(mutation)
       if (acknowledgement !== "applied" && acknowledgement !== "replayed") {
         throw new AguiPresentationProtocolError("agui_dispatch_ack_invalid")
       }
       prepared.commit(acknowledgement)
+      if (prepared.decoded.kind === "control") {
+        return Object.freeze({
+          kind: "draining",
+          ...(prepared.decoded.data.retryAfterMs === undefined
+            ? {}
+            : { retryAfterMs: prepared.decoded.data.retryAfterMs }),
+        })
+      }
+      return Object.freeze({ kind: acknowledgement === "replayed" ? "replay" : "durable" })
     },
     getSnapshotAuthority: decoder.getSnapshotAuthority,
     getResumeRequest: decoder.getResumeRequest,

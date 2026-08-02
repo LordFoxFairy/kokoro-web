@@ -497,6 +497,37 @@ function ToolPartCard(props: Readonly<{
   return <aside className={displayAsError ? styles.errorCard : styles.partCard} data-result-error={props.part.isError} data-status={props.part.status}><div className={styles.cardHeading}><strong>{props.part.name}</strong><span>{props.part.status}</span></div><SafeSummary metadata={props.part.args} />{props.part.result === undefined ? null : <p>{props.part.result}</p>}{props.part.isError === true ? <p className={styles.quiet}>{props.copy.toolError}</p> : null}{props.part.truncated === true ? <p className={styles.quiet}>{props.copy.toolResultTruncated}</p> : null}</aside>
 }
 
+function ActivityPartCard(props: Readonly<{
+  part: Extract<ChatPart, { kind: "activity" }>
+  copy: ChatProductCopy
+}>) {
+  const { part } = props
+  switch (part.activityType) {
+    case "kokoro.safe-summary.v1":
+      return <details className={styles.reasoning}><summary>{props.copy.reasoning} · {part.content.status}</summary><MarkdownText copy={props.copy} text={part.content.summary} /></details>
+    case "kokoro.tool-preview.v1":
+      return <aside className={part.content.isError === true ? styles.errorCard : styles.partCard} data-status={part.content.status}><div className={styles.cardHeading}><strong>{part.content.label}</strong><span>{part.content.status}</span></div>{part.content.summary === undefined ? null : <p>{part.content.summary}</p>}{part.content.resultPreview === undefined ? null : <p>{part.content.resultPreview}</p>}{part.content.truncated === true ? <p className={styles.quiet}>{props.copy.toolResultTruncated}</p> : null}</aside>
+    case "kokoro.hitl.v1":
+      return <aside className={styles.partCard} data-kind={part.content.kind} data-status={part.content.status}><div className={styles.cardHeading}><strong>{part.content.title}</strong><span>{part.content.status}</span></div><p>{part.content.description}</p><p className={styles.quiet}>{part.content.allowedActions.join(" · ")}</p></aside>
+    case "kokoro.plan.v1":
+      return <aside className={styles.partCard} data-kind="plan" data-status={part.content.status}><div className={styles.cardHeading}><strong>{props.copy.plan}</strong><span>{part.content.status}</span></div><p>{part.content.summary}</p><ol>{part.content.steps.map((step) => <li key={step.stepRef}>{step.label} · {step.status}</li>)}</ol></aside>
+    case "kokoro.subagent.v1":
+      return <aside className={styles.partCard} data-kind="subagent"><div className={styles.cardHeading}><strong>{props.copy.subagent}</strong><span>{part.content.status}</span></div>{part.content.summary === undefined ? null : <p>{part.content.summary}</p>}</aside>
+    case "kokoro.media.v1":
+      return <aside className={styles.productCard} data-kind="media-operation" data-state={part.content.state}><div className={styles.cardHeading}><strong>{props.copy.mediaOperation}</strong><span>{part.content.state}</span></div><progress max={10_000} value={part.content.progressBps} />{part.content.summary === undefined ? null : <p>{part.content.summary}</p>}</aside>
+    case "kokoro.artifact.v1":
+      return <aside className={styles.productCard} data-kind="artifact" data-state={part.content.availability}><div className={styles.cardHeading}><strong>{part.content.title ?? props.copy.artifact}</strong><span>{part.content.availability}</span></div><dl className={styles.summaryList}><div><dt>{props.copy.finalArtifact}</dt><dd>{part.content.artifactRef}</dd></div><div><dt>{props.copy.artifactVersion}</dt><dd>{part.content.artifactVersionRef}</dd></div><div><dt>{props.copy.mediaClass}</dt><dd>{part.content.mediaClass}</dd></div></dl></aside>
+    case "kokoro.cost.v1":
+      return <aside className={styles.partCard} data-kind="cost" data-state={part.content.state}><div className={styles.cardHeading}><strong>{props.copy.cost}</strong><span>{part.content.state}</span></div>{part.content.displayAmount === undefined ? null : <p className={styles.costAmount}>{part.content.displayAmount} {part.content.unit ?? ""}</p>}<p className={styles.quiet}>{props.copy.freshness}: {part.content.freshness}</p></aside>
+    case "kokoro.notice.v1":
+      return <aside className={styles.partCard} data-severity={part.content.severity}><div className={styles.cardHeading}><strong>{part.content.code}</strong><span>{part.content.severity}</span></div><p>{part.content.message}</p></aside>
+    case "kokoro.error.v1":
+      return <aside className={styles.errorCard}><div className={styles.cardHeading}><strong>{part.content.code}</strong><span>{part.content.retryClass}</span></div><p>{part.content.message}</p></aside>
+    default:
+      return neverPart(part)
+  }
+}
+
 export function ChatPartView(props: {
   readonly part: ChatPart
   readonly runId: string | null
@@ -513,6 +544,7 @@ export function ChatPartView(props: {
       return <aside className={styles.citation}><span aria-hidden>↗</span><div><strong>{href === null ? part.title : <a href={href} rel="noreferrer noopener" target="_blank">{part.title}</a>}</strong>{part.attribution ? <p>{part.attribution}</p> : null}</div></aside>
     }
     case "tool": return <ToolPartCard copy={props.copy} part={part} />
+    case "activity": return <ActivityPartCard copy={props.copy} part={part} />
     case "approval":
     case "interaction": return <ActionPartCard {...props} part={part} />
     case "plan": return <PlanPartCard {...props} part={part} />
@@ -543,7 +575,16 @@ function connectionLabel(state: ChatState, copy: ChatProductCopy): string {
 }
 
 function runLabel(state: ChatState, copy: ChatProductCopy): string {
-  switch (state.projection.activeRunState) {
+  const runState = state.projection.activeRunState ?? (() => {
+    switch (state.projection.presentationRunState) {
+      case "starting": return "launching" as const
+      case "running": return "running" as const
+      case "waiting": return "paused" as const
+      case "canceling": return "cancelling" as const
+      case null: return null
+    }
+  })()
+  switch (runState) {
     case "launching": return copy.runLaunching
     case "running": return copy.runRunning
     case "paused": return copy.runPaused
@@ -648,7 +689,7 @@ export function ChatView(props: {
   const hasModel = props.state.selectedModelOptionRevisionRef !== null
   const commandPending = props.state.projection.command.state === "pending"
   const connected = props.state.projection.connection.kind === "live"
-  const activeRun = props.state.projection.activeRunId !== null
+  const activeRun = props.state.projection.activeRunId !== null || props.state.projection.presentationRunId !== null
   const repairing = props.state.projection.repair.required
   const attachmentPending = attachments.some(({ status }) => status !== "ready")
   const sendDisabled = repairing || !hasModel || !connected || activeRun || commandPending || attachmentPending ||
@@ -757,7 +798,7 @@ export function ChatView(props: {
   return <main className={styles.shell}>
     <header className={styles.header}><div><span className={styles.eyebrow}>{props.copy.workspaceLabel}</span><h1>{props.state.projection.session?.title ?? props.brandName}</h1></div><nav className={styles.headerNav} aria-label="Workspace"><a href="/account">{props.copy.account}</a></nav></header>
     {contextPolicy === "temporary" ? <TemporaryChatStatus copy={props.copy} /> : null}
-    <section className={styles.runBand} data-run={props.state.projection.activeRunState ?? "idle"} aria-live="polite"><div><span className={styles.liveDot} aria-hidden /><strong>{runLabel(props.state, props.copy)}</strong><small>{connectionLabel(props.state, props.copy)}</small></div><div className={styles.branchControls}><label><span>{props.copy.branch}</span><select aria-label={props.copy.switchBranch} disabled={mutationDisabled} onChange={(event) => void props.controller.activateBranch(event.target.value)} value={props.state.projection.activeBranchId ?? ""}>{props.state.projection.branches.map((candidate, index) => <option key={candidate.id} value={candidate.id}>{candidate.id === props.state.projection.activeBranchId ? `${props.copy.currentBranch} · ` : ""}${candidate.origin} ${index + 1}</option>)}</select></label>{branch ? <button type="button" disabled={mutationDisabled} onClick={() => void props.controller.forkBranch(branch.id)}>{props.copy.forkBranch}</button> : null}{activeRun ? <button type="button" className={styles.stop} onClick={() => void props.controller.cancel()} disabled={repairing || commandPending || !connected}>{props.copy.stop}</button> : null}</div></section>
+    <section className={styles.runBand} data-run={props.state.projection.activeRunState ?? props.state.projection.presentationRunState ?? "idle"} aria-live="polite"><div><span className={styles.liveDot} aria-hidden /><strong>{runLabel(props.state, props.copy)}</strong><small>{connectionLabel(props.state, props.copy)}</small></div><div className={styles.branchControls}><label><span>{props.copy.branch}</span><select aria-label={props.copy.switchBranch} disabled={mutationDisabled} onChange={(event) => void props.controller.activateBranch(event.target.value)} value={props.state.projection.activeBranchId ?? ""}>{props.state.projection.branches.map((candidate, index) => <option key={candidate.id} value={candidate.id}>{candidate.id === props.state.projection.activeBranchId ? `${props.copy.currentBranch} · ` : ""}${candidate.origin} ${index + 1}</option>)}</select></label>{branch ? <button type="button" disabled={mutationDisabled} onClick={() => void props.controller.forkBranch(branch.id)}>{props.copy.forkBranch}</button> : null}{props.state.projection.activeRunId !== null ? <button type="button" className={styles.stop} onClick={() => void props.controller.cancel()} disabled={repairing || commandPending || !connected}>{props.copy.stop}</button> : null}</div></section>
     {props.state.failure ? <section className={styles.failure} role="alert"><strong>{props.state.failure.message}</strong>{["refetch_snapshot", "refresh_grant", "retry_same_cursor", "poll_or_stream", "reconcile_receipt"].includes(props.state.failure.action) ? <button type="button" onClick={() => void props.controller.recover()}>{props.copy.refreshConversation}</button> : null}</section> : null}
     {props.state.projection.repair.required ? <section className={styles.repair} role="status">{props.copy.repairRequired}</section> : null}
     <ConversationThread
