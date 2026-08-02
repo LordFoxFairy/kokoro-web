@@ -71,13 +71,15 @@ type Corpus = Readonly<{
 const corpusFixture = new URL("./fixtures/root-agui-presentation-v1.json", import.meta.url);
 const corpusSource = readFileSync(corpusFixture);
 const corpus = JSON.parse(corpusSource.toString("utf8")) as Corpus;
-const ROOT_CORPUS_SHA256 = "dbe8aba4045be745706b7cf715aa34ff109cbbb6e7b9c36a13b0523d6614b257";
+const ROOT_CORPUS_SHA256 = "060f7d010be7ac38652f1f31be15855c73468283f865062aafc8e37b87a18712";
 
 function zeroSnapshot(contractCase: CorpusCase): Readonly<Record<string, unknown>> {
   return {
     ...contractCase.snapshot,
     runBindings: [],
     messageBindings: [],
+    ownerBindings: [],
+    ownerProjectionRows: [],
   };
 }
 
@@ -220,6 +222,46 @@ function mutateSnapshot(base: Readonly<Record<string, unknown>>, operation: stri
     throw new Error(`Unknown Root snapshot mutation: ${operation}`);
   }
   return snapshot;
+}
+
+function terminalOwnerRevivalFrame(authorityCase: SnapshotAuthorityCase): AguiSseFrame {
+  const snapshot = structuredClone(authorityCase.snapshot) as Record<string, unknown>;
+  const rows = snapshot["ownerProjectionRows"];
+  const bindings = snapshot["ownerBindings"];
+  if (!Array.isArray(rows) || !Array.isArray(bindings)) throw new Error("Root owner authority missing");
+  const current = rows.find((row) => Reflect.get(Reflect.get(row, "event"), "activityType") === "kokoro.safe-summary.v1");
+  if (current === undefined) throw new Error("Root terminal owner missing");
+  const bindingRef = Reflect.get(current, "presentationOwnerBindingRef");
+  const binding = bindings.find((candidate) => Reflect.get(candidate, "bindingRef") === bindingRef);
+  if (binding === undefined) throw new Error("Root terminal owner binding missing");
+  const durableSeq = (BigInt(String(snapshot["durableSeq"])) + 1n).toString();
+  const event = structuredClone(Reflect.get(current, "event")) as Record<string, unknown>;
+  const content = Reflect.get(event, "content") as Record<string, unknown>;
+  event["timestamp"] = Date.parse(authorityCase.nextEventRecordedAt);
+  content["ownerVersion"] = "2";
+  content["status"] = "streaming";
+  content["updatedAt"] = authorityCase.nextEventRecordedAt;
+  const data = {
+    profileRevision: snapshot["profileRevision"],
+    source: {
+      sourceEventId: `presentation.event:${"f".repeat(64)}`,
+      sourceKind: "presentation.activity.safe-summary",
+      sessionId: snapshot["sessionId"],
+      streamEpoch: snapshot["streamEpoch"],
+      durableSeq,
+      projectionVersion: durableSeq,
+      schemaRevision: 1,
+      recordedAt: authorityCase.nextEventRecordedAt,
+    },
+    presentationRunBindingRef: Reflect.get(binding, "presentationRunBindingRef"),
+    ...(Reflect.get(binding, "presentationMessageBindingRef") === null
+      ? {}
+      : { presentationMessageBindingRef: Reflect.get(binding, "presentationMessageBindingRef") }),
+    presentationOwnerBindingRef: bindingRef,
+    bindingAuthorityDelta: { kind: "owner.replace", binding },
+    event,
+  };
+  return { id: `opaque.snapshot.attack.${durableSeq}`, event: "ACTIVITY_SNAPSHOT", data: JSON.stringify(data) };
 }
 
 describe("Root AG-UI conformance corpus mirror", () => {
@@ -436,10 +478,18 @@ describe("Root AG-UI conformance corpus mirror", () => {
       if (authorityCase === undefined) throw new Error(`Root snapshot base missing: ${attack.id}`);
       const base = corpus.positiveCases.find(({ id }) => id === authorityCase.baseCaseId);
       if (base === undefined) throw new Error(`Root snapshot grant missing: ${attack.id}`);
-      expectCode(() => createAguiPresentationDecoder({
-        grant: base.grantBinding,
-        snapshotAuthority: mutateSnapshot(authorityCase.snapshot, attack.mutation.operation),
-      }), attack.expectedCode);
+      if (attack.mutation.operation === "snapshot-terminal-owner-revival") {
+        const decoder = createAguiPresentationDecoder({
+          grant: base.grantBinding,
+          snapshotAuthority: authorityCase.snapshot,
+        });
+        expectCode(() => decoder.prepare(terminalOwnerRevivalFrame(authorityCase)), attack.expectedCode);
+      } else {
+        expectCode(() => createAguiPresentationDecoder({
+          grant: base.grantBinding,
+          snapshotAuthority: mutateSnapshot(authorityCase.snapshot, attack.mutation.operation),
+        }), attack.expectedCode);
+      }
     }
   });
 });

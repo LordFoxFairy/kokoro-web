@@ -19,7 +19,7 @@ type FixtureFrame = Readonly<{
 }>
 
 type FixtureCase = Readonly<{
-  snapshot: Omit<AguiPresentationSnapshotAuthority, "runBindings" | "messageBindings">
+  snapshot: Omit<AguiPresentationSnapshotAuthority, "runBindings" | "messageBindings" | "ownerBindings" | "ownerProjectionRows">
   grantBinding: AguiGrantBinding
   frames: readonly FixtureFrame[]
 }>
@@ -43,6 +43,8 @@ async function providerOutput(): Promise<Record<string, unknown>> {
     ...contractCase.snapshot,
     runBindings: [],
     messageBindings: [],
+    ownerBindings: [],
+    ownerProjectionRows: [],
   }
   const decoder = createAguiPresentationDecoder({
     grant: contractCase.grantBinding,

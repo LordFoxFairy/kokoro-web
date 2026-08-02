@@ -26,6 +26,8 @@ function snapshot(presentationAuthority: unknown = {
   ...fixture.snapshot,
   runBindings: [],
   messageBindings: [],
+  ownerBindings: [],
+  ownerProjectionRows: [],
 }) {
   return {
     session: {

@@ -2,6 +2,7 @@
 // Sources:
 //   contract/spec/presentation-run-binding-v1.yaml
 //   contract/spec/presentation-message-binding-v1.yaml
+//   contract/spec/presentation-owner-binding-v1.yaml
 //   contract/spec/presentation-binding-authority-delta-v1.yaml
 // Generation authority: Kokoro Root contract authority.
 
@@ -14,19 +15,23 @@ export const aguiBindingAuthorityContractMetadata = Object.freeze({
       "54d50fd4179147e5b421d5ce6c957dce8d36be68906ba19bebd6372eea4136fe",
     "contract/spec/presentation-message-binding-v1.yaml":
       "56a2b5728f6ac880eb44648f30b0a05a09cf58ae713bc4f111a02928211dd1a5",
+    "contract/spec/presentation-owner-binding-v1.yaml":
+      "43d6434304ea1ce483b0a8d4f87f2916135eeb3bd07ab0a7ec7e7dd04315a2c6",
     "contract/spec/presentation-binding-authority-delta-v1.yaml":
-      "9fd30b734e2aa5f52be50eb1442eaf16843de8baa8098fcc996bc5e057f9dd2d",
+      "df61ff36f09195f9e9ed9764c8de27f5c59a717bee495a834316cae0988772ac",
   }),
 });
 
 const idPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/u;
 const runBindingRefPattern = /^presentation\.run-binding:[0-9a-f]{64}$/u;
 const messageBindingRefPattern = /^presentation\.message-binding:[0-9a-f]{64}$/u;
+const ownerBindingRefPattern = /^presentation\.owner-binding:[0-9a-f]{64}$/u;
 const presentationThreadIdPattern = /^presentation\.thread:[0-9a-f]{64}$/u;
 const presentationRunIdPattern = /^presentation\.run:[0-9a-f]{64}$/u;
 const presentationMessageIdPattern = /^presentation\.message:[0-9a-f]{64}$/u;
 const publicSourceEventIdPattern = /^presentation\.event:(?![A-Za-z0-9._:-]*agent\.event)[A-Za-z0-9][A-Za-z0-9._:-]*$/u;
 const dateTimePattern = /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{3})?(?:Z|[+-][0-9]{2}:[0-9]{2})$/u;
+const canonicalUtcMsPattern = /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z$/u;
 
 const idSchema = z.string().min(1).max(128).regex(idPattern);
 export const aguiPresentationRunBindingRefSchema = z.string()
@@ -35,6 +40,9 @@ export const aguiPresentationRunBindingRefSchema = z.string()
 export const aguiPresentationMessageBindingRefSchema = z.string()
   .regex(messageBindingRefPattern)
   .brand<"AguiPresentationMessageBindingRef">();
+export const aguiPresentationOwnerBindingRefSchema = z.string()
+  .regex(ownerBindingRefPattern)
+  .brand<"AguiPresentationOwnerBindingRef">();
 export const aguiPresentationThreadIdSchema = z.string()
   .regex(presentationThreadIdPattern)
   .brand<"AguiPresentationThreadId">();
@@ -53,6 +61,7 @@ const dateTimeSchema = z.string().min(20).max(35).regex(dateTimePattern);
 
 export type AguiPresentationRunBindingRef = z.infer<typeof aguiPresentationRunBindingRefSchema>;
 export type AguiPresentationMessageBindingRef = z.infer<typeof aguiPresentationMessageBindingRefSchema>;
+export type AguiPresentationOwnerBindingRef = z.infer<typeof aguiPresentationOwnerBindingRefSchema>;
 export type AguiPresentationThreadId = z.infer<typeof aguiPresentationThreadIdSchema>;
 export type AguiPresentationRunId = z.infer<typeof aguiPresentationRunIdSchema>;
 export type AguiPresentationMessageId = z.infer<typeof aguiPresentationMessageIdSchema>;
@@ -120,10 +129,64 @@ export const aguiPresentationMessageBindingSchema = z.strictObject({
 
 export type AguiPresentationMessageBinding = Readonly<z.infer<typeof aguiPresentationMessageBindingSchema>>;
 
+const ownerIdentitySchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("safe-summary"), partRef: idSchema }),
+  z.strictObject({ kind: z.literal("tool"), toolCallRef: idSchema }),
+  z.strictObject({ kind: z.literal("hitl"), ownerRef: idSchema, decisionGroupRef: idSchema, controlRef: idSchema }),
+  z.strictObject({ kind: z.literal("plan"), planRef: idSchema }),
+  z.strictObject({ kind: z.literal("subagent"), subagentRef: idSchema }),
+  z.strictObject({
+    kind: z.literal("media"), mediaOperationRef: idSchema, definitionRef: idSchema,
+    definitionRevisionRef: idSchema, modelOptionRevisionRef: idSchema.nullable(),
+  }),
+  z.strictObject({ kind: z.literal("artifact"), artifactRef: idSchema, artifactVersionRef: idSchema }),
+  z.strictObject({ kind: z.literal("cost"), mediaOperationRef: idSchema, costProjectionRef: idSchema }),
+  z.strictObject({ kind: z.literal("notice"), noticeRef: idSchema }),
+  z.strictObject({ kind: z.literal("error"), errorRef: idSchema }),
+  z.strictObject({ kind: z.literal("control"), controlRef: idSchema, ownerRef: idSchema, decisionGroupRef: idSchema }),
+  z.strictObject({
+    kind: z.literal("receipt"), receiptRef: idSchema, controlRef: idSchema,
+    ownerRef: idSchema, decisionGroupRef: idSchema,
+  }),
+]);
+
+const canonicalUtcMsSchema = z.string().regex(canonicalUtcMsPattern).refine((value) => {
+  const milliseconds = Date.parse(value);
+  return Number.isFinite(milliseconds) && new Date(milliseconds).toISOString() === value;
+});
+
+export const aguiPresentationOwnerBindingSchema = z.strictObject({
+  profileRevision: z.literal("kokoro-agui-presentation.v1"),
+  schemaRevision: z.literal(1),
+  bindingRef: aguiPresentationOwnerBindingRefSchema,
+  sessionId: idSchema,
+  presentationRunBindingRef: aguiPresentationRunBindingRefSchema,
+  presentationMessageBindingRef: aguiPresentationMessageBindingRefSchema.nullable(),
+  presentationOwnerMessageId: aguiPresentationMessageIdSchema.nullable(),
+  ownerIdentity: ownerIdentitySchema,
+  targetOwnerBindingRef: aguiPresentationOwnerBindingRefSchema.nullable(),
+  controlOwnerBindingRef: aguiPresentationOwnerBindingRefSchema.nullable(),
+  boundBySourceEventId: aguiPublicSourceEventIdSchema,
+  boundAt: canonicalUtcMsSchema,
+}).superRefine((binding, context) => {
+  const control = binding.ownerIdentity.kind === "control";
+  const receipt = binding.ownerIdentity.kind === "receipt";
+  const runScoped = control || receipt;
+  if ((runScoped && binding.presentationMessageBindingRef !== null) ||
+      runScoped !== (binding.presentationOwnerMessageId === null) ||
+      receipt !== (binding.controlOwnerBindingRef !== null) ||
+      runScoped !== (binding.targetOwnerBindingRef !== null)) {
+    context.addIssue({ code: "custom", message: "owner placement and ancestry" });
+  }
+});
+
+export type AguiPresentationOwnerBinding = Readonly<z.infer<typeof aguiPresentationOwnerBindingSchema>>;
+
 export const aguiPresentationBindingAuthorityDeltaSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("none") }),
   z.strictObject({ kind: z.literal("run.replace"), binding: aguiPresentationRunBindingSchema }),
   z.strictObject({ kind: z.literal("message.replace"), binding: aguiPresentationMessageBindingSchema }),
+  z.strictObject({ kind: z.literal("owner.replace"), binding: aguiPresentationOwnerBindingSchema }),
 ]);
 
 export type AguiPresentationBindingAuthorityDelta = Readonly<

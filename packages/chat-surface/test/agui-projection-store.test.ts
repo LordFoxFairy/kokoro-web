@@ -14,7 +14,7 @@ import type { ChatAguiPresentationMutation } from "../src/runtime/agui-presentat
 
 type FixtureFrame = Readonly<{ id: string; event: string; data: Readonly<Record<string, unknown>> }>
 type FixtureCase = Readonly<{
-  snapshot: Omit<AguiPresentationSnapshotAuthority, "runBindings" | "messageBindings">
+  snapshot: Omit<AguiPresentationSnapshotAuthority, "runBindings" | "messageBindings" | "ownerBindings" | "ownerProjectionRows">
   grantBinding: Parameters<typeof createAguiProjectionAdapter>[0]["grant"]
   frames: readonly FixtureFrame[]
   runBindings: readonly AguiPresentationRunBinding[]
@@ -109,7 +109,13 @@ function authorityAfter(sequence: number): AguiPresentationSnapshotAuthority {
 }
 
 function initialAuthority(): AguiPresentationSnapshotAuthority {
-  return { ...contractCase.snapshot, runBindings: [], messageBindings: [] }
+  return {
+    ...contractCase.snapshot,
+    runBindings: [],
+    messageBindings: [],
+    ownerBindings: [],
+    ownerProjectionRows: [],
+  }
 }
 
 function createActiveProjection() {
@@ -202,13 +208,11 @@ describe("production AG-UI Chat projection", () => {
     })
 
     expect(adapter.accept(frame(16))).toEqual({ kind: "durable" })
-    expect(store.getSnapshot()).toMatchObject({
-      repair: { required: false },
-      messages: [expect.objectContaining({
-        presentationMessageVersion: 3,
-        status: "running",
-      })],
-    })
+    const projection = store.getSnapshot()
+    expect(projection.repair).toEqual({ required: false })
+    expect(projection.messages.find((message) =>
+      message.presentationMessageBindingRef === authority.messageBindings[0]?.bindingRef,
+    )).toMatchObject({ presentationMessageVersion: 3, status: "running" })
   })
 
   it("fails closed when a presentation snapshot points at a different Session text owner", () => {
@@ -279,8 +283,11 @@ describe("production AG-UI Chat projection", () => {
     const projection = store.getSnapshot()
     expect(projection.activeRunId).toBeNull()
     expect(projection.presentationRunId).toMatch(/^presentation\.run:/u)
-    expect(projection.messages).toHaveLength(1)
-    expect(projection.messages[0]).toMatchObject({
+    expect(projection.messages).toHaveLength(10)
+    const textMessage = projection.messages.find((message) =>
+      message.presentationMessageBindingRef === contractCase.messageBindings[0]?.bindingRef,
+    )
+    expect(textMessage).toMatchObject({
       id: expect.stringMatching(/^session\.message:/u),
       presentationMessageId: expect.stringMatching(/^presentation\.message:/u),
       runId: expect.stringMatching(/^session\.run:/u),
@@ -288,22 +295,29 @@ describe("production AG-UI Chat projection", () => {
       status: "running",
       parts: expect.arrayContaining([
         expect.objectContaining({ kind: "text" }),
-        expect.objectContaining({ kind: "reasoning-summary", ownerVersion: "1" }),
-        expect.objectContaining({ kind: "tool", ownerVersion: "1" }),
-        expect.objectContaining({ kind: "approval", ownerVersion: "1", controlRef: "control.01" }),
-        expect.objectContaining({ kind: "plan-progress", ownerVersion: "1" }),
-        expect.objectContaining({ kind: "subagent", ownerVersion: "1" }),
         expect.objectContaining({ kind: "media-operation", ownerVersion: "1" }),
-        expect.objectContaining({ kind: "artifact", ownerVersion: "1", mediaClass: "image" }),
-        expect.objectContaining({ kind: "cost", ownerVersion: "1" }),
-        expect.objectContaining({ kind: "notice", ownerVersion: "1" }),
-        expect.objectContaining({ kind: "error", ownerVersion: "1" }),
       ]),
     })
-    expect(projection.messages[0]?.parts.find((part) => part.id === "part.unrelated.agui")).toMatchObject({
+    expect(textMessage?.parts.find((part) => part.id === "part.unrelated.agui")).toMatchObject({
       kind: "text",
       text: "do not mutate",
     })
+    const ownerParts = projection.messages.flatMap((message) => message.parts).filter((part) =>
+      part.presentationOwnerBindingRef !== undefined,
+    )
+    expect(ownerParts).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: "reasoning-summary", ownerVersion: "1" }),
+      expect.objectContaining({ kind: "tool", ownerVersion: "1" }),
+      expect.objectContaining({ kind: "approval", ownerVersion: "1", controlRef: "control.01" }),
+      expect.objectContaining({ kind: "plan-progress", ownerVersion: "1" }),
+      expect.objectContaining({ kind: "subagent", ownerVersion: "1" }),
+      expect.objectContaining({ kind: "media-operation", ownerVersion: "1" }),
+      expect.objectContaining({ kind: "artifact", ownerVersion: "1", mediaClass: "image" }),
+      expect.objectContaining({ kind: "cost", ownerVersion: "1" }),
+      expect.objectContaining({ kind: "notice", ownerVersion: "1" }),
+      expect.objectContaining({ kind: "error", ownerVersion: "1" }),
+    ]))
+    expect(ownerParts.every((part) => part.presentationOwnerMessageId !== undefined)).toBe(true)
     expect(projection.presentationRuns[0]).toMatchObject({
       state: "waiting",
       ownerVersion: "18446744073709551615",
@@ -314,7 +328,7 @@ describe("production AG-UI Chat projection", () => {
     expect(projection.presentationReceipts).toEqual([
       expect.objectContaining({ receiptRef: "receipt.01", ownerVersion: "2", state: "committed" }),
     ])
-    expect(projection.messages[0]?.parts).toEqual(expect.arrayContaining([
+    expect(ownerParts).toEqual(expect.arrayContaining([
       expect.objectContaining({
         kind: "approval",
         controlOwnerVersion: "1",
@@ -337,7 +351,7 @@ describe("production AG-UI Chat projection", () => {
     expect(store.getSnapshot()).toBe(before)
   })
 
-  it("rejects same-owner-version semantic conflicts", () => {
+  it("rejects an activity mutation without the exact owner binding", () => {
     const { adapter, store } = createActiveProjection()
     for (let sequence = 1; sequence <= 9; sequence += 1) adapter.accept(frame(sequence))
     const message = store.getSnapshot().messages[0]
@@ -369,10 +383,10 @@ describe("production AG-UI Chat projection", () => {
     } as unknown as ChatAguiPresentationMutation
 
     expect(store.dispatchPresentation(media)).toBe("rejected")
-    expect(store.getSnapshot().repair.reason).toBe("agui_activity_owner_version_conflict")
+    expect(store.getSnapshot().repair.reason).toBe("agui_activity_owner_binding_conflict")
   })
 
-  it("keeps committed receipt authority terminal", () => {
+  it("rejects a receipt mutation without its exact owner ancestry", () => {
     const { adapter, store } = createActiveProjection()
     for (let sequence = 1; sequence <= 19; sequence += 1) adapter.accept(frame(sequence))
     const runBindingRef = store.getSnapshot().presentationRuns[0]?.bindingRef
@@ -402,10 +416,10 @@ describe("production AG-UI Chat projection", () => {
         updatedAt: "2026-08-01T12:00:20.000Z",
       },
     } as unknown as ChatAguiPresentationMutation)).toBe("rejected")
-    expect(store.getSnapshot().repair.reason).toBe("agui_receipt_terminal_regression")
+    expect(store.getSnapshot().repair.reason).toBe("agui_receipt_run_binding_missing")
   })
 
-  it("tracks concurrent parent and child presentation runs by binding without inventing a Session run", () => {
+  it("rejects child text without inventing branch authority from an active branch", () => {
     const store = createChatProjectionStore()
     store.hydrate(sessionSnapshot(), initialAuthority())
     const source = {
@@ -442,36 +456,20 @@ describe("production AG-UI Chat projection", () => {
         "presentation.message-binding:child", "presentation.run-binding:child", "presentation.message:child",
       ),
     } as unknown as ChatAguiPresentationMutation
-    const finishParent = {
-      type: "agui.lifecycle", phase: "run-finished", durable: true, cursor: "cursor.parent.finished",
-      source: { ...source, projectionVersion: "3" },
-      runBindingRef: "presentation.run-binding:parent", threadId: "presentation.thread:test",
-      runId: "presentation.run:parent",
-      runBinding: explicitRunBinding(
-        "presentation.run-binding:parent", "presentation.run:parent", "session.run:parent",
-      ),
-    } as unknown as ChatAguiPresentationMutation
-
     expect(store.dispatchPresentation(parent)).toBe("applied")
     expect(store.dispatchPresentation(child)).toBe("applied")
-    expect(store.dispatchPresentation(childMessage)).toBe("applied")
-    expect(store.dispatchPresentation(finishParent)).toBe("applied")
+    expect(store.dispatchPresentation(childMessage)).toBe("rejected")
 
     expect(store.getSnapshot().presentationRuns).toEqual([
-      expect.objectContaining({ bindingRef: "presentation.run-binding:parent", state: "finished" }),
+      expect.objectContaining({ bindingRef: "presentation.run-binding:parent", state: "running" }),
       expect.objectContaining({
         bindingRef: "presentation.run-binding:child",
         parentPresentationRunId: "presentation.run:parent",
         state: "running",
       }),
     ])
-    expect(store.getSnapshot().messages[0]).toMatchObject({
-      runId: null,
-      presentationRunId: "presentation.run:child",
-      presentationRunBindingRef: "presentation.run-binding:child",
-      presentationMessageBindingRef: "presentation.message-binding:child",
-      status: "running",
-    })
+    expect(store.getSnapshot().messages).toEqual([])
+    expect(store.getSnapshot().repair.reason).toBe("agui_run_branch_authority_missing")
   })
 
   it("rejects a terminal presentation run regression without recording its cursor", () => {
@@ -509,7 +507,7 @@ describe("production AG-UI Chat projection", () => {
     })
   })
 
-  it("seals ended presentation messages against late content and binding drift", () => {
+  it("rejects text creation without exact Session branch authority", () => {
     const store = createChatProjectionStore()
     store.hydrate(sessionSnapshot(), initialAuthority())
     const source = {
@@ -539,26 +537,15 @@ describe("production AG-UI Chat projection", () => {
         "presentation.message-binding:message", "presentation.run-binding:message", "presentation.message:message",
       ),
     } as unknown as ChatAguiPresentationMutation
-    const end = {
-      ...start, phase: "end", cursor: "cursor.text.end",
-      source: { ...source, projectionVersion: "4" },
-    } as unknown as ChatAguiPresentationMutation
-    const late = {
-      ...start, phase: "content", cursor: "cursor.text.late", delta: "late",
-      source: { ...source, projectionVersion: "5" },
-    } as unknown as ChatAguiPresentationMutation
-
     expect(store.dispatchPresentation(run)).toBe("applied")
-    expect(store.dispatchPresentation(start)).toBe("applied")
-    expect(store.dispatchPresentation(end)).toBe("applied")
-    expect(store.dispatchPresentation(late)).toBe("rejected")
+    expect(store.dispatchPresentation(start)).toBe("rejected")
     expect(store.getSnapshot()).toMatchObject({
-      messages: [{ status: "complete", parts: [{ kind: "text", text: "" }] }],
-      repair: { required: true, reason: "agui_message_terminal_regression" },
+      messages: [],
+      repair: { required: true, reason: "agui_run_branch_authority_missing" },
     })
   })
 
-  it("rejects a CUSTOM message lifecycle regression after terminal replacement", () => {
+  it("rejects CUSTOM message creation without exact Session branch authority", () => {
     const store = createChatProjectionStore()
     store.hydrate(sessionSnapshot(), initialAuthority())
     const source = {
@@ -592,26 +579,10 @@ describe("production AG-UI Chat projection", () => {
       ...messageAuthority, type: "agui.text", phase: "start", cursor: "cursor.custom.start",
       source: { ...source, projectionVersion: "2" },
       presentationMessageId: "presentation.message:custom-message", role: "assistant",
-    } as unknown as ChatAguiPresentationMutation)).toBe("applied")
-    expect(store.dispatchPresentation({
-      ...messageAuthority, type: "agui.custom", name: "kokoro.message.replace.v1",
-      cursor: "cursor.custom.complete", source: { ...source, projectionVersion: "3" },
-      value: {
-        presentationMessageId: "presentation.message:custom-message", role: "assistant",
-        lifecycle: "completed", parentPresentationMessageId: null, ordinal: 0, version: 1,
-      },
-    } as unknown as ChatAguiPresentationMutation)).toBe("applied")
-    expect(store.dispatchPresentation({
-      ...messageAuthority, type: "agui.custom", name: "kokoro.message.replace.v1",
-      cursor: "cursor.custom.regression", source: { ...source, projectionVersion: "4" },
-      value: {
-        presentationMessageId: "presentation.message:custom-message", role: "assistant",
-        lifecycle: "streaming", parentPresentationMessageId: null, ordinal: 0, version: 2,
-      },
     } as unknown as ChatAguiPresentationMutation)).toBe("rejected")
     expect(store.getSnapshot().repair).toEqual({
       required: true,
-      reason: "agui_message_terminal_regression",
+      reason: "agui_run_branch_authority_missing",
     })
   })
 })

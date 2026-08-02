@@ -18,10 +18,11 @@ describe("Root-generated AG-UI binding runtime mirror", () => {
       sources: {
         "contract/spec/presentation-run-binding-v1.yaml": expect.stringMatching(/^[0-9a-f]{64}$/u),
         "contract/spec/presentation-message-binding-v1.yaml": expect.stringMatching(/^[0-9a-f]{64}$/u),
+        "contract/spec/presentation-owner-binding-v1.yaml": expect.stringMatching(/^[0-9a-f]{64}$/u),
         "contract/spec/presentation-binding-authority-delta-v1.yaml": expect.stringMatching(/^[0-9a-f]{64}$/u),
       },
     });
-    expect(Object.keys(aguiBindingAuthorityContractMetadata.sources)).toHaveLength(3);
+    expect(Object.keys(aguiBindingAuthorityContractMetadata.sources)).toHaveLength(4);
   });
 
   it("fails on Root source drift when executed from the federated checkout", () => {
@@ -35,6 +36,6 @@ describe("Root-generated AG-UI binding runtime mirror", () => {
       checkedSources += 1;
       expect(sha256(source), relativePath).toBe(expectedDigest);
     }
-    expect(checkedSources).toBe(federatedContractPresent ? 3 : 0);
+    expect(checkedSources).toBe(federatedContractPresent ? 4 : 0);
   });
 });

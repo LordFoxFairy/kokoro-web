@@ -46,6 +46,8 @@ function decoder(contractCase = primary()) {
       ...contractCase.snapshot,
       runBindings: [],
       messageBindings: [],
+      ownerBindings: [],
+      ownerProjectionRows: [],
     },
   });
 }

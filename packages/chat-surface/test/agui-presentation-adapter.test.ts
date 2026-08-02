@@ -21,7 +21,7 @@ type FixtureFrame = Readonly<{
 }>;
 
 type FixtureCase = Readonly<{
-  snapshot: Omit<AguiPresentationSnapshotAuthority, "runBindings" | "messageBindings">;
+  snapshot: Omit<AguiPresentationSnapshotAuthority, "runBindings" | "messageBindings" | "ownerBindings" | "ownerProjectionRows">;
   grantBinding: AguiGrantBinding;
   frames: readonly FixtureFrame[];
 }>;
@@ -37,6 +37,8 @@ function snapshotAuthority(): AguiPresentationSnapshotAuthority {
     ...contractCase.snapshot,
     runBindings: [],
     messageBindings: [],
+    ownerBindings: [],
+    ownerProjectionRows: [],
   };
 }
 

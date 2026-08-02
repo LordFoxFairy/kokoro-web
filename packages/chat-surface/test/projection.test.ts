@@ -83,6 +83,8 @@ function presentationAuthority(snapshot: SessionSnapshot): AguiPresentationSnaps
     cursor: "snapshot.cursor.empty",
     runBindings: [],
     messageBindings: [],
+    ownerBindings: [],
+    ownerProjectionRows: [],
   }
 }
 

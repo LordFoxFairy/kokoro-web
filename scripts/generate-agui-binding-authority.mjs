@@ -9,10 +9,11 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 export const aguiBindingAuthoritySources = Object.freeze([
   "contract/spec/presentation-run-binding-v1.yaml",
   "contract/spec/presentation-message-binding-v1.yaml",
+  "contract/spec/presentation-owner-binding-v1.yaml",
   "contract/spec/presentation-binding-authority-delta-v1.yaml",
 ]);
 
-const [runSourcePath, messageSourcePath, deltaSourcePath] = aguiBindingAuthoritySources;
+const [runSourcePath, messageSourcePath, ownerSourcePath, deltaSourcePath] = aguiBindingAuthoritySources;
 const idRef = Object.freeze({ $ref: "#/$defs/id" });
 const runBindingRef = Object.freeze({ $ref: "#/$defs/runBindingRef" });
 const messageBindingRef = Object.freeze({ $ref: "#/$defs/messageBindingRef" });
@@ -322,6 +323,7 @@ function inspectDeltaSchema(schema) {
     { $ref: "#/$defs/none" },
     { $ref: "#/$defs/runReplace" },
     { $ref: "#/$defs/messageReplace" },
+    { $ref: "#/$defs/ownerReplace" },
   ], "binding delta union");
   expectEqual(schema.$defs, {
     none: {
@@ -348,7 +350,52 @@ function inspectDeltaSchema(schema) {
         binding: { $ref: "https://contracts.kokoro.invalid/presentation-message-binding.v1.schema.json" },
       },
     },
+    ownerReplace: {
+      type: "object",
+      additionalProperties: false,
+      required: ["kind", "binding"],
+      properties: {
+        kind: { const: "owner.replace" },
+        binding: { $ref: "https://contracts.kokoro.invalid/presentation-owner-binding.v1.schema.json" },
+      },
+    },
   }, "binding delta definitions");
+}
+
+function inspectOwnerSchema(schema) {
+  const required = [
+    "profileRevision", "schemaRevision", "bindingRef", "sessionId",
+    "presentationRunBindingRef", "presentationMessageBindingRef", "presentationOwnerMessageId",
+    "ownerIdentity", "targetOwnerBindingRef", "controlOwnerBindingRef",
+    "boundBySourceEventId", "boundAt",
+  ];
+  inspectObjectEnvelope(
+    schema,
+    "https://contracts.kokoro.invalid/presentation-owner-binding.v1.schema.json",
+    required,
+    "owner binding",
+  );
+  expectEqual(schema.properties.profileRevision, { const: "kokoro-agui-presentation.v1" }, "owner profile");
+  expectEqual(schema.properties.schemaRevision, { const: 1 }, "owner revision");
+  expectEqual(schema.properties.presentationRunBindingRef, runBindingRef, "owner run binding");
+  expectEqual(schema.properties.presentationMessageBindingRef, { oneOf: [nullType, messageBindingRef] }, "owner message binding");
+  expectEqual(schema.properties.presentationOwnerMessageId, { oneOf: [nullType, presentationMessageIdRef] }, "owner message id");
+  expectEqual(schema.properties.boundBySourceEventId, publicSourceEventIdRef, "owner source");
+  expectEqual(schema.properties.boundAt, { $ref: "#/$defs/canonicalUtcMs" }, "owner time");
+  const definitions = expectRecord(schema.$defs, "owner definitions");
+  const ownerBinding = expectRecord(definitions.ownerBindingRef, "owner binding ref");
+  const canonicalTime = expectRecord(definitions.canonicalUtcMs, "owner canonical time");
+  const identity = expectRecord(definitions.ownerIdentity, "owner identity");
+  if (typeof ownerBinding.pattern !== "string" || typeof canonicalTime.pattern !== "string") fail("owner patterns");
+  expectEqual(identity.oneOf, [
+    { $ref: "#/$defs/safeSummaryIdentity" }, { $ref: "#/$defs/toolIdentity" },
+    { $ref: "#/$defs/hitlIdentity" }, { $ref: "#/$defs/planIdentity" },
+    { $ref: "#/$defs/subagentIdentity" }, { $ref: "#/$defs/mediaIdentity" },
+    { $ref: "#/$defs/artifactIdentity" }, { $ref: "#/$defs/costIdentity" },
+    { $ref: "#/$defs/noticeIdentity" }, { $ref: "#/$defs/errorIdentity" },
+    { $ref: "#/$defs/controlIdentity" }, { $ref: "#/$defs/receiptIdentity" },
+  ], "owner identity union");
+  return { ownerBindingPattern: ownerBinding.pattern, canonicalTimePattern: canonicalTime.pattern };
 }
 
 function digest(source) {
@@ -375,12 +422,15 @@ export function generateAguiBindingAuthority(sources) {
   expectKeys(sources, aguiBindingAuthoritySources, "source set");
   const runSource = sources[runSourcePath];
   const messageSource = sources[messageSourcePath];
+  const ownerSource = sources[ownerSourcePath];
   const deltaSource = sources[deltaSourcePath];
   const runSchema = parseSource(runSource, runSourcePath);
   const messageSchema = parseSource(messageSource, messageSourcePath);
+  const ownerSchema = parseSource(ownerSource, ownerSourcePath);
   const deltaSchema = parseSource(deltaSource, deltaSourcePath);
   const run = inspectRunSchema(runSchema);
   const message = inspectMessageSchema(messageSchema);
+  const owner = inspectOwnerSchema(ownerSchema);
   inspectDeltaSchema(deltaSchema);
   const runDefinitions = inspectDefinitions(
     runSchema,
@@ -412,6 +462,7 @@ export function generateAguiBindingAuthority(sources) {
 // Sources:
 //   ${runSourcePath}
 //   ${messageSourcePath}
+//   ${ownerSourcePath}
 //   ${deltaSourcePath}
 // Generation authority: Kokoro Root contract authority.
 
@@ -424,6 +475,8 @@ export const aguiBindingAuthorityContractMetadata = Object.freeze({
       ${quote(digest(runSource))},
     ${quote(messageSourcePath)}:
       ${quote(digest(messageSource))},
+    ${quote(ownerSourcePath)}:
+      ${quote(digest(ownerSource))},
     ${quote(deltaSourcePath)}:
       ${quote(digest(deltaSource))},
   }),
@@ -432,11 +485,13 @@ export const aguiBindingAuthorityContractMetadata = Object.freeze({
 const idPattern = ${renderRegex(id.pattern)};
 const runBindingRefPattern = ${renderRegex(runBinding.pattern)};
 const messageBindingRefPattern = ${renderRegex(messageBinding.pattern)};
+const ownerBindingRefPattern = ${renderRegex(owner.ownerBindingPattern)};
 const presentationThreadIdPattern = ${renderRegex(presentationThreadId.pattern)};
 const presentationRunIdPattern = ${renderRegex(presentationRunId.pattern)};
 const presentationMessageIdPattern = ${renderRegex(presentationMessageId.pattern)};
 const publicSourceEventIdPattern = ${renderRegex(publicSourceEventId.pattern)};
 const dateTimePattern = ${renderRegex(dateTime.pattern)};
+const canonicalUtcMsPattern = ${renderRegex(owner.canonicalTimePattern)};
 
 const idSchema = z.string().min(${id.minLength}).max(${id.maxLength}).regex(idPattern);
 export const aguiPresentationRunBindingRefSchema = z.string()
@@ -445,6 +500,9 @@ export const aguiPresentationRunBindingRefSchema = z.string()
 export const aguiPresentationMessageBindingRefSchema = z.string()
   .regex(messageBindingRefPattern)
   .brand<"AguiPresentationMessageBindingRef">();
+export const aguiPresentationOwnerBindingRefSchema = z.string()
+  .regex(ownerBindingRefPattern)
+  .brand<"AguiPresentationOwnerBindingRef">();
 export const aguiPresentationThreadIdSchema = z.string()
   .regex(presentationThreadIdPattern)
   .brand<"AguiPresentationThreadId">();
@@ -463,6 +521,7 @@ const dateTimeSchema = z.string().min(${dateTime.minLength}).max(${dateTime.maxL
 
 export type AguiPresentationRunBindingRef = z.infer<typeof aguiPresentationRunBindingRefSchema>;
 export type AguiPresentationMessageBindingRef = z.infer<typeof aguiPresentationMessageBindingRefSchema>;
+export type AguiPresentationOwnerBindingRef = z.infer<typeof aguiPresentationOwnerBindingRefSchema>;
 export type AguiPresentationThreadId = z.infer<typeof aguiPresentationThreadIdSchema>;
 export type AguiPresentationRunId = z.infer<typeof aguiPresentationRunIdSchema>;
 export type AguiPresentationMessageId = z.infer<typeof aguiPresentationMessageIdSchema>;
@@ -530,10 +589,64 @@ export const aguiPresentationMessageBindingSchema = z.strictObject({
 
 export type AguiPresentationMessageBinding = Readonly<z.infer<typeof aguiPresentationMessageBindingSchema>>;
 
+const ownerIdentitySchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("safe-summary"), partRef: idSchema }),
+  z.strictObject({ kind: z.literal("tool"), toolCallRef: idSchema }),
+  z.strictObject({ kind: z.literal("hitl"), ownerRef: idSchema, decisionGroupRef: idSchema, controlRef: idSchema }),
+  z.strictObject({ kind: z.literal("plan"), planRef: idSchema }),
+  z.strictObject({ kind: z.literal("subagent"), subagentRef: idSchema }),
+  z.strictObject({
+    kind: z.literal("media"), mediaOperationRef: idSchema, definitionRef: idSchema,
+    definitionRevisionRef: idSchema, modelOptionRevisionRef: idSchema.nullable(),
+  }),
+  z.strictObject({ kind: z.literal("artifact"), artifactRef: idSchema, artifactVersionRef: idSchema }),
+  z.strictObject({ kind: z.literal("cost"), mediaOperationRef: idSchema, costProjectionRef: idSchema }),
+  z.strictObject({ kind: z.literal("notice"), noticeRef: idSchema }),
+  z.strictObject({ kind: z.literal("error"), errorRef: idSchema }),
+  z.strictObject({ kind: z.literal("control"), controlRef: idSchema, ownerRef: idSchema, decisionGroupRef: idSchema }),
+  z.strictObject({
+    kind: z.literal("receipt"), receiptRef: idSchema, controlRef: idSchema,
+    ownerRef: idSchema, decisionGroupRef: idSchema,
+  }),
+]);
+
+const canonicalUtcMsSchema = z.string().regex(canonicalUtcMsPattern).refine((value) => {
+  const milliseconds = Date.parse(value);
+  return Number.isFinite(milliseconds) && new Date(milliseconds).toISOString() === value;
+});
+
+export const aguiPresentationOwnerBindingSchema = z.strictObject({
+  profileRevision: z.literal(${quote(run.profileRevision)}),
+  schemaRevision: z.literal(1),
+  bindingRef: aguiPresentationOwnerBindingRefSchema,
+  sessionId: idSchema,
+  presentationRunBindingRef: aguiPresentationRunBindingRefSchema,
+  presentationMessageBindingRef: aguiPresentationMessageBindingRefSchema.nullable(),
+  presentationOwnerMessageId: aguiPresentationMessageIdSchema.nullable(),
+  ownerIdentity: ownerIdentitySchema,
+  targetOwnerBindingRef: aguiPresentationOwnerBindingRefSchema.nullable(),
+  controlOwnerBindingRef: aguiPresentationOwnerBindingRefSchema.nullable(),
+  boundBySourceEventId: aguiPublicSourceEventIdSchema,
+  boundAt: canonicalUtcMsSchema,
+}).superRefine((binding, context) => {
+  const control = binding.ownerIdentity.kind === "control";
+  const receipt = binding.ownerIdentity.kind === "receipt";
+  const runScoped = control || receipt;
+  if ((runScoped && binding.presentationMessageBindingRef !== null) ||
+      runScoped !== (binding.presentationOwnerMessageId === null) ||
+      receipt !== (binding.controlOwnerBindingRef !== null) ||
+      runScoped !== (binding.targetOwnerBindingRef !== null)) {
+    context.addIssue({ code: "custom", message: "owner placement and ancestry" });
+  }
+});
+
+export type AguiPresentationOwnerBinding = Readonly<z.infer<typeof aguiPresentationOwnerBindingSchema>>;
+
 export const aguiPresentationBindingAuthorityDeltaSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("none") }),
   z.strictObject({ kind: z.literal("run.replace"), binding: aguiPresentationRunBindingSchema }),
   z.strictObject({ kind: z.literal("message.replace"), binding: aguiPresentationMessageBindingSchema }),
+  z.strictObject({ kind: z.literal("owner.replace"), binding: aguiPresentationOwnerBindingSchema }),
 ]);
 
 export type AguiPresentationBindingAuthorityDelta = Readonly<

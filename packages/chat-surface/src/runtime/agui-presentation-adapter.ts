@@ -7,6 +7,8 @@ import type {
   AguiPresentationMessageBindingRef,
   AguiPresentationMessageBinding,
   AguiPresentationMessageId,
+  AguiPresentationOwnerBindingRef,
+  AguiPresentationOwnerBinding,
   AguiPresentationDecoder,
   AguiPresentationRunBindingRef,
   AguiPresentationRunBinding,
@@ -28,8 +30,10 @@ type DurableMutationAuthority = Readonly<{
   source: AguiDurableFrame["data"]["source"]
   runBindingRef?: AguiPresentationRunBindingRef
   messageBindingRef?: AguiPresentationMessageBindingRef
+  ownerBindingRef?: AguiPresentationOwnerBindingRef
   runBinding?: AguiPresentationRunBinding
   messageBinding?: AguiPresentationMessageBinding
+  ownerBinding?: AguiPresentationOwnerBinding
 }>
 
 type ChatAguiActivityMutation<Event extends AguiActivityEvent = AguiActivityEvent> =
@@ -39,6 +43,7 @@ type ChatAguiActivityMutation<Event extends AguiActivityEvent = AguiActivityEven
         presentationMessageId: AguiPresentationMessageId
         activityType: Event["activityType"]
         content: Event["content"]
+        event: Event
         replace: true
       }>
     : never
@@ -49,6 +54,7 @@ type ChatAguiCustomMutation<Event extends AguiCustomEvent = AguiCustomEvent> =
         type: "agui.custom"
         name: Event["name"]
         value: Event["value"]
+        event: Event
       }>
     : never
 
@@ -118,6 +124,12 @@ function durableAuthority(
     : messageBindingRef === undefined
       ? undefined
       : snapshotAuthority.messageBindings.find((binding) => binding.bindingRef === messageBindingRef)
+  const ownerBindingRef = frame.data.presentationOwnerBindingRef
+  const ownerBinding = delta.kind === "owner.replace"
+    ? delta.binding
+    : ownerBindingRef === undefined
+      ? undefined
+      : snapshotAuthority.ownerBindings.find((binding) => binding.bindingRef === ownerBindingRef)
   return Object.freeze({
     durable: true,
     cursor: frame.id,
@@ -128,8 +140,10 @@ function durableAuthority(
     ...(frame.data.presentationMessageBindingRef === undefined
       ? {}
       : { messageBindingRef: frame.data.presentationMessageBindingRef }),
+    ...(ownerBindingRef === undefined ? {} : { ownerBindingRef }),
     ...(runBinding === undefined ? {} : { runBinding }),
     ...(messageBinding === undefined ? {} : { messageBinding }),
+    ...(ownerBinding === undefined ? {} : { ownerBinding }),
   })
 }
 
@@ -148,6 +162,7 @@ function mapActivityMutation(
       presentationMessageId: candidate.messageId,
       activityType: candidate.activityType,
       content: candidate.content,
+      event: candidate,
       replace: candidate.replace,
     }) as ChatAguiActivityMutation<Event>
 
@@ -178,6 +193,7 @@ function mapCustomMutation(
       type: "agui.custom" as const,
       name: candidate.name,
       value: candidate.value,
+      event: candidate,
     }) as ChatAguiCustomMutation<Event>
 
   switch (event.name) {
