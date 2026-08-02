@@ -10,7 +10,7 @@ const productionEntries = [
   resolve(root, "packages/chat-surface/src/index.ts"),
 ];
 
-test("Node 24 production main entries keep dormant AG-UI outside the real bundle graph", async () => {
+test("Node 24 production main entries include the reviewed AG-UI core without stock transport", async () => {
   assert.ok(Number.parseInt(process.versions.node, 10) >= 24, "repository bundle gate requires Node 24");
   const bundle = await rolldown({ input: productionEntries });
   try {
@@ -21,9 +21,15 @@ test("Node 24 production main entries keep dormant AG-UI outside the real bundle
     for (const entry of productionEntries) {
       assert.ok(moduleIds.includes(entry), `real Rolldown graph must include ${entry}`);
     }
+    assert.ok(
+      moduleIds.some((moduleId) => /(?:^|\/)node_modules\/@ag-ui\/core(?:\/|$)/u.test(moduleId)),
+      "the active Session presentation entry must use the reviewed @ag-ui/core protocol package",
+    );
+    assert.ok(
+      moduleIds.some((moduleId) => moduleId.endsWith("/session-client/src/agui-presentation-state-machine.internal.ts")),
+      "the active Session presentation state machine must be part of the production graph",
+    );
     for (const moduleId of moduleIds) {
-      assert.doesNotMatch(moduleId, /(?:^|\/)agui-presentation(?:\.|\/)/u);
-      assert.doesNotMatch(moduleId, /(?:^|\/)node_modules\/@ag-ui\//u);
       assert.doesNotMatch(moduleId, /@ag-ui\/client/u);
       assert.doesNotMatch(moduleId, /useAgUiRuntime/u);
     }

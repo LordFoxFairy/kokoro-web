@@ -109,16 +109,20 @@ test("new Site packages use one Node 24 toolchain and the generated client owns 
   assert.equal(assetClientPackage.dependencies["@kokoro/site-client"], "workspace:*");
   assert.equal(chatSurfacePackage.exports["."].development, "./src/index.ts");
   assert.equal(chatSurfacePackage.exports["."].import, "./dist/index.js");
-  assert.deepEqual(chatSurfacePackage.exports["./agui-presentation-dormant"], {
+  assert.equal(chatSurfacePackage.dependencies["@ag-ui/core"], "0.0.57");
+  assert.equal(sessionClientPackage.dependencies["@ag-ui/core"], "0.0.57");
+  assert.deepEqual(chatSurfacePackage.exports["./agui-presentation"], {
     types: "./src/runtime/agui-presentation-adapter.ts",
     development: "./src/runtime/agui-presentation-adapter.ts",
     import: "./dist/runtime/agui-presentation-adapter.js",
   });
-  assert.deepEqual(sessionClientPackage.exports["./agui-presentation-dormant"], {
+  assert.deepEqual(sessionClientPackage.exports["./agui-presentation"], {
     types: "./src/agui-presentation.ts",
     development: "./src/agui-presentation.ts",
     import: "./dist/agui-presentation.js",
   });
+  assert.equal(chatSurfacePackage.exports["./agui-presentation-dormant"], undefined);
+  assert.equal(sessionClientPackage.exports["./agui-presentation-dormant"], undefined);
   assert.doesNotMatch(chatSurfaceMain, /agui-presentation/u);
   assert.doesNotMatch(sessionClientMain, /agui-presentation/u);
   assert.equal(bffRuntimePackage.exports["."].development, "./src/index.ts");

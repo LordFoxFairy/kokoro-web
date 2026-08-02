@@ -37,6 +37,8 @@ const testPresentationAuthority = (sessionId: string) => createAguiPresentationD
     sessionId,
     runBindings: [],
     messageBindings: [],
+    ownerBindings: [],
+    ownerProjectionRows: [],
   },
 }).getSnapshotAuthority()
 
