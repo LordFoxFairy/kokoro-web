@@ -102,6 +102,8 @@ const positiveUint64Schema = uint64Schema.refine((value) => value !== "0", "must
 const timestampSchema = z.number().int().min(0).max(8_640_000_000_000_000);
 const shortTextSchema = z.string().min(1).max(1_024);
 const safeTextSchema = z.string().max(16_384);
+const actionDecisionSchema = z.enum(["approve", "reject", "edit", "respond"]);
+const planDecisionSchema = z.enum(["accept", "reject"]);
 
 export const aguiGrantBindingSchema = z.strictObject({
   sessionId: idSchema,
@@ -200,10 +202,70 @@ const activityBase = {
   messageId: aguiPresentationMessageIdSchema,
   replace: z.literal(true),
 } as const;
+const ownerFactBase = {
+  ownerVersion: positiveUint64Schema,
+  updatedAt: canonicalUtcMsSchema,
+} as const;
+const mediaFailureSchema = z.strictObject({
+  code: z.enum(["provider_rejected", "provider_unavailable", "invalid_output", "policy_restricted", "artifact_unavailable", "usage_unavailable", "unknown_terminal"]),
+  retryClass: z.enum(["never", "after-delay", "after-user-action", "reconcile-receipt"]),
+  safeMessage: safeTextSchema.optional(),
+});
+const mediaCandidateSchema = z.strictObject({
+  candidateRef: idSchema,
+  ordinal: z.number().int().min(0).max(3),
+  ownerVersion: positiveUint64Schema,
+  state: z.enum(["allocated", "producing", "output-received", "validating", "ready", "restricted", "failed", "unknown", "cancel-requested", "canceled"]),
+  artifactRef: idSchema.optional(),
+  artifactVersionRef: idSchema.optional(),
+  safeFailure: mediaFailureSchema.optional(),
+}).superRefine((candidate, context) => {
+  const ready = candidate.state === "ready";
+  if (ready !== (candidate.artifactRef !== undefined && candidate.artifactVersionRef !== undefined)) {
+    context.addIssue({ code: "custom", message: "ready candidate artifact identity" });
+  }
+  if (!ready && (candidate.artifactRef !== undefined || candidate.artifactVersionRef !== undefined)) {
+    context.addIssue({ code: "custom", message: "non-ready candidate artifact identity" });
+  }
+  const failed = candidate.state === "restricted" || candidate.state === "failed";
+  if (failed !== (candidate.safeFailure !== undefined)) {
+    context.addIssue({ code: "custom", message: "candidate failure detail" });
+  }
+});
+const artifactDisplaySchema = z.discriminatedUnion("kind", [
+  z.strictObject({
+    kind: z.literal("image"),
+    format: z.enum(["png", "jpeg", "webp"]),
+    width: z.number().int().min(1).max(65_535),
+    height: z.number().int().min(1).max(65_535),
+    byteSize: positiveUint64Schema,
+  }),
+  z.strictObject({
+    kind: z.literal("audio"),
+    format: z.enum(["mp3", "wav", "aac", "flac", "ogg"]),
+    durationMs: positiveUint64Schema,
+    byteSize: positiveUint64Schema,
+  }),
+  z.strictObject({
+    kind: z.literal("video"),
+    format: z.enum(["mp4", "webm", "mov"]),
+    width: z.number().int().min(1).max(65_535),
+    height: z.number().int().min(1).max(65_535),
+    durationMs: positiveUint64Schema,
+    byteSize: positiveUint64Schema,
+  }),
+  z.strictObject({
+    kind: z.literal("document"),
+    format: z.enum(["pdf", "markdown", "text"]),
+    byteSize: positiveUint64Schema,
+    pageCount: z.number().int().min(1).max(100_000).optional(),
+  }),
+]);
 const safeSummaryActivitySchema = z.strictObject({
   ...activityBase,
   activityType: z.literal("kokoro.safe-summary.v1"),
   content: z.strictObject({
+    ...ownerFactBase,
     partRef: idSchema,
     summary: safeTextSchema,
     status: z.enum(["streaming", "complete", "partial", "failed", "canceled"]),
@@ -213,6 +275,7 @@ const toolPreviewActivitySchema = z.strictObject({
   ...activityBase,
   activityType: z.literal("kokoro.tool-preview.v1"),
   content: z.strictObject({
+    ...ownerFactBase,
     toolCallRef: idSchema,
     label: shortTextSchema,
     status: z.enum(["pending", "running", "awaiting-user", "completed", "failed", "canceled"]),
@@ -226,21 +289,31 @@ const hitlActivitySchema = z.strictObject({
   ...activityBase,
   activityType: z.literal("kokoro.hitl.v1"),
   content: z.strictObject({
+    ...ownerFactBase,
     ownerRef: idSchema,
-    expectedVersion: z.number().int().min(1),
+    decisionGroupRef: idSchema,
+    requiredOwnerRefs: z.array(idSchema).min(1).max(64).refine((values) => new Set(values).size === values.length),
+    controlRef: idSchema,
     kind: z.enum(["approval", "interaction"]),
     title: shortTextSchema,
     description: safeTextSchema,
-    allowedActions: z.array(idSchema).min(1).max(16).refine((values) => new Set(values).size === values.length),
+    riskSummary: safeTextSchema.optional(),
+    inputSchemaRef: idSchema.optional(),
+    allowedActions: z.array(actionDecisionSchema).min(1).max(4).refine((values) => new Set(values).size === values.length),
     status: z.enum(["pending", "accepted", "rejected", "expired", "canceled"]),
     deadline: dateTimeSchema.optional(),
     receiptRef: idSchema.optional(),
+  }).superRefine((owner, context) => {
+    if (!owner.requiredOwnerRefs.includes(owner.ownerRef)) {
+      context.addIssue({ code: "custom", message: "required owner identity" });
+    }
   }),
 });
 const planActivitySchema = z.strictObject({
   ...activityBase,
   activityType: z.literal("kokoro.plan.v1"),
   content: z.strictObject({
+    ...ownerFactBase,
     planRef: idSchema,
     summary: safeTextSchema,
     status: z.enum(["proposed", "active", "completed", "failed", "canceled"]),
@@ -255,6 +328,7 @@ const subagentActivitySchema = z.strictObject({
   ...activityBase,
   activityType: z.literal("kokoro.subagent.v1"),
   content: z.strictObject({
+    ...ownerFactBase,
     subagentRef: idSchema,
     status: z.enum(["pending", "running", "completed", "failed", "canceled"]),
     summary: safeTextSchema.optional(),
@@ -264,38 +338,95 @@ const mediaActivitySchema = z.strictObject({
   ...activityBase,
   activityType: z.literal("kokoro.media.v1"),
   content: z.strictObject({
-    operationRef: idSchema,
-    state: z.enum(["pending", "queued", "active", "finalizing", "completed", "partial", "failed", "canceled", "unknown"]),
+    ...ownerFactBase,
+    mediaOperationRef: idSchema,
+    definitionRef: idSchema,
+    definitionRevisionRef: idSchema,
+    modelOptionRevisionRef: idSchema.optional(),
+    state: z.enum(["admission-pending", "authorized", "queued", "active", "finalizing", "cancel-requested", "reconciling", "completed", "partial", "failed", "canceled"]),
     progressBps: z.number().int().min(0).max(10_000),
-    summary: safeTextSchema.optional(),
+    candidates: z.array(mediaCandidateSchema).max(4),
+    costProjection: z.strictObject({
+      costProjectionRef: idSchema,
+      ownerVersion: positiveUint64Schema,
+    }).optional(),
+    outcomeClass: z.enum(["canonical", "irreconcilable"]).optional(),
+    safeFailure: mediaFailureSchema.optional(),
+  }).superRefine((operation, context) => {
+    if (operation.candidates.some((candidate, index) => candidate.ordinal !== index) ||
+      new Set(operation.candidates.map((candidate) => candidate.candidateRef)).size !== operation.candidates.length) {
+      context.addIssue({ code: "custom", message: "canonical media candidate identity" });
+    }
+    const terminal = ["completed", "partial", "failed", "canceled"].includes(operation.state);
+    if (terminal !== (operation.outcomeClass !== undefined)) {
+      context.addIssue({ code: "custom", message: "media terminal outcome" });
+    }
+    if ((operation.state === "failed") !== (operation.safeFailure !== undefined)) {
+      context.addIssue({ code: "custom", message: "media failure detail" });
+    }
   }),
 });
 const artifactActivitySchema = z.strictObject({
   ...activityBase,
   activityType: z.literal("kokoro.artifact.v1"),
   content: z.strictObject({
+    ...ownerFactBase,
     artifactRef: idSchema,
     artifactVersionRef: idSchema,
     availability: z.enum(["processing", "ready", "restricted", "unavailable", "deleted"]),
-    mediaClass: z.enum(["image", "audio", "video", "document", "other"]),
+    mediaClass: z.enum(["image", "audio", "video", "document"]),
+    display: artifactDisplaySchema.optional(),
+    safeFailure: mediaFailureSchema.optional(),
     title: shortTextSchema.optional(),
+  }).superRefine((artifact, context) => {
+    if (artifact.display !== undefined && artifact.display.kind !== artifact.mediaClass) {
+      context.addIssue({ code: "custom", message: "artifact display media class" });
+    }
+    if ((artifact.availability === "ready") !== (artifact.display !== undefined)) {
+      context.addIssue({ code: "custom", message: "ready artifact display" });
+    }
+    const failed = artifact.availability === "restricted" || artifact.availability === "unavailable";
+    if (failed !== (artifact.safeFailure !== undefined)) {
+      context.addIssue({ code: "custom", message: "artifact failure detail" });
+    }
   }),
 });
 const costActivitySchema = z.strictObject({
   ...activityBase,
   activityType: z.literal("kokoro.cost.v1"),
   content: z.strictObject({
+    ...ownerFactBase,
+    mediaOperationRef: idSchema,
     costProjectionRef: idSchema,
     state: z.enum(["pending", "estimated", "final", "corrected", "unavailable"]),
-    displayAmount: z.string().min(1).max(64).regex(/^(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/u).optional(),
-    unit: idSchema.optional(),
-    freshness: dateTimeSchema,
+    freshness: z.enum(["current", "stale", "rebuilding", "unavailable"]),
+    amount: z.strictObject({
+      creditUnit: idSchema,
+      amount: z.string().min(1).max(40).regex(/^(?:0|[1-9][0-9]{0,39})$/u),
+    }).optional(),
+    correctsOwnerVersion: positiveUint64Schema.optional(),
+    safeReason: safeTextSchema.optional(),
+  }).superRefine((cost, context) => {
+    const hasAmount = ["estimated", "final", "corrected"].includes(cost.state);
+    if (hasAmount !== (cost.amount !== undefined)) {
+      context.addIssue({ code: "custom", message: "cost amount" });
+    }
+    if ((cost.state === "corrected") !== (cost.correctsOwnerVersion !== undefined)) {
+      context.addIssue({ code: "custom", message: "cost correction authority" });
+    }
+    if (cost.state === "corrected" && cost.correctsOwnerVersion !== undefined && BigInt(cost.correctsOwnerVersion) >= BigInt(cost.ownerVersion)) {
+      context.addIssue({ code: "custom", message: "cost correction predecessor" });
+    }
+    if ((cost.state === "unavailable") !== (cost.safeReason !== undefined)) {
+      context.addIssue({ code: "custom", message: "cost unavailable reason" });
+    }
   }),
 });
 const noticeActivitySchema = z.strictObject({
   ...activityBase,
   activityType: z.literal("kokoro.notice.v1"),
   content: z.strictObject({
+    ...ownerFactBase,
     noticeRef: idSchema,
     code: idSchema,
     message: safeTextSchema,
@@ -307,6 +438,7 @@ const errorActivitySchema = z.strictObject({
   ...activityBase,
   activityType: z.literal("kokoro.error.v1"),
   content: z.strictObject({
+    ...ownerFactBase,
     errorRef: idSchema,
     code: idSchema,
     message: safeTextSchema,
@@ -326,7 +458,11 @@ const activitySchema = z.union([
   costActivitySchema,
   noticeActivitySchema,
   errorActivitySchema,
-]);
+]).superRefine((event, context) => {
+  if (Date.parse(event.content.updatedAt) > event.timestamp) {
+    context.addIssue({ code: "custom", message: "owner update after event" });
+  }
+});
 
 const sessionCustomSchema = z.strictObject({
   type: z.literal(EventType.CUSTOM),
@@ -383,10 +519,20 @@ const controlCustomSchema = z.strictObject({
   name: z.literal("kokoro.control.replace.v1"),
   value: z.strictObject({
     controlRef: idSchema,
+    ownerRef: idSchema,
+    decisionGroupRef: idSchema,
     kind: z.enum(["approval", "interaction", "plan", "cancellation"]),
     state: z.enum(["pending", "accepted", "rejected", "expired", "canceled"]),
-    expectedVersion: z.number().int().min(1),
-    allowedActions: z.array(idSchema).max(16).refine((values) => new Set(values).size === values.length),
+    ownerVersion: positiveUint64Schema,
+    allowedActions: z.array(z.enum(["approve", "reject", "edit", "respond", "accept"])).max(4).refine((values) => new Set(values).size === values.length),
+    updatedAt: canonicalUtcMsSchema,
+  }).superRefine((control, context) => {
+    const valid = control.kind === "plan"
+      ? z.array(planDecisionSchema).min(1).max(2).safeParse(control.allowedActions).success
+      : control.kind === "cancellation"
+        ? control.allowedActions.length === 0
+        : z.array(actionDecisionSchema).min(1).max(4).safeParse(control.allowedActions).success;
+    if (!valid) context.addIssue({ code: "custom", message: "control decision vocabulary" });
   }),
 });
 const receiptCustomSchema = z.strictObject({
@@ -395,10 +541,14 @@ const receiptCustomSchema = z.strictObject({
   name: z.literal("kokoro.receipt.replace.v1"),
   value: z.strictObject({
     receiptRef: idSchema,
+    controlRef: idSchema,
+    ownerRef: idSchema,
+    decisionGroupRef: idSchema,
     commandId: idSchema,
     operation: idSchema,
     state: z.enum(["pending", "accepted", "committed", "rejected", "unknown"]),
-    version: z.number().int().min(1),
+    ownerVersion: positiveUint64Schema,
+    updatedAt: canonicalUtcMsSchema,
   }),
 });
 const customSchema = z.union([
@@ -408,7 +558,12 @@ const customSchema = z.union([
   runCustomSchema,
   controlCustomSchema,
   receiptCustomSchema,
-]);
+]).superRefine((event, context) => {
+  if ((event.name === "kokoro.control.replace.v1" || event.name === "kokoro.receipt.replace.v1") &&
+    Date.parse(event.value.updatedAt) > event.timestamp) {
+    context.addIssue({ code: "custom", message: "owner update after event" });
+  }
+});
 
 export const aguiPresentationEventSchema = z.union([
   runStartedSchema,
@@ -816,6 +971,28 @@ function validateClosedEventPreSchema(value: unknown): void {
     event.activityType === "kokoro.tool-preview.v1" &&
     containsKey(event.content, forbiddenToolKey)
   ) fail("agui_tool_secret_forbidden");
+  if (event.type === EventType.ACTIVITY_SNAPSHOT && event.activityType === "kokoro.hitl.v1") {
+    const content = event.content;
+    if (content !== null && typeof content === "object" && !Array.isArray(content)) {
+      const actions = (content as Record<string, unknown>)["allowedActions"];
+      if (Array.isArray(actions) && !z.array(actionDecisionSchema).min(1).max(4).safeParse(actions).success) {
+        fail("agui_presentation_row_schema_invalid");
+      }
+    }
+  }
+  if (event.type === EventType.CUSTOM && event.name === "kokoro.control.replace.v1") {
+    const value = event.value;
+    if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+      const control = value as Record<string, unknown>;
+      const actions = control["allowedActions"];
+      const valid = control["kind"] === "plan"
+        ? z.array(planDecisionSchema).min(1).max(2).safeParse(actions).success
+        : control["kind"] === "cancellation"
+          ? Array.isArray(actions) && actions.length === 0
+          : z.array(actionDecisionSchema).min(1).max(4).safeParse(actions).success;
+      if (Array.isArray(actions) && !valid) fail("agui_presentation_row_schema_invalid");
+    }
+  }
   const fields = allowedEventFields.get(event.type);
   const extra = Object.keys(event).find((field) => !fields?.has(field));
   if (extra !== undefined) fail("agui_event_extra_forbidden", extra);
@@ -1147,6 +1324,10 @@ function applyBindingAuthorityDelta(
     ) fail("agui_run_terminal_state_invalid", binding.bindingRef);
     const existing = runBindings.get(binding.bindingRef);
     if (event.type === EventType.RUN_STARTED) {
+      if (binding.sessionRunId?.startsWith("internal.")) {
+        fail("agui_private_presentation_identity_equal", binding.sessionRunId);
+      }
+      const parentId = binding.parentLineage.parentPresentationRunId;
       if (existing !== undefined) fail("agui_binding_delta_run_duplicate", binding.bindingRef);
       if ([...runBindings.values()].some(({ presentationRunId }) => presentationRunId === binding.presentationRunId)) {
         fail("agui_binding_delta_run_duplicate", binding.bindingRef);
@@ -1171,7 +1352,6 @@ function applyBindingAuthorityDelta(
         event.runId !== binding.presentationRunId || event.threadId !== binding.presentationThreadId ||
         (event.parentRunId ?? null) !== binding.parentLineage.parentPresentationRunId
       ) fail("agui_binding_delta_event_identity_conflict", binding.bindingRef);
-      const parentId = binding.parentLineage.parentPresentationRunId;
       if (parentId !== null) {
         const parent = [...runBindings.values()].find(({ presentationRunId }) => presentationRunId === parentId);
         if (parent === undefined || parent.state === "open") {
@@ -1190,6 +1370,15 @@ function applyBindingAuthorityDelta(
           previous.presentationThreadId !== binding.presentationThreadId ||
           stableStringify(previous.parentLineage) !== stableStringify(binding.parentLineage)
         ) fail("agui_binding_delta_future_evidence", binding.bindingRef);
+        if (previous.sessionRunId !== binding.sessionRunId) {
+          fail("agui_resume_session_run_conflict", binding.bindingRef);
+        }
+      }
+      if (parentId === null && binding.sessionRunId === null) {
+        fail("agui_session_run_binding_missing", binding.bindingRef);
+      }
+      if (parentId !== null && binding.sessionRunId !== null) {
+        fail("agui_child_session_run_binding_forbidden", binding.bindingRef);
       }
       runBindings.set(binding.bindingRef, binding);
       return;
@@ -1246,6 +1435,9 @@ function applyBindingAuthorityDelta(
       fail("agui_binding_delta_future_evidence", binding.bindingRef);
     }
     if (existing !== undefined) fail("agui_binding_delta_message_duplicate", binding.bindingRef);
+    if ((binding.sessionMessageId !== null) !== (run.sessionRunId !== null)) {
+      fail("agui_session_message_run_binding_conflict", binding.bindingRef);
+    }
     if ([...messageBindings.values()].some(
       ({ presentationMessageId }) => presentationMessageId === binding.presentationMessageId,
     )) fail("agui_binding_delta_message_duplicate", binding.bindingRef);
@@ -1323,11 +1515,15 @@ function validateSnapshotAuthority(
   const bindingRefs = new Set<string>();
   const presentationIds = new Set<string>();
   const evidenceSourceIds = new Set<string>();
+  const sessionRunIds = new Set<string>();
   let authorityRecordedAt = -1;
   for (const candidate of envelope.data.runBindings) {
     const parsed = aguiPresentationRunBindingSchema.safeParse(candidate);
     if (!parsed.success) fail("agui_run_binding_schema_invalid");
     const binding = parsed.data;
+    if (binding.sessionRunId?.startsWith("internal.")) {
+      fail("agui_private_presentation_identity_equal", binding.sessionRunId);
+    }
     if (binding.sessionId !== envelope.data.sessionId || binding.profileRevision !== envelope.data.profileRevision) {
       fail("agui_run_binding_scope_conflict", binding.bindingRef);
     }
@@ -1373,6 +1569,10 @@ function validateSnapshotAuthority(
     }
     runRefs.set(binding.bindingRef, binding);
     runIds.set(binding.presentationRunId, binding);
+    if (binding.segmentOrdinal === 0 && binding.sessionRunId !== null) {
+      if (sessionRunIds.has(binding.sessionRunId)) fail("agui_session_run_binding_duplicate");
+      sessionRunIds.add(binding.sessionRunId);
+    }
   }
 
   for (const binding of runRefs.values()) {
@@ -1419,10 +1619,25 @@ function validateSnapshotAuthority(
       stableStringify(previous.parentLineage) !== stableStringify(binding.parentLineage) ||
       Date.parse(binding.openedAt) < Date.parse(previous.terminalAt ?? binding.openedAt)
     ) fail("agui_resume_parent_confused", binding.bindingRef);
+    if (previous.sessionRunId !== binding.sessionRunId) {
+      fail("agui_resume_session_run_conflict", binding.bindingRef);
+    }
+  }
+
+  for (const binding of runRefs.values()) {
+    const parentId = binding.parentLineage.parentPresentationRunId;
+    if (parentId === null && binding.sessionRunId === null) {
+      fail("agui_session_run_binding_missing", binding.bindingRef);
+    }
+    if (parentId !== null && binding.sessionRunId !== null) {
+      fail("agui_child_session_run_binding_forbidden", binding.bindingRef);
+    }
   }
 
   const messageRefs = new Map<string, AguiPresentationMessageBinding>();
   const messageIds = new Set<string>();
+  const sessionMessageIds = new Set<string>();
+  const sessionTextPartIds = new Set<string>();
   for (const candidate of envelope.data.messageBindings) {
     const parsed = aguiPresentationMessageBindingSchema.safeParse(candidate);
     if (!parsed.success) fail("agui_message_binding_schema_invalid");
@@ -1433,6 +1648,17 @@ function validateSnapshotAuthority(
     const run = runRefs.get(binding.presentationRunBindingRef);
     if (run === undefined || run.segmentOrdinal !== binding.resumeSegmentOrdinal) {
       fail("agui_message_run_binding_invalid", binding.bindingRef);
+    }
+    if ((binding.sessionMessageId !== null) !== (run.sessionRunId !== null)) {
+      fail("agui_session_message_run_binding_conflict", binding.bindingRef);
+    }
+    if (binding.sessionMessageId !== null) {
+      if (sessionMessageIds.has(binding.sessionMessageId)) fail("agui_session_message_binding_duplicate");
+      sessionMessageIds.add(binding.sessionMessageId);
+    }
+    if (binding.sessionTextPartId !== null) {
+      if (sessionTextPartIds.has(binding.sessionTextPartId)) fail("agui_session_text_part_binding_duplicate");
+      sessionTextPartIds.add(binding.sessionTextPartId);
     }
     if (messageRefs.has(binding.bindingRef) || messageIds.has(binding.presentationMessageId)) {
       fail("agui_message_binding_duplicate");
@@ -1637,6 +1863,14 @@ function createAguiPresentationDecoderInternal(options: Readonly<{
     }
 
     validateBrowserEnvelopePreSchema(raw);
+    if (raw !== null && typeof raw === "object" && !Array.isArray(raw)) {
+      const delta = Reflect.get(raw, "bindingAuthorityDelta");
+      if (delta !== null && typeof delta === "object" && !Array.isArray(delta) &&
+        Reflect.get(delta, "kind") === "message.replace" &&
+        !aguiPresentationMessageBindingSchema.safeParse(Reflect.get(delta, "binding")).success) {
+        fail("agui_message_binding_schema_invalid");
+      }
+    }
     const envelope = projectionEnvelopeSchema.safeParse(raw);
     if (!envelope.success) fail("agui_projection_payload_invalid");
     validateClosedEventPreSchema(envelope.data.event);

@@ -9,12 +9,18 @@ import type {
 } from "@kokoro/session-client/contracts"
 
 import {
+  projectAguiArtifactOwnerState,
+  projectAguiCostOwnerState,
+  projectAguiMediaOperationOwnerState,
   projectArtifactOwnerState,
   projectCostOwnerState,
   projectMediaOperationOwnerState,
   type ChatArtifactOwnerState,
   type ChatCostOwnerState,
   type ChatMediaOperationOwnerState,
+  validateArtifactTransition,
+  validateCostTransition,
+  validateMediaOperationTransition,
 } from "./owner-state.js"
 import type { ChatAguiPresentationMutation } from "../runtime/agui-presentation-adapter.js"
 
@@ -22,26 +28,24 @@ type ChatPartBase = {
   readonly id: string
   readonly ordinal: number
   readonly version: number
+  /** Opaque uint64 authority for AG-UI replacements; snapshot part version remains numeric. */
+  readonly presentationVersion?: string
   readonly lifecycle: MessagePartEnvelope["lifecycle"]
 }
-
-type ChatActivityPart<Event extends AguiActivityEvent = AguiActivityEvent> =
-  Event extends AguiActivityEvent
-    ? ChatPartBase & Readonly<{
-        kind: "activity"
-        activityType: Event["activityType"]
-        content: Event["content"]
-        replace: true
-      }>
-    : never
 
 type PartPayload<Kind extends MessagePartEnvelope["kind"]> =
   Extract<MessagePartEnvelope, { readonly kind: Kind }>["payload"]
 
 export type ChatPart = ChatPartBase & (
   | { readonly kind: "text"; readonly text: string }
-  | { readonly kind: "reasoning-summary"; readonly partRef: string; readonly text: string }
-  | ChatActivityPart
+  | {
+      readonly kind: "reasoning-summary"
+      readonly partRef: string
+      readonly text: string
+      readonly status?: "streaming" | "complete" | "partial" | "failed" | "canceled"
+      readonly ownerVersion?: string
+      readonly updatedAt?: string
+    }
   | {
       readonly kind: "citation"
       readonly sourceRef: string
@@ -60,11 +64,16 @@ export type ChatPart = ChatPartBase & (
       readonly truncated?: PartPayload<"tool-call">["truncated"]
       readonly effectRef?: string
       readonly receiptRef?: string
+      readonly ownerVersion?: string
+      readonly updatedAt?: string
     }
   | {
       readonly kind: "approval" | "interaction"
       readonly ownerRef: string
-      readonly expectedVersion: number
+      readonly ownerVersion: string
+      readonly controlRef?: string
+      readonly controlOwnerVersion?: string
+      readonly controlUpdatedAt?: string
       readonly decisionGroupRef: string
       readonly requiredOwnerRefs: readonly string[]
       readonly title: string
@@ -76,12 +85,17 @@ export type ChatPart = ChatPartBase & (
       readonly deadline?: string
       readonly allowedActions: PartPayload<"approval" | "interaction">["allowed_actions"]
       readonly receiptRef?: string
+      readonly receiptState?: "pending" | "accepted" | "committed" | "rejected" | "unknown"
+      readonly receiptOwnerVersion?: string
+      readonly receiptCommandId?: string
+      readonly receiptOperation?: string
+      readonly updatedAt?: string
       readonly status: PartPayload<"approval" | "interaction">["status"]
     }
   | {
       readonly kind: "plan"
       readonly planProposalRef: string
-      readonly planVersion: number
+      readonly planVersion: string
       readonly summary: string
       readonly steps: readonly { readonly stepRef: string; readonly label: string; readonly status: string }[]
       readonly allowedActions: PartPayload<"plan">["allowed_actions"]
@@ -92,14 +106,19 @@ export type ChatPart = ChatPartBase & (
   | {
       readonly kind: "plan-progress"
       readonly planRef: string
+      readonly ownerVersion?: string
       readonly summary: string
       readonly steps: readonly { readonly stepRef: string; readonly label: string; readonly status: string }[]
+      readonly status?: "proposed" | "active" | "completed" | "failed" | "canceled"
+      readonly updatedAt?: string
     }
   | {
       readonly kind: "subagent"
       readonly subagentRef: string
+      readonly ownerVersion?: string
       readonly status: PartPayload<"subagent">["status"]
       readonly summary?: string
+      readonly updatedAt?: string
     }
   | ({ readonly kind: "media-operation" } & ChatMediaOperationOwnerState)
   | ({ readonly kind: "artifact" } & ChatArtifactOwnerState)
@@ -107,19 +126,23 @@ export type ChatPart = ChatPartBase & (
   | {
       readonly kind: "notice"
       readonly noticeRef: string
+      readonly ownerVersion?: string
       readonly code: string
       readonly message: string
       readonly severity: PartPayload<"notice">["severity"]
       readonly retryClass?: PartPayload<"notice">["retry_class"]
       readonly supportCorrelationRef?: string
+      readonly updatedAt?: string
     }
   | {
       readonly kind: "error"
       readonly errorRef: string
+      readonly ownerVersion?: string
       readonly code: string
       readonly message: string
       readonly retryClass: PartPayload<"error">["retry_class"]
       readonly supportCorrelationRef?: string
+      readonly updatedAt?: string
     }
   | {
       readonly kind: "unsupported"
@@ -131,6 +154,7 @@ export type ChatPart = ChatPartBase & (
 
 export type ChatProjectionMessage = {
   readonly id: string
+  readonly presentationMessageId?: string
   readonly branchId: string
   readonly parentMessageId?: string
   readonly triggerMessageId?: string
@@ -138,6 +162,8 @@ export type ChatProjectionMessage = {
   readonly presentationRunId?: string
   readonly presentationRunBindingRef?: string
   readonly presentationMessageBindingRef?: string
+  readonly presentationTextPartId?: string
+  readonly presentationOwnerVersion?: number
   readonly role: "user" | "assistant"
   readonly createdAt: string
   readonly parts: readonly ChatPart[]
@@ -152,9 +178,35 @@ export type ChatProjectionMessage = {
 export type ChatPresentationRun = Readonly<{
   bindingRef: string
   presentationRunId: string
+  sessionRunId: string | null
   parentPresentationRunId: string | null
   state: "starting" | "running" | "waiting" | "canceling" | "finished" | "error"
-  ownerVersion: number
+  ownerVersion: string
+}>
+
+export type ChatPresentationControl = Readonly<{
+  runBindingRef: string
+  controlRef: string
+  ownerRef: string
+  decisionGroupRef: string
+  kind: "approval" | "interaction" | "plan" | "cancellation"
+  state: "pending" | "accepted" | "rejected" | "expired" | "canceled"
+  ownerVersion: string
+  allowedActions: readonly string[]
+  updatedAt: string
+}>
+
+export type ChatPresentationReceipt = Readonly<{
+  runBindingRef: string
+  receiptRef: string
+  controlRef: string
+  ownerRef: string
+  decisionGroupRef: string
+  commandId: string
+  operation: string
+  state: "pending" | "accepted" | "committed" | "rejected" | "unknown"
+  ownerVersion: string
+  updatedAt: string
 }>
 
 export type ChatSessionMetadata = {
@@ -192,6 +244,8 @@ export type ChatProjection = {
   readonly presentationRunState: "starting" | "running" | "waiting" | "canceling" | null
   /** Authoritative presentation lineage, keyed semantically by bindingRef. */
   readonly presentationRuns: readonly ChatPresentationRun[]
+  readonly presentationControls: readonly ChatPresentationControl[]
+  readonly presentationReceipts: readonly ChatPresentationReceipt[]
   readonly connection: SessionConnectionState | { readonly kind: "idle" }
   readonly command: {
     readonly state: "idle" | "pending" | "conflict" | "failed"
@@ -403,6 +457,8 @@ export function createChatProjection(): ChatProjection {
     presentationRunId: null,
     presentationRunState: null,
     presentationRuns: [],
+    presentationControls: [],
+    presentationReceipts: [],
     connection: { kind: "idle" },
     command: { state: "idle" },
     repair: { required: false },
@@ -494,7 +550,7 @@ function projectPartView(part: MessagePartEnvelope): ChatPart {
         ...base,
         kind: part.kind,
         ownerRef: part.payload.owner_ref,
-        expectedVersion: part.payload.expected_version,
+        ownerVersion: String(part.payload.expected_version),
         decisionGroupRef: part.payload.decision_group_ref,
         requiredOwnerRefs: [...part.payload.required_owner_refs],
         title: part.payload.title,
@@ -513,7 +569,7 @@ function projectPartView(part: MessagePartEnvelope): ChatPart {
         ...base,
         kind: "plan",
         planProposalRef: part.payload.plan_proposal_ref,
-        planVersion: part.payload.plan_version,
+        planVersion: String(part.payload.plan_version),
         summary: part.payload.summary,
         steps: part.payload.steps.map((step) => ({ stepRef: step.step_ref, label: step.label, status: step.status })),
         allowedActions: [...part.payload.allowed_actions],
@@ -787,9 +843,15 @@ function reduceChatProjection(
   }
 }
 
-function presentationVersion(value: string): number | null {
-  const version = Number(value)
-  return Number.isSafeInteger(version) && version > 0 ? version : null
+function presentationVersion(value: string): string | null {
+  if (!/^[1-9][0-9]{0,19}$/u.test(value)) return null
+  return BigInt(value) <= 18_446_744_073_709_551_615n ? value : null
+}
+
+function compareOwnerVersion(left: string, right: string): -1 | 0 | 1 {
+  const leftValue = BigInt(left)
+  const rightValue = BigInt(right)
+  return leftValue < rightValue ? -1 : leftValue > rightValue ? 1 : 0
 }
 
 function activityIdentity(
@@ -801,7 +863,7 @@ function activityIdentity(
     case "kokoro.hitl.v1": return event.content.ownerRef
     case "kokoro.plan.v1": return event.content.planRef
     case "kokoro.subagent.v1": return event.content.subagentRef
-    case "kokoro.media.v1": return event.content.operationRef
+    case "kokoro.media.v1": return event.content.mediaOperationRef
     case "kokoro.artifact.v1": return event.content.artifactVersionRef
     case "kokoro.cost.v1": return event.content.costProjectionRef
     case "kokoro.notice.v1": return event.content.noticeRef
@@ -809,8 +871,168 @@ function activityIdentity(
   }
 }
 
+type AguiActivityMutation = Extract<ChatAguiPresentationMutation, { type: "agui.activity" }>
+
+function partMatchesActivity(part: ChatPart, mutation: AguiActivityMutation): boolean {
+  switch (mutation.activityType) {
+    case "kokoro.safe-summary.v1": return part.kind === "reasoning-summary" && part.partRef === mutation.content.partRef
+    case "kokoro.tool-preview.v1": return part.kind === "tool" && part.toolCallId === mutation.content.toolCallRef
+    case "kokoro.hitl.v1": return (part.kind === "approval" || part.kind === "interaction") && part.ownerRef === mutation.content.ownerRef
+    case "kokoro.plan.v1": return part.kind === "plan-progress" && part.planRef === mutation.content.planRef
+    case "kokoro.subagent.v1": return part.kind === "subagent" && part.subagentRef === mutation.content.subagentRef
+    case "kokoro.media.v1": return part.kind === "media-operation" && part.mediaOperationRef === mutation.content.mediaOperationRef
+    case "kokoro.artifact.v1": return part.kind === "artifact" && part.artifactRef === mutation.content.artifactRef && part.artifactVersionRef === mutation.content.artifactVersionRef
+    case "kokoro.cost.v1": return part.kind === "cost" && part.mediaOperationRef === mutation.content.mediaOperationRef && part.costProjectionRef === mutation.content.costProjectionRef
+    case "kokoro.notice.v1": return part.kind === "notice" && part.noticeRef === mutation.content.noticeRef
+    case "kokoro.error.v1": return part.kind === "error" && part.errorRef === mutation.content.errorRef
+  }
+}
+
+function activityStatusLifecycle(mutation: AguiActivityMutation): MessagePartEnvelope["lifecycle"] {
+  switch (mutation.activityType) {
+    case "kokoro.safe-summary.v1": return mutation.content.status === "streaming" ? "streaming" : "completed"
+    case "kokoro.tool-preview.v1": return ["pending", "running", "awaiting-user"].includes(mutation.content.status) ? "streaming" : "completed"
+    case "kokoro.hitl.v1": return mutation.content.status === "pending" ? "streaming" : "completed"
+    case "kokoro.plan.v1": return ["proposed", "active"].includes(mutation.content.status) ? "streaming" : "completed"
+    case "kokoro.subagent.v1": return ["pending", "running"].includes(mutation.content.status) ? "streaming" : "completed"
+    case "kokoro.media.v1": return ["completed", "partial", "failed", "canceled"].includes(mutation.content.state) ? "completed" : "streaming"
+    case "kokoro.artifact.v1": return mutation.content.availability === "processing" ? "streaming" : "completed"
+    case "kokoro.cost.v1": return ["pending", "estimated"].includes(mutation.content.state) ? "streaming" : "completed"
+    case "kokoro.notice.v1":
+    case "kokoro.error.v1": return "completed"
+  }
+}
+
+function toolPreviewStatus(status: Extract<AguiActivityEvent, { activityType: "kokoro.tool-preview.v1" }>["content"]["status"]): Extract<ChatPart, { kind: "tool" }>["status"] {
+  switch (status) {
+    case "pending":
+    case "running": return "running"
+    case "awaiting-user": return "awaiting"
+    case "completed": return "complete"
+    case "failed": return "error"
+    case "canceled": return "incomplete"
+  }
+}
+
+function projectAguiActivityPart(
+  mutation: AguiActivityMutation,
+  current: ChatPart | undefined,
+  envelopeVersion: string,
+): ChatPart {
+  const base = {
+    id: current?.id ?? `agui.activity:${mutation.activityType}:${activityIdentity(mutation)}`,
+    ordinal: current?.ordinal ?? 0,
+    version: current?.version ?? 1,
+    presentationVersion: envelopeVersion,
+    lifecycle: activityStatusLifecycle(mutation),
+  }
+  switch (mutation.activityType) {
+    case "kokoro.safe-summary.v1":
+      return { ...base, kind: "reasoning-summary", partRef: mutation.content.partRef, text: mutation.content.summary, status: mutation.content.status, ownerVersion: mutation.content.ownerVersion, updatedAt: mutation.content.updatedAt }
+    case "kokoro.tool-preview.v1":
+      return {
+        ...base,
+        kind: "tool",
+        toolCallId: mutation.content.toolCallRef,
+        name: mutation.content.label,
+        args: {},
+        status: toolPreviewStatus(mutation.content.status),
+        ...(mutation.content.resultPreview === undefined ? {} : { result: mutation.content.resultPreview }),
+        ...(mutation.content.isError === undefined ? {} : { isError: mutation.content.isError }),
+        ...(mutation.content.truncated === undefined ? {} : { truncated: mutation.content.truncated }),
+        ownerVersion: mutation.content.ownerVersion,
+        updatedAt: mutation.content.updatedAt,
+      }
+    case "kokoro.hitl.v1":
+      return {
+        ...base,
+        kind: mutation.content.kind,
+        ownerRef: mutation.content.ownerRef,
+        ownerVersion: mutation.content.ownerVersion,
+        controlRef: mutation.content.controlRef,
+        decisionGroupRef: mutation.content.decisionGroupRef,
+        requiredOwnerRefs: mutation.content.requiredOwnerRefs,
+        title: mutation.content.title,
+        description: mutation.content.description,
+        allowedActions: mutation.content.allowedActions,
+        status: mutation.content.status,
+        ...(mutation.content.riskSummary === undefined ? {} : { riskSummary: mutation.content.riskSummary }),
+        ...(mutation.content.inputSchemaRef === undefined ? {} : { inputSchemaRef: mutation.content.inputSchemaRef }),
+        ...(mutation.content.deadline === undefined ? {} : { deadline: mutation.content.deadline }),
+        ...(mutation.content.receiptRef === undefined ? {} : { receiptRef: mutation.content.receiptRef }),
+        updatedAt: mutation.content.updatedAt,
+      }
+    case "kokoro.plan.v1":
+      return { ...base, kind: "plan-progress", planRef: mutation.content.planRef, ownerVersion: mutation.content.ownerVersion, summary: mutation.content.summary, status: mutation.content.status, steps: mutation.content.steps, updatedAt: mutation.content.updatedAt }
+    case "kokoro.subagent.v1":
+      return { ...base, kind: "subagent", subagentRef: mutation.content.subagentRef, ownerVersion: mutation.content.ownerVersion, status: mutation.content.status, ...(mutation.content.summary === undefined ? {} : { summary: mutation.content.summary }), updatedAt: mutation.content.updatedAt }
+    case "kokoro.media.v1":
+      return { ...base, kind: "media-operation", ...projectAguiMediaOperationOwnerState(mutation.content) }
+    case "kokoro.artifact.v1":
+      return { ...base, kind: "artifact", ...projectAguiArtifactOwnerState(mutation.content), ...(mutation.content.title === undefined ? {} : { title: mutation.content.title }) }
+    case "kokoro.cost.v1":
+      return { ...base, kind: "cost", ...projectAguiCostOwnerState(mutation.content) }
+    case "kokoro.notice.v1":
+      return { ...base, kind: "notice", noticeRef: mutation.content.noticeRef, ownerVersion: mutation.content.ownerVersion, code: mutation.content.code, message: mutation.content.message, severity: mutation.content.severity, ...(mutation.content.retryClass === undefined ? {} : { retryClass: mutation.content.retryClass.replaceAll("-", "_") as Extract<ChatPart, { kind: "notice" }>["retryClass"] }), updatedAt: mutation.content.updatedAt }
+    case "kokoro.error.v1":
+      return { ...base, kind: "error", errorRef: mutation.content.errorRef, ownerVersion: mutation.content.ownerVersion, code: mutation.content.code, message: mutation.content.message, retryClass: mutation.content.retryClass.replaceAll("-", "_") as Extract<ChatPart, { kind: "error" }>["retryClass"], ...(mutation.content.supportCorrelationRef === undefined ? {} : { supportCorrelationRef: mutation.content.supportCorrelationRef }), updatedAt: mutation.content.updatedAt }
+  }
+}
+
+function partOwnerVersion(part: ChatPart): string | undefined {
+  return "ownerVersion" in part && typeof part.ownerVersion === "string" ? part.ownerVersion : undefined
+}
+
+function partOwnerFingerprint(part: ChatPart): string {
+  return stableStringify(Object.fromEntries(Object.entries(part).filter(([key]) =>
+    !["id", "ordinal", "version", "presentationVersion", "lifecycle"].includes(key))))
+}
+
+function activityTerminalState(part: ChatPart): string | undefined {
+  switch (part.kind) {
+    case "reasoning-summary": return part.status !== undefined && part.status !== "streaming" ? part.status : undefined
+    case "tool": return ["complete", "error", "incomplete"].includes(part.status) ? part.status : undefined
+    case "approval":
+    case "interaction": return part.status === "pending" ? undefined : part.status
+    case "plan-progress": return part.status !== undefined && ["completed", "failed", "canceled"].includes(part.status) ? part.status : undefined
+    case "subagent": return ["completed", "failed", "canceled"].includes(part.status) ? part.status : undefined
+    case "media-operation": return ["completed", "partial", "failed", "canceled"].includes(part.state) ? part.state : undefined
+    case "artifact": return part.availability === "deleted" ? part.availability : undefined
+    case "cost": return undefined
+    case "notice":
+    case "error": return "terminal"
+    default: return undefined
+  }
+}
+
+function validateAguiActivityTransition(current: ChatPart, next: ChatPart): string | undefined {
+  const currentVersion = partOwnerVersion(current)
+  const nextVersion = partOwnerVersion(next)
+  if (currentVersion === undefined || nextVersion === undefined) return "agui_activity_owner_version_missing"
+  const order = compareOwnerVersion(nextVersion, currentVersion)
+  if (order < 0) return "agui_activity_owner_version_regression"
+  if (order === 0 && partOwnerFingerprint(current) !== partOwnerFingerprint(next)) return "agui_activity_owner_version_conflict"
+  if ("updatedAt" in current && "updatedAt" in next && typeof current.updatedAt === "string" && typeof next.updatedAt === "string" && Date.parse(next.updatedAt) < Date.parse(current.updatedAt)) {
+    return "agui_activity_updated_at_regression"
+  }
+  if (current.kind === "media-operation" && next.kind === "media-operation") return validateMediaOperationTransition(current, next)
+  if (current.kind === "artifact" && next.kind === "artifact") {
+    const conflict = validateArtifactTransition(current, next)
+    if (conflict !== undefined) return conflict
+  }
+  if (current.kind === "cost" && next.kind === "cost") {
+    const conflict = validateCostTransition(current, next)
+    if (conflict !== undefined) return conflict
+    if (next.state === "corrected" && next.correctsOwnerVersion !== current.ownerVersion) return "cost_correction_ancestry_conflict"
+  }
+  const terminal = activityTerminalState(current)
+  if (terminal !== undefined && activityTerminalState(next) !== terminal) return "agui_activity_terminal_regression"
+  return undefined
+}
+
 function presentationMessageIndex(state: ChatProjection, messageId: string): number {
-  return state.messages.findIndex((message) => message.id === messageId)
+  return state.messages.findIndex((message) =>
+    message.id === messageId || message.presentationMessageId === messageId)
 }
 
 function appendPresentationMessage(
@@ -822,7 +1044,8 @@ function appendPresentationMessage(
   const session = state.session
   if (
     branchId === null || session === null || mutation.runBindingRef === undefined ||
-    mutation.messageBindingRef === undefined
+    mutation.messageBindingRef === undefined || mutation.runBinding === undefined ||
+    mutation.messageBinding === undefined
   ) {
     return { ...state, repair: { required: true, reason: "agui_message_owner_missing" } }
   }
@@ -830,29 +1053,62 @@ function appendPresentationMessage(
   if (presentationRun === undefined || ["finished", "error"].includes(presentationRun.state)) {
     return { ...state, repair: { required: true, reason: "agui_message_run_binding_missing" } }
   }
+  if (
+    mutation.runBinding.bindingRef !== mutation.runBindingRef ||
+    mutation.runBinding.presentationRunId !== presentationRun.presentationRunId ||
+    mutation.runBinding.sessionRunId !== presentationRun.sessionRunId ||
+    mutation.messageBinding.bindingRef !== mutation.messageBindingRef ||
+    mutation.messageBinding.presentationRunBindingRef !== mutation.runBindingRef ||
+    mutation.messageBinding.presentationMessageId !== mutation.presentationMessageId ||
+    (mutation.messageBinding.sessionMessageId === null) !== (mutation.messageBinding.sessionTextPartId === null)
+  ) return rejectPresentation(state, "agui_message_binding_conflict")
   const branchIndex = state.branches.findIndex((branch) => branch.id === branchId)
   const branch = state.branches[branchIndex]
   if (branch === undefined) return { ...state, repair: { required: true, reason: "agui_branch_owner_missing" } }
+  const sessionMessageId = mutation.messageBinding.sessionMessageId
+  const sessionTextPartId = mutation.messageBinding.sessionTextPartId
+  const existingIndex = sessionMessageId === null
+    ? -1
+    : state.messages.findIndex((message) => message.id === sessionMessageId)
+  const existing = state.messages[existingIndex]
+  if (existing !== undefined && existing.runId !== presentationRun.sessionRunId) {
+    return rejectPresentation(state, "agui_message_session_owner_conflict")
+  }
+  if (existing !== undefined && existing.status !== "running") {
+    return rejectPresentation(state, "agui_message_terminal_regression")
+  }
+  const textPart = existing?.parts.find((part) => part.id === sessionTextPartId)
+  if (existing !== undefined && (sessionTextPartId === null || textPart?.kind !== "text")) {
+    return rejectPresentation(state, "agui_message_text_owner_conflict")
+  }
   const message: ChatProjectionMessage = {
-    id: mutation.presentationMessageId,
+    ...(existing ?? {
+      id: sessionMessageId ?? mutation.presentationMessageId,
+      role: "assistant" as const,
+      createdAt: mutation.source.recordedAt,
+      attachments: [],
+      status: "running" as const,
+    }),
+    presentationMessageId: mutation.presentationMessageId,
     branchId,
     // Presentation authority has no Session run binding. Never infer one from
     // the independently projected active command run.
-    runId: null,
+    runId: presentationRun.sessionRunId,
     presentationRunId: presentationRun.presentationRunId,
     presentationRunBindingRef: mutation.runBindingRef,
     presentationMessageBindingRef: mutation.messageBindingRef,
-    role: "assistant",
-    createdAt: mutation.source.recordedAt,
-    parts: [{
-      id: `agui.text:${mutation.presentationMessageId}`,
-      ordinal: 0,
-      version: presentationVersion(mutation.source.projectionVersion) ?? 1,
-      lifecycle: "streaming",
-      kind: "text",
-      text: "",
-    }],
-    attachments: [],
+    presentationTextPartId: sessionTextPartId ?? `agui.text:${mutation.presentationMessageId}`,
+    parts: existing?.parts.map((part) => part.id === sessionTextPartId
+      ? { ...part, presentationVersion: mutation.source.projectionVersion }
+      : part) ?? [{
+        id: sessionTextPartId ?? `agui.text:${mutation.presentationMessageId}`,
+        ordinal: 0,
+        version: 1,
+        presentationVersion: mutation.source.projectionVersion,
+        lifecycle: "streaming",
+        kind: "text",
+        text: "",
+      }],
     status: "running",
   }
   const branches = [...state.branches]
@@ -865,7 +1121,9 @@ function appendPresentationMessage(
     ...state,
     session: { ...session, activeLeafMessageId: message.id },
     branches,
-    messages: [...state.messages, message],
+    messages: existingIndex < 0
+      ? [...state.messages, message]
+      : state.messages.map((candidate, index) => index === existingIndex ? message : candidate),
   }
 }
 
@@ -926,6 +1184,13 @@ function reducePresentation(
       const index = state.presentationRuns.findIndex((run) => run.bindingRef === bindingRef)
       const current = state.presentationRuns[index]
       if (mutation.phase === "run-started") {
+        if (
+          mutation.runBinding === undefined ||
+          mutation.runBinding.bindingRef !== bindingRef ||
+          mutation.runBinding.presentationRunId !== mutation.runId ||
+          mutation.runBinding.parentLineage.parentPresentationRunId !== (mutation.parentRunId ?? null) ||
+          mutation.runBinding.sessionId !== state.session?.id
+        ) return rejectPresentation(state, "agui_run_binding_conflict")
         if (current !== undefined) {
           return rejectPresentation(state, ["finished", "error"].includes(current.state)
             ? "agui_run_terminal_regression"
@@ -940,19 +1205,25 @@ function reducePresentation(
         return withPresentationRuns(state, [...state.presentationRuns, {
           bindingRef,
           presentationRunId: mutation.runId,
+          sessionRunId: mutation.runBinding.sessionRunId,
           parentPresentationRunId: mutation.parentRunId ?? null,
           state: "running",
           ownerVersion: version,
         }])
       }
       if (current === undefined) return rejectPresentation(state, "agui_run_binding_missing")
+      if (
+        mutation.runBinding === undefined || mutation.runBinding.bindingRef !== bindingRef ||
+        mutation.runBinding.presentationRunId !== current.presentationRunId ||
+        mutation.runBinding.sessionRunId !== current.sessionRunId
+      ) return rejectPresentation(state, "agui_run_binding_conflict")
       if (mutation.phase === "run-finished" && current.presentationRunId !== mutation.runId) {
         return rejectPresentation(state, "agui_run_identity_conflict")
       }
-      if (version < current.ownerVersion) {
+      if (compareOwnerVersion(version, current.ownerVersion) < 0) {
         return rejectPresentation(state, "agui_run_owner_version_regression")
       }
-      if (version === current.ownerVersion) {
+      if (compareOwnerVersion(version, current.ownerVersion) === 0) {
         return rejectPresentation(state, "agui_run_owner_version_conflict")
       }
       if (["finished", "error"].includes(current.state)) {
@@ -983,25 +1254,28 @@ function reducePresentation(
       if (message.status !== "running") {
         return rejectPresentation(state, "agui_message_terminal_regression")
       }
-      const text = message.parts.find((part): part is Extract<ChatPart, { kind: "text" }> => part.kind === "text")
+      const text = message.parts.find((part): part is Extract<ChatPart, { kind: "text" }> =>
+        part.kind === "text" && part.id === message.presentationTextPartId)
       if (text === undefined) return rejectPresentation(state, "agui_message_owner_missing")
-      if (version <= text.version) {
-        return rejectPresentation(state, version < text.version
+      if (text.presentationVersion === undefined) return rejectPresentation(state, "agui_message_version_missing")
+      const textVersionOrder = compareOwnerVersion(version, text.presentationVersion)
+      if (textVersionOrder <= 0) {
+        return rejectPresentation(state, textVersionOrder < 0
           ? "agui_message_version_regression"
           : "agui_message_version_conflict")
       }
       if (mutation.phase === "content") {
         return updatePresentationMessage(state, mutation.presentationMessageId, (message) => ({
           ...message,
-          parts: message.parts.map((part) => part.kind === "text"
-            ? { ...part, text: part.text + mutation.delta, version }
+          parts: message.parts.map((part) => part.kind === "text" && part.id === message.presentationTextPartId
+            ? { ...part, text: part.text + mutation.delta, presentationVersion: version }
             : part),
         }))
       }
       return updatePresentationMessage(state, mutation.presentationMessageId, (message) => ({
         ...message,
-        parts: message.parts.map((part) => part.kind === "text"
-          ? { ...part, lifecycle: "completed" as const, version }
+        parts: message.parts.map((part) => part.kind === "text" && part.id === message.presentationTextPartId
+          ? { ...part, lifecycle: "completed" as const, presentationVersion: version }
           : part),
         status: "complete",
       }))
@@ -1015,26 +1289,39 @@ function reducePresentation(
         owner.presentationMessageBindingRef !== mutation.messageBindingRef
       ) return rejectPresentation(state, "agui_message_binding_conflict")
       if (owner.status !== "running") return rejectPresentation(state, "agui_message_terminal_regression")
-      const activityId = `agui.activity:${mutation.activityType}:${activityIdentity(mutation)}`
-      const currentActivity = owner.parts.find((part) => part.id === activityId)
-      if (currentActivity !== undefined && version <= currentActivity.version) {
-        return rejectPresentation(state, version < currentActivity.version
-          ? "agui_activity_version_regression"
-          : "agui_activity_version_conflict")
+      const ownerLocations = state.messages.flatMap((message) => message.parts
+        .filter((part) => partMatchesActivity(part, mutation))
+        .map((part) => ({ message, part })))
+      if (ownerLocations.length > 1) return rejectPresentation(state, "agui_activity_owner_ambiguous")
+      const location = ownerLocations[0]
+      if (location !== undefined && location.message.presentationMessageId !== owner.presentationMessageId) {
+        return rejectPresentation(state, "agui_activity_owner_binding_migration")
+      }
+      const currentActivity = location?.part
+      if (currentActivity?.presentationVersion !== undefined) {
+        const envelopeOrder = compareOwnerVersion(version, currentActivity.presentationVersion)
+        if (envelopeOrder <= 0) return rejectPresentation(state, envelopeOrder < 0
+          ? "agui_activity_projection_version_regression"
+          : "agui_activity_projection_version_conflict")
+      }
+      let projected: ChatPart
+      try {
+        projected = projectAguiActivityPart(mutation, currentActivity, version)
+      } catch {
+        return rejectPresentation(state, "agui_activity_projection_invalid")
+      }
+      if (currentActivity !== undefined) {
+        const conflict = validateAguiActivityTransition(currentActivity, projected)
+        if (conflict !== undefined) return rejectPresentation(state, conflict)
       }
       return updatePresentationMessage(state, mutation.presentationMessageId, (message) => {
-        const id = activityId
-        const existingIndex = message.parts.findIndex((part) => part.id === id)
-        const part: ChatActivityPart = {
-          id,
-          ordinal: existingIndex < 0 ? message.parts.length : message.parts[existingIndex]?.ordinal ?? 0,
-          version,
-          lifecycle: "streaming",
-          kind: "activity",
-          activityType: mutation.activityType,
-          content: mutation.content,
-          replace: true,
-        } as ChatActivityPart
+        const existingIndex = currentActivity === undefined
+          ? -1
+          : message.parts.findIndex((part) => part.id === currentActivity.id)
+        const part = {
+          ...projected,
+          ordinal: existingIndex < 0 ? message.parts.length : message.parts[existingIndex]?.ordinal ?? projected.ordinal,
+        } as ChatPart
         if (existingIndex < 0) return { ...message, parts: [...message.parts, part] }
         const parts = [...message.parts]
         parts[existingIndex] = part
@@ -1077,18 +1364,49 @@ function reducePresentation(
         }
         case "kokoro.message.replace.v1": {
           if (mutation.value.role === "system") return state
+          const current = state.messages[presentationMessageIndex(state, mutation.value.presentationMessageId)]
+          if (current === undefined) return rejectPresentation(state, "agui_message_owner_missing")
+          if (
+            mutation.runBindingRef === undefined || mutation.messageBindingRef === undefined ||
+            current.presentationRunBindingRef !== mutation.runBindingRef ||
+            current.presentationMessageBindingRef !== mutation.messageBindingRef
+          ) return rejectPresentation(state, "agui_message_binding_conflict")
+          const nextStatus = mutation.value.lifecycle === "completed"
+            ? "complete" as const
+            : ["partial", "failed", "canceled"].includes(mutation.value.lifecycle)
+              ? "incomplete" as const
+              : "running" as const
+          if (current.status !== "running" && nextStatus === "running") {
+            return rejectPresentation(state, "agui_message_terminal_regression")
+          }
+          if (
+            current.presentationOwnerVersion !== undefined &&
+            mutation.value.version < current.presentationOwnerVersion
+          ) return rejectPresentation(state, "agui_message_owner_version_regression")
+          if (current.presentationOwnerVersion === mutation.value.version) {
+            const currentOwner = stableStringify({
+              role: current.role,
+              parentMessageId: current.parentMessageId ?? null,
+              status: current.status,
+            })
+            const nextOwner = stableStringify({
+              role: mutation.value.role,
+              parentMessageId: mutation.value.parentPresentationMessageId,
+              status: nextStatus,
+            })
+            if (currentOwner !== nextOwner) {
+              return rejectPresentation(state, "agui_message_owner_version_conflict")
+            }
+          }
           const role = mutation.value.role
           return updatePresentationMessage(state, mutation.value.presentationMessageId, (message) => ({
             ...message,
             role,
+            presentationOwnerVersion: mutation.value.version,
             ...(mutation.value.parentPresentationMessageId === null
               ? { parentMessageId: undefined }
               : { parentMessageId: mutation.value.parentPresentationMessageId }),
-            status: ["completed"].includes(mutation.value.lifecycle)
-              ? "complete"
-              : ["partial", "failed", "canceled"].includes(mutation.value.lifecycle)
-                ? "incomplete"
-                : "running",
+            status: nextStatus,
           }))
         }
         case "kokoro.run.replace.v1": {
@@ -1103,22 +1421,184 @@ function reducePresentation(
           if (current === undefined || current.presentationRunId !== mutation.value.presentationRunId) {
             return rejectPresentation(state, "agui_run_identity_conflict")
           }
-          if (ownerVersion < current.ownerVersion) {
+          if (compareOwnerVersion(ownerVersion, current.ownerVersion) < 0) {
             return rejectPresentation(state, "agui_run_owner_version_regression")
           }
           if (["finished", "error"].includes(current.state) && mutation.value.state !== current.state) {
             return rejectPresentation(state, "agui_run_terminal_regression")
           }
-          if (ownerVersion === current.ownerVersion && mutation.value.state !== current.state) {
+          if (compareOwnerVersion(ownerVersion, current.ownerVersion) === 0 && mutation.value.state !== current.state) {
             return rejectPresentation(state, "agui_run_owner_version_conflict")
           }
           const presentationRuns = [...state.presentationRuns]
           presentationRuns[index] = { ...current, state: mutation.value.state, ownerVersion }
           return withPresentationRuns(state, presentationRuns)
         }
-        case "kokoro.control.replace.v1":
-        case "kokoro.receipt.replace.v1":
-          return state
+        case "kokoro.control.replace.v1": {
+          const runBindingRef = mutation.runBindingRef
+          if (runBindingRef === undefined || !state.presentationRuns.some((run) => run.bindingRef === runBindingRef)) {
+            return rejectPresentation(state, "agui_control_run_binding_missing")
+          }
+          const currentControlIndex = state.presentationControls.findIndex((control) => control.controlRef === mutation.value.controlRef)
+          const currentControl = state.presentationControls[currentControlIndex]
+          const nextControl: ChatPresentationControl = { runBindingRef, ...mutation.value }
+          if (currentControl !== undefined) {
+            if (currentControl.runBindingRef !== runBindingRef || currentControl.ownerRef !== mutation.value.ownerRef ||
+              currentControl.decisionGroupRef !== mutation.value.decisionGroupRef || currentControl.kind !== mutation.value.kind) {
+              return rejectPresentation(state, "agui_control_identity_conflict")
+            }
+            const order = compareOwnerVersion(mutation.value.ownerVersion, currentControl.ownerVersion)
+            if (order < 0) return rejectPresentation(state, "agui_control_owner_version_regression")
+            if (order === 0 && stableStringify(currentControl) !== stableStringify(nextControl)) {
+              return rejectPresentation(state, "agui_control_owner_version_conflict")
+            }
+            if (Date.parse(mutation.value.updatedAt) < Date.parse(currentControl.updatedAt)) {
+              return rejectPresentation(state, "agui_control_updated_at_regression")
+            }
+            if (currentControl.state !== "pending" && mutation.value.state !== currentControl.state) {
+              return rejectPresentation(state, "agui_control_terminal_regression")
+            }
+          }
+          const presentationControls = [...state.presentationControls]
+          if (currentControlIndex < 0) presentationControls.push(nextControl)
+          else presentationControls[currentControlIndex] = nextControl
+          const controlState = { ...state, presentationControls }
+          const matches = state.messages.flatMap((message) => message.parts
+            .filter((part): part is Extract<ChatPart, { kind: "approval" | "interaction" }> =>
+              (part.kind === "approval" || part.kind === "interaction") &&
+              part.controlRef === mutation.value.controlRef &&
+              part.ownerRef === mutation.value.ownerRef &&
+              part.decisionGroupRef === mutation.value.decisionGroupRef)
+            .map((part) => ({ message, part })))
+          if (mutation.value.kind === "plan" || mutation.value.kind === "cancellation") return controlState
+          if (matches.length !== 1) return rejectPresentation(state, "agui_control_owner_missing")
+          const match = matches[0]
+          if (match === undefined || mutation.runBindingRef === undefined ||
+            match.message.presentationRunBindingRef !== mutation.runBindingRef ||
+            match.part.kind !== mutation.value.kind) {
+            return rejectPresentation(state, "agui_control_owner_binding_conflict")
+          }
+          const priorVersion = match.part.controlOwnerVersion
+          if (priorVersion !== undefined) {
+            const order = compareOwnerVersion(mutation.value.ownerVersion, priorVersion)
+            if (order < 0) return rejectPresentation(state, "agui_control_owner_version_regression")
+            if (order === 0) {
+              const currentFingerprint = stableStringify({
+                state: match.part.status,
+                allowedActions: match.part.allowedActions,
+                updatedAt: match.part.controlUpdatedAt,
+              })
+              const nextFingerprint = stableStringify({
+                state: mutation.value.state,
+                allowedActions: mutation.value.allowedActions,
+                updatedAt: mutation.value.updatedAt,
+              })
+              if (currentFingerprint !== nextFingerprint) return rejectPresentation(state, "agui_control_owner_version_conflict")
+            }
+            if (match.part.controlUpdatedAt !== undefined && Date.parse(mutation.value.updatedAt) < Date.parse(match.part.controlUpdatedAt)) {
+              return rejectPresentation(state, "agui_control_updated_at_regression")
+            }
+            if (match.part.status !== "pending" && mutation.value.state !== match.part.status) {
+              return rejectPresentation(state, "agui_control_terminal_regression")
+            }
+          }
+          return updatePresentationMessage(controlState, match.message.presentationMessageId ?? match.message.id, (message) => ({
+            ...message,
+            parts: message.parts.map((part) => part.id === match.part.id ? {
+              ...match.part,
+              status: mutation.value.state,
+              allowedActions: mutation.value.allowedActions,
+              controlOwnerVersion: mutation.value.ownerVersion,
+              controlUpdatedAt: mutation.value.updatedAt,
+            } : part),
+          }))
+        }
+        case "kokoro.receipt.replace.v1": {
+          const runBindingRef = mutation.runBindingRef
+          if (runBindingRef === undefined) return rejectPresentation(state, "agui_receipt_run_binding_missing")
+          const control = state.presentationControls.find((candidate) => candidate.controlRef === mutation.value.controlRef)
+          if (control === undefined || control.runBindingRef !== runBindingRef ||
+            control.ownerRef !== mutation.value.ownerRef || control.decisionGroupRef !== mutation.value.decisionGroupRef) {
+            return rejectPresentation(state, "agui_receipt_control_binding_conflict")
+          }
+          const currentReceiptIndex = state.presentationReceipts.findIndex((receipt) => receipt.receiptRef === mutation.value.receiptRef)
+          const currentReceipt = state.presentationReceipts[currentReceiptIndex]
+          const nextReceipt: ChatPresentationReceipt = { runBindingRef, ...mutation.value }
+          if (currentReceipt !== undefined) {
+            if (currentReceipt.runBindingRef !== runBindingRef || currentReceipt.controlRef !== mutation.value.controlRef ||
+              currentReceipt.ownerRef !== mutation.value.ownerRef || currentReceipt.decisionGroupRef !== mutation.value.decisionGroupRef ||
+              currentReceipt.commandId !== mutation.value.commandId || currentReceipt.operation !== mutation.value.operation) {
+              return rejectPresentation(state, "agui_receipt_identity_conflict")
+            }
+            const order = compareOwnerVersion(mutation.value.ownerVersion, currentReceipt.ownerVersion)
+            if (order < 0) return rejectPresentation(state, "agui_receipt_owner_version_regression")
+            if (order === 0 && stableStringify(currentReceipt) !== stableStringify(nextReceipt)) {
+              return rejectPresentation(state, "agui_receipt_owner_version_conflict")
+            }
+            if (Date.parse(mutation.value.updatedAt) < Date.parse(currentReceipt.updatedAt)) {
+              return rejectPresentation(state, "agui_receipt_updated_at_regression")
+            }
+            if (["committed", "rejected"].includes(currentReceipt.state) && mutation.value.state !== currentReceipt.state) {
+              return rejectPresentation(state, "agui_receipt_terminal_regression")
+            }
+          }
+          const presentationReceipts = [...state.presentationReceipts]
+          if (currentReceiptIndex < 0) presentationReceipts.push(nextReceipt)
+          else presentationReceipts[currentReceiptIndex] = nextReceipt
+          const receiptState = { ...state, presentationReceipts }
+          const matches = state.messages.flatMap((message) => message.parts
+            .filter((part): part is Extract<ChatPart, { kind: "approval" | "interaction" }> =>
+              (part.kind === "approval" || part.kind === "interaction") &&
+              part.controlRef === mutation.value.controlRef &&
+              part.ownerRef === mutation.value.ownerRef &&
+              part.decisionGroupRef === mutation.value.decisionGroupRef)
+            .map((part) => ({ message, part })))
+          if (control.kind === "plan" || control.kind === "cancellation") return receiptState
+          if (matches.length !== 1) return rejectPresentation(state, "agui_receipt_owner_missing")
+          const match = matches[0]
+          if (match === undefined || mutation.runBindingRef === undefined ||
+            match.message.presentationRunBindingRef !== mutation.runBindingRef ||
+            match.part.controlOwnerVersion === undefined) {
+            return rejectPresentation(state, "agui_receipt_control_binding_conflict")
+          }
+          if (match.part.receiptRef !== undefined && match.part.receiptRef !== mutation.value.receiptRef) {
+            return rejectPresentation(state, "agui_receipt_identity_conflict")
+          }
+          const priorVersion = match.part.receiptOwnerVersion
+          if (priorVersion !== undefined) {
+            const order = compareOwnerVersion(mutation.value.ownerVersion, priorVersion)
+            if (order < 0) return rejectPresentation(state, "agui_receipt_owner_version_regression")
+            if (order === 0) {
+              const currentFingerprint = stableStringify({
+                receiptRef: match.part.receiptRef,
+                commandId: match.part.receiptCommandId,
+                operation: match.part.receiptOperation,
+                state: match.part.receiptState,
+              })
+              const nextFingerprint = stableStringify({
+                receiptRef: mutation.value.receiptRef,
+                commandId: mutation.value.commandId,
+                operation: mutation.value.operation,
+                state: mutation.value.state,
+              })
+              if (currentFingerprint !== nextFingerprint) return rejectPresentation(state, "agui_receipt_owner_version_conflict")
+            }
+            if (["committed", "rejected"].includes(match.part.receiptState ?? "") && mutation.value.state !== match.part.receiptState) {
+              return rejectPresentation(state, "agui_receipt_terminal_regression")
+            }
+          }
+          return updatePresentationMessage(receiptState, match.message.presentationMessageId ?? match.message.id, (message) => ({
+            ...message,
+            parts: message.parts.map((part) => part.id === match.part.id ? {
+              ...match.part,
+              receiptRef: mutation.value.receiptRef,
+              receiptOwnerVersion: mutation.value.ownerVersion,
+              receiptCommandId: mutation.value.commandId,
+              receiptOperation: mutation.value.operation,
+              receiptState: mutation.value.state,
+            } : part),
+          }))
+        }
       }
     }
   }

@@ -136,6 +136,7 @@ function inspectRunSchema(schema) {
     "sessionId",
     "presentationThreadId",
     "presentationRunId",
+    "sessionRunId",
     "segmentOrdinal",
     "resumeOfPresentationRunId",
     "parentLineage",
@@ -157,6 +158,12 @@ function inspectRunSchema(schema) {
   expectEqual(properties.sessionId, idRef, "run binding sessionId");
   expectEqual(properties.presentationThreadId, presentationThreadIdRef, "run binding presentationThreadId");
   expectEqual(properties.presentationRunId, presentationRunIdRef, "run binding presentationRunId");
+  const sessionRunId = expectRecord(properties.sessionRunId, "run binding sessionRunId");
+  expectKeys(sessionRunId, ["description", "oneOf"], "run binding sessionRunId");
+  expectEqual(sessionRunId.oneOf, [idRef, nullType], "run binding sessionRunId union");
+  if (typeof sessionRunId.description !== "string" || sessionRunId.description.length === 0) {
+    fail("run binding sessionRunId description");
+  }
   expectEqual(properties.resumeOfPresentationRunId, { oneOf: [presentationRunIdRef, nullType] }, "run binding resumeOfPresentationRunId");
   expectEqual(properties.openedBySourceEventId, publicSourceEventIdRef, "run binding opened source");
   expectEqual(properties.terminalSourceEventId, { oneOf: [publicSourceEventIdRef, nullType] }, "run binding terminal source");
@@ -237,6 +244,8 @@ function inspectMessageSchema(schema) {
     "sessionId",
     "presentationRunBindingRef",
     "presentationMessageId",
+    "sessionMessageId",
+    "sessionTextPartId",
     "resumeSegmentOrdinal",
     "state",
     "openedBySourceEventId",
@@ -255,6 +264,14 @@ function inspectMessageSchema(schema) {
   expectEqual(properties.sessionId, idRef, "message binding sessionId");
   expectEqual(properties.presentationRunBindingRef, runBindingRef, "message binding presentationRunBindingRef");
   expectEqual(properties.presentationMessageId, presentationMessageIdRef, "message binding presentationMessageId");
+  for (const field of ["sessionMessageId", "sessionTextPartId"]) {
+    const property = expectRecord(properties[field], `message binding ${field}`);
+    expectKeys(property, ["description", "oneOf"], `message binding ${field}`);
+    expectEqual(property.oneOf, [idRef, nullType], `message binding ${field} union`);
+    if (typeof property.description !== "string" || property.description.length === 0) {
+      fail(`message binding ${field} description`);
+    }
+  }
   expectEqual(properties.openedBySourceEventId, publicSourceEventIdRef, "message opened source");
   expectEqual(properties.endedBySourceEventId, { oneOf: [publicSourceEventIdRef, nullType] }, "message ended source");
   expectEqual(properties.openedAt, dateTimeRef, "message openedAt");
@@ -278,6 +295,11 @@ function inspectMessageSchema(schema) {
     fail("message states");
   }
   expectEqual(schema.allOf, [
+    {
+      if: { properties: { sessionMessageId: nullType }, required: ["sessionMessageId"] },
+      then: { properties: { sessionTextPartId: nullType } },
+      else: { properties: { sessionTextPartId: idRef } },
+    },
     {
       if: { properties: { state: { const: "open" } }, required: ["state"] },
       then: { properties: { endedBySourceEventId: nullType, endedAt: nullType } },
@@ -456,6 +478,7 @@ export const aguiPresentationRunBindingSchema = z.strictObject({
   sessionId: idSchema,
   presentationThreadId: aguiPresentationThreadIdSchema,
   presentationRunId: aguiPresentationRunIdSchema,
+  sessionRunId: idSchema.nullable(),
   segmentOrdinal: z.number().int().min(${renderInteger(run.segment.minimum)}).max(${renderInteger(run.segment.maximum)}),
   resumeOfPresentationRunId: aguiPresentationRunIdSchema.nullable(),
   parentLineage: parentLineageSchema,
@@ -487,6 +510,8 @@ export const aguiPresentationMessageBindingSchema = z.strictObject({
   sessionId: idSchema,
   presentationRunBindingRef: aguiPresentationRunBindingRefSchema,
   presentationMessageId: aguiPresentationMessageIdSchema,
+  sessionMessageId: idSchema.nullable(),
+  sessionTextPartId: idSchema.nullable(),
   resumeSegmentOrdinal: z.number().int().min(${renderInteger(message.segment.minimum)}).max(${renderInteger(message.segment.maximum)}),
   state: z.enum(${renderEnum(message.states)}),
   openedBySourceEventId: aguiPublicSourceEventIdSchema,
@@ -494,6 +519,9 @@ export const aguiPresentationMessageBindingSchema = z.strictObject({
   openedAt: dateTimeSchema,
   endedAt: dateTimeSchema.nullable(),
 }).superRefine((binding, context) => {
+  if ((binding.sessionMessageId === null) !== (binding.sessionTextPartId === null)) {
+    context.addIssue({ code: "custom", message: "Session message/text binding pair" });
+  }
   const isOpen = binding.state === "open";
   if (isOpen !== (binding.endedBySourceEventId === null) || isOpen !== (binding.endedAt === null)) {
     context.addIssue({ code: "custom", message: "end evidence" });

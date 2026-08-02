@@ -11,9 +11,9 @@ export const aguiBindingAuthorityContractMetadata = Object.freeze({
   profileRevision: "kokoro-agui-presentation.v1",
   sources: Object.freeze({
     "contract/spec/presentation-run-binding-v1.yaml":
-      "4d2ac9baca89f389d62ccf8d08b7890d4cdddf1a055996c6347058bc9e4c4c8d",
+      "54d50fd4179147e5b421d5ce6c957dce8d36be68906ba19bebd6372eea4136fe",
     "contract/spec/presentation-message-binding-v1.yaml":
-      "0b2f3b9ba68c78fc58182539e2d33673e7af4a5e9ba5ed1bc2c48b0edb69dd6c",
+      "56a2b5728f6ac880eb44648f30b0a05a09cf58ae713bc4f111a02928211dd1a5",
     "contract/spec/presentation-binding-authority-delta-v1.yaml":
       "9fd30b734e2aa5f52be50eb1442eaf16843de8baa8098fcc996bc5e057f9dd2d",
   }),
@@ -68,6 +68,7 @@ export const aguiPresentationRunBindingSchema = z.strictObject({
   sessionId: idSchema,
   presentationThreadId: aguiPresentationThreadIdSchema,
   presentationRunId: aguiPresentationRunIdSchema,
+  sessionRunId: idSchema.nullable(),
   segmentOrdinal: z.number().int().min(0).max(65_535),
   resumeOfPresentationRunId: aguiPresentationRunIdSchema.nullable(),
   parentLineage: parentLineageSchema,
@@ -99,6 +100,8 @@ export const aguiPresentationMessageBindingSchema = z.strictObject({
   sessionId: idSchema,
   presentationRunBindingRef: aguiPresentationRunBindingRefSchema,
   presentationMessageId: aguiPresentationMessageIdSchema,
+  sessionMessageId: idSchema.nullable(),
+  sessionTextPartId: idSchema.nullable(),
   resumeSegmentOrdinal: z.number().int().min(0).max(65_535),
   state: z.enum(["open", "ended"]),
   openedBySourceEventId: aguiPublicSourceEventIdSchema,
@@ -106,6 +109,9 @@ export const aguiPresentationMessageBindingSchema = z.strictObject({
   openedAt: dateTimeSchema,
   endedAt: dateTimeSchema.nullable(),
 }).superRefine((binding, context) => {
+  if ((binding.sessionMessageId === null) !== (binding.sessionTextPartId === null)) {
+    context.addIssue({ code: "custom", message: "Session message/text binding pair" });
+  }
   const isOpen = binding.state === "open";
   if (isOpen !== (binding.endedBySourceEventId === null) || isOpen !== (binding.endedAt === null)) {
     context.addIssue({ code: "custom", message: "end evidence" });

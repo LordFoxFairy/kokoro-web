@@ -58,7 +58,8 @@
           "openedBySourceEventId": "presentation.event:b4e3c24394aa7f63f6a98aa985fd9f0e100f4da60a46527a033cd273cf3a6c85",
           "terminalSourceEventId": "presentation.event:1d096172022ded397309581b77cbceb99f0e7f3512da4df7d7772bceb76baa79",
           "openedAt": "2026-08-01T12:00:01.000Z",
-          "terminalAt": "2026-08-01T12:00:21.000Z"
+          "terminalAt": "2026-08-01T12:00:21.000Z",
+          "sessionRunId": "session.run:c4a979f91627ef83cdb9ef7bec2f93b295655168a3fb8bb008e1cf93675c3155"
         },
         {
           "bindingRef": "presentation.run-binding:443dd66992b82b54de93863960736c8e63e8ee622e3b083f3d3005d263ff1eb3",
@@ -76,7 +77,8 @@
           "openedBySourceEventId": "presentation.event:9502828f409c426fd322675fa5c484ff17e54e92be8a7ffa2a3b0629aaf2b122",
           "terminalSourceEventId": "presentation.event:ad6a6bb8be08ce77e463e666737336c095f59f80c6644f2ec4857b4ac9e0e514",
           "openedAt": "2026-08-01T12:00:22.000Z",
-          "terminalAt": "2026-08-01T12:00:26.000Z"
+          "terminalAt": "2026-08-01T12:00:26.000Z",
+          "sessionRunId": "session.run:c4a979f91627ef83cdb9ef7bec2f93b295655168a3fb8bb008e1cf93675c3155"
         }
       ],
       "messageBindings": [
@@ -91,7 +93,9 @@
           "openedBySourceEventId": "presentation.event:5953ab64f1bb39dd102dcbfa327020981acc1ab02b8b3276fe2d3379c81f6099",
           "endedBySourceEventId": "presentation.event:e35749958642fa7597b294bc473bb05a5433c2b5370db898185d34beb1fdc1b5",
           "openedAt": "2026-08-01T12:00:02.000Z",
-          "endedAt": "2026-08-01T12:00:20.000Z"
+          "endedAt": "2026-08-01T12:00:20.000Z",
+          "sessionMessageId": "session.message:668f6803945685495b193b418b35f7d07112ed2645e3f2acf507d1d0018766a1",
+          "sessionTextPartId": "session.part:754569eb17f1f62d39af1384977eb8c9ac380a3b1e24b04bdef9c90128d64805"
         },
         {
           "bindingRef": "presentation.message-binding:5dc63c366543fb45a8cccc17f9fcafaa964e6e2ed6bafc056fa29deddf7364e7",
@@ -104,7 +108,9 @@
           "openedBySourceEventId": "presentation.event:a38bfce925a50f9a3f469e9af19dbe0c06da0763523de9d88d9aaaa1e2f7af52",
           "endedBySourceEventId": "presentation.event:f8243e2181a45db9088caa53873160aac331db708a36146ab1973ace5cf9a595",
           "openedAt": "2026-08-01T12:00:23.000Z",
-          "endedAt": "2026-08-01T12:00:25.000Z"
+          "endedAt": "2026-08-01T12:00:25.000Z",
+          "sessionMessageId": "session.message:7c66ae9f7eada086dc1f78ec34fa6245061b2c9d1383fb06f23ffa3e9f60871e",
+          "sessionTextPartId": "session.part:3e1322f09b0e58b516d77635be7f10a97edd2db97a0f7c9dccb6c9bb2844661a"
         }
       ],
       "durableRows": [
@@ -159,11 +165,12 @@
                 "openedBySourceEventId": "presentation.event:b4e3c24394aa7f63f6a98aa985fd9f0e100f4da60a46527a033cd273cf3a6c85",
                 "terminalSourceEventId": null,
                 "openedAt": "2026-08-01T12:00:01.000Z",
-                "terminalAt": null
+                "terminalAt": null,
+                "sessionRunId": "session.run:c4a979f91627ef83cdb9ef7bec2f93b295655168a3fb8bb008e1cf93675c3155"
               }
             }
           },
-          "projectionPayloadDigest": "sha256:6a227ff7a11cc49ba8d0998d3fd49cfee4b7268b8d430e0de3162d2859610de1"
+          "projectionPayloadDigest": "sha256:c2e271bed95e4fcf209de89bf828a0e8ba16f3e7136c97710b44be0ece3e457a"
         },
         {
           "rowRef": "presentation-row.presentation.event:5953ab64f1bb39dd102dcbfa327020981acc1ab02b8b3276fe2d3379c81f6099",
@@ -212,11 +219,13 @@
                 "openedBySourceEventId": "presentation.event:5953ab64f1bb39dd102dcbfa327020981acc1ab02b8b3276fe2d3379c81f6099",
                 "endedBySourceEventId": null,
                 "openedAt": "2026-08-01T12:00:02.000Z",
-                "endedAt": null
+                "endedAt": null,
+                "sessionMessageId": "session.message:668f6803945685495b193b418b35f7d07112ed2645e3f2acf507d1d0018766a1",
+                "sessionTextPartId": "session.part:754569eb17f1f62d39af1384977eb8c9ac380a3b1e24b04bdef9c90128d64805"
               }
             }
           },
-          "projectionPayloadDigest": "sha256:b90668f52655c185d841aad501906cdcf013ed713f448bc6fa5aeceb641526fa"
+          "projectionPayloadDigest": "sha256:ed21e48d329b705dab655e02571fd5938d66a261d27ecc8d46a3f7a7505f2c53"
         },
         {
           "rowRef": "presentation-row.presentation.event:9aafa7b0dfb6283145ad4d7383baf49bcc475c2b000ef0e9eb7c148973fbf8b9",
@@ -294,7 +303,9 @@
               "content": {
                 "partRef": "part.summary.01",
                 "summary": "Compared safe alternatives.",
-                "status": "complete"
+                "status": "complete",
+                "ownerVersion": "1",
+                "updatedAt": "2026-08-01T12:00:04.000Z"
               },
               "replace": true
             },
@@ -302,7 +313,7 @@
               "kind": "none"
             }
           },
-          "projectionPayloadDigest": "sha256:6074e57309d1bb741fc2daab8cd9b6f87c21de6fba27139015515922f59a2628"
+          "projectionPayloadDigest": "sha256:af7a95da0ef1341fb2832d2abc85b17a5eb076bcbe5a7ab6a465f6e6c9d0c77c"
         },
         {
           "rowRef": "presentation-row.presentation.event:47c99fdf2a064f8698707a68aa074e66ec12ce3c2fb1ddd881be9474e9cd940c",
@@ -344,7 +355,9 @@
                 "summary": "Searched approved sources.",
                 "resultPreview": "3 safe results",
                 "isError": false,
-                "truncated": false
+                "truncated": false,
+                "ownerVersion": "1",
+                "updatedAt": "2026-08-01T12:00:05.000Z"
               },
               "replace": true
             },
@@ -352,7 +365,7 @@
               "kind": "none"
             }
           },
-          "projectionPayloadDigest": "sha256:dbdd0d057dd0157b3e0a336a0caab53fa1a067f016208fbf76957b28d7c6f58e"
+          "projectionPayloadDigest": "sha256:a7ed7c4351e7dc2031d9bf66cf341af8a17d7bef79a7a52cac0d0af2d561196b"
         },
         {
           "rowRef": "presentation-row.presentation.event:8b978e884444589ec8527cb7fe5b4ff1be38b624baea3890cbd4210c6af589a1",
@@ -389,16 +402,22 @@
               "activityType": "kokoro.hitl.v1",
               "content": {
                 "ownerRef": "decision.01",
-                "expectedVersion": 1,
+                "ownerVersion": "1",
+                "decisionGroupRef": "decision-group.01",
+                "requiredOwnerRefs": [
+                  "decision.01"
+                ],
+                "controlRef": "control.01",
                 "kind": "approval",
                 "title": "Approve action",
                 "description": "Review the safe action summary.",
                 "allowedActions": [
-                  "accept",
+                  "approve",
                   "reject"
                 ],
                 "status": "pending",
-                "deadline": "2026-08-01T12:10:00.000Z"
+                "deadline": "2026-08-01T12:10:00.000Z",
+                "updatedAt": "2026-08-01T12:00:06.000Z"
               },
               "replace": true
             },
@@ -406,7 +425,7 @@
               "kind": "none"
             }
           },
-          "projectionPayloadDigest": "sha256:2fd042b9e87278635877de08abec53a979d03fe2782009b9b49a69e43c917616"
+          "projectionPayloadDigest": "sha256:8f04d5cc0b005a1f9ba14c150365cdbe2e0e0a696e5e402d6b4423de3707931e"
         },
         {
           "rowRef": "presentation-row.presentation.event:89e8452faec99bc24fedba74a4a4cac0716d58b5c1e97dd24dffc85ffd6f0d68",
@@ -456,7 +475,9 @@
                     "label": "Produce result",
                     "status": "in-progress"
                   }
-                ]
+                ],
+                "ownerVersion": "1",
+                "updatedAt": "2026-08-01T12:00:07.000Z"
               },
               "replace": true
             },
@@ -464,7 +485,7 @@
               "kind": "none"
             }
           },
-          "projectionPayloadDigest": "sha256:1b35154dd2046290e3f330205d17e74a7014d5b528cb0ad8a17fdd97cd3d92a3"
+          "projectionPayloadDigest": "sha256:0ebb857337fd591d69c65133a4a3c9ea05bb6c32779f70a496151a3145017d6e"
         },
         {
           "rowRef": "presentation-row.presentation.event:c69b705a27a27d79df5ff4c0467bfb4953b0e388237c56095b2907db30f5fedc",
@@ -502,7 +523,9 @@
               "content": {
                 "subagentRef": "subagent.01",
                 "status": "running",
-                "summary": "Reviewing one bounded topic."
+                "summary": "Reviewing one bounded topic.",
+                "ownerVersion": "1",
+                "updatedAt": "2026-08-01T12:00:08.000Z"
               },
               "replace": true
             },
@@ -510,7 +533,7 @@
               "kind": "none"
             }
           },
-          "projectionPayloadDigest": "sha256:bfbfb0bdfdfa15cce230bd39891e344b69e5366b1d7e31fe1e8ff9961b4eb22a"
+          "projectionPayloadDigest": "sha256:1a029921d90e085d9dc222a965f99c47d9dd8fe364bf77afd80af545d74b6dd0"
         },
         {
           "rowRef": "presentation-row.presentation.event:e271c07382d334c906a25031a1be7f1156aed8fd2b24d8ac974a7fd281eef9e8",
@@ -546,10 +569,21 @@
               "messageId": "presentation.message:ad5247c84829ebea77710ad92161f9fd7a765bf022f47524ce6760c721cfb607",
               "activityType": "kokoro.media.v1",
               "content": {
-                "operationRef": "media-operation.01",
+                "mediaOperationRef": "media-operation.01",
+                "definitionRef": "media-definition.image.generate",
+                "definitionRevisionRef": "media-definition-revision.image.generate.01",
+                "ownerVersion": "1",
                 "state": "active",
                 "progressBps": 4200,
-                "summary": "Generating preview."
+                "candidates": [
+                  {
+                    "candidateRef": "media-candidate.01",
+                    "ordinal": 0,
+                    "ownerVersion": "1",
+                    "state": "producing"
+                  }
+                ],
+                "updatedAt": "2026-08-01T12:00:09.000Z"
               },
               "replace": true
             },
@@ -557,7 +591,7 @@
               "kind": "none"
             }
           },
-          "projectionPayloadDigest": "sha256:7b392e77f27f1d8a56c9835e0c699014b0465ec6d8ec7aa2df78b1b070bf00f1"
+          "projectionPayloadDigest": "sha256:ee7b9ae5997813dbf0605eca1a735ddd481bc5532bf1a39fedd45d8b33a4bef9"
         },
         {
           "rowRef": "presentation-row.presentation.event:b0b32596419031ec4e221fa1d5e30e96ea62c5ed203daac4b12376a41070b210",
@@ -595,9 +629,18 @@
               "content": {
                 "artifactRef": "artifact.01",
                 "artifactVersionRef": "artifact-version.01",
+                "ownerVersion": "1",
                 "availability": "ready",
                 "mediaClass": "image",
-                "title": "Generated image"
+                "display": {
+                  "kind": "image",
+                  "format": "png",
+                  "width": 1024,
+                  "height": 1024,
+                  "byteSize": "1048576"
+                },
+                "title": "Generated image",
+                "updatedAt": "2026-08-01T12:00:10.000Z"
               },
               "replace": true
             },
@@ -605,7 +648,7 @@
               "kind": "none"
             }
           },
-          "projectionPayloadDigest": "sha256:3bcff9680cc26e70866288bcd7bd4ffc12a07b65135a429a2792da82c2033d3a"
+          "projectionPayloadDigest": "sha256:0517cba95a2a55aefee921473948628bb0562d8c365f8717911df9c1a113f357"
         },
         {
           "rowRef": "presentation-row.presentation.event:16556fcf98ea8da0599c0e3f8afc30693d6546936bcbd75cd99ece0b95c39366",
@@ -641,11 +684,16 @@
               "messageId": "presentation.message:ad5247c84829ebea77710ad92161f9fd7a765bf022f47524ce6760c721cfb607",
               "activityType": "kokoro.cost.v1",
               "content": {
+                "mediaOperationRef": "media-operation.01",
                 "costProjectionRef": "cost.01",
+                "ownerVersion": "1",
                 "state": "estimated",
-                "displayAmount": "12.5",
-                "unit": "credit",
-                "freshness": "2026-08-01T12:00:11.000Z"
+                "freshness": "current",
+                "amount": {
+                  "creditUnit": "credit",
+                  "amount": "12"
+                },
+                "updatedAt": "2026-08-01T12:00:11.000Z"
               },
               "replace": true
             },
@@ -653,7 +701,7 @@
               "kind": "none"
             }
           },
-          "projectionPayloadDigest": "sha256:50485966c56fd15c09319baf2ad4d7f3a66c91e8aa7e72fda23923f469ca2544"
+          "projectionPayloadDigest": "sha256:8afc9f0beeeca36d28286d3548e2cc128cd07b231090a02b1d37fdf33e0d7038"
         },
         {
           "rowRef": "presentation-row.presentation.event:177b04a8079acb540949d14a296d981a6a22c371d53d42c7fa5c7aee282ba5f1",
@@ -693,7 +741,9 @@
                 "code": "PREVIEW_READY",
                 "message": "A preview is ready.",
                 "severity": "info",
-                "retryClass": "never"
+                "retryClass": "never",
+                "ownerVersion": "1",
+                "updatedAt": "2026-08-01T12:00:12.000Z"
               },
               "replace": true
             },
@@ -701,7 +751,7 @@
               "kind": "none"
             }
           },
-          "projectionPayloadDigest": "sha256:96ecb3a8a815d1229efe05656c9d3e769163cdfa391eff3d27480779158d4838"
+          "projectionPayloadDigest": "sha256:353a2be34143d6f8e6689abd5e12f8e70f93acc91ca9bb0ba9d43745a58b3b70"
         },
         {
           "rowRef": "presentation-row.presentation.event:4621052434369abda80f5a036ce38aecfe3a42248f384ebef29bd18db701a3b7",
@@ -741,7 +791,9 @@
                 "code": "SAFE_RETRY",
                 "message": "One optional preview is unavailable.",
                 "retryClass": "after-delay",
-                "supportCorrelationRef": "support.01"
+                "supportCorrelationRef": "support.01",
+                "ownerVersion": "1",
+                "updatedAt": "2026-08-01T12:00:13.000Z"
               },
               "replace": true
             },
@@ -749,7 +801,7 @@
               "kind": "none"
             }
           },
-          "projectionPayloadDigest": "sha256:0704175145e6d8481bf5e39a64430a0c17f8520c374f238f6f811fb1a4e321a9"
+          "projectionPayloadDigest": "sha256:a3330ab7e78a5cfd8cc25ef328b82fe48b11d6b6d9192460904db0c30ab1eb5f"
         },
         {
           "rowRef": "presentation-row.presentation.event:034f11a76c17294a5ef1d1e968f4517a8d81f7d8368249aaf736ed9d5d05d66a",
@@ -963,20 +1015,23 @@
               "name": "kokoro.control.replace.v1",
               "value": {
                 "controlRef": "control.01",
+                "ownerRef": "decision.01",
+                "decisionGroupRef": "decision-group.01",
                 "kind": "approval",
                 "state": "pending",
-                "expectedVersion": 1,
+                "ownerVersion": "1",
                 "allowedActions": [
-                  "accept",
+                  "approve",
                   "reject"
-                ]
+                ],
+                "updatedAt": "2026-08-01T12:00:18.000Z"
               }
             },
             "bindingAuthorityDelta": {
               "kind": "none"
             }
           },
-          "projectionPayloadDigest": "sha256:43ada1a7e901eb7ed9ab7953d834250459f9f92922096e4b951df7f50144ed53"
+          "projectionPayloadDigest": "sha256:de86a758f9111a282cecc19f32c80bb6b9099063ffc605f45f701b3fe714f4d6"
         },
         {
           "rowRef": "presentation-row.presentation.event:ac271828201fc1f8955dd9be48e7ab95cf27d576fd8d059019eb0b410bdd9b78",
@@ -1011,17 +1066,21 @@
               "name": "kokoro.receipt.replace.v1",
               "value": {
                 "receiptRef": "receipt.01",
+                "controlRef": "control.01",
+                "ownerRef": "decision.01",
+                "decisionGroupRef": "decision-group.01",
                 "commandId": "command.01",
                 "operation": "approve",
                 "state": "committed",
-                "version": 2
+                "ownerVersion": "2",
+                "updatedAt": "2026-08-01T12:00:19.000Z"
               }
             },
             "bindingAuthorityDelta": {
               "kind": "none"
             }
           },
-          "projectionPayloadDigest": "sha256:caef95c67c0418ce5d8356936a910c083a27d2eb1e95fe03b0058c98ba33f93d"
+          "projectionPayloadDigest": "sha256:17115b6c013cef85b89a2f49ffee142f1f62736d5c09af63f31b33486e14190f"
         },
         {
           "rowRef": "presentation-row.presentation.event:e35749958642fa7597b294bc473bb05a5433c2b5370db898185d34beb1fdc1b5",
@@ -1069,11 +1128,13 @@
                 "openedBySourceEventId": "presentation.event:5953ab64f1bb39dd102dcbfa327020981acc1ab02b8b3276fe2d3379c81f6099",
                 "endedBySourceEventId": "presentation.event:e35749958642fa7597b294bc473bb05a5433c2b5370db898185d34beb1fdc1b5",
                 "openedAt": "2026-08-01T12:00:02.000Z",
-                "endedAt": "2026-08-01T12:00:20.000Z"
+                "endedAt": "2026-08-01T12:00:20.000Z",
+                "sessionMessageId": "session.message:668f6803945685495b193b418b35f7d07112ed2645e3f2acf507d1d0018766a1",
+                "sessionTextPartId": "session.part:754569eb17f1f62d39af1384977eb8c9ac380a3b1e24b04bdef9c90128d64805"
               }
             }
           },
-          "projectionPayloadDigest": "sha256:df17ef7e34e4b6a1362b0a6b9a307055470bcaf53ecdaed9d092e7fff7477463"
+          "projectionPayloadDigest": "sha256:f694ca6345962046b9d72bb63b6103ce25dd7cdd5e9eb4ecce7ae710e502643e"
         },
         {
           "rowRef": "presentation-row.presentation.event:1d096172022ded397309581b77cbceb99f0e7f3512da4df7d7772bceb76baa79",
@@ -1126,11 +1187,12 @@
                 "openedBySourceEventId": "presentation.event:b4e3c24394aa7f63f6a98aa985fd9f0e100f4da60a46527a033cd273cf3a6c85",
                 "terminalSourceEventId": "presentation.event:1d096172022ded397309581b77cbceb99f0e7f3512da4df7d7772bceb76baa79",
                 "openedAt": "2026-08-01T12:00:01.000Z",
-                "terminalAt": "2026-08-01T12:00:21.000Z"
+                "terminalAt": "2026-08-01T12:00:21.000Z",
+                "sessionRunId": "session.run:c4a979f91627ef83cdb9ef7bec2f93b295655168a3fb8bb008e1cf93675c3155"
               }
             }
           },
-          "projectionPayloadDigest": "sha256:4ec1db47b18155e2a3edc78f3dfb1d4c544598ba05da80c5e187d4f77521dd1f"
+          "projectionPayloadDigest": "sha256:36720e119136a098bc9b22a6e80e564181fad8f3d532e1d5e54a3cc9688e6d6e"
         },
         {
           "rowRef": "presentation-row.presentation.event:9502828f409c426fd322675fa5c484ff17e54e92be8a7ffa2a3b0629aaf2b122",
@@ -1183,11 +1245,12 @@
                 "openedBySourceEventId": "presentation.event:9502828f409c426fd322675fa5c484ff17e54e92be8a7ffa2a3b0629aaf2b122",
                 "terminalSourceEventId": null,
                 "openedAt": "2026-08-01T12:00:22.000Z",
-                "terminalAt": null
+                "terminalAt": null,
+                "sessionRunId": "session.run:c4a979f91627ef83cdb9ef7bec2f93b295655168a3fb8bb008e1cf93675c3155"
               }
             }
           },
-          "projectionPayloadDigest": "sha256:7283d85a5a45a82f0703ea78de2357e17bf6f4d97c0647e3402dfaf5597750b5"
+          "projectionPayloadDigest": "sha256:2da06b73c1604f7e3534a6d3fbfda650995b94d215b1c823a6b462e5f4cdd88a"
         },
         {
           "rowRef": "presentation-row.presentation.event:a38bfce925a50f9a3f469e9af19dbe0c06da0763523de9d88d9aaaa1e2f7af52",
@@ -1236,11 +1299,13 @@
                 "openedBySourceEventId": "presentation.event:a38bfce925a50f9a3f469e9af19dbe0c06da0763523de9d88d9aaaa1e2f7af52",
                 "endedBySourceEventId": null,
                 "openedAt": "2026-08-01T12:00:23.000Z",
-                "endedAt": null
+                "endedAt": null,
+                "sessionMessageId": "session.message:7c66ae9f7eada086dc1f78ec34fa6245061b2c9d1383fb06f23ffa3e9f60871e",
+                "sessionTextPartId": "session.part:3e1322f09b0e58b516d77635be7f10a97edd2db97a0f7c9dccb6c9bb2844661a"
               }
             }
           },
-          "projectionPayloadDigest": "sha256:9e3c05a0f6633bf9bf002455180888d587f15e74cedbac6ea0f0b6aa2d1338c3"
+          "projectionPayloadDigest": "sha256:c15a6d78d3181a84d13e47e419b8bb25796590d54a44798395e69ca8640f7f06"
         },
         {
           "rowRef": "presentation-row.presentation.event:20cb48ad76a466d5982a6aa1ea4342f6f63a21884959948a222249f82f17ad8a",
@@ -1328,11 +1393,13 @@
                 "openedBySourceEventId": "presentation.event:a38bfce925a50f9a3f469e9af19dbe0c06da0763523de9d88d9aaaa1e2f7af52",
                 "endedBySourceEventId": "presentation.event:f8243e2181a45db9088caa53873160aac331db708a36146ab1973ace5cf9a595",
                 "openedAt": "2026-08-01T12:00:23.000Z",
-                "endedAt": "2026-08-01T12:00:25.000Z"
+                "endedAt": "2026-08-01T12:00:25.000Z",
+                "sessionMessageId": "session.message:7c66ae9f7eada086dc1f78ec34fa6245061b2c9d1383fb06f23ffa3e9f60871e",
+                "sessionTextPartId": "session.part:3e1322f09b0e58b516d77635be7f10a97edd2db97a0f7c9dccb6c9bb2844661a"
               }
             }
           },
-          "projectionPayloadDigest": "sha256:4f530565a5a0a71e0cc0d861a0e06ee248a0c2694bc02d6eb63c58739f12f08f"
+          "projectionPayloadDigest": "sha256:135e8ec3ab330a123b0438cb14097aa215af0ac821b36d46446eb5bee55389b3"
         },
         {
           "rowRef": "presentation-row.presentation.event:ad6a6bb8be08ce77e463e666737336c095f59f80c6644f2ec4857b4ac9e0e514",
@@ -1385,11 +1452,12 @@
                 "openedBySourceEventId": "presentation.event:9502828f409c426fd322675fa5c484ff17e54e92be8a7ffa2a3b0629aaf2b122",
                 "terminalSourceEventId": "presentation.event:ad6a6bb8be08ce77e463e666737336c095f59f80c6644f2ec4857b4ac9e0e514",
                 "openedAt": "2026-08-01T12:00:22.000Z",
-                "terminalAt": "2026-08-01T12:00:26.000Z"
+                "terminalAt": "2026-08-01T12:00:26.000Z",
+                "sessionRunId": "session.run:c4a979f91627ef83cdb9ef7bec2f93b295655168a3fb8bb008e1cf93675c3155"
               }
             }
           },
-          "projectionPayloadDigest": "sha256:f011466053ef98fa3bcbea114cefcd5cdbb431166c2be55131515bc232a1e4f2"
+          "projectionPayloadDigest": "sha256:3584961d9aae6b957d5ac27052010753f58db8ced4288bc12d85992a7647426a"
         }
       ],
       "frames": [
@@ -1434,7 +1502,8 @@
                 "openedBySourceEventId": "presentation.event:b4e3c24394aa7f63f6a98aa985fd9f0e100f4da60a46527a033cd273cf3a6c85",
                 "terminalSourceEventId": null,
                 "openedAt": "2026-08-01T12:00:01.000Z",
-                "terminalAt": null
+                "terminalAt": null,
+                "sessionRunId": "session.run:c4a979f91627ef83cdb9ef7bec2f93b295655168a3fb8bb008e1cf93675c3155"
               }
             }
           }
@@ -1476,7 +1545,9 @@
                 "openedBySourceEventId": "presentation.event:5953ab64f1bb39dd102dcbfa327020981acc1ab02b8b3276fe2d3379c81f6099",
                 "endedBySourceEventId": null,
                 "openedAt": "2026-08-01T12:00:02.000Z",
-                "endedAt": null
+                "endedAt": null,
+                "sessionMessageId": "session.message:668f6803945685495b193b418b35f7d07112ed2645e3f2acf507d1d0018766a1",
+                "sessionTextPartId": "session.part:754569eb17f1f62d39af1384977eb8c9ac380a3b1e24b04bdef9c90128d64805"
               }
             }
           }
@@ -1536,7 +1607,9 @@
               "content": {
                 "partRef": "part.summary.01",
                 "summary": "Compared safe alternatives.",
-                "status": "complete"
+                "status": "complete",
+                "ownerVersion": "1",
+                "updatedAt": "2026-08-01T12:00:04.000Z"
               },
               "replace": true
             },
@@ -1575,7 +1648,9 @@
                 "summary": "Searched approved sources.",
                 "resultPreview": "3 safe results",
                 "isError": false,
-                "truncated": false
+                "truncated": false,
+                "ownerVersion": "1",
+                "updatedAt": "2026-08-01T12:00:05.000Z"
               },
               "replace": true
             },
@@ -1609,16 +1684,22 @@
               "activityType": "kokoro.hitl.v1",
               "content": {
                 "ownerRef": "decision.01",
-                "expectedVersion": 1,
+                "ownerVersion": "1",
+                "decisionGroupRef": "decision-group.01",
+                "requiredOwnerRefs": [
+                  "decision.01"
+                ],
+                "controlRef": "control.01",
                 "kind": "approval",
                 "title": "Approve action",
                 "description": "Review the safe action summary.",
                 "allowedActions": [
-                  "accept",
+                  "approve",
                   "reject"
                 ],
                 "status": "pending",
-                "deadline": "2026-08-01T12:10:00.000Z"
+                "deadline": "2026-08-01T12:10:00.000Z",
+                "updatedAt": "2026-08-01T12:00:06.000Z"
               },
               "replace": true
             },
@@ -1665,7 +1746,9 @@
                     "label": "Produce result",
                     "status": "in-progress"
                   }
-                ]
+                ],
+                "ownerVersion": "1",
+                "updatedAt": "2026-08-01T12:00:07.000Z"
               },
               "replace": true
             },
@@ -1700,7 +1783,9 @@
               "content": {
                 "subagentRef": "subagent.01",
                 "status": "running",
-                "summary": "Reviewing one bounded topic."
+                "summary": "Reviewing one bounded topic.",
+                "ownerVersion": "1",
+                "updatedAt": "2026-08-01T12:00:08.000Z"
               },
               "replace": true
             },
@@ -1733,10 +1818,21 @@
               "messageId": "presentation.message:ad5247c84829ebea77710ad92161f9fd7a765bf022f47524ce6760c721cfb607",
               "activityType": "kokoro.media.v1",
               "content": {
-                "operationRef": "media-operation.01",
+                "mediaOperationRef": "media-operation.01",
+                "definitionRef": "media-definition.image.generate",
+                "definitionRevisionRef": "media-definition-revision.image.generate.01",
+                "ownerVersion": "1",
                 "state": "active",
                 "progressBps": 4200,
-                "summary": "Generating preview."
+                "candidates": [
+                  {
+                    "candidateRef": "media-candidate.01",
+                    "ordinal": 0,
+                    "ownerVersion": "1",
+                    "state": "producing"
+                  }
+                ],
+                "updatedAt": "2026-08-01T12:00:09.000Z"
               },
               "replace": true
             },
@@ -1771,9 +1867,18 @@
               "content": {
                 "artifactRef": "artifact.01",
                 "artifactVersionRef": "artifact-version.01",
+                "ownerVersion": "1",
                 "availability": "ready",
                 "mediaClass": "image",
-                "title": "Generated image"
+                "display": {
+                  "kind": "image",
+                  "format": "png",
+                  "width": 1024,
+                  "height": 1024,
+                  "byteSize": "1048576"
+                },
+                "title": "Generated image",
+                "updatedAt": "2026-08-01T12:00:10.000Z"
               },
               "replace": true
             },
@@ -1806,11 +1911,16 @@
               "messageId": "presentation.message:ad5247c84829ebea77710ad92161f9fd7a765bf022f47524ce6760c721cfb607",
               "activityType": "kokoro.cost.v1",
               "content": {
+                "mediaOperationRef": "media-operation.01",
                 "costProjectionRef": "cost.01",
+                "ownerVersion": "1",
                 "state": "estimated",
-                "displayAmount": "12.5",
-                "unit": "credit",
-                "freshness": "2026-08-01T12:00:11.000Z"
+                "freshness": "current",
+                "amount": {
+                  "creditUnit": "credit",
+                  "amount": "12"
+                },
+                "updatedAt": "2026-08-01T12:00:11.000Z"
               },
               "replace": true
             },
@@ -1847,7 +1957,9 @@
                 "code": "PREVIEW_READY",
                 "message": "A preview is ready.",
                 "severity": "info",
-                "retryClass": "never"
+                "retryClass": "never",
+                "ownerVersion": "1",
+                "updatedAt": "2026-08-01T12:00:12.000Z"
               },
               "replace": true
             },
@@ -1884,7 +1996,9 @@
                 "code": "SAFE_RETRY",
                 "message": "One optional preview is unavailable.",
                 "retryClass": "after-delay",
-                "supportCorrelationRef": "support.01"
+                "supportCorrelationRef": "support.01",
+                "ownerVersion": "1",
+                "updatedAt": "2026-08-01T12:00:13.000Z"
               },
               "replace": true
             },
@@ -2051,13 +2165,16 @@
               "name": "kokoro.control.replace.v1",
               "value": {
                 "controlRef": "control.01",
+                "ownerRef": "decision.01",
+                "decisionGroupRef": "decision-group.01",
                 "kind": "approval",
                 "state": "pending",
-                "expectedVersion": 1,
+                "ownerVersion": "1",
                 "allowedActions": [
-                  "accept",
+                  "approve",
                   "reject"
-                ]
+                ],
+                "updatedAt": "2026-08-01T12:00:18.000Z"
               }
             },
             "bindingAuthorityDelta": {
@@ -2088,10 +2205,14 @@
               "name": "kokoro.receipt.replace.v1",
               "value": {
                 "receiptRef": "receipt.01",
+                "controlRef": "control.01",
+                "ownerRef": "decision.01",
+                "decisionGroupRef": "decision-group.01",
                 "commandId": "command.01",
                 "operation": "approve",
                 "state": "committed",
-                "version": 2
+                "ownerVersion": "2",
+                "updatedAt": "2026-08-01T12:00:19.000Z"
               }
             },
             "bindingAuthorityDelta": {
@@ -2135,7 +2256,9 @@
                 "openedBySourceEventId": "presentation.event:5953ab64f1bb39dd102dcbfa327020981acc1ab02b8b3276fe2d3379c81f6099",
                 "endedBySourceEventId": "presentation.event:e35749958642fa7597b294bc473bb05a5433c2b5370db898185d34beb1fdc1b5",
                 "openedAt": "2026-08-01T12:00:02.000Z",
-                "endedAt": "2026-08-01T12:00:20.000Z"
+                "endedAt": "2026-08-01T12:00:20.000Z",
+                "sessionMessageId": "session.message:668f6803945685495b193b418b35f7d07112ed2645e3f2acf507d1d0018766a1",
+                "sessionTextPartId": "session.part:754569eb17f1f62d39af1384977eb8c9ac380a3b1e24b04bdef9c90128d64805"
               }
             }
           }
@@ -2181,7 +2304,8 @@
                 "openedBySourceEventId": "presentation.event:b4e3c24394aa7f63f6a98aa985fd9f0e100f4da60a46527a033cd273cf3a6c85",
                 "terminalSourceEventId": "presentation.event:1d096172022ded397309581b77cbceb99f0e7f3512da4df7d7772bceb76baa79",
                 "openedAt": "2026-08-01T12:00:01.000Z",
-                "terminalAt": "2026-08-01T12:00:21.000Z"
+                "terminalAt": "2026-08-01T12:00:21.000Z",
+                "sessionRunId": "session.run:c4a979f91627ef83cdb9ef7bec2f93b295655168a3fb8bb008e1cf93675c3155"
               }
             }
           }
@@ -2227,7 +2351,8 @@
                 "openedBySourceEventId": "presentation.event:9502828f409c426fd322675fa5c484ff17e54e92be8a7ffa2a3b0629aaf2b122",
                 "terminalSourceEventId": null,
                 "openedAt": "2026-08-01T12:00:22.000Z",
-                "terminalAt": null
+                "terminalAt": null,
+                "sessionRunId": "session.run:c4a979f91627ef83cdb9ef7bec2f93b295655168a3fb8bb008e1cf93675c3155"
               }
             }
           }
@@ -2269,7 +2394,9 @@
                 "openedBySourceEventId": "presentation.event:a38bfce925a50f9a3f469e9af19dbe0c06da0763523de9d88d9aaaa1e2f7af52",
                 "endedBySourceEventId": null,
                 "openedAt": "2026-08-01T12:00:23.000Z",
-                "endedAt": null
+                "endedAt": null,
+                "sessionMessageId": "session.message:7c66ae9f7eada086dc1f78ec34fa6245061b2c9d1383fb06f23ffa3e9f60871e",
+                "sessionTextPartId": "session.part:3e1322f09b0e58b516d77635be7f10a97edd2db97a0f7c9dccb6c9bb2844661a"
               }
             }
           }
@@ -2339,7 +2466,9 @@
                 "openedBySourceEventId": "presentation.event:a38bfce925a50f9a3f469e9af19dbe0c06da0763523de9d88d9aaaa1e2f7af52",
                 "endedBySourceEventId": "presentation.event:f8243e2181a45db9088caa53873160aac331db708a36146ab1973ace5cf9a595",
                 "openedAt": "2026-08-01T12:00:23.000Z",
-                "endedAt": "2026-08-01T12:00:25.000Z"
+                "endedAt": "2026-08-01T12:00:25.000Z",
+                "sessionMessageId": "session.message:7c66ae9f7eada086dc1f78ec34fa6245061b2c9d1383fb06f23ffa3e9f60871e",
+                "sessionTextPartId": "session.part:3e1322f09b0e58b516d77635be7f10a97edd2db97a0f7c9dccb6c9bb2844661a"
               }
             }
           }
@@ -2385,7 +2514,8 @@
                 "openedBySourceEventId": "presentation.event:9502828f409c426fd322675fa5c484ff17e54e92be8a7ffa2a3b0629aaf2b122",
                 "terminalSourceEventId": "presentation.event:ad6a6bb8be08ce77e463e666737336c095f59f80c6644f2ec4857b4ac9e0e514",
                 "openedAt": "2026-08-01T12:00:22.000Z",
-                "terminalAt": "2026-08-01T12:00:26.000Z"
+                "terminalAt": "2026-08-01T12:00:26.000Z",
+                "sessionRunId": "session.run:c4a979f91627ef83cdb9ef7bec2f93b295655168a3fb8bb008e1cf93675c3155"
               }
             }
           }
@@ -2432,7 +2562,8 @@
             "openedBySourceEventId": "presentation.event:b4e3c24394aa7f63f6a98aa985fd9f0e100f4da60a46527a033cd273cf3a6c85",
             "terminalSourceEventId": "presentation.event:1d096172022ded397309581b77cbceb99f0e7f3512da4df7d7772bceb76baa79",
             "openedAt": "2026-08-01T12:00:01.000Z",
-            "terminalAt": "2026-08-01T12:00:21.000Z"
+            "terminalAt": "2026-08-01T12:00:21.000Z",
+            "sessionRunId": "session.run:c4a979f91627ef83cdb9ef7bec2f93b295655168a3fb8bb008e1cf93675c3155"
           },
           {
             "bindingRef": "presentation.run-binding:443dd66992b82b54de93863960736c8e63e8ee622e3b083f3d3005d263ff1eb3",
@@ -2450,7 +2581,8 @@
             "openedBySourceEventId": "presentation.event:9502828f409c426fd322675fa5c484ff17e54e92be8a7ffa2a3b0629aaf2b122",
             "terminalSourceEventId": "presentation.event:ad6a6bb8be08ce77e463e666737336c095f59f80c6644f2ec4857b4ac9e0e514",
             "openedAt": "2026-08-01T12:00:22.000Z",
-            "terminalAt": "2026-08-01T12:00:26.000Z"
+            "terminalAt": "2026-08-01T12:00:26.000Z",
+            "sessionRunId": "session.run:c4a979f91627ef83cdb9ef7bec2f93b295655168a3fb8bb008e1cf93675c3155"
           }
         ],
         "messageBindings": [
@@ -2465,7 +2597,9 @@
             "openedBySourceEventId": "presentation.event:5953ab64f1bb39dd102dcbfa327020981acc1ab02b8b3276fe2d3379c81f6099",
             "endedBySourceEventId": "presentation.event:e35749958642fa7597b294bc473bb05a5433c2b5370db898185d34beb1fdc1b5",
             "openedAt": "2026-08-01T12:00:02.000Z",
-            "endedAt": "2026-08-01T12:00:20.000Z"
+            "endedAt": "2026-08-01T12:00:20.000Z",
+            "sessionMessageId": "session.message:668f6803945685495b193b418b35f7d07112ed2645e3f2acf507d1d0018766a1",
+            "sessionTextPartId": "session.part:754569eb17f1f62d39af1384977eb8c9ac380a3b1e24b04bdef9c90128d64805"
           },
           {
             "bindingRef": "presentation.message-binding:5dc63c366543fb45a8cccc17f9fcafaa964e6e2ed6bafc056fa29deddf7364e7",
@@ -2478,7 +2612,9 @@
             "openedBySourceEventId": "presentation.event:a38bfce925a50f9a3f469e9af19dbe0c06da0763523de9d88d9aaaa1e2f7af52",
             "endedBySourceEventId": "presentation.event:f8243e2181a45db9088caa53873160aac331db708a36146ab1973ace5cf9a595",
             "openedAt": "2026-08-01T12:00:23.000Z",
-            "endedAt": "2026-08-01T12:00:25.000Z"
+            "endedAt": "2026-08-01T12:00:25.000Z",
+            "sessionMessageId": "session.message:7c66ae9f7eada086dc1f78ec34fa6245061b2c9d1383fb06f23ffa3e9f60871e",
+            "sessionTextPartId": "session.part:3e1322f09b0e58b516d77635be7f10a97edd2db97a0f7c9dccb6c9bb2844661a"
           }
         ]
       },
@@ -2547,9 +2683,10 @@
           "state": "finished",
           "terminalDisposition": "success",
           "openedBySourceEventId": "presentation.event:368440b76b55745e09bd715e2840597a1b662ea461bc847512f7aa670e742661",
-          "terminalSourceEventId": "presentation.event:ff52b57e71d1e1c37d26c97b8e3015ca81cc73dd568143ab459f44d641f591d0",
+          "terminalSourceEventId": "presentation.event:4ab3b4662cac1527734d27dcbbff5968b8bac97bc676a80b77ab73e21cca743a",
           "openedAt": "2026-08-01T13:00:01.000Z",
-          "terminalAt": "2026-08-01T13:00:13.000Z"
+          "terminalAt": "2026-08-01T13:00:12.000Z",
+          "sessionRunId": "session.run:a71ebe8e4a44230afadaea134bf6f5c8b0ce45d8768189c59e06b4d94cd4afac"
         },
         {
           "bindingRef": "presentation.run-binding:900464b5110e10e94aa4e0a1bc80d11405d15dfb3bd85315b18e91c40a24a63f",
@@ -2564,10 +2701,11 @@
           },
           "state": "error",
           "terminalDisposition": "error",
-          "openedBySourceEventId": "presentation.event:03a07e5589957cbd31d012ca603ae2527f9d0d92028b48d713dc126bd0824054",
-          "terminalSourceEventId": "presentation.event:bc674da818c37a7eba20f70cdb50efe246b38090a05c75aadc6a87f992c98bfa",
-          "openedAt": "2026-08-01T13:00:14.000Z",
-          "terminalAt": "2026-08-01T13:00:15.000Z"
+          "openedBySourceEventId": "presentation.event:ff52b57e71d1e1c37d26c97b8e3015ca81cc73dd568143ab459f44d641f591d0",
+          "terminalSourceEventId": "presentation.event:03a07e5589957cbd31d012ca603ae2527f9d0d92028b48d713dc126bd0824054",
+          "openedAt": "2026-08-01T13:00:13.000Z",
+          "terminalAt": "2026-08-01T13:00:14.000Z",
+          "sessionRunId": null
         }
       ],
       "messageBindings": [
@@ -2580,9 +2718,11 @@
           "resumeSegmentOrdinal": 0,
           "state": "ended",
           "openedBySourceEventId": "presentation.event:db92ebc40720e9722dfbd354e88798cb63492dfed07580b16434a5acec3e43b6",
-          "endedBySourceEventId": "presentation.event:4ab3b4662cac1527734d27dcbbff5968b8bac97bc676a80b77ab73e21cca743a",
+          "endedBySourceEventId": "presentation.event:74e1ef3f690b94a26d5aabdd4c1f1b59e0af76e3010aaf85313c7d338a891fcc",
           "openedAt": "2026-08-01T13:00:02.000Z",
-          "endedAt": "2026-08-01T13:00:12.000Z"
+          "endedAt": "2026-08-01T13:00:11.000Z",
+          "sessionMessageId": "session.message:c8821908c95f7b1b6d228f84ab9cebf396f1b495d2342c87fb1f61fddaeb4918",
+          "sessionTextPartId": "session.part:6b9170f8bfade9e562b696135ba21881320dd2dc6990eb6c3857cdb47bf72ff1"
         }
       ],
       "durableRows": [
@@ -2637,11 +2777,12 @@
                 "openedBySourceEventId": "presentation.event:368440b76b55745e09bd715e2840597a1b662ea461bc847512f7aa670e742661",
                 "terminalSourceEventId": null,
                 "openedAt": "2026-08-01T13:00:01.000Z",
-                "terminalAt": null
+                "terminalAt": null,
+                "sessionRunId": "session.run:a71ebe8e4a44230afadaea134bf6f5c8b0ce45d8768189c59e06b4d94cd4afac"
               }
             }
           },
-          "projectionPayloadDigest": "sha256:6a71ac9ff558410b089b264a4bb48e6945d23cb8a5206a82671f90c2a5a25a64"
+          "projectionPayloadDigest": "sha256:083addbf4edbea3a1b3f10399c338730fa8f959952139dab96b7213a56a48f80"
         },
         {
           "rowRef": "presentation-row.presentation.event:db92ebc40720e9722dfbd354e88798cb63492dfed07580b16434a5acec3e43b6",
@@ -2690,11 +2831,13 @@
                 "openedBySourceEventId": "presentation.event:db92ebc40720e9722dfbd354e88798cb63492dfed07580b16434a5acec3e43b6",
                 "endedBySourceEventId": null,
                 "openedAt": "2026-08-01T13:00:02.000Z",
-                "endedAt": null
+                "endedAt": null,
+                "sessionMessageId": "session.message:c8821908c95f7b1b6d228f84ab9cebf396f1b495d2342c87fb1f61fddaeb4918",
+                "sessionTextPartId": "session.part:6b9170f8bfade9e562b696135ba21881320dd2dc6990eb6c3857cdb47bf72ff1"
               }
             }
           },
-          "projectionPayloadDigest": "sha256:73e2484b54bfc49923f28f448ccbb7a8c9fbfe7ae1520a0ec6866921dee6d653"
+          "projectionPayloadDigest": "sha256:b603585aafd95046c101f9aee6e959f516845e8499feac5cb0dbcb919de7646d"
         },
         {
           "rowRef": "presentation-row.presentation.event:807cd4fdef687b4a5a3c2ce9219feecde31564d1fe457efea58bc5e19cd84f91",
@@ -2771,7 +2914,9 @@
               "content": {
                 "partRef": "part.summary.01",
                 "summary": "Compared safe alternatives.",
-                "status": "complete"
+                "status": "complete",
+                "ownerVersion": "1",
+                "updatedAt": "2026-08-01T13:00:04.000Z"
               },
               "replace": true
             },
@@ -2780,7 +2925,7 @@
               "kind": "none"
             }
           },
-          "projectionPayloadDigest": "sha256:fae7f38de179557c33b92a035ea46f8cb9560a7e572862998ee4fd023c3f12ce"
+          "projectionPayloadDigest": "sha256:564e8ef217b34467fa35433fe8f149576ad4b526b451e198f3c463aeea9ddf8b"
         },
         {
           "rowRef": "presentation-row.presentation.event:79faac49b67fbc5a4accebbd3cc1b01078013d5a5f79547350e3b601838c7313",
@@ -2821,7 +2966,9 @@
                 "summary": "Searched approved sources.",
                 "resultPreview": "3 safe results",
                 "isError": false,
-                "truncated": false
+                "truncated": false,
+                "ownerVersion": "1",
+                "updatedAt": "2026-08-01T13:00:05.000Z"
               },
               "replace": true
             },
@@ -2830,7 +2977,7 @@
               "kind": "none"
             }
           },
-          "projectionPayloadDigest": "sha256:818d3cee4d24d12e414b0f60c4a36db063c19a77677890909fd18779d0b0573d"
+          "projectionPayloadDigest": "sha256:987bf3bc62cc9423f5197c329f76227c9af6b92dd943459b8cebe3d06aacb33d"
         },
         {
           "rowRef": "presentation-row.presentation.event:8ed1ee522da870e3147914eaeab86371da16264b8ec727fa33af4d1c67fb4a98",
@@ -2866,16 +3013,22 @@
               "activityType": "kokoro.hitl.v1",
               "content": {
                 "ownerRef": "decision.01",
-                "expectedVersion": 1,
+                "ownerVersion": "1",
+                "decisionGroupRef": "decision-group.01",
+                "requiredOwnerRefs": [
+                  "decision.01"
+                ],
+                "controlRef": "control.01",
                 "kind": "approval",
                 "title": "Approve action",
                 "description": "Review the safe action summary.",
                 "allowedActions": [
-                  "accept",
+                  "approve",
                   "reject"
                 ],
                 "status": "pending",
-                "deadline": "2026-08-01T12:10:00.000Z"
+                "deadline": "2026-08-01T12:10:00.000Z",
+                "updatedAt": "2026-08-01T13:00:06.000Z"
               },
               "replace": true
             },
@@ -2884,7 +3037,7 @@
               "kind": "none"
             }
           },
-          "projectionPayloadDigest": "sha256:eeb0927e57deecc1d55d05c96b6568604e90d53932525f3500e4ed500eb6206b"
+          "projectionPayloadDigest": "sha256:0965c1694bb6523f65fcc4b4ecbce2e5bab607f8c8e7faf4f8de7af21f804682"
         },
         {
           "rowRef": "presentation-row.presentation.event:af72b2a38d31282ddcec65bf348932729d201439b6741368da704919bf470a5e",
@@ -2933,7 +3086,9 @@
                     "label": "Produce result",
                     "status": "in-progress"
                   }
-                ]
+                ],
+                "ownerVersion": "1",
+                "updatedAt": "2026-08-01T13:00:07.000Z"
               },
               "replace": true
             },
@@ -2942,7 +3097,7 @@
               "kind": "none"
             }
           },
-          "projectionPayloadDigest": "sha256:5bfbc4ca7ca4455c120a0ec5686000b97412a2f8f9bbdd2db69bca10860dafda"
+          "projectionPayloadDigest": "sha256:afed242e62ceac4bd68ef922cfef3d1c28a2418e6342c22e291b23c22c2ad5a9"
         },
         {
           "rowRef": "presentation-row.presentation.event:fe29fc244b2c968d3de6741b0ff8fee0ae5c17748a53a8326fca826a14626513",
@@ -2979,7 +3134,9 @@
               "content": {
                 "subagentRef": "subagent.01",
                 "status": "running",
-                "summary": "Reviewing one bounded topic."
+                "summary": "Reviewing one bounded topic.",
+                "ownerVersion": "1",
+                "updatedAt": "2026-08-01T13:00:08.000Z"
               },
               "replace": true
             },
@@ -2988,7 +3145,7 @@
               "kind": "none"
             }
           },
-          "projectionPayloadDigest": "sha256:dcd2df9e6c72264e4e32fedd7a7f697ee5b993b088c6e2cefe8ba783e2d41e40"
+          "projectionPayloadDigest": "sha256:284eecdd017aed3a8d720bb14b569fe85d438ca0348ed8a02d20e985239504a4"
         },
         {
           "rowRef": "presentation-row.presentation.event:a0466c45c5e41bc778e2c42b5d356bdb59670fe0069092cde7385402e8a73d15",
@@ -2996,7 +3153,7 @@
           "cursorProfileRevision": "opaque-session-cursor-v1",
           "source": {
             "sourceEventId": "presentation.event:a0466c45c5e41bc778e2c42b5d356bdb59670fe0069092cde7385402e8a73d15",
-            "sourceKind": "presentation.activity.media",
+            "sourceKind": "presentation.activity.notice",
             "sessionId": "session.error",
             "streamEpoch": "9",
             "durableSeq": "9",
@@ -3008,7 +3165,7 @@
             "profileRevision": "kokoro-agui-presentation.v1",
             "source": {
               "sourceEventId": "presentation.event:a0466c45c5e41bc778e2c42b5d356bdb59670fe0069092cde7385402e8a73d15",
-              "sourceKind": "presentation.activity.media",
+              "sourceKind": "presentation.activity.notice",
               "sessionId": "session.error",
               "streamEpoch": "9",
               "durableSeq": "9",
@@ -3021,12 +3178,15 @@
               "type": "ACTIVITY_SNAPSHOT",
               "timestamp": 1785589209000,
               "messageId": "presentation.message:45421845d4697d2edc49657a92adde652bdfd5877309fa4865442a12686f331c",
-              "activityType": "kokoro.media.v1",
+              "activityType": "kokoro.notice.v1",
               "content": {
-                "operationRef": "media-operation.01",
-                "state": "active",
-                "progressBps": 4200,
-                "summary": "Generating preview."
+                "noticeRef": "notice.01",
+                "code": "PREVIEW_READY",
+                "message": "A preview is ready.",
+                "severity": "info",
+                "retryClass": "never",
+                "ownerVersion": "1",
+                "updatedAt": "2026-08-01T13:00:09.000Z"
               },
               "replace": true
             },
@@ -3035,7 +3195,7 @@
               "kind": "none"
             }
           },
-          "projectionPayloadDigest": "sha256:6aba56cc43ce65972f153363e4f640a01f990844d1e183a159a6dddce7044f19"
+          "projectionPayloadDigest": "sha256:7a67b86146e653682d5b7e564715db51cb33559997e45e087c8e7de333a1c910"
         },
         {
           "rowRef": "presentation-row.presentation.event:97a2f08ff38a05195e3eba23eadf54e8901a3be2fdd26bb56b4d0ab516f8bb39",
@@ -3043,7 +3203,7 @@
           "cursorProfileRevision": "opaque-session-cursor-v1",
           "source": {
             "sourceEventId": "presentation.event:97a2f08ff38a05195e3eba23eadf54e8901a3be2fdd26bb56b4d0ab516f8bb39",
-            "sourceKind": "presentation.activity.notice",
+            "sourceKind": "presentation.activity.error",
             "sessionId": "session.error",
             "streamEpoch": "9",
             "durableSeq": "10",
@@ -3055,7 +3215,7 @@
             "profileRevision": "kokoro-agui-presentation.v1",
             "source": {
               "sourceEventId": "presentation.event:97a2f08ff38a05195e3eba23eadf54e8901a3be2fdd26bb56b4d0ab516f8bb39",
-              "sourceKind": "presentation.activity.notice",
+              "sourceKind": "presentation.activity.error",
               "sessionId": "session.error",
               "streamEpoch": "9",
               "durableSeq": "10",
@@ -3068,13 +3228,15 @@
               "type": "ACTIVITY_SNAPSHOT",
               "timestamp": 1785589210000,
               "messageId": "presentation.message:45421845d4697d2edc49657a92adde652bdfd5877309fa4865442a12686f331c",
-              "activityType": "kokoro.notice.v1",
+              "activityType": "kokoro.error.v1",
               "content": {
-                "noticeRef": "notice.01",
-                "code": "PREVIEW_READY",
-                "message": "A preview is ready.",
-                "severity": "info",
-                "retryClass": "never"
+                "errorRef": "error.01",
+                "code": "SAFE_RETRY",
+                "message": "One optional preview is unavailable.",
+                "retryClass": "after-delay",
+                "supportCorrelationRef": "support.01",
+                "ownerVersion": "1",
+                "updatedAt": "2026-08-01T13:00:10.000Z"
               },
               "replace": true
             },
@@ -3083,7 +3245,7 @@
               "kind": "none"
             }
           },
-          "projectionPayloadDigest": "sha256:a9273066925733945ee4982f02ea0f993ea88796d51ac29b865d1e09c7b16cb6"
+          "projectionPayloadDigest": "sha256:3a549ecbf7579475ceba232d72152e6ee66ee8809eb1df07a30471a55aebb285"
         },
         {
           "rowRef": "presentation-row.presentation.event:74e1ef3f690b94a26d5aabdd4c1f1b59e0af76e3010aaf85313c7d338a891fcc",
@@ -3091,7 +3253,7 @@
           "cursorProfileRevision": "opaque-session-cursor-v1",
           "source": {
             "sourceEventId": "presentation.event:74e1ef3f690b94a26d5aabdd4c1f1b59e0af76e3010aaf85313c7d338a891fcc",
-            "sourceKind": "presentation.activity.error",
+            "sourceKind": "presentation.message.text.ended",
             "sessionId": "session.error",
             "streamEpoch": "9",
             "durableSeq": "11",
@@ -3103,7 +3265,7 @@
             "profileRevision": "kokoro-agui-presentation.v1",
             "source": {
               "sourceEventId": "presentation.event:74e1ef3f690b94a26d5aabdd4c1f1b59e0af76e3010aaf85313c7d338a891fcc",
-              "sourceKind": "presentation.activity.error",
+              "sourceKind": "presentation.message.text.ended",
               "sessionId": "session.error",
               "streamEpoch": "9",
               "durableSeq": "11",
@@ -3113,56 +3275,8 @@
             },
             "presentationRunBindingRef": "presentation.run-binding:88ff1484cb94028b7bb0f9e3c15303250e58be5171910cd36afd50a483adc65a",
             "event": {
-              "type": "ACTIVITY_SNAPSHOT",
-              "timestamp": 1785589211000,
-              "messageId": "presentation.message:45421845d4697d2edc49657a92adde652bdfd5877309fa4865442a12686f331c",
-              "activityType": "kokoro.error.v1",
-              "content": {
-                "errorRef": "error.01",
-                "code": "SAFE_RETRY",
-                "message": "One optional preview is unavailable.",
-                "retryClass": "after-delay",
-                "supportCorrelationRef": "support.01"
-              },
-              "replace": true
-            },
-            "presentationMessageBindingRef": "presentation.message-binding:450dc83ea67c48f61b4004233e96048c383652a33867fbedd7d003d6300421a9",
-            "bindingAuthorityDelta": {
-              "kind": "none"
-            }
-          },
-          "projectionPayloadDigest": "sha256:8bd1db95161ba2fe6dbe8a768a8c4f0b4e08ee39a074f01dcebc7f10c56fc1bc"
-        },
-        {
-          "rowRef": "presentation-row.presentation.event:4ab3b4662cac1527734d27dcbbff5968b8bac97bc676a80b77ab73e21cca743a",
-          "profileRevision": "kokoro-agui-presentation.v1",
-          "cursorProfileRevision": "opaque-session-cursor-v1",
-          "source": {
-            "sourceEventId": "presentation.event:4ab3b4662cac1527734d27dcbbff5968b8bac97bc676a80b77ab73e21cca743a",
-            "sourceKind": "presentation.message.text.ended",
-            "sessionId": "session.error",
-            "streamEpoch": "9",
-            "durableSeq": "12",
-            "projectionVersion": "12",
-            "schemaRevision": 1,
-            "recordedAt": "2026-08-01T13:00:12.000Z"
-          },
-          "projectionPayload": {
-            "profileRevision": "kokoro-agui-presentation.v1",
-            "source": {
-              "sourceEventId": "presentation.event:4ab3b4662cac1527734d27dcbbff5968b8bac97bc676a80b77ab73e21cca743a",
-              "sourceKind": "presentation.message.text.ended",
-              "sessionId": "session.error",
-              "streamEpoch": "9",
-              "durableSeq": "12",
-              "projectionVersion": "12",
-              "schemaRevision": 1,
-              "recordedAt": "2026-08-01T13:00:12.000Z"
-            },
-            "presentationRunBindingRef": "presentation.run-binding:88ff1484cb94028b7bb0f9e3c15303250e58be5171910cd36afd50a483adc65a",
-            "event": {
               "type": "TEXT_MESSAGE_END",
-              "timestamp": 1785589212000,
+              "timestamp": 1785589211000,
               "messageId": "presentation.message:45421845d4697d2edc49657a92adde652bdfd5877309fa4865442a12686f331c"
             },
             "presentationMessageBindingRef": "presentation.message-binding:450dc83ea67c48f61b4004233e96048c383652a33867fbedd7d003d6300421a9",
@@ -3177,46 +3291,48 @@
                 "resumeSegmentOrdinal": 0,
                 "state": "ended",
                 "openedBySourceEventId": "presentation.event:db92ebc40720e9722dfbd354e88798cb63492dfed07580b16434a5acec3e43b6",
-                "endedBySourceEventId": "presentation.event:4ab3b4662cac1527734d27dcbbff5968b8bac97bc676a80b77ab73e21cca743a",
+                "endedBySourceEventId": "presentation.event:74e1ef3f690b94a26d5aabdd4c1f1b59e0af76e3010aaf85313c7d338a891fcc",
                 "openedAt": "2026-08-01T13:00:02.000Z",
-                "endedAt": "2026-08-01T13:00:12.000Z"
+                "endedAt": "2026-08-01T13:00:11.000Z",
+                "sessionMessageId": "session.message:c8821908c95f7b1b6d228f84ab9cebf396f1b495d2342c87fb1f61fddaeb4918",
+                "sessionTextPartId": "session.part:6b9170f8bfade9e562b696135ba21881320dd2dc6990eb6c3857cdb47bf72ff1"
               }
             }
           },
-          "projectionPayloadDigest": "sha256:b20e4f476ae6922c9e4fe6ee9470556aac1d87f08a2c977d53506910abad7d9f"
+          "projectionPayloadDigest": "sha256:6f70baf111ade43ed97e918e5ce02da62a8e124a80058eaabafee8e8575025c4"
         },
         {
-          "rowRef": "presentation-row.presentation.event:ff52b57e71d1e1c37d26c97b8e3015ca81cc73dd568143ab459f44d641f591d0",
+          "rowRef": "presentation-row.presentation.event:4ab3b4662cac1527734d27dcbbff5968b8bac97bc676a80b77ab73e21cca743a",
           "profileRevision": "kokoro-agui-presentation.v1",
           "cursorProfileRevision": "opaque-session-cursor-v1",
           "source": {
-            "sourceEventId": "presentation.event:ff52b57e71d1e1c37d26c97b8e3015ca81cc73dd568143ab459f44d641f591d0",
+            "sourceEventId": "presentation.event:4ab3b4662cac1527734d27dcbbff5968b8bac97bc676a80b77ab73e21cca743a",
             "sourceKind": "presentation.run.finished",
             "sessionId": "session.error",
             "streamEpoch": "9",
-            "durableSeq": "13",
-            "projectionVersion": "13",
+            "durableSeq": "12",
+            "projectionVersion": "12",
             "schemaRevision": 1,
-            "recordedAt": "2026-08-01T13:00:13.000Z"
+            "recordedAt": "2026-08-01T13:00:12.000Z"
           },
           "projectionPayload": {
             "profileRevision": "kokoro-agui-presentation.v1",
             "source": {
-              "sourceEventId": "presentation.event:ff52b57e71d1e1c37d26c97b8e3015ca81cc73dd568143ab459f44d641f591d0",
+              "sourceEventId": "presentation.event:4ab3b4662cac1527734d27dcbbff5968b8bac97bc676a80b77ab73e21cca743a",
               "sourceKind": "presentation.run.finished",
               "sessionId": "session.error",
               "streamEpoch": "9",
-              "durableSeq": "13",
-              "projectionVersion": "13",
+              "durableSeq": "12",
+              "projectionVersion": "12",
               "schemaRevision": 1,
-              "recordedAt": "2026-08-01T13:00:13.000Z"
+              "recordedAt": "2026-08-01T13:00:12.000Z"
             },
             "presentationRunBindingRef": "presentation.run-binding:88ff1484cb94028b7bb0f9e3c15303250e58be5171910cd36afd50a483adc65a",
             "event": {
               "type": "RUN_FINISHED",
               "threadId": "presentation.thread:be053196d3649d32be480aaa3b4add249d33f4afa2ab5db2d17c4ba4fd0e160d",
               "runId": "presentation.run:69e6509194b0d5742847c5b76cfda19e0def26386d4f805cf35fc3d19a8c5031",
-              "timestamp": 1785589213000
+              "timestamp": 1785589212000
             },
             "bindingAuthorityDelta": {
               "kind": "run.replace",
@@ -3234,44 +3350,45 @@
                 "state": "finished",
                 "terminalDisposition": "success",
                 "openedBySourceEventId": "presentation.event:368440b76b55745e09bd715e2840597a1b662ea461bc847512f7aa670e742661",
-                "terminalSourceEventId": "presentation.event:ff52b57e71d1e1c37d26c97b8e3015ca81cc73dd568143ab459f44d641f591d0",
+                "terminalSourceEventId": "presentation.event:4ab3b4662cac1527734d27dcbbff5968b8bac97bc676a80b77ab73e21cca743a",
                 "openedAt": "2026-08-01T13:00:01.000Z",
-                "terminalAt": "2026-08-01T13:00:13.000Z"
+                "terminalAt": "2026-08-01T13:00:12.000Z",
+                "sessionRunId": "session.run:a71ebe8e4a44230afadaea134bf6f5c8b0ce45d8768189c59e06b4d94cd4afac"
               }
             }
           },
-          "projectionPayloadDigest": "sha256:0eeb99feb0b6ca7a8c2fb88da2bad3ac5f36cd57090fe1b95952248ba9776db3"
+          "projectionPayloadDigest": "sha256:e19cbf1240fd2984ccb702d489325cfb593c9114c936da8e8d9c1eefda8222bd"
         },
         {
-          "rowRef": "presentation-row.presentation.event:03a07e5589957cbd31d012ca603ae2527f9d0d92028b48d713dc126bd0824054",
+          "rowRef": "presentation-row.presentation.event:ff52b57e71d1e1c37d26c97b8e3015ca81cc73dd568143ab459f44d641f591d0",
           "profileRevision": "kokoro-agui-presentation.v1",
           "cursorProfileRevision": "opaque-session-cursor-v1",
           "source": {
-            "sourceEventId": "presentation.event:03a07e5589957cbd31d012ca603ae2527f9d0d92028b48d713dc126bd0824054",
+            "sourceEventId": "presentation.event:ff52b57e71d1e1c37d26c97b8e3015ca81cc73dd568143ab459f44d641f591d0",
             "sourceKind": "presentation.run.started",
             "sessionId": "session.error",
             "streamEpoch": "9",
-            "durableSeq": "14",
-            "projectionVersion": "14",
+            "durableSeq": "13",
+            "projectionVersion": "13",
             "schemaRevision": 1,
-            "recordedAt": "2026-08-01T13:00:14.000Z"
+            "recordedAt": "2026-08-01T13:00:13.000Z"
           },
           "projectionPayload": {
             "profileRevision": "kokoro-agui-presentation.v1",
             "source": {
-              "sourceEventId": "presentation.event:03a07e5589957cbd31d012ca603ae2527f9d0d92028b48d713dc126bd0824054",
+              "sourceEventId": "presentation.event:ff52b57e71d1e1c37d26c97b8e3015ca81cc73dd568143ab459f44d641f591d0",
               "sourceKind": "presentation.run.started",
               "sessionId": "session.error",
               "streamEpoch": "9",
-              "durableSeq": "14",
-              "projectionVersion": "14",
+              "durableSeq": "13",
+              "projectionVersion": "13",
               "schemaRevision": 1,
-              "recordedAt": "2026-08-01T13:00:14.000Z"
+              "recordedAt": "2026-08-01T13:00:13.000Z"
             },
             "presentationRunBindingRef": "presentation.run-binding:900464b5110e10e94aa4e0a1bc80d11405d15dfb3bd85315b18e91c40a24a63f",
             "event": {
               "type": "RUN_STARTED",
-              "timestamp": 1785589214000,
+              "timestamp": 1785589213000,
               "threadId": "presentation.thread:be053196d3649d32be480aaa3b4add249d33f4afa2ab5db2d17c4ba4fd0e160d",
               "runId": "presentation.run:a17f06963cde0825930e4a614057f52fc74890ac2c0040e86ba2b017588ffb04",
               "parentRunId": "presentation.run:69e6509194b0d5742847c5b76cfda19e0def26386d4f805cf35fc3d19a8c5031"
@@ -3291,45 +3408,46 @@
                 },
                 "state": "open",
                 "terminalDisposition": null,
-                "openedBySourceEventId": "presentation.event:03a07e5589957cbd31d012ca603ae2527f9d0d92028b48d713dc126bd0824054",
+                "openedBySourceEventId": "presentation.event:ff52b57e71d1e1c37d26c97b8e3015ca81cc73dd568143ab459f44d641f591d0",
                 "terminalSourceEventId": null,
-                "openedAt": "2026-08-01T13:00:14.000Z",
-                "terminalAt": null
+                "openedAt": "2026-08-01T13:00:13.000Z",
+                "terminalAt": null,
+                "sessionRunId": null
               }
             }
           },
-          "projectionPayloadDigest": "sha256:de1aaf7fc0a5108577045e80e481f972b8c7a18864f7ed756159e526db39de46"
+          "projectionPayloadDigest": "sha256:dedc5d61be709a66ede5874d8bc8372df7936a4e5460fc6480e9eb5e7b266ee1"
         },
         {
-          "rowRef": "presentation-row.presentation.event:bc674da818c37a7eba20f70cdb50efe246b38090a05c75aadc6a87f992c98bfa",
+          "rowRef": "presentation-row.presentation.event:03a07e5589957cbd31d012ca603ae2527f9d0d92028b48d713dc126bd0824054",
           "profileRevision": "kokoro-agui-presentation.v1",
           "cursorProfileRevision": "opaque-session-cursor-v1",
           "source": {
-            "sourceEventId": "presentation.event:bc674da818c37a7eba20f70cdb50efe246b38090a05c75aadc6a87f992c98bfa",
+            "sourceEventId": "presentation.event:03a07e5589957cbd31d012ca603ae2527f9d0d92028b48d713dc126bd0824054",
             "sourceKind": "presentation.run.error",
             "sessionId": "session.error",
             "streamEpoch": "9",
-            "durableSeq": "15",
-            "projectionVersion": "15",
+            "durableSeq": "14",
+            "projectionVersion": "14",
             "schemaRevision": 1,
-            "recordedAt": "2026-08-01T13:00:15.000Z"
+            "recordedAt": "2026-08-01T13:00:14.000Z"
           },
           "projectionPayload": {
             "profileRevision": "kokoro-agui-presentation.v1",
             "source": {
-              "sourceEventId": "presentation.event:bc674da818c37a7eba20f70cdb50efe246b38090a05c75aadc6a87f992c98bfa",
+              "sourceEventId": "presentation.event:03a07e5589957cbd31d012ca603ae2527f9d0d92028b48d713dc126bd0824054",
               "sourceKind": "presentation.run.error",
               "sessionId": "session.error",
               "streamEpoch": "9",
-              "durableSeq": "15",
-              "projectionVersion": "15",
+              "durableSeq": "14",
+              "projectionVersion": "14",
               "schemaRevision": 1,
-              "recordedAt": "2026-08-01T13:00:15.000Z"
+              "recordedAt": "2026-08-01T13:00:14.000Z"
             },
             "presentationRunBindingRef": "presentation.run-binding:900464b5110e10e94aa4e0a1bc80d11405d15dfb3bd85315b18e91c40a24a63f",
             "event": {
               "type": "RUN_ERROR",
-              "timestamp": 1785589215000,
+              "timestamp": 1785589214000,
               "message": "The run could not be completed.",
               "code": "RUN_FAILED"
             },
@@ -3348,14 +3466,15 @@
                 },
                 "state": "error",
                 "terminalDisposition": "error",
-                "openedBySourceEventId": "presentation.event:03a07e5589957cbd31d012ca603ae2527f9d0d92028b48d713dc126bd0824054",
-                "terminalSourceEventId": "presentation.event:bc674da818c37a7eba20f70cdb50efe246b38090a05c75aadc6a87f992c98bfa",
-                "openedAt": "2026-08-01T13:00:14.000Z",
-                "terminalAt": "2026-08-01T13:00:15.000Z"
+                "openedBySourceEventId": "presentation.event:ff52b57e71d1e1c37d26c97b8e3015ca81cc73dd568143ab459f44d641f591d0",
+                "terminalSourceEventId": "presentation.event:03a07e5589957cbd31d012ca603ae2527f9d0d92028b48d713dc126bd0824054",
+                "openedAt": "2026-08-01T13:00:13.000Z",
+                "terminalAt": "2026-08-01T13:00:14.000Z",
+                "sessionRunId": null
               }
             }
           },
-          "projectionPayloadDigest": "sha256:aef83b9ecf21b85c1bb756caea71c8dc459ed48fcf7b39658a0b6314aca91ffc"
+          "projectionPayloadDigest": "sha256:b4ee1a6a8a5ac81ba7e87c487f11e85ae8fecaaa8d570a08c044d24246ee78ab"
         }
       ],
       "frames": [
@@ -3400,7 +3519,8 @@
                 "openedBySourceEventId": "presentation.event:368440b76b55745e09bd715e2840597a1b662ea461bc847512f7aa670e742661",
                 "terminalSourceEventId": null,
                 "openedAt": "2026-08-01T13:00:01.000Z",
-                "terminalAt": null
+                "terminalAt": null,
+                "sessionRunId": "session.run:a71ebe8e4a44230afadaea134bf6f5c8b0ce45d8768189c59e06b4d94cd4afac"
               }
             }
           }
@@ -3442,7 +3562,9 @@
                 "openedBySourceEventId": "presentation.event:db92ebc40720e9722dfbd354e88798cb63492dfed07580b16434a5acec3e43b6",
                 "endedBySourceEventId": null,
                 "openedAt": "2026-08-01T13:00:02.000Z",
-                "endedAt": null
+                "endedAt": null,
+                "sessionMessageId": "session.message:c8821908c95f7b1b6d228f84ab9cebf396f1b495d2342c87fb1f61fddaeb4918",
+                "sessionTextPartId": "session.part:6b9170f8bfade9e562b696135ba21881320dd2dc6990eb6c3857cdb47bf72ff1"
               }
             }
           }
@@ -3501,7 +3623,9 @@
               "content": {
                 "partRef": "part.summary.01",
                 "summary": "Compared safe alternatives.",
-                "status": "complete"
+                "status": "complete",
+                "ownerVersion": "1",
+                "updatedAt": "2026-08-01T13:00:04.000Z"
               },
               "replace": true
             },
@@ -3540,7 +3664,9 @@
                 "summary": "Searched approved sources.",
                 "resultPreview": "3 safe results",
                 "isError": false,
-                "truncated": false
+                "truncated": false,
+                "ownerVersion": "1",
+                "updatedAt": "2026-08-01T13:00:05.000Z"
               },
               "replace": true
             },
@@ -3574,16 +3700,22 @@
               "activityType": "kokoro.hitl.v1",
               "content": {
                 "ownerRef": "decision.01",
-                "expectedVersion": 1,
+                "ownerVersion": "1",
+                "decisionGroupRef": "decision-group.01",
+                "requiredOwnerRefs": [
+                  "decision.01"
+                ],
+                "controlRef": "control.01",
                 "kind": "approval",
                 "title": "Approve action",
                 "description": "Review the safe action summary.",
                 "allowedActions": [
-                  "accept",
+                  "approve",
                   "reject"
                 ],
                 "status": "pending",
-                "deadline": "2026-08-01T12:10:00.000Z"
+                "deadline": "2026-08-01T12:10:00.000Z",
+                "updatedAt": "2026-08-01T13:00:06.000Z"
               },
               "replace": true
             },
@@ -3630,7 +3762,9 @@
                     "label": "Produce result",
                     "status": "in-progress"
                   }
-                ]
+                ],
+                "ownerVersion": "1",
+                "updatedAt": "2026-08-01T13:00:07.000Z"
               },
               "replace": true
             },
@@ -3665,7 +3799,9 @@
               "content": {
                 "subagentRef": "subagent.01",
                 "status": "running",
-                "summary": "Reviewing one bounded topic."
+                "summary": "Reviewing one bounded topic.",
+                "ownerVersion": "1",
+                "updatedAt": "2026-08-01T13:00:08.000Z"
               },
               "replace": true
             },
@@ -3683,7 +3819,7 @@
             "profileRevision": "kokoro-agui-presentation.v1",
             "source": {
               "sourceEventId": "presentation.event:a0466c45c5e41bc778e2c42b5d356bdb59670fe0069092cde7385402e8a73d15",
-              "sourceKind": "presentation.activity.media",
+              "sourceKind": "presentation.activity.notice",
               "sessionId": "session.error",
               "streamEpoch": "9",
               "durableSeq": "9",
@@ -3696,12 +3832,15 @@
               "type": "ACTIVITY_SNAPSHOT",
               "timestamp": 1785589209000,
               "messageId": "presentation.message:45421845d4697d2edc49657a92adde652bdfd5877309fa4865442a12686f331c",
-              "activityType": "kokoro.media.v1",
+              "activityType": "kokoro.notice.v1",
               "content": {
-                "operationRef": "media-operation.01",
-                "state": "active",
-                "progressBps": 4200,
-                "summary": "Generating preview."
+                "noticeRef": "notice.01",
+                "code": "PREVIEW_READY",
+                "message": "A preview is ready.",
+                "severity": "info",
+                "retryClass": "never",
+                "ownerVersion": "1",
+                "updatedAt": "2026-08-01T13:00:09.000Z"
               },
               "replace": true
             },
@@ -3719,7 +3858,7 @@
             "profileRevision": "kokoro-agui-presentation.v1",
             "source": {
               "sourceEventId": "presentation.event:97a2f08ff38a05195e3eba23eadf54e8901a3be2fdd26bb56b4d0ab516f8bb39",
-              "sourceKind": "presentation.activity.notice",
+              "sourceKind": "presentation.activity.error",
               "sessionId": "session.error",
               "streamEpoch": "9",
               "durableSeq": "10",
@@ -3732,13 +3871,15 @@
               "type": "ACTIVITY_SNAPSHOT",
               "timestamp": 1785589210000,
               "messageId": "presentation.message:45421845d4697d2edc49657a92adde652bdfd5877309fa4865442a12686f331c",
-              "activityType": "kokoro.notice.v1",
+              "activityType": "kokoro.error.v1",
               "content": {
-                "noticeRef": "notice.01",
-                "code": "PREVIEW_READY",
-                "message": "A preview is ready.",
-                "severity": "info",
-                "retryClass": "never"
+                "errorRef": "error.01",
+                "code": "SAFE_RETRY",
+                "message": "One optional preview is unavailable.",
+                "retryClass": "after-delay",
+                "supportCorrelationRef": "support.01",
+                "ownerVersion": "1",
+                "updatedAt": "2026-08-01T13:00:10.000Z"
               },
               "replace": true
             },
@@ -3751,12 +3892,12 @@
         {
           "kind": "durable",
           "id": "v1.agui-conformance-2026-08.o1wrSt_rhkMqOzzE.O5c6dGyv3RhX_ZILFVLgE-ilzQ5mnp9BrXU46cSUxTs8ogpeymZON5C3HU0Z07AldenenVYfDQpBPxhFpdUHyrhVKbonLvxucMHdRmPK4V1a9mUevXZ_WZCJs7tCCY0eOPOtb4clDVzA8h3rZtWdZy39-7cEOZ21RRBGOS4bh6j1mvu6imtRu8rRYo07M-JoDXhXSm9_EuczQPhRe-xTM5PzTcu6uFAOqMZpsxJgI6AfXd9WQO3zuescICjdT3D6.uhXAs_rlmL6f-NS2RwsKrw",
-          "event": "ACTIVITY_SNAPSHOT",
+          "event": "TEXT_MESSAGE_END",
           "data": {
             "profileRevision": "kokoro-agui-presentation.v1",
             "source": {
               "sourceEventId": "presentation.event:74e1ef3f690b94a26d5aabdd4c1f1b59e0af76e3010aaf85313c7d338a891fcc",
-              "sourceKind": "presentation.activity.error",
+              "sourceKind": "presentation.message.text.ended",
               "sessionId": "session.error",
               "streamEpoch": "9",
               "durableSeq": "11",
@@ -3766,45 +3907,8 @@
             },
             "presentationRunBindingRef": "presentation.run-binding:88ff1484cb94028b7bb0f9e3c15303250e58be5171910cd36afd50a483adc65a",
             "event": {
-              "type": "ACTIVITY_SNAPSHOT",
-              "timestamp": 1785589211000,
-              "messageId": "presentation.message:45421845d4697d2edc49657a92adde652bdfd5877309fa4865442a12686f331c",
-              "activityType": "kokoro.error.v1",
-              "content": {
-                "errorRef": "error.01",
-                "code": "SAFE_RETRY",
-                "message": "One optional preview is unavailable.",
-                "retryClass": "after-delay",
-                "supportCorrelationRef": "support.01"
-              },
-              "replace": true
-            },
-            "presentationMessageBindingRef": "presentation.message-binding:450dc83ea67c48f61b4004233e96048c383652a33867fbedd7d003d6300421a9",
-            "bindingAuthorityDelta": {
-              "kind": "none"
-            }
-          }
-        },
-        {
-          "kind": "durable",
-          "id": "v1.agui-conformance-2026-08.mBt8MRzTU5FRLDRb.Nzr_iGe_xA3BW74951QcVLpr2vEoDdWR3Cdcub2MDXju22lIoovlqTFOTUMhgnDp8B2B-rSLoIInxAUHSn_Sc8J59vAp7T1r5kmUkTa6eY49zfsFcswELofxRtVG8e9YPvJugREKH1jjj1VMECTPS48gVR8atVt7IuaV8tU4IJdf0Mnd3AIl0IywKCdXFbpVAiQLA-O5baoYVVWPkzTVoWzQIVSkf4P4QdNMDJZnAgr6lmaeL2PFfQgPqGSzI74x.ZZLWknlKTS7XSng_1RQOFg",
-          "event": "TEXT_MESSAGE_END",
-          "data": {
-            "profileRevision": "kokoro-agui-presentation.v1",
-            "source": {
-              "sourceEventId": "presentation.event:4ab3b4662cac1527734d27dcbbff5968b8bac97bc676a80b77ab73e21cca743a",
-              "sourceKind": "presentation.message.text.ended",
-              "sessionId": "session.error",
-              "streamEpoch": "9",
-              "durableSeq": "12",
-              "projectionVersion": "12",
-              "schemaRevision": 1,
-              "recordedAt": "2026-08-01T13:00:12.000Z"
-            },
-            "presentationRunBindingRef": "presentation.run-binding:88ff1484cb94028b7bb0f9e3c15303250e58be5171910cd36afd50a483adc65a",
-            "event": {
               "type": "TEXT_MESSAGE_END",
-              "timestamp": 1785589212000,
+              "timestamp": 1785589211000,
               "messageId": "presentation.message:45421845d4697d2edc49657a92adde652bdfd5877309fa4865442a12686f331c"
             },
             "presentationMessageBindingRef": "presentation.message-binding:450dc83ea67c48f61b4004233e96048c383652a33867fbedd7d003d6300421a9",
@@ -3819,35 +3923,37 @@
                 "resumeSegmentOrdinal": 0,
                 "state": "ended",
                 "openedBySourceEventId": "presentation.event:db92ebc40720e9722dfbd354e88798cb63492dfed07580b16434a5acec3e43b6",
-                "endedBySourceEventId": "presentation.event:4ab3b4662cac1527734d27dcbbff5968b8bac97bc676a80b77ab73e21cca743a",
+                "endedBySourceEventId": "presentation.event:74e1ef3f690b94a26d5aabdd4c1f1b59e0af76e3010aaf85313c7d338a891fcc",
                 "openedAt": "2026-08-01T13:00:02.000Z",
-                "endedAt": "2026-08-01T13:00:12.000Z"
+                "endedAt": "2026-08-01T13:00:11.000Z",
+                "sessionMessageId": "session.message:c8821908c95f7b1b6d228f84ab9cebf396f1b495d2342c87fb1f61fddaeb4918",
+                "sessionTextPartId": "session.part:6b9170f8bfade9e562b696135ba21881320dd2dc6990eb6c3857cdb47bf72ff1"
               }
             }
           }
         },
         {
           "kind": "durable",
-          "id": "v1.agui-conformance-2026-08.Nn4rCKy3KPmim798.VCvPIcMtixXbYSU0lkKrsLjJmzaIcSr0_GQ2BYlO115PP4Ws0252qnQmH1ByA1rSOqKnZgf8DPS0-iwjaUy29ISEN01sPx387_6PoNRzz3z6FAV9pB3w9_YfEuAO89WTRndiHcnIO6HNnDSkKNU9coGmV6GYh1k1tO5Mjzl3d02eOJvHfg629z6k4U1knDqXr8kIaBAOhGvtpVZaHKDVmO3_tAsdXfnuRWmdmmRweANh266rqNOgNKFdX7rkyBRb.9myyGoCOyCUEPlkSLBVL5w",
+          "id": "v1.agui-conformance-2026-08.mBt8MRzTU5FRLDRb.Nzr_iGe_xA3BW74951QcVLpr2vEoDdWR3Cdcub2MDXju22lIoovlqTFOTUMhgnDp8B2B-rSLoIInxAUHSn_Sc8J59vAp7T1r5kmUkTa6eY49zfsFcswELofxRtVG8e9YPvJugREKH1jjj1VMECTPS48gVR8atVt7IuaV8tU4IJdf0Mnd3AIl0IywKCdXFbpVAiQLA-O5baoYVVWPkzTVoWzQIVSkf4P4QdNMDJZnAgr6lmaeL2PFfQgPqGSzI74x.ZZLWknlKTS7XSng_1RQOFg",
           "event": "RUN_FINISHED",
           "data": {
             "profileRevision": "kokoro-agui-presentation.v1",
             "source": {
-              "sourceEventId": "presentation.event:ff52b57e71d1e1c37d26c97b8e3015ca81cc73dd568143ab459f44d641f591d0",
+              "sourceEventId": "presentation.event:4ab3b4662cac1527734d27dcbbff5968b8bac97bc676a80b77ab73e21cca743a",
               "sourceKind": "presentation.run.finished",
               "sessionId": "session.error",
               "streamEpoch": "9",
-              "durableSeq": "13",
-              "projectionVersion": "13",
+              "durableSeq": "12",
+              "projectionVersion": "12",
               "schemaRevision": 1,
-              "recordedAt": "2026-08-01T13:00:13.000Z"
+              "recordedAt": "2026-08-01T13:00:12.000Z"
             },
             "presentationRunBindingRef": "presentation.run-binding:88ff1484cb94028b7bb0f9e3c15303250e58be5171910cd36afd50a483adc65a",
             "event": {
               "type": "RUN_FINISHED",
               "threadId": "presentation.thread:be053196d3649d32be480aaa3b4add249d33f4afa2ab5db2d17c4ba4fd0e160d",
               "runId": "presentation.run:69e6509194b0d5742847c5b76cfda19e0def26386d4f805cf35fc3d19a8c5031",
-              "timestamp": 1785589213000
+              "timestamp": 1785589212000
             },
             "bindingAuthorityDelta": {
               "kind": "run.replace",
@@ -3865,33 +3971,34 @@
                 "state": "finished",
                 "terminalDisposition": "success",
                 "openedBySourceEventId": "presentation.event:368440b76b55745e09bd715e2840597a1b662ea461bc847512f7aa670e742661",
-                "terminalSourceEventId": "presentation.event:ff52b57e71d1e1c37d26c97b8e3015ca81cc73dd568143ab459f44d641f591d0",
+                "terminalSourceEventId": "presentation.event:4ab3b4662cac1527734d27dcbbff5968b8bac97bc676a80b77ab73e21cca743a",
                 "openedAt": "2026-08-01T13:00:01.000Z",
-                "terminalAt": "2026-08-01T13:00:13.000Z"
+                "terminalAt": "2026-08-01T13:00:12.000Z",
+                "sessionRunId": "session.run:a71ebe8e4a44230afadaea134bf6f5c8b0ce45d8768189c59e06b4d94cd4afac"
               }
             }
           }
         },
         {
           "kind": "durable",
-          "id": "v1.agui-conformance-2026-08.rUApQHF05IMEglU9.H-qdKd-Xy0wElAmopIlVT47-Hfdam1yWefL1HxCLWGDWjtwttgFvunWlUxp0eqfZRjF6_bMA214PKSZOLEe2OGvQAwdmLyNNnpZ8wUsAxjBjgGMS8caXR72DXERaMj7wefkZRzzaXdIpl_z486BPg4hlWYw6ylKL-G6T5NZa7R6edfaRCUJKa98O5Sv6uFQBPnJIAcdEsukv5S1ac579OV6uHJhRMBZcP4ePpgS4vYrPOcFajEH4iUhM6VYVFazR.e1cnsm_BjNkACeyieI_Wiw",
+          "id": "v1.agui-conformance-2026-08.Nn4rCKy3KPmim798.VCvPIcMtixXbYSU0lkKrsLjJmzaIcSr0_GQ2BYlO115PP4Ws0252qnQmH1ByA1rSOqKnZgf8DPS0-iwjaUy29ISEN01sPx387_6PoNRzz3z6FAV9pB3w9_YfEuAO89WTRndiHcnIO6HNnDSkKNU9coGmV6GYh1k1tO5Mjzl3d02eOJvHfg629z6k4U1knDqXr8kIaBAOhGvtpVZaHKDVmO3_tAsdXfnuRWmdmmRweANh266rqNOgNKFdX7rkyBRb.9myyGoCOyCUEPlkSLBVL5w",
           "event": "RUN_STARTED",
           "data": {
             "profileRevision": "kokoro-agui-presentation.v1",
             "source": {
-              "sourceEventId": "presentation.event:03a07e5589957cbd31d012ca603ae2527f9d0d92028b48d713dc126bd0824054",
+              "sourceEventId": "presentation.event:ff52b57e71d1e1c37d26c97b8e3015ca81cc73dd568143ab459f44d641f591d0",
               "sourceKind": "presentation.run.started",
               "sessionId": "session.error",
               "streamEpoch": "9",
-              "durableSeq": "14",
-              "projectionVersion": "14",
+              "durableSeq": "13",
+              "projectionVersion": "13",
               "schemaRevision": 1,
-              "recordedAt": "2026-08-01T13:00:14.000Z"
+              "recordedAt": "2026-08-01T13:00:13.000Z"
             },
             "presentationRunBindingRef": "presentation.run-binding:900464b5110e10e94aa4e0a1bc80d11405d15dfb3bd85315b18e91c40a24a63f",
             "event": {
               "type": "RUN_STARTED",
-              "timestamp": 1785589214000,
+              "timestamp": 1785589213000,
               "threadId": "presentation.thread:be053196d3649d32be480aaa3b4add249d33f4afa2ab5db2d17c4ba4fd0e160d",
               "runId": "presentation.run:a17f06963cde0825930e4a614057f52fc74890ac2c0040e86ba2b017588ffb04",
               "parentRunId": "presentation.run:69e6509194b0d5742847c5b76cfda19e0def26386d4f805cf35fc3d19a8c5031"
@@ -3911,34 +4018,35 @@
                 },
                 "state": "open",
                 "terminalDisposition": null,
-                "openedBySourceEventId": "presentation.event:03a07e5589957cbd31d012ca603ae2527f9d0d92028b48d713dc126bd0824054",
+                "openedBySourceEventId": "presentation.event:ff52b57e71d1e1c37d26c97b8e3015ca81cc73dd568143ab459f44d641f591d0",
                 "terminalSourceEventId": null,
-                "openedAt": "2026-08-01T13:00:14.000Z",
-                "terminalAt": null
+                "openedAt": "2026-08-01T13:00:13.000Z",
+                "terminalAt": null,
+                "sessionRunId": null
               }
             }
           }
         },
         {
           "kind": "durable",
-          "id": "v1.agui-conformance-2026-08.PsgZVWeeYbKuVaMS.9q8ndW654quyvEK1h71slYNgPc_s5XShUqJ8knl829tNC9MSkyljxNfeCHR9svlZygPbpNzWWxRIWurz2p2bo7NEkajHMJHerj1FacXPCDVaNZsrhlyDIeAOGpprCJnb9gS8-yHsxzqwFkAl7VZyc4v6Ix5JCE1csylHA7onO5Gk8Xhu-KKsvraANiYCmgDB1oDSkrgHkqRtXHTIKbDSxAc9qv-Y_8NgpbPXoFaEAHbwgWSWSwN_0wY4ZI0CRqrH._CDLi9x7Dbb4ya70bo0sUw",
+          "id": "v1.agui-conformance-2026-08.rUApQHF05IMEglU9.H-qdKd-Xy0wElAmopIlVT47-Hfdam1yWefL1HxCLWGDWjtwttgFvunWlUxp0eqfZRjF6_bMA214PKSZOLEe2OGvQAwdmLyNNnpZ8wUsAxjBjgGMS8caXR72DXERaMj7wefkZRzzaXdIpl_z486BPg4hlWYw6ylKL-G6T5NZa7R6edfaRCUJKa98O5Sv6uFQBPnJIAcdEsukv5S1ac579OV6uHJhRMBZcP4ePpgS4vYrPOcFajEH4iUhM6VYVFazR.e1cnsm_BjNkACeyieI_Wiw",
           "event": "RUN_ERROR",
           "data": {
             "profileRevision": "kokoro-agui-presentation.v1",
             "source": {
-              "sourceEventId": "presentation.event:bc674da818c37a7eba20f70cdb50efe246b38090a05c75aadc6a87f992c98bfa",
+              "sourceEventId": "presentation.event:03a07e5589957cbd31d012ca603ae2527f9d0d92028b48d713dc126bd0824054",
               "sourceKind": "presentation.run.error",
               "sessionId": "session.error",
               "streamEpoch": "9",
-              "durableSeq": "15",
-              "projectionVersion": "15",
+              "durableSeq": "14",
+              "projectionVersion": "14",
               "schemaRevision": 1,
-              "recordedAt": "2026-08-01T13:00:15.000Z"
+              "recordedAt": "2026-08-01T13:00:14.000Z"
             },
             "presentationRunBindingRef": "presentation.run-binding:900464b5110e10e94aa4e0a1bc80d11405d15dfb3bd85315b18e91c40a24a63f",
             "event": {
               "type": "RUN_ERROR",
-              "timestamp": 1785589215000,
+              "timestamp": 1785589214000,
               "message": "The run could not be completed.",
               "code": "RUN_FAILED"
             },
@@ -3957,10 +4065,11 @@
                 },
                 "state": "error",
                 "terminalDisposition": "error",
-                "openedBySourceEventId": "presentation.event:03a07e5589957cbd31d012ca603ae2527f9d0d92028b48d713dc126bd0824054",
-                "terminalSourceEventId": "presentation.event:bc674da818c37a7eba20f70cdb50efe246b38090a05c75aadc6a87f992c98bfa",
-                "openedAt": "2026-08-01T13:00:14.000Z",
-                "terminalAt": "2026-08-01T13:00:15.000Z"
+                "openedBySourceEventId": "presentation.event:ff52b57e71d1e1c37d26c97b8e3015ca81cc73dd568143ab459f44d641f591d0",
+                "terminalSourceEventId": "presentation.event:03a07e5589957cbd31d012ca603ae2527f9d0d92028b48d713dc126bd0824054",
+                "openedAt": "2026-08-01T13:00:13.000Z",
+                "terminalAt": "2026-08-01T13:00:14.000Z",
+                "sessionRunId": null
               }
             }
           }
@@ -3975,7 +4084,7 @@
           "profileRevision": "kokoro-agui-presentation.v1",
           "sessionId": "session.error",
           "streamEpoch": "9",
-          "lastDurableCursor": "v1.agui-conformance-2026-08.PsgZVWeeYbKuVaMS.9q8ndW654quyvEK1h71slYNgPc_s5XShUqJ8knl829tNC9MSkyljxNfeCHR9svlZygPbpNzWWxRIWurz2p2bo7NEkajHMJHerj1FacXPCDVaNZsrhlyDIeAOGpprCJnb9gS8-yHsxzqwFkAl7VZyc4v6Ix5JCE1csylHA7onO5Gk8Xhu-KKsvraANiYCmgDB1oDSkrgHkqRtXHTIKbDSxAc9qv-Y_8NgpbPXoFaEAHbwgWSWSwN_0wY4ZI0CRqrH._CDLi9x7Dbb4ya70bo0sUw",
+          "lastDurableCursor": "v1.agui-conformance-2026-08.rUApQHF05IMEglU9.H-qdKd-Xy0wElAmopIlVT47-Hfdam1yWefL1HxCLWGDWjtwttgFvunWlUxp0eqfZRjF6_bMA214PKSZOLEe2OGvQAwdmLyNNnpZ8wUsAxjBjgGMS8caXR72DXERaMj7wefkZRzzaXdIpl_z486BPg4hlWYw6ylKL-G6T5NZa7R6edfaRCUJKa98O5Sv6uFQBPnJIAcdEsukv5S1ac579OV6uHJhRMBZcP4ePpgS4vYrPOcFajEH4iUhM6VYVFazR.e1cnsm_BjNkACeyieI_Wiw",
           "action": "retry-same-cursor"
         }
       },
@@ -3986,9 +4095,9 @@
         "profileRevision": "kokoro-agui-presentation.v1",
         "sessionId": "session.error",
         "streamEpoch": "9",
-        "durableSeq": "15",
-        "lastRecordedAt": "2026-08-01T13:00:15.000Z",
-        "cursor": "v1.agui-conformance-2026-08.PsgZVWeeYbKuVaMS.9q8ndW654quyvEK1h71slYNgPc_s5XShUqJ8knl829tNC9MSkyljxNfeCHR9svlZygPbpNzWWxRIWurz2p2bo7NEkajHMJHerj1FacXPCDVaNZsrhlyDIeAOGpprCJnb9gS8-yHsxzqwFkAl7VZyc4v6Ix5JCE1csylHA7onO5Gk8Xhu-KKsvraANiYCmgDB1oDSkrgHkqRtXHTIKbDSxAc9qv-Y_8NgpbPXoFaEAHbwgWSWSwN_0wY4ZI0CRqrH._CDLi9x7Dbb4ya70bo0sUw",
+        "durableSeq": "14",
+        "lastRecordedAt": "2026-08-01T13:00:14.000Z",
+        "cursor": "v1.agui-conformance-2026-08.rUApQHF05IMEglU9.H-qdKd-Xy0wElAmopIlVT47-Hfdam1yWefL1HxCLWGDWjtwttgFvunWlUxp0eqfZRjF6_bMA214PKSZOLEe2OGvQAwdmLyNNnpZ8wUsAxjBjgGMS8caXR72DXERaMj7wefkZRzzaXdIpl_z486BPg4hlWYw6ylKL-G6T5NZa7R6edfaRCUJKa98O5Sv6uFQBPnJIAcdEsukv5S1ac579OV6uHJhRMBZcP4ePpgS4vYrPOcFajEH4iUhM6VYVFazR.e1cnsm_BjNkACeyieI_Wiw",
         "runBindings": [
           {
             "bindingRef": "presentation.run-binding:88ff1484cb94028b7bb0f9e3c15303250e58be5171910cd36afd50a483adc65a",
@@ -4004,9 +4113,10 @@
             "state": "finished",
             "terminalDisposition": "success",
             "openedBySourceEventId": "presentation.event:368440b76b55745e09bd715e2840597a1b662ea461bc847512f7aa670e742661",
-            "terminalSourceEventId": "presentation.event:ff52b57e71d1e1c37d26c97b8e3015ca81cc73dd568143ab459f44d641f591d0",
+            "terminalSourceEventId": "presentation.event:4ab3b4662cac1527734d27dcbbff5968b8bac97bc676a80b77ab73e21cca743a",
             "openedAt": "2026-08-01T13:00:01.000Z",
-            "terminalAt": "2026-08-01T13:00:13.000Z"
+            "terminalAt": "2026-08-01T13:00:12.000Z",
+            "sessionRunId": "session.run:a71ebe8e4a44230afadaea134bf6f5c8b0ce45d8768189c59e06b4d94cd4afac"
           },
           {
             "bindingRef": "presentation.run-binding:900464b5110e10e94aa4e0a1bc80d11405d15dfb3bd85315b18e91c40a24a63f",
@@ -4021,10 +4131,11 @@
             },
             "state": "error",
             "terminalDisposition": "error",
-            "openedBySourceEventId": "presentation.event:03a07e5589957cbd31d012ca603ae2527f9d0d92028b48d713dc126bd0824054",
-            "terminalSourceEventId": "presentation.event:bc674da818c37a7eba20f70cdb50efe246b38090a05c75aadc6a87f992c98bfa",
-            "openedAt": "2026-08-01T13:00:14.000Z",
-            "terminalAt": "2026-08-01T13:00:15.000Z"
+            "openedBySourceEventId": "presentation.event:ff52b57e71d1e1c37d26c97b8e3015ca81cc73dd568143ab459f44d641f591d0",
+            "terminalSourceEventId": "presentation.event:03a07e5589957cbd31d012ca603ae2527f9d0d92028b48d713dc126bd0824054",
+            "openedAt": "2026-08-01T13:00:13.000Z",
+            "terminalAt": "2026-08-01T13:00:14.000Z",
+            "sessionRunId": null
           }
         ],
         "messageBindings": [
@@ -4037,9 +4148,11 @@
             "resumeSegmentOrdinal": 0,
             "state": "ended",
             "openedBySourceEventId": "presentation.event:db92ebc40720e9722dfbd354e88798cb63492dfed07580b16434a5acec3e43b6",
-            "endedBySourceEventId": "presentation.event:4ab3b4662cac1527734d27dcbbff5968b8bac97bc676a80b77ab73e21cca743a",
+            "endedBySourceEventId": "presentation.event:74e1ef3f690b94a26d5aabdd4c1f1b59e0af76e3010aaf85313c7d338a891fcc",
             "openedAt": "2026-08-01T13:00:02.000Z",
-            "endedAt": "2026-08-01T13:00:12.000Z"
+            "endedAt": "2026-08-01T13:00:11.000Z",
+            "sessionMessageId": "session.message:c8821908c95f7b1b6d228f84ab9cebf396f1b495d2342c87fb1f61fddaeb4918",
+            "sessionTextPartId": "session.part:6b9170f8bfade9e562b696135ba21881320dd2dc6990eb6c3857cdb47bf72ff1"
           }
         ]
       },
@@ -4125,18 +4238,13 @@
           },
           {
             "sessionId": "session.error",
-            "agentSourceEventRef": "agent.event.run.success.012",
+            "agentSourceEventRef": "agent.event.run.error.000",
             "publicSourceEventId": "presentation.event:ff52b57e71d1e1c37d26c97b8e3015ca81cc73dd568143ab459f44d641f591d0"
           },
           {
             "sessionId": "session.error",
-            "agentSourceEventRef": "agent.event.run.error.000",
-            "publicSourceEventId": "presentation.event:03a07e5589957cbd31d012ca603ae2527f9d0d92028b48d713dc126bd0824054"
-          },
-          {
-            "sessionId": "session.error",
             "agentSourceEventRef": "agent.event.run.error.001",
-            "publicSourceEventId": "presentation.event:bc674da818c37a7eba20f70cdb50efe246b38090a05c75aadc6a87f992c98bfa"
+            "publicSourceEventId": "presentation.event:03a07e5589957cbd31d012ca603ae2527f9d0d92028b48d713dc126bd0824054"
           }
         ]
       }
@@ -4246,6 +4354,46 @@
       "expectedCode": "agui_tool_secret_forbidden"
     },
     {
+      "id": "session-binding-root-run-missing",
+      "baseCaseId": "safe-run-error",
+      "mutation": {
+        "operation": "set",
+        "path": "runBindings.0.sessionRunId",
+        "value": null
+      },
+      "expectedCode": "agui_session_run_binding_missing"
+    },
+    {
+      "id": "session-binding-resume-run-conflict",
+      "baseCaseId": "resume-with-safe-typed-presentation",
+      "mutation": {
+        "operation": "set",
+        "path": "runBindings.1.sessionRunId",
+        "value": "session.run:5a8c982b87ea0fa1d0feef42675f208aa2ba27fb88f2908c50f66c369c456a81"
+      },
+      "expectedCode": "agui_resume_session_run_conflict"
+    },
+    {
+      "id": "session-binding-message-run-conflict",
+      "baseCaseId": "resume-with-safe-typed-presentation",
+      "mutation": {
+        "operation": "set",
+        "path": "messageBindings.0.sessionMessageId",
+        "value": null
+      },
+      "expectedCode": "agui_message_binding_schema_invalid"
+    },
+    {
+      "id": "session-binding-private-run-equality",
+      "baseCaseId": "safe-run-error",
+      "mutation": {
+        "operation": "set",
+        "path": "runBindings.0.sessionRunId",
+        "value": "internal.run.error.parent"
+      },
+      "expectedCode": "agui_private_presentation_identity_equal"
+    },
+    {
       "id": "binding-delta-wrong-kind",
       "baseCaseId": "resume-with-safe-typed-presentation",
       "mutation": {
@@ -4264,7 +4412,9 @@
             "openedBySourceEventId": "presentation.event:5953ab64f1bb39dd102dcbfa327020981acc1ab02b8b3276fe2d3379c81f6099",
             "endedBySourceEventId": null,
             "openedAt": "2026-08-01T12:00:02.000Z",
-            "endedAt": null
+            "endedAt": null,
+            "sessionMessageId": "session.message:668f6803945685495b193b418b35f7d07112ed2645e3f2acf507d1d0018766a1",
+            "sessionTextPartId": "session.part:754569eb17f1f62d39af1384977eb8c9ac380a3b1e24b04bdef9c90128d64805"
           }
         }
       },
@@ -4322,7 +4472,8 @@
           "openedBySourceEventId": "presentation.event:b4e3c24394aa7f63f6a98aa985fd9f0e100f4da60a46527a033cd273cf3a6c85",
           "terminalSourceEventId": "presentation.event:b4e3c24394aa7f63f6a98aa985fd9f0e100f4da60a46527a033cd273cf3a6c85",
           "openedAt": "2026-08-01T12:00:01.000Z",
-          "terminalAt": "2026-08-01T12:00:01.000Z"
+          "terminalAt": "2026-08-01T12:00:01.000Z",
+          "sessionRunId": "session.run:c4a979f91627ef83cdb9ef7bec2f93b295655168a3fb8bb008e1cf93675c3155"
         }
       },
       "expectedCode": "agui_binding_delta_state_conflict"
@@ -4349,7 +4500,8 @@
           "openedBySourceEventId": "presentation.event:b4e3c24394aa7f63f6a98aa985fd9f0e100f4da60a46527a033cd273cf3a6c85",
           "terminalSourceEventId": "presentation.event:1d096172022ded397309581b77cbceb99f0e7f3512da4df7d7772bceb76baa79",
           "openedAt": "2026-08-01T12:00:01.000Z",
-          "terminalAt": "2026-08-01T12:00:21.000Z"
+          "terminalAt": "2026-08-01T12:00:21.000Z",
+          "sessionRunId": "session.run:c4a979f91627ef83cdb9ef7bec2f93b295655168a3fb8bb008e1cf93675c3155"
         }
       },
       "expectedCode": "agui_binding_delta_future_evidence"
@@ -4439,6 +4591,32 @@
       "expectedCode": "agui_custom_run_owner_version_invalid"
     },
     {
+      "id": "hitl-approval-plan-vocabulary-confusion",
+      "baseCaseId": "resume-with-safe-typed-presentation",
+      "mutation": {
+        "operation": "set",
+        "path": "frames.5.data.event.content.allowedActions",
+        "value": [
+          "accept",
+          "reject"
+        ]
+      },
+      "expectedCode": "agui_presentation_row_schema_invalid"
+    },
+    {
+      "id": "control-approval-plan-vocabulary-confusion",
+      "baseCaseId": "resume-with-safe-typed-presentation",
+      "mutation": {
+        "operation": "set",
+        "path": "frames.17.data.event.value.allowedActions",
+        "value": [
+          "accept",
+          "reject"
+        ]
+      },
+      "expectedCode": "agui_presentation_row_schema_invalid"
+    },
+    {
       "id": "m0-interrupted-main-run",
       "baseCaseId": "resume-with-safe-typed-presentation",
       "mutation": {
@@ -4460,9 +4638,9 @@
         "profileRevision": "kokoro-agui-presentation.v1",
         "sessionId": "session.error",
         "streamEpoch": "9",
-        "durableSeq": "15",
-        "lastRecordedAt": "2026-08-01T13:00:15.000Z",
-        "cursor": "v1.agui-conformance-2026-08.PsgZVWeeYbKuVaMS.9q8ndW654quyvEK1h71slYNgPc_s5XShUqJ8knl829tNC9MSkyljxNfeCHR9svlZygPbpNzWWxRIWurz2p2bo7NEkajHMJHerj1FacXPCDVaNZsrhlyDIeAOGpprCJnb9gS8-yHsxzqwFkAl7VZyc4v6Ix5JCE1csylHA7onO5Gk8Xhu-KKsvraANiYCmgDB1oDSkrgHkqRtXHTIKbDSxAc9qv-Y_8NgpbPXoFaEAHbwgWSWSwN_0wY4ZI0CRqrH._CDLi9x7Dbb4ya70bo0sUw",
+        "durableSeq": "14",
+        "lastRecordedAt": "2026-08-01T13:00:14.000Z",
+        "cursor": "v1.agui-conformance-2026-08.rUApQHF05IMEglU9.H-qdKd-Xy0wElAmopIlVT47-Hfdam1yWefL1HxCLWGDWjtwttgFvunWlUxp0eqfZRjF6_bMA214PKSZOLEe2OGvQAwdmLyNNnpZ8wUsAxjBjgGMS8caXR72DXERaMj7wefkZRzzaXdIpl_z486BPg4hlWYw6ylKL-G6T5NZa7R6edfaRCUJKa98O5Sv6uFQBPnJIAcdEsukv5S1ac579OV6uHJhRMBZcP4ePpgS4vYrPOcFajEH4iUhM6VYVFazR.e1cnsm_BjNkACeyieI_Wiw",
         "runBindings": [
           {
             "bindingRef": "presentation.run-binding:88ff1484cb94028b7bb0f9e3c15303250e58be5171910cd36afd50a483adc65a",
@@ -4478,9 +4656,10 @@
             "state": "finished",
             "terminalDisposition": "success",
             "openedBySourceEventId": "presentation.event:368440b76b55745e09bd715e2840597a1b662ea461bc847512f7aa670e742661",
-            "terminalSourceEventId": "presentation.event:ff52b57e71d1e1c37d26c97b8e3015ca81cc73dd568143ab459f44d641f591d0",
+            "terminalSourceEventId": "presentation.event:4ab3b4662cac1527734d27dcbbff5968b8bac97bc676a80b77ab73e21cca743a",
             "openedAt": "2026-08-01T13:00:01.000Z",
-            "terminalAt": "2026-08-01T13:00:13.000Z"
+            "terminalAt": "2026-08-01T13:00:12.000Z",
+            "sessionRunId": "session.run:a71ebe8e4a44230afadaea134bf6f5c8b0ce45d8768189c59e06b4d94cd4afac"
           },
           {
             "bindingRef": "presentation.run-binding:900464b5110e10e94aa4e0a1bc80d11405d15dfb3bd85315b18e91c40a24a63f",
@@ -4495,10 +4674,11 @@
             },
             "state": "error",
             "terminalDisposition": "error",
-            "openedBySourceEventId": "presentation.event:03a07e5589957cbd31d012ca603ae2527f9d0d92028b48d713dc126bd0824054",
-            "terminalSourceEventId": "presentation.event:bc674da818c37a7eba20f70cdb50efe246b38090a05c75aadc6a87f992c98bfa",
-            "openedAt": "2026-08-01T13:00:14.000Z",
-            "terminalAt": "2026-08-01T13:00:15.000Z"
+            "openedBySourceEventId": "presentation.event:ff52b57e71d1e1c37d26c97b8e3015ca81cc73dd568143ab459f44d641f591d0",
+            "terminalSourceEventId": "presentation.event:03a07e5589957cbd31d012ca603ae2527f9d0d92028b48d713dc126bd0824054",
+            "openedAt": "2026-08-01T13:00:13.000Z",
+            "terminalAt": "2026-08-01T13:00:14.000Z",
+            "sessionRunId": null
           }
         ],
         "messageBindings": [
@@ -4511,48 +4691,50 @@
             "resumeSegmentOrdinal": 0,
             "state": "ended",
             "openedBySourceEventId": "presentation.event:db92ebc40720e9722dfbd354e88798cb63492dfed07580b16434a5acec3e43b6",
-            "endedBySourceEventId": "presentation.event:4ab3b4662cac1527734d27dcbbff5968b8bac97bc676a80b77ab73e21cca743a",
+            "endedBySourceEventId": "presentation.event:74e1ef3f690b94a26d5aabdd4c1f1b59e0af76e3010aaf85313c7d338a891fcc",
             "openedAt": "2026-08-01T13:00:02.000Z",
-            "endedAt": "2026-08-01T13:00:12.000Z"
+            "endedAt": "2026-08-01T13:00:11.000Z",
+            "sessionMessageId": "session.message:c8821908c95f7b1b6d228f84ab9cebf396f1b495d2342c87fb1f61fddaeb4918",
+            "sessionTextPartId": "session.part:6b9170f8bfade9e562b696135ba21881320dd2dc6990eb6c3857cdb47bf72ff1"
           }
         ]
       },
-      "nextEventRecordedAt": "2026-08-01T13:00:16.000Z"
+      "nextEventRecordedAt": "2026-08-01T13:00:15.000Z"
     }
   ],
   "agentCandidateProjectionCases": [
     {
       "id": "agent-success-outcome-to-browser-run-finished",
       "baseCaseId": "safe-run-error",
-      "sourceEventId": "presentation.event:ff52b57e71d1e1c37d26c97b8e3015ca81cc73dd568143ab459f44d641f591d0",
+      "sourceEventId": "presentation.event:4ab3b4662cac1527734d27dcbbff5968b8bac97bc676a80b77ab73e21cca743a",
       "candidateEnvelope": {
         "profileRevision": "kokoro-agent-agui-candidate.v1",
         "source": {
-          "sourceEventRef": "agent.event.run.success.012",
-          "sourceOrdinal": "12",
-          "recordedAt": "2026-08-01T13:00:13.000Z",
+          "sourceEventRef": "agent.event.run.success.011",
+          "sourceOrdinal": "11",
+          "recordedAt": "2026-08-01T13:00:12.000Z",
           "route": {
             "internalRunRef": "internal.run.error.parent",
             "internalThreadRef": "agent.thread:01JZ6Y6K8M5A3Q2R7T9V4W1X0C"
           }
         },
-        "eventDigest": "sha256:770906cbb79a13f4a84b89c48d509e98e6a9e8af50a7a6209e3b789ff89883e0",
+        "eventDigest": "sha256:876df0e6ef9174fc5dc84fd7ee2dc0955becd9ff9bed359d42497d2bd662165d",
         "event": {
           "type": "RUN_FINISHED",
           "threadId": "agent.thread:01JZ6Y6K8M5A3Q2R7T9V4W1X0C",
           "runId": "internal.run.error.parent",
-          "timestamp": 1785589213000,
+          "timestamp": 1785589212000,
           "outcome": {
             "type": "success"
           }
         },
-        "candidateRef": "agui_candidate:sha256:609001c14a301108226bc9a9eb39d5062f08fee9434a09133cb5a830ba0f2b5d"
+        "candidateRef": "agui_candidate:sha256:0006bfb76251f3bba7a6c722f72061bd711d6f5eb2ce4990e9ef11b3d5e4a6c9"
       },
       "expectedPresentationEvent": {
         "type": "RUN_FINISHED",
         "threadId": "presentation.thread:be053196d3649d32be480aaa3b4add249d33f4afa2ab5db2d17c4ba4fd0e160d",
         "runId": "presentation.run:69e6509194b0d5742847c5b76cfda19e0def26386d4f805cf35fc3d19a8c5031",
-        "timestamp": 1785589213000
+        "timestamp": 1785589212000
       }
     }
   ],
@@ -4650,7 +4832,7 @@
             "internalMessageRef": "internal.message.error.parent.assistant.01"
           }
         },
-        "eventDigest": "sha256:48c8441adcd1ef070a6af9c4b18eb7529d3bf1328f627cc00e3c49a106c61e88",
+        "eventDigest": "sha256:bcd304b65b08925207c8154a0c5cf40da3b6c4e0dec91f2a75a4fe60f9fd5afd",
         "event": {
           "type": "ACTIVITY_SNAPSHOT",
           "timestamp": 1785589204000,
@@ -4659,11 +4841,13 @@
           "content": {
             "partRef": "part.summary.01",
             "summary": "Compared safe alternatives.",
-            "status": "complete"
+            "status": "complete",
+            "ownerVersion": "1",
+            "updatedAt": "2026-08-01T13:00:04.000Z"
           },
           "replace": true
         },
-        "candidateRef": "agui_candidate:sha256:a1bf5512fbce023ac8d15d07335e61fb7106a86a484eea92d10e19e69a512ddb"
+        "candidateRef": "agui_candidate:sha256:17e6b1479b054711df9004eba163914e21bd314ca433205cffc3e802c61bd090"
       }
     },
     {
@@ -4682,7 +4866,7 @@
             "internalMessageRef": "internal.message.error.parent.assistant.01"
           }
         },
-        "eventDigest": "sha256:d6423476f847e22f689c92cada8f7a51505c009d70e15148d0b42a94d2973216",
+        "eventDigest": "sha256:89d01c554ad1d2c425dcdb41b240b4969e5b4ecb1f0d8703d345132e03829ddc",
         "event": {
           "type": "ACTIVITY_SNAPSHOT",
           "timestamp": 1785589205000,
@@ -4695,11 +4879,13 @@
             "summary": "Searched approved sources.",
             "resultPreview": "3 safe results",
             "isError": false,
-            "truncated": false
+            "truncated": false,
+            "ownerVersion": "1",
+            "updatedAt": "2026-08-01T13:00:05.000Z"
           },
           "replace": true
         },
-        "candidateRef": "agui_candidate:sha256:4883a38c9723317187bd6388ccabd75c722032af0a5a1f603acf52135e775e25"
+        "candidateRef": "agui_candidate:sha256:384661a9a8698747036d89caee67f728ebc2926a771f94c4351e1abeb08de63c"
       }
     },
     {
@@ -4718,7 +4904,7 @@
             "internalMessageRef": "internal.message.error.parent.assistant.01"
           }
         },
-        "eventDigest": "sha256:43f56db7790142b459bf127547761b3baa23b7cfb4d45efe388c18f2adb20e96",
+        "eventDigest": "sha256:430cac3e1ce4d71fcbf8935c378941978d2114057c8802c06ff52736ad7de112",
         "event": {
           "type": "ACTIVITY_SNAPSHOT",
           "timestamp": 1785589206000,
@@ -4726,20 +4912,26 @@
           "activityType": "kokoro.hitl.v1",
           "content": {
             "ownerRef": "decision.01",
-            "expectedVersion": 1,
+            "ownerVersion": "1",
+            "decisionGroupRef": "decision-group.01",
+            "requiredOwnerRefs": [
+              "decision.01"
+            ],
+            "controlRef": "control.01",
             "kind": "approval",
             "title": "Approve action",
             "description": "Review the safe action summary.",
             "allowedActions": [
-              "accept",
+              "approve",
               "reject"
             ],
             "status": "pending",
-            "deadline": "2026-08-01T12:10:00.000Z"
+            "deadline": "2026-08-01T12:10:00.000Z",
+            "updatedAt": "2026-08-01T13:00:06.000Z"
           },
           "replace": true
         },
-        "candidateRef": "agui_candidate:sha256:82c6a8d440c2dc34158fa66503af8b278fa4ab3e55c271890028014f9a55559d"
+        "candidateRef": "agui_candidate:sha256:4b78db68d55b0cc754a057b18915ecfe54c4c0bccbd2bee8fc9a4557c7daf846"
       }
     },
     {
@@ -4758,7 +4950,7 @@
             "internalMessageRef": "internal.message.error.parent.assistant.01"
           }
         },
-        "eventDigest": "sha256:651fa75feb2891b4fdeecb95f3a135a294b5a461c39bff9cf4175e245ed499b8",
+        "eventDigest": "sha256:03596502787dcab611bb59604225e91d4ae236ec63e573665ef70eeb5c1cfd1b",
         "event": {
           "type": "ACTIVITY_SNAPSHOT",
           "timestamp": 1785589207000,
@@ -4779,11 +4971,13 @@
                 "label": "Produce result",
                 "status": "in-progress"
               }
-            ]
+            ],
+            "ownerVersion": "1",
+            "updatedAt": "2026-08-01T13:00:07.000Z"
           },
           "replace": true
         },
-        "candidateRef": "agui_candidate:sha256:b808795a4dfcb1a732132466eeac2a69666b26540e8d809eb4b59ef251e0733d"
+        "candidateRef": "agui_candidate:sha256:9d115d5f5e6090710b5c7b27ca3dfd1c8ad3e79632861d260d5241a150a98e3d"
       }
     },
     {
@@ -4802,7 +4996,7 @@
             "internalMessageRef": "internal.message.error.parent.assistant.01"
           }
         },
-        "eventDigest": "sha256:af533cf41e3f1ed9ea9099afe944984a43be1eff924eed7a8ba2d2862df893c6",
+        "eventDigest": "sha256:fc1ccf84a6ac806953e0e7b63e6127cca341b8fd08d2522759091e740f405b45",
         "event": {
           "type": "ACTIVITY_SNAPSHOT",
           "timestamp": 1785589208000,
@@ -4811,15 +5005,17 @@
           "content": {
             "subagentRef": "subagent.01",
             "status": "running",
-            "summary": "Reviewing one bounded topic."
+            "summary": "Reviewing one bounded topic.",
+            "ownerVersion": "1",
+            "updatedAt": "2026-08-01T13:00:08.000Z"
           },
           "replace": true
         },
-        "candidateRef": "agui_candidate:sha256:c2dd74efa6f0437b868181a3a515dafcd988955be07bb1537f4c334debf9ff24"
+        "candidateRef": "agui_candidate:sha256:91495ebc64c82afbbe241abbea6e80300ffb7f5f2af62d1d2064c4678c09f407"
       }
     },
     {
-      "id": "agent-activity-media-envelope",
+      "id": "agent-activity-notice-envelope",
       "baseCaseId": "safe-run-error",
       "sourceEventId": "presentation.event:a0466c45c5e41bc778e2c42b5d356bdb59670fe0069092cde7385402e8a73d15",
       "candidateEnvelope": {
@@ -4834,25 +5030,28 @@
             "internalMessageRef": "internal.message.error.parent.assistant.01"
           }
         },
-        "eventDigest": "sha256:c5eb5579c0a1abdc815f9975bbfacc050cafefc8f4d76b4fd199d4bacdebcb32",
+        "eventDigest": "sha256:746c72c4703899c5c7059e0eb5f61200462626f1e72f22ec64de6384a4726459",
         "event": {
           "type": "ACTIVITY_SNAPSHOT",
           "timestamp": 1785589209000,
           "messageId": "internal.message.error.parent.assistant.01",
-          "activityType": "kokoro.media.v1",
+          "activityType": "kokoro.notice.v1",
           "content": {
-            "operationRef": "media-operation.01",
-            "state": "active",
-            "progressBps": 4200,
-            "summary": "Generating preview."
+            "noticeRef": "notice.01",
+            "code": "PREVIEW_READY",
+            "message": "A preview is ready.",
+            "severity": "info",
+            "retryClass": "never",
+            "ownerVersion": "1",
+            "updatedAt": "2026-08-01T13:00:09.000Z"
           },
           "replace": true
         },
-        "candidateRef": "agui_candidate:sha256:3d9f072087070d81ea00cc396a7019b7734722717f77ea2077c19408a4c0c2c2"
+        "candidateRef": "agui_candidate:sha256:65eafd20cbc64120c97b2c420fe6406290c9ad49818b30bc6234141f944f88f8"
       }
     },
     {
-      "id": "agent-activity-notice-envelope",
+      "id": "agent-activity-error-envelope",
       "baseCaseId": "safe-run-error",
       "sourceEventId": "presentation.event:97a2f08ff38a05195e3eba23eadf54e8901a3be2fdd26bb56b4d0ab516f8bb39",
       "candidateEnvelope": {
@@ -4867,26 +5066,28 @@
             "internalMessageRef": "internal.message.error.parent.assistant.01"
           }
         },
-        "eventDigest": "sha256:d43b24ca00cc27d1cc93c227514d093624f242ef79078f5384981da1c93989be",
+        "eventDigest": "sha256:17682130ae890312e21221fd54263183df501c6cfe787ffb0b5e99495fd3814e",
         "event": {
           "type": "ACTIVITY_SNAPSHOT",
           "timestamp": 1785589210000,
           "messageId": "internal.message.error.parent.assistant.01",
-          "activityType": "kokoro.notice.v1",
+          "activityType": "kokoro.error.v1",
           "content": {
-            "noticeRef": "notice.01",
-            "code": "PREVIEW_READY",
-            "message": "A preview is ready.",
-            "severity": "info",
-            "retryClass": "never"
+            "errorRef": "error.01",
+            "code": "SAFE_RETRY",
+            "message": "One optional preview is unavailable.",
+            "retryClass": "after-delay",
+            "supportCorrelationRef": "support.01",
+            "ownerVersion": "1",
+            "updatedAt": "2026-08-01T13:00:10.000Z"
           },
           "replace": true
         },
-        "candidateRef": "agui_candidate:sha256:cef2310dd171d8c8dc6fb39934d791c0e7618c0a721d977949c8946cb9157f9c"
+        "candidateRef": "agui_candidate:sha256:1b727b37dbd347133b3eab26070f7f8ac83c556122160b324eb8264504f401c4"
       }
     },
     {
-      "id": "agent-activity-error-envelope",
+      "id": "agent-text-end-envelope",
       "baseCaseId": "safe-run-error",
       "sourceEventId": "presentation.event:74e1ef3f690b94a26d5aabdd4c1f1b59e0af76e3010aaf85313c7d338a891fcc",
       "candidateEnvelope": {
@@ -4901,97 +5102,63 @@
             "internalMessageRef": "internal.message.error.parent.assistant.01"
           }
         },
-        "eventDigest": "sha256:969bb0337799882c12fbcf2941bb9edf67be31ec1298a3f98bc66a243aa6f516",
-        "event": {
-          "type": "ACTIVITY_SNAPSHOT",
-          "timestamp": 1785589211000,
-          "messageId": "internal.message.error.parent.assistant.01",
-          "activityType": "kokoro.error.v1",
-          "content": {
-            "errorRef": "error.01",
-            "code": "SAFE_RETRY",
-            "message": "One optional preview is unavailable.",
-            "retryClass": "after-delay",
-            "supportCorrelationRef": "support.01"
-          },
-          "replace": true
-        },
-        "candidateRef": "agui_candidate:sha256:3c26523c10e2111789d9571a1884d19c2e44c2f200a46382f57bdf7deb6e65b0"
-      }
-    },
-    {
-      "id": "agent-text-end-envelope",
-      "baseCaseId": "safe-run-error",
-      "sourceEventId": "presentation.event:4ab3b4662cac1527734d27dcbbff5968b8bac97bc676a80b77ab73e21cca743a",
-      "candidateEnvelope": {
-        "profileRevision": "kokoro-agent-agui-candidate.v1",
-        "source": {
-          "sourceEventRef": "agent.event.run.success.011",
-          "sourceOrdinal": "11",
-          "recordedAt": "2026-08-01T13:00:12.000Z",
-          "route": {
-            "internalRunRef": "internal.run.error.parent",
-            "internalThreadRef": "agent.thread:01JZ6Y6K8M5A3Q2R7T9V4W1X0C",
-            "internalMessageRef": "internal.message.error.parent.assistant.01"
-          }
-        },
-        "eventDigest": "sha256:6c69b5b1f9b4c7c569faaffeb0cbca2b608022f246ef92209cab74a69a292e69",
+        "eventDigest": "sha256:7ec2e697f98347d2056ae2c144e5ea8a00edcaae2ea995f154cc5d8339d9d1d7",
         "event": {
           "type": "TEXT_MESSAGE_END",
-          "timestamp": 1785589212000,
+          "timestamp": 1785589211000,
           "messageId": "internal.message.error.parent.assistant.01"
         },
-        "candidateRef": "agui_candidate:sha256:230af47e44de3d45ec7ee7880378955edb6439b392c8e439be455674e4deff1f"
+        "candidateRef": "agui_candidate:sha256:e6eb969c0e294479722cd8e531f54cb168f4cc62a73b1e3b49ec75e13fdc7ad9"
       }
     },
     {
       "id": "agent-error-run-start-envelope",
       "baseCaseId": "safe-run-error",
-      "sourceEventId": "presentation.event:03a07e5589957cbd31d012ca603ae2527f9d0d92028b48d713dc126bd0824054",
+      "sourceEventId": "presentation.event:ff52b57e71d1e1c37d26c97b8e3015ca81cc73dd568143ab459f44d641f591d0",
       "candidateEnvelope": {
         "profileRevision": "kokoro-agent-agui-candidate.v1",
         "source": {
           "sourceEventRef": "agent.event.run.error.000",
           "sourceOrdinal": "0",
+          "recordedAt": "2026-08-01T13:00:13.000Z",
+          "route": {
+            "internalRunRef": "internal.run.error",
+            "internalThreadRef": "agent.thread:01JZ6Y7B4N8C2P5S0U3W6X9Y1D"
+          }
+        },
+        "eventDigest": "sha256:ac6c510f92b4200e6d01980bc56550be6ae6500bea39e0f29bf0ec17ff328daa",
+        "event": {
+          "type": "RUN_STARTED",
+          "timestamp": 1785589213000,
+          "threadId": "agent.thread:01JZ6Y7B4N8C2P5S0U3W6X9Y1D",
+          "runId": "internal.run.error"
+        },
+        "candidateRef": "agui_candidate:sha256:0536bf5de753e04db1eff10b0ff5e4f2cc21d8ccf18b4eec9a91237f207e70b8"
+      }
+    },
+    {
+      "id": "agent-run-error-envelope",
+      "baseCaseId": "safe-run-error",
+      "sourceEventId": "presentation.event:03a07e5589957cbd31d012ca603ae2527f9d0d92028b48d713dc126bd0824054",
+      "candidateEnvelope": {
+        "profileRevision": "kokoro-agent-agui-candidate.v1",
+        "source": {
+          "sourceEventRef": "agent.event.run.error.001",
+          "sourceOrdinal": "1",
           "recordedAt": "2026-08-01T13:00:14.000Z",
           "route": {
             "internalRunRef": "internal.run.error",
             "internalThreadRef": "agent.thread:01JZ6Y7B4N8C2P5S0U3W6X9Y1D"
           }
         },
-        "eventDigest": "sha256:ac16b92223f21ad66b74ab7a7ef3566cd095cfff0f75212c4c191dc6496b94a8",
-        "event": {
-          "type": "RUN_STARTED",
-          "timestamp": 1785589214000,
-          "threadId": "agent.thread:01JZ6Y7B4N8C2P5S0U3W6X9Y1D",
-          "runId": "internal.run.error"
-        },
-        "candidateRef": "agui_candidate:sha256:7b194f48cadef04d5c98cd3f9119eec792fb4ac7dde6f28c62a037450d817ce7"
-      }
-    },
-    {
-      "id": "agent-run-error-envelope",
-      "baseCaseId": "safe-run-error",
-      "sourceEventId": "presentation.event:bc674da818c37a7eba20f70cdb50efe246b38090a05c75aadc6a87f992c98bfa",
-      "candidateEnvelope": {
-        "profileRevision": "kokoro-agent-agui-candidate.v1",
-        "source": {
-          "sourceEventRef": "agent.event.run.error.001",
-          "sourceOrdinal": "1",
-          "recordedAt": "2026-08-01T13:00:15.000Z",
-          "route": {
-            "internalRunRef": "internal.run.error",
-            "internalThreadRef": "agent.thread:01JZ6Y7B4N8C2P5S0U3W6X9Y1D"
-          }
-        },
-        "eventDigest": "sha256:6924f3b23a896be78410ea425cc6dd01935718d850210668d937791fabc9dd37",
+        "eventDigest": "sha256:de64ac8012988a2350e6263316f90cc5ac55f727471d624387957f0c1b4b406d",
         "event": {
           "type": "RUN_ERROR",
-          "timestamp": 1785589215000,
+          "timestamp": 1785589214000,
           "message": "The run could not be completed.",
           "code": "RUN_FAILED"
         },
-        "candidateRef": "agui_candidate:sha256:e4bdc241928622955e51eaa2691c25dda1bd050da160bef2b534a2e820a9a972"
+        "candidateRef": "agui_candidate:sha256:c6a62dbf72bf564a1e62ad3fface9a0a149d9b68957b3370f423e9ed5e9a6b65"
       }
     }
   ],
@@ -5146,19 +5313,6 @@
         "recordedAt": "2026-08-01T13:00:12.000Z",
         "route": {
           "internalRunRef": "internal.run.error.parent",
-          "internalThreadRef": "agent.thread:01JZ6Y6K8M5A3Q2R7T9V4W1X0C",
-          "internalMessageRef": "internal.message.error.parent.assistant.01"
-        }
-      }
-    },
-    {
-      "baseCaseId": "safe-run-error",
-      "source": {
-        "sourceEventRef": "agent.event.run.success.012",
-        "sourceOrdinal": "12",
-        "recordedAt": "2026-08-01T13:00:13.000Z",
-        "route": {
-          "internalRunRef": "internal.run.error.parent",
           "internalThreadRef": "agent.thread:01JZ6Y6K8M5A3Q2R7T9V4W1X0C"
         }
       }
@@ -5168,7 +5322,7 @@
       "source": {
         "sourceEventRef": "agent.event.run.error.000",
         "sourceOrdinal": "0",
-        "recordedAt": "2026-08-01T13:00:14.000Z",
+        "recordedAt": "2026-08-01T13:00:13.000Z",
         "route": {
           "internalRunRef": "internal.run.error",
           "internalThreadRef": "agent.thread:01JZ6Y7B4N8C2P5S0U3W6X9Y1D"
@@ -5180,7 +5334,7 @@
       "source": {
         "sourceEventRef": "agent.event.run.error.001",
         "sourceOrdinal": "1",
-        "recordedAt": "2026-08-01T13:00:15.000Z",
+        "recordedAt": "2026-08-01T13:00:14.000Z",
         "route": {
           "internalRunRef": "internal.run.error",
           "internalThreadRef": "agent.thread:01JZ6Y7B4N8C2P5S0U3W6X9Y1D"

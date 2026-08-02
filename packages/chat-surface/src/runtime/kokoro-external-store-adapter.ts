@@ -176,7 +176,7 @@ function costData(part: ChatCostOwnerState): Record<string, JsonValue> {
   }
 }
 
-function dataPart(part: Exclude<ChatPart, { kind: "text" | "reasoning-summary" | "tool" | "activity" | "unsupported" }>): ThreadMessagePartLike {
+function dataPart(part: Exclude<ChatPart, { kind: "text" | "reasoning-summary" | "tool" | "unsupported" }>): ThreadMessagePartLike {
   const common = { ordinal: part.ordinal, version: part.version, lifecycle: part.lifecycle }
   switch (part.kind) {
     case "citation":
@@ -192,7 +192,7 @@ function dataPart(part: Exclude<ChatPart, { kind: "text" | "reasoning-summary" |
       return { type: "data" as const, name: `kokoro:${part.kind}`, data: {
         ...common,
         ownerRef: part.ownerRef,
-        expectedVersion: part.expectedVersion,
+        ownerVersion: part.ownerVersion,
         allowedActions: [...part.allowedActions],
         status: part.status,
         ...(part.deadline === undefined ? {} : { deadline: part.deadline }),
@@ -285,46 +285,6 @@ function convertMessage(message: ChatProjectionMessage): ThreadMessageLike {
         ...(part.isError === undefined ? {} : { isError: part.isError }),
       },
     }]
-    if (part.kind === "activity") {
-      if (part.activityType === "kokoro.tool-preview.v1") {
-        const status = part.content.status
-        return [{
-          type: "tool-call" as const,
-          toolCallId: part.content.toolCallRef,
-          toolName: part.content.label,
-          args: {},
-          argsText: "{}",
-          ...(part.content.resultPreview === undefined ? {} : { result: part.content.resultPreview }),
-          ...(part.content.isError === undefined ? {} : { isError: part.content.isError }),
-          ...(status === "awaiting-user" ? { interrupt: { type: "human" as const, payload: {
-            activityType: part.activityType,
-            toolCallRef: part.content.toolCallRef,
-          } } } : {}),
-        }, {
-          type: "data" as const,
-          name: "kokoro:tool-preview",
-          data: {
-            ordinal: part.ordinal,
-            version: part.version,
-            lifecycle: part.lifecycle,
-            status,
-            ...(part.content.summary === undefined ? {} : { summary: part.content.summary }),
-            ...(part.content.truncated === undefined ? {} : { truncated: part.content.truncated }),
-          },
-        }]
-      }
-      return [{
-        type: "data" as const,
-        name: `kokoro:${part.activityType.slice("kokoro.".length, -".v1".length)}`,
-        data: {
-          ordinal: part.ordinal,
-          version: part.version,
-          lifecycle: part.lifecycle,
-          activityType: part.activityType,
-          content: jsonObject(part.content),
-        },
-      }]
-    }
     if (part.kind === "unsupported") return [{
       type: "data" as const,
       name: "kokoro:unsupported",

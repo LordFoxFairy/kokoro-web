@@ -86,11 +86,20 @@ describe("AG-UI Chat projection adapter", () => {
       phase: "run-started",
       cursor: contractCase.frames[0]?.id,
       source: expect.objectContaining({ durableSeq: "1", projectionVersion: "1" }),
+      runBinding: expect.objectContaining({
+        bindingRef: expect.stringMatching(/^presentation\.run-binding:/u),
+        sessionRunId: expect.stringMatching(/^session\.run:/u),
+      }),
     }));
     expect(dispatch).toHaveBeenNthCalledWith(2, expect.objectContaining({
       type: "agui.text",
       phase: "start",
       source: expect.objectContaining({ durableSeq: "2", projectionVersion: "2" }),
+      runBinding: expect.objectContaining({ sessionRunId: expect.stringMatching(/^session\.run:/u) }),
+      messageBinding: expect.objectContaining({
+        sessionMessageId: expect.stringMatching(/^session\.message:/u),
+        sessionTextPartId: expect.stringMatching(/^session\.part:/u),
+      }),
     }));
     expect(adapter.getResumeRequest().cursorBinding.durableSeq).toBe("2");
     expect(adapter.getSnapshotAuthority()).toMatchObject({

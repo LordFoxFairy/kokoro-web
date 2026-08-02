@@ -6,7 +6,7 @@ import { z } from "zod"
 export const sessionHttpContractMetadata = Object.freeze({
   schemaId: "kokoro.session.browser.v3",
   schemaVersion: 3,
-  sourceDigestSha256: "3da4e2e268b1a2c81f54f35fef1a127ebb88bf0319b15549d13f0d46aa15c50c",
+  sourceDigestSha256: "f6fca4fa726e20cda3aa914e0a19288ebf91961338aebd2dec6f65cd7cd34e8d",
 })
 
 export const commandIdentitySchema = z
@@ -91,7 +91,7 @@ export const actionDecisionCommandResultSchema = z
     decision_id: z.string().min(1),
     owner_kind: z.enum(["approval", "interaction"]),
     owner_ref: z.string().min(1),
-    owner_version: z.number().int().positive(),
+    owner_version: z.string().regex(/^(0|[1-9][0-9]{0,19})$/u).refine((value) => value.length < 20 || value <= "18446744073709551615"),
     control_status: z.enum(["pending", "persisted", "applied", "failed", "outcome_unknown"]),
   })
   .strict()
@@ -103,7 +103,7 @@ export const planDecisionCommandResultSchema = z
     run_id: z.string().min(1),
     decision_id: z.string().min(1),
     plan_proposal_ref: z.string().min(1),
-    plan_version: z.number().int().positive(),
+    plan_version: z.string().regex(/^(0|[1-9][0-9]{0,19})$/u).refine((value) => value.length < 20 || value <= "18446744073709551615"),
     control_status: z.enum(["pending", "persisted", "applied", "failed", "outcome_unknown"]),
   })
   .strict()
@@ -1598,7 +1598,7 @@ export const actionDecisionRequestSchema = z
     owner_kind: z.enum(["approval", "interaction"]),
     owner_ref: z.string().min(1).max(256),
     decision_group_ref: z.string().min(1).max(256),
-    expected_owner_version: z.number().int().positive(),
+    expected_owner_version: z.string().regex(/^(0|[1-9][0-9]{0,19})$/u).refine((value) => value.length < 20 || value <= "18446744073709551615"),
     decision: actionDecisionSchema,
   })
   .strict()
@@ -1640,7 +1640,7 @@ export const planDecisionRequestSchema = z
     expected_session_version: z.number().int().positive(),
     expected_run_projection_version: z.number().int().positive(),
     plan_proposal_ref: z.string().min(1).max(256),
-    expected_plan_version: z.number().int().positive(),
+    expected_plan_version: z.string().regex(/^(0|[1-9][0-9]{0,19})$/u).refine((value) => value.length < 20 || value <= "18446744073709551615"),
     decision: planDecisionSchema,
   })
   .strict()

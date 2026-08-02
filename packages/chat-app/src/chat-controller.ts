@@ -1123,7 +1123,7 @@ export function createChatController(options: {
       owner_kind: part.kind,
       owner_ref: part.ownerRef,
       decision_group_ref: part.decisionGroupRef,
-      expected_owner_version: part.expectedVersion,
+      expected_owner_version: part.ownerVersion,
       decision: schemaBoundDecision,
     }
     const commandGeneration = generation

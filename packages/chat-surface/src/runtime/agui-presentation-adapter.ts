@@ -5,9 +5,11 @@ import type {
   AguiDurableFrame,
   AguiGrantBinding,
   AguiPresentationMessageBindingRef,
+  AguiPresentationMessageBinding,
   AguiPresentationMessageId,
   AguiPresentationDecoder,
   AguiPresentationRunBindingRef,
+  AguiPresentationRunBinding,
   AguiPresentationRunId,
   AguiPresentationSnapshotAuthority,
   AguiPresentationThreadId,
@@ -26,6 +28,8 @@ type DurableMutationAuthority = Readonly<{
   source: AguiDurableFrame["data"]["source"]
   runBindingRef?: AguiPresentationRunBindingRef
   messageBindingRef?: AguiPresentationMessageBindingRef
+  runBinding?: AguiPresentationRunBinding
+  messageBinding?: AguiPresentationMessageBinding
 }>
 
 type ChatAguiActivityMutation<Event extends AguiActivityEvent = AguiActivityEvent> =
@@ -97,7 +101,23 @@ export type ChatAguiPresentationMutation =
       retryAfterMs?: number
     }>
 
-function durableAuthority(frame: AguiDurableFrame): DurableMutationAuthority {
+function durableAuthority(
+  frame: AguiDurableFrame,
+  snapshotAuthority: AguiPresentationSnapshotAuthority,
+): DurableMutationAuthority {
+  const runBindingRef = frame.data.presentationRunBindingRef
+  const messageBindingRef = frame.data.presentationMessageBindingRef
+  const delta = frame.data.bindingAuthorityDelta
+  const runBinding = delta.kind === "run.replace"
+    ? delta.binding
+    : runBindingRef === undefined
+      ? undefined
+      : snapshotAuthority.runBindings.find((binding) => binding.bindingRef === runBindingRef)
+  const messageBinding = delta.kind === "message.replace"
+    ? delta.binding
+    : messageBindingRef === undefined
+      ? undefined
+      : snapshotAuthority.messageBindings.find((binding) => binding.bindingRef === messageBindingRef)
   return Object.freeze({
     durable: true,
     cursor: frame.id,
@@ -108,6 +128,8 @@ function durableAuthority(frame: AguiDurableFrame): DurableMutationAuthority {
     ...(frame.data.presentationMessageBindingRef === undefined
       ? {}
       : { messageBindingRef: frame.data.presentationMessageBindingRef }),
+    ...(runBinding === undefined ? {} : { runBinding }),
+    ...(messageBinding === undefined ? {} : { messageBinding }),
   })
 }
 
@@ -177,6 +199,7 @@ function mapCustomMutation(
  */
 function mapAguiPresentationFrame(
   frame: AguiDecodedFrame,
+  snapshotAuthority: AguiPresentationSnapshotAuthority,
 ): ChatAguiPresentationMutation | null {
   if (frame.kind === "replay") return null
   if (frame.kind === "control") {
@@ -191,7 +214,7 @@ function mapAguiPresentationFrame(
     })
   }
 
-  const authority = durableAuthority(frame)
+  const authority = durableAuthority(frame, snapshotAuthority)
   const event = frame.data.event
   switch (event.type) {
     case EventType.RUN_STARTED:
@@ -284,7 +307,7 @@ export function createAguiProjectionAdapter(port: AguiProjectionPort): Readonly<
   return Object.freeze({
     accept(frame) {
       const prepared = decoder.prepare(frame)
-      const mutation = mapAguiPresentationFrame(prepared.decoded)
+      const mutation = mapAguiPresentationFrame(prepared.decoded, decoder.getSnapshotAuthority())
       if (mutation === null) {
         prepared.commit(prepared.decoded.kind === "replay" ? "replayed" : "applied")
         return Object.freeze({ kind: "replay" })

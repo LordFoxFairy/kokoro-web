@@ -1,4 +1,5 @@
 import stableStringify from "fast-json-stable-stringify"
+import type { AguiActivityEvent } from "@kokoro/session-client/agui-presentation"
 import type { MessagePartEnvelope } from "@kokoro/session-client/contracts"
 
 type PartPayload<Kind extends MessagePartEnvelope["kind"]> =
@@ -7,7 +8,9 @@ type ContractMediaCandidate = PartPayload<"media-operation">["candidates"][numbe
 type ContractMediaFailure = Extract<ContractMediaCandidate, { readonly state: "failed" }>["safe_failure"]
 
 export type MediaFailure = Readonly<{
-  code: ContractMediaFailure["code"]
+  code: ContractMediaFailure["code"] |
+    "provider_rejected" | "provider_unavailable" | "invalid_output" | "policy_restricted" |
+    "usage_unavailable" | "unknown_terminal"
   retryClass: ContractMediaFailure["retry_class"]
   safeMessage?: string
 }>
@@ -78,24 +81,45 @@ export type MediaOperationOwnerState =
 export type ChatMediaOperationOwnerState = MediaOperationOwnerState
 
 export type ChatArtifactImageDisplay = Readonly<{
+  kind: "image"
   format: "png" | "jpeg" | "webp"
   width: number
   height: number
   byteSize: string
 }>
 
+export type ChatArtifactDisplay = ChatArtifactImageDisplay | Readonly<{
+  kind: "audio"
+  format: "mp3" | "wav" | "aac" | "flac" | "ogg"
+  durationMs: string
+  byteSize: string
+}> | Readonly<{
+  kind: "video"
+  format: "mp4" | "webm" | "mov"
+  width: number
+  height: number
+  durationMs: string
+  byteSize: string
+}> | Readonly<{
+  kind: "document"
+  format: "pdf" | "markdown" | "text"
+  byteSize: string
+  pageCount?: number
+}>
+
 type ArtifactBase = Readonly<{
   artifactRef: string
   artifactVersionRef: string
   ownerVersion: string
-  mediaClass: "image"
+  mediaClass: "image" | "audio" | "video" | "document"
+  title?: string
 }>
 
 export type ArtifactOwnerState =
   | (ArtifactBase & Readonly<{ availability: "processing" | "deleted" }>)
   | (ArtifactBase & Readonly<{
       availability: "ready"
-      display: ChatArtifactImageDisplay
+      display: ChatArtifactDisplay
     }>)
   | (ArtifactBase & Readonly<{
       availability: "restricted" | "unavailable"
@@ -266,6 +290,7 @@ export function projectArtifactOwnerState(payload: PartPayload<"artifact">): Cha
         ...base,
         availability: payload.availability,
         display: {
+          kind: "image",
           format: payload.payload.format,
           width: payload.payload.width,
           height: payload.payload.height,
@@ -281,6 +306,151 @@ export function projectArtifactOwnerState(payload: PartPayload<"artifact">): Cha
       }
     default:
       return unreachable(payload)
+  }
+}
+
+type AguiActivityContent<Type extends AguiActivityEvent["activityType"]> =
+  Extract<AguiActivityEvent, { readonly activityType: Type }>["content"]
+
+function projectAguiFailure(failure: Readonly<{
+  code: ChatMediaFailure["code"]
+  retryClass: "never" | "after-delay" | "after-user-action" | "reconcile-receipt"
+  safeMessage?: string
+}>): ChatMediaFailure {
+  return {
+    code: failure.code,
+    retryClass: failure.retryClass.replaceAll("-", "_") as ChatMediaFailure["retryClass"],
+    ...(failure.safeMessage === undefined ? {} : { safeMessage: failure.safeMessage }),
+  }
+}
+
+function projectAguiCandidate(
+  candidate: AguiActivityContent<"kokoro.media.v1">["candidates"][number],
+): ChatMediaCandidate {
+  const base = {
+    candidateRef: candidate.candidateRef,
+    ordinal: candidate.ordinal,
+    ownerVersion: candidate.ownerVersion,
+  }
+  switch (candidate.state) {
+    case "allocated":
+    case "producing":
+    case "validating":
+    case "unknown":
+    case "canceled":
+      return { ...base, state: candidate.state }
+    case "output-received":
+      return { ...base, state: "output_received" }
+    case "cancel-requested":
+      return { ...base, state: "cancel_requested" }
+    case "ready":
+      return {
+        ...base,
+        state: candidate.state,
+        artifactRef: candidate.artifactRef!,
+        artifactVersionRef: candidate.artifactVersionRef!,
+      }
+    case "restricted":
+    case "failed":
+      return { ...base, state: candidate.state, failure: projectAguiFailure(candidate.safeFailure!) }
+  }
+}
+
+export function projectAguiMediaOperationOwnerState(
+  content: AguiActivityContent<"kokoro.media.v1">,
+): ChatMediaOperationOwnerState {
+  assertCanonicalMediaCandidateIdentity(content.candidates)
+  const base = {
+    mediaOperationRef: content.mediaOperationRef,
+    definitionRef: content.definitionRef,
+    definitionRevisionRef: content.definitionRevisionRef,
+    ...(content.modelOptionRevisionRef === undefined ? {} : { modelOptionRevisionRef: content.modelOptionRevisionRef }),
+    ownerVersion: content.ownerVersion,
+    progressBps: content.progressBps,
+    candidates: content.candidates.map(projectAguiCandidate),
+    ...(content.costProjection === undefined ? {} : { costProjection: content.costProjection }),
+    updatedAt: content.updatedAt,
+  }
+  switch (content.state) {
+    case "admission-pending":
+      return { ...base, state: "admission_pending" }
+    case "cancel-requested":
+      return { ...base, state: "cancel_requested" }
+    case "authorized":
+    case "queued":
+    case "active":
+    case "finalizing":
+    case "reconciling":
+      return { ...base, state: content.state }
+    case "completed":
+    case "partial":
+    case "canceled":
+      return { ...base, state: content.state, outcomeClass: content.outcomeClass! }
+    case "failed":
+      return {
+        ...base,
+        state: content.state,
+        outcomeClass: content.outcomeClass!,
+        failure: projectAguiFailure(content.safeFailure!),
+      }
+  }
+}
+
+export function projectAguiArtifactOwnerState(
+  content: AguiActivityContent<"kokoro.artifact.v1">,
+): ChatArtifactOwnerState {
+  if (content.display !== undefined && content.display.kind !== content.mediaClass) {
+    throw new TypeError("Artifact display kind must match media class")
+  }
+  const base = {
+    artifactRef: content.artifactRef,
+    artifactVersionRef: content.artifactVersionRef,
+    ownerVersion: content.ownerVersion,
+    mediaClass: content.mediaClass,
+    ...(content.title === undefined ? {} : { title: content.title }),
+    updatedAt: content.updatedAt,
+  }
+  switch (content.availability) {
+    case "processing":
+    case "deleted":
+      return { ...base, availability: content.availability }
+    case "ready":
+      return { ...base, availability: content.availability, display: content.display! }
+    case "restricted":
+    case "unavailable":
+      return {
+        ...base,
+        availability: content.availability,
+        failure: projectAguiFailure(content.safeFailure!),
+      }
+  }
+}
+
+export function projectAguiCostOwnerState(
+  content: AguiActivityContent<"kokoro.cost.v1">,
+): ChatCostOwnerState {
+  const base = {
+    mediaOperationRef: content.mediaOperationRef,
+    costProjectionRef: content.costProjectionRef,
+    ownerVersion: content.ownerVersion,
+    freshness: content.freshness,
+    updatedAt: content.updatedAt,
+  }
+  switch (content.state) {
+    case "pending":
+      return { ...base, state: content.state }
+    case "estimated":
+    case "final":
+      return { ...base, state: content.state, amount: content.amount! }
+    case "corrected":
+      return {
+        ...base,
+        state: content.state,
+        amount: content.amount!,
+        correctsOwnerVersion: content.correctsOwnerVersion!,
+      }
+    case "unavailable":
+      return { ...base, state: content.state, safeReason: content.safeReason! }
   }
 }
 

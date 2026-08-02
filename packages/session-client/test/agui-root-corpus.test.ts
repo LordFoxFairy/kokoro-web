@@ -71,7 +71,7 @@ type Corpus = Readonly<{
 const corpusFixture = new URL("./fixtures/root-agui-presentation-v1.json", import.meta.url);
 const corpusSource = readFileSync(corpusFixture);
 const corpus = JSON.parse(corpusSource.toString("utf8")) as Corpus;
-const ROOT_CORPUS_SHA256 = "994f0e260ce5958b092957572b23da7ba309f4580fee924a9371c21f59bd8405";
+const ROOT_CORPUS_SHA256 = "dbe8aba4045be745706b7cf715aa34ff109cbbb6e7b9c36a13b0523d6614b257";
 
 function zeroSnapshot(contractCase: CorpusCase): Readonly<Record<string, unknown>> {
   return {
@@ -121,8 +121,9 @@ function setAtPath(value: unknown, path: string, replacement: unknown): void {
 }
 
 function bindingRefAt(base: CorpusCase, path: string): string {
-  const match = /^runBindings\.([0-9]+)\./u.exec(path);
-  const binding = match === null ? undefined : base.runBindings[Number.parseInt(match[1] ?? "", 10)];
+  const match = /^(runBindings|messageBindings)\.([0-9]+)\./u.exec(path);
+  const bindings = match?.[1] === "runBindings" ? base.runBindings : base.messageBindings;
+  const binding = match === null ? undefined : bindings[Number.parseInt(match[2] ?? "", 10)];
   const bindingRef = binding?.["bindingRef"];
   if (typeof bindingRef !== "string") throw new Error(`Root binding path missing: ${path}`);
   return bindingRef;
@@ -149,7 +150,7 @@ function frameAttack(base: CorpusCase, attack: NegativeCase): readonly CorpusFra
       setAtPath({ frames }, path, attack.mutation.value);
       return frames;
     }
-    if (path.startsWith("runBindings.")) {
+    if (path.startsWith("runBindings.") || path.startsWith("messageBindings.")) {
       const bindingRef = bindingRefAt(base, path);
       const target = attack.id === "m0-interrupted-main-run"
         ? terminalDeltaFrame(base, bindingRef)
