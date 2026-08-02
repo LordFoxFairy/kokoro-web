@@ -1,4 +1,5 @@
 import type { SessionSnapshot } from "@kokoro/session-client/contracts"
+import type { AguiPresentationSnapshotAuthority } from "@kokoro/session-client/agui-presentation"
 import { describe, expect, it, vi } from "vitest"
 
 import { createChatProjectionStore } from "../src/projection/store.js"
@@ -69,13 +70,30 @@ function snapshot(input: Readonly<{
   }
 }
 
+function presentationAuthority(snapshot: SessionSnapshot): AguiPresentationSnapshotAuthority {
+  return {
+    authority: "session-browser-v3-http-snapshot",
+    hydrate: true,
+    repair: true,
+    profileRevision: "kokoro-agui-presentation.v1",
+    sessionId: snapshot.session.session_id,
+    streamEpoch: "1",
+    durableSeq: "0",
+    lastRecordedAt: null,
+    cursor: "snapshot.cursor.empty",
+    runBindings: [],
+    messageBindings: [],
+  }
+}
+
 describe("Chat snapshot projection", () => {
   it("hydrates one browser-safe read model from the authoritative HTTP snapshot", () => {
     const store = createChatProjectionStore()
     const listener = vi.fn()
     store.subscribe(listener)
 
-    store.hydrate(snapshot({ text: "hello", snapshotRevision: "snapshot.revision.ready" }))
+    const hydrated = snapshot({ text: "hello", snapshotRevision: "snapshot.revision.ready" })
+    store.hydrate(hydrated, presentationAuthority(hydrated))
 
     expect(store.getSnapshot()).toMatchObject({
       session: {
@@ -99,10 +117,11 @@ describe("Chat snapshot projection", () => {
     const invalid = snapshot()
     const store = createChatProjectionStore()
 
-    store.hydrate({
+    const invalidActiveBranch = {
       ...invalid,
       session: { ...invalid.session, active_branch_id: "branch-missing-12345678" },
-    })
+    }
+    store.hydrate(invalidActiveBranch, presentationAuthority(invalidActiveBranch))
 
     expect(store.getSnapshot()).toMatchObject({
       messages: [],
@@ -112,9 +131,11 @@ describe("Chat snapshot projection", () => {
 
   it("preserves a newer same-Session owner when an older snapshot arrives", () => {
     const store = createChatProjectionStore()
-    store.hydrate(snapshot({ sessionVersion: 2, text: "newer" }))
+    const newer = snapshot({ sessionVersion: 2, text: "newer" })
+    store.hydrate(newer, presentationAuthority(newer))
 
-    store.hydrate(snapshot({ sessionVersion: 1, text: "older" }))
+    const older = snapshot({ sessionVersion: 1, text: "older" })
+    store.hydrate(older, presentationAuthority(older))
 
     expect(store.getSnapshot()).toMatchObject({
       session: { version: 2 },
@@ -125,7 +146,8 @@ describe("Chat snapshot projection", () => {
 
   it("keeps connection, command, and repair controls outside durable content", () => {
     const store = createChatProjectionStore()
-    store.hydrate(snapshot({ text: "stable" }))
+    const stable = snapshot({ text: "stable" })
+    store.hydrate(stable, presentationAuthority(stable))
 
     store.dispatch({ type: "connection", connection: { kind: "live" } })
     store.dispatch({ type: "command", state: "pending" })

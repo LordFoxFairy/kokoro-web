@@ -1,5 +1,8 @@
 import type { SessionConnectionState } from "@kokoro/session-client"
-import type { AguiActivityEvent } from "@kokoro/session-client/agui-presentation"
+import type {
+  AguiActivityEvent,
+  AguiPresentationSnapshotAuthority,
+} from "@kokoro/session-client/agui-presentation"
 import stableStringify from "fast-json-stable-stringify"
 import type {
   ConversationBranch,
@@ -163,7 +166,7 @@ export type ChatProjectionMessage = {
   readonly presentationRunBindingRef?: string
   readonly presentationMessageBindingRef?: string
   readonly presentationTextPartId?: string
-  readonly presentationOwnerVersion?: number
+  readonly presentationMessageVersion?: number
   readonly role: "user" | "assistant"
   readonly createdAt: string
   readonly parts: readonly ChatPart[]
@@ -181,7 +184,10 @@ export type ChatPresentationRun = Readonly<{
   sessionRunId: string | null
   parentPresentationRunId: string | null
   state: "starting" | "running" | "waiting" | "canceling" | "finished" | "error"
-  ownerVersion: string
+  /** Last live envelope version. Snapshot authority does not expose this per binding. */
+  presentationVersion?: string
+  /** Version of the optional kokoro.run.replace.v1 owner row. */
+  ownerVersion?: string
 }>
 
 export type ChatPresentationControl = Readonly<{
@@ -1144,6 +1150,133 @@ function withPresentationRuns(
   }
 }
 
+type PresentationSnapshotHydration = Readonly<{
+  projection: ChatProjection
+  conflict?: string
+}>
+
+function hydratePresentationSnapshot(
+  state: ChatProjection,
+  snapshot: SessionSnapshot,
+  authority: AguiPresentationSnapshotAuthority,
+): PresentationSnapshotHydration {
+  const sessionId = snapshot.session.session_id
+  if (authority.sessionId !== sessionId) {
+    return { projection: state, conflict: "agui_snapshot_session_owner_conflict" }
+  }
+
+  const runRefs = new Set<string>()
+  const runIds = new Set<string>()
+  const presentationRuns: ChatPresentationRun[] = []
+  for (const binding of authority.runBindings) {
+    if (
+      binding.sessionId !== sessionId ||
+      runRefs.has(binding.bindingRef) ||
+      runIds.has(binding.presentationRunId)
+    ) {
+      return { projection: state, conflict: "agui_snapshot_run_identity_conflict" }
+    }
+    runRefs.add(binding.bindingRef)
+    runIds.add(binding.presentationRunId)
+    const sessionRun = binding.sessionRunId === null
+      ? undefined
+      : snapshot.runs.find((candidate) => candidate.run_id === binding.sessionRunId)
+    if (
+      sessionRun !== undefined &&
+      ((binding.state === "open") === TERMINAL_RUN_STATUSES.has(sessionRun.execution_status))
+    ) {
+      return { projection: state, conflict: "agui_snapshot_run_terminal_conflict" }
+    }
+    presentationRuns.push({
+      bindingRef: binding.bindingRef,
+      presentationRunId: binding.presentationRunId,
+      sessionRunId: binding.sessionRunId,
+      parentPresentationRunId: binding.parentLineage.parentPresentationRunId,
+      state: binding.state === "open" ? "running" : binding.state,
+    })
+  }
+  if (authority.durableSeq !== "0" && presentationRuns.length === 0) {
+    return { projection: state, conflict: "agui_snapshot_run_authority_missing" }
+  }
+  for (const binding of authority.runBindings) {
+    const parentId = binding.parentLineage.parentPresentationRunId
+    if (parentId !== null && !runIds.has(parentId)) {
+      return { projection: state, conflict: "agui_snapshot_run_parent_conflict" }
+    }
+  }
+
+  const messageRefs = new Set<string>()
+  const presentationMessageIds = new Set<string>()
+  const messagesById = new Map(state.messages.map((message) => [message.id, message]))
+  const bindingsBySessionMessageId = new Map<string, typeof authority.messageBindings[number]>()
+  for (const binding of authority.messageBindings) {
+    if (
+      binding.sessionId !== sessionId ||
+      messageRefs.has(binding.bindingRef) ||
+      presentationMessageIds.has(binding.presentationMessageId)
+    ) {
+      return { projection: state, conflict: "agui_snapshot_message_identity_conflict" }
+    }
+    messageRefs.add(binding.bindingRef)
+    presentationMessageIds.add(binding.presentationMessageId)
+    const run = presentationRuns.find((candidate) =>
+      candidate.bindingRef === binding.presentationRunBindingRef)
+    if (run === undefined) {
+      return { projection: state, conflict: "agui_snapshot_message_run_binding_conflict" }
+    }
+    if ((binding.sessionMessageId === null) !== (binding.sessionTextPartId === null)) {
+      return { projection: state, conflict: "agui_snapshot_message_session_owner_conflict" }
+    }
+    if (binding.sessionMessageId === null || binding.sessionTextPartId === null) continue
+    if (bindingsBySessionMessageId.has(binding.sessionMessageId)) {
+      return { projection: state, conflict: "agui_snapshot_message_identity_conflict" }
+    }
+    const message = messagesById.get(binding.sessionMessageId)
+    if (message === undefined) {
+      return { projection: state, conflict: "agui_snapshot_message_session_owner_missing" }
+    }
+    if (message.runId !== run.sessionRunId) {
+      return { projection: state, conflict: "agui_snapshot_message_run_owner_conflict" }
+    }
+    const text = message.parts.find((part) => part.id === binding.sessionTextPartId)
+    if (text?.kind !== "text") {
+      return { projection: state, conflict: "agui_snapshot_message_text_owner_conflict" }
+    }
+    const textOpen = text.lifecycle === "streaming"
+    if ((binding.state === "open") !== textOpen) {
+      return { projection: state, conflict: "agui_snapshot_message_terminal_conflict" }
+    }
+    bindingsBySessionMessageId.set(binding.sessionMessageId, binding)
+  }
+  if (
+    authority.durableSeq !== "0" &&
+    state.messages.some((message) =>
+      message.role === "assistant" &&
+      message.status === "running" &&
+      message.runId !== null &&
+      !bindingsBySessionMessageId.has(message.id))
+  ) {
+    return { projection: state, conflict: "agui_snapshot_message_authority_missing" }
+  }
+
+  const messages = state.messages.map((message) => {
+    const binding = bindingsBySessionMessageId.get(message.id)
+    if (binding === undefined || binding.sessionTextPartId === null) return message
+    const run = presentationRuns.find((candidate) =>
+      candidate.bindingRef === binding.presentationRunBindingRef)
+    if (run === undefined) return message
+    return {
+      ...message,
+      presentationMessageId: binding.presentationMessageId,
+      presentationRunId: run.presentationRunId,
+      presentationRunBindingRef: run.bindingRef,
+      presentationMessageBindingRef: binding.bindingRef,
+      presentationTextPartId: binding.sessionTextPartId,
+    }
+  })
+  return { projection: withPresentationRuns({ ...state, messages }, presentationRuns) }
+}
+
 function rejectPresentation(state: ChatProjection, reason: string): ChatProjection {
   return { ...state, repair: { required: true, reason } }
 }
@@ -1208,7 +1341,7 @@ function reducePresentation(
           sessionRunId: mutation.runBinding.sessionRunId,
           parentPresentationRunId: mutation.parentRunId ?? null,
           state: "running",
-          ownerVersion: version,
+          presentationVersion: version,
         }])
       }
       if (current === undefined) return rejectPresentation(state, "agui_run_binding_missing")
@@ -1220,11 +1353,14 @@ function reducePresentation(
       if (mutation.phase === "run-finished" && current.presentationRunId !== mutation.runId) {
         return rejectPresentation(state, "agui_run_identity_conflict")
       }
-      if (compareOwnerVersion(version, current.ownerVersion) < 0) {
-        return rejectPresentation(state, "agui_run_owner_version_regression")
-      }
-      if (compareOwnerVersion(version, current.ownerVersion) === 0) {
-        return rejectPresentation(state, "agui_run_owner_version_conflict")
+      if (current.presentationVersion !== undefined) {
+        const versionOrder = compareOwnerVersion(version, current.presentationVersion)
+        if (versionOrder < 0) {
+          return rejectPresentation(state, "agui_run_projection_version_regression")
+        }
+        if (versionOrder === 0) {
+          return rejectPresentation(state, "agui_run_projection_version_conflict")
+        }
       }
       if (["finished", "error"].includes(current.state)) {
         return rejectPresentation(state, "agui_run_terminal_regression")
@@ -1234,7 +1370,7 @@ function reducePresentation(
       presentationRuns[index] = {
         ...current,
         state: mutation.phase === "run-finished" ? "finished" : "error",
-        ownerVersion: version,
+        presentationVersion: version,
       }
       return withPresentationRuns({
         ...state,
@@ -1257,12 +1393,13 @@ function reducePresentation(
       const text = message.parts.find((part): part is Extract<ChatPart, { kind: "text" }> =>
         part.kind === "text" && part.id === message.presentationTextPartId)
       if (text === undefined) return rejectPresentation(state, "agui_message_owner_missing")
-      if (text.presentationVersion === undefined) return rejectPresentation(state, "agui_message_version_missing")
-      const textVersionOrder = compareOwnerVersion(version, text.presentationVersion)
-      if (textVersionOrder <= 0) {
-        return rejectPresentation(state, textVersionOrder < 0
-          ? "agui_message_version_regression"
-          : "agui_message_version_conflict")
+      if (text.presentationVersion !== undefined) {
+        const textVersionOrder = compareOwnerVersion(version, text.presentationVersion)
+        if (textVersionOrder <= 0) {
+          return rejectPresentation(state, textVersionOrder < 0
+            ? "agui_message_version_regression"
+            : "agui_message_version_conflict")
+        }
       }
       if (mutation.phase === "content") {
         return updatePresentationMessage(state, mutation.presentationMessageId, (message) => ({
@@ -1380,10 +1517,10 @@ function reducePresentation(
             return rejectPresentation(state, "agui_message_terminal_regression")
           }
           if (
-            current.presentationOwnerVersion !== undefined &&
-            mutation.value.version < current.presentationOwnerVersion
+            current.presentationMessageVersion !== undefined &&
+            mutation.value.version < current.presentationMessageVersion
           ) return rejectPresentation(state, "agui_message_owner_version_regression")
-          if (current.presentationOwnerVersion === mutation.value.version) {
+          if (current.presentationMessageVersion === mutation.value.version) {
             const currentOwner = stableStringify({
               role: current.role,
               parentMessageId: current.parentMessageId ?? null,
@@ -1402,7 +1539,7 @@ function reducePresentation(
           return updatePresentationMessage(state, mutation.value.presentationMessageId, (message) => ({
             ...message,
             role,
-            presentationOwnerVersion: mutation.value.version,
+            presentationMessageVersion: mutation.value.version,
             ...(mutation.value.parentPresentationMessageId === null
               ? { parentMessageId: undefined }
               : { parentMessageId: mutation.value.parentPresentationMessageId }),
@@ -1421,13 +1558,17 @@ function reducePresentation(
           if (current === undefined || current.presentationRunId !== mutation.value.presentationRunId) {
             return rejectPresentation(state, "agui_run_identity_conflict")
           }
-          if (compareOwnerVersion(ownerVersion, current.ownerVersion) < 0) {
+          if (current.ownerVersion !== undefined && compareOwnerVersion(ownerVersion, current.ownerVersion) < 0) {
             return rejectPresentation(state, "agui_run_owner_version_regression")
           }
           if (["finished", "error"].includes(current.state) && mutation.value.state !== current.state) {
             return rejectPresentation(state, "agui_run_terminal_regression")
           }
-          if (compareOwnerVersion(ownerVersion, current.ownerVersion) === 0 && mutation.value.state !== current.state) {
+          if (
+            current.ownerVersion !== undefined &&
+            compareOwnerVersion(ownerVersion, current.ownerVersion) === 0 &&
+            mutation.value.state !== current.state
+          ) {
             return rejectPresentation(state, "agui_run_owner_version_conflict")
           }
           const presentationRuns = [...state.presentationRuns]
@@ -1607,7 +1748,10 @@ function reducePresentation(
 export type ChatProjectionStore = {
   readonly getSnapshot: () => ChatProjection
   readonly subscribe: (listener: () => void) => () => void
-  readonly hydrate: (snapshot: SessionSnapshot) => void
+  readonly hydrate: (
+    snapshot: SessionSnapshot,
+    presentationAuthority: AguiPresentationSnapshotAuthority,
+  ) => void
   readonly reset: () => void
   readonly dispatch: (action: ChatProjectionMutation) => void
   readonly dispatchPresentation: (mutation: ChatAguiPresentationMutation) => "applied" | "replayed" | "rejected"
@@ -1958,7 +2102,7 @@ export function createChatProjectionStore(options: ChatProjectionStoreOptions = 
       listeners.add(listener)
       return () => listeners.delete(listener)
     },
-    hydrate(snapshot) {
+    hydrate(snapshot, presentationAuthority) {
       const currentScope = ownerScope?.sessionId === snapshot.session.session_id ? ownerScope : null
       const nextFingerprints: PartEnvelopeFingerprints = new WeakMap()
       const nextEnvelopes = snapshotEnvelopeAuthority(snapshot)
@@ -1972,6 +2116,13 @@ export function createChatProjectionStore(options: ChatProjectionStoreOptions = 
       const conflict = nextEnvelopes.conflict ?? built.conflict
       if (conflict !== undefined) {
         next = { ...next, repair: { required: true, reason: conflict } }
+      }
+      if (!next.repair.required) {
+        const presentation = hydratePresentationSnapshot(next, snapshot, presentationAuthority)
+        next = presentation.projection
+        if (presentation.conflict !== undefined) {
+          next = { ...next, repair: { required: true, reason: presentation.conflict } }
+        }
       }
       let ownerConflict: HydrationOwnerConflict | undefined
       if (currentScope !== null) {

@@ -5,7 +5,7 @@ import type {
   AguiSseFrame,
 } from "@kokoro/session-client/agui-presentation"
 import type { SessionSnapshot } from "@kokoro/session-client/contracts"
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 
 import fixtureJson from "../../session-client/test/fixtures/root-agui-presentation-v1.json"
 import { createChatProjectionStore } from "../src/projection/store.js"
@@ -98,12 +98,27 @@ function frame(sequence: number): AguiSseFrame {
   return { id: candidate.id, event: candidate.event, data: JSON.stringify(candidate.data) }
 }
 
-function createActiveProjection() {
-  const store = createChatProjectionStore()
-  store.hydrate(sessionSnapshot(true))
+function authorityAfter(sequence: number): AguiPresentationSnapshotAuthority {
   const adapter = createAguiProjectionAdapter({
     grant: contractCase.grantBinding,
-    snapshotAuthority: { ...contractCase.snapshot, runBindings: [], messageBindings: [] },
+    snapshotAuthority: initialAuthority(),
+    dispatch: () => "applied",
+  })
+  for (let index = 1; index <= sequence; index += 1) adapter.accept(frame(index))
+  return adapter.getSnapshotAuthority()
+}
+
+function initialAuthority(): AguiPresentationSnapshotAuthority {
+  return { ...contractCase.snapshot, runBindings: [], messageBindings: [] }
+}
+
+function createActiveProjection() {
+  const store = createChatProjectionStore()
+  const snapshotAuthority = initialAuthority()
+  store.hydrate(sessionSnapshot(true), snapshotAuthority)
+  const adapter = createAguiProjectionAdapter({
+    grant: contractCase.grantBinding,
+    snapshotAuthority,
     dispatch: store.dispatchPresentation,
   })
   return { adapter, store }
@@ -141,6 +156,116 @@ function explicitMessageBinding(
 }
 
 describe("production AG-UI Chat projection", () => {
+  it("continues text from a nonzero presentation snapshot without entering repair", () => {
+    const authority = authorityAfter(2)
+    const store = createChatProjectionStore()
+    store.hydrate(sessionSnapshot(true), authority)
+    const adapter = createAguiProjectionAdapter({
+      grant: contractCase.grantBinding,
+      snapshotAuthority: authority,
+      dispatch: store.dispatchPresentation,
+    })
+
+    expect(adapter.accept(frame(3))).toEqual({ kind: "durable" })
+    expect(store.getSnapshot()).toMatchObject({
+      repair: { required: false },
+      presentationRuns: [expect.objectContaining({
+        bindingRef: authority.runBindings[0]?.bindingRef,
+        sessionRunId: authority.runBindings[0]?.sessionRunId,
+      })],
+      presentationControls: [],
+      presentationReceipts: [],
+      messages: [expect.objectContaining({
+        id: authority.messageBindings[0]?.sessionMessageId,
+        presentationMessageId: authority.messageBindings[0]?.presentationMessageId,
+        presentationMessageBindingRef: authority.messageBindings[0]?.bindingRef,
+        parts: expect.arrayContaining([
+          expect.objectContaining({
+            id: authority.messageBindings[0]?.sessionTextPartId,
+            kind: "text",
+            text: "I can help with that.",
+          }),
+        ]),
+      })],
+    })
+    expect(store.getSnapshot().presentationRuns[0]).not.toHaveProperty("ownerVersion")
+  })
+
+  it("continues a message owner replacement from a nonzero presentation snapshot", () => {
+    const authority = authorityAfter(15)
+    const store = createChatProjectionStore()
+    store.hydrate(sessionSnapshot(true), authority)
+    const adapter = createAguiProjectionAdapter({
+      grant: contractCase.grantBinding,
+      snapshotAuthority: authority,
+      dispatch: store.dispatchPresentation,
+    })
+
+    expect(adapter.accept(frame(16))).toEqual({ kind: "durable" })
+    expect(store.getSnapshot()).toMatchObject({
+      repair: { required: false },
+      messages: [expect.objectContaining({
+        presentationMessageVersion: 3,
+        status: "running",
+      })],
+    })
+  })
+
+  it("fails closed when a presentation snapshot points at a different Session text owner", () => {
+    const authority = authorityAfter(2)
+    const message = authority.messageBindings[0]
+    if (message === undefined) throw new Error("AG-UI message binding missing")
+    const conflictingAuthority: AguiPresentationSnapshotAuthority = {
+      ...authority,
+      messageBindings: [{ ...message, sessionTextPartId: "part.different-owner" }],
+    }
+    const store = createChatProjectionStore()
+    const listener = vi.fn()
+    store.subscribe(listener)
+
+    store.hydrate(sessionSnapshot(true), conflictingAuthority)
+
+    expect(store.getSnapshot()).toMatchObject({
+      presentationRuns: [],
+      repair: { required: true, reason: "agui_snapshot_message_text_owner_conflict" },
+    })
+    const adapter = createAguiProjectionAdapter({
+      grant: contractCase.grantBinding,
+      snapshotAuthority: conflictingAuthority,
+      dispatch: store.dispatchPresentation,
+    })
+    expect(() => adapter.accept(frame(3))).toThrow("agui_projection_rejected")
+    expect(listener).toHaveBeenCalledOnce()
+    expect(store.getSnapshot().repair).toEqual({
+      required: true,
+      reason: "agui_snapshot_message_text_owner_conflict",
+    })
+  })
+
+  it("fails closed when a nonzero snapshot omits the current message authority", () => {
+    const authority = authorityAfter(2)
+    const store = createChatProjectionStore()
+
+    store.hydrate(sessionSnapshot(true), { ...authority, messageBindings: [] })
+
+    expect(store.getSnapshot()).toMatchObject({
+      presentationRuns: [],
+      repair: { required: true, reason: "agui_snapshot_message_authority_missing" },
+    })
+  })
+
+  it("fails closed when Session text is open after its presentation binding ended", () => {
+    const authority = authorityAfter(20)
+    const store = createChatProjectionStore()
+
+    store.hydrate(sessionSnapshot(true), authority)
+
+    expect(store.getSnapshot()).toMatchObject({
+      presentationRuns: [],
+      repair: { required: true, reason: "agui_snapshot_message_terminal_conflict" },
+    })
+  })
+
   it("projects official text and every closed activity into the one ChatProjection authority", () => {
     const { adapter, store } = createActiveProjection()
     for (let sequence = 1; sequence <= 19; sequence += 1) {
@@ -282,7 +407,7 @@ describe("production AG-UI Chat projection", () => {
 
   it("tracks concurrent parent and child presentation runs by binding without inventing a Session run", () => {
     const store = createChatProjectionStore()
-    store.hydrate(sessionSnapshot())
+    store.hydrate(sessionSnapshot(), initialAuthority())
     const source = {
       sourceEventId: "presentation.event:test-event-00000000000000000001",
       sourceKind: "presentation.test",
@@ -351,7 +476,7 @@ describe("production AG-UI Chat projection", () => {
 
   it("rejects a terminal presentation run regression without recording its cursor", () => {
     const store = createChatProjectionStore()
-    store.hydrate(sessionSnapshot())
+    store.hydrate(sessionSnapshot(), initialAuthority())
     const source = {
       sourceEventId: "presentation.event:test-event-00000000000000000002",
       sourceKind: "presentation.test",
@@ -386,7 +511,7 @@ describe("production AG-UI Chat projection", () => {
 
   it("seals ended presentation messages against late content and binding drift", () => {
     const store = createChatProjectionStore()
-    store.hydrate(sessionSnapshot())
+    store.hydrate(sessionSnapshot(), initialAuthority())
     const source = {
       sourceEventId: "presentation.event:test-event-00000000000000000003",
       sourceKind: "presentation.test",
@@ -435,7 +560,7 @@ describe("production AG-UI Chat projection", () => {
 
   it("rejects a CUSTOM message lifecycle regression after terminal replacement", () => {
     const store = createChatProjectionStore()
-    store.hydrate(sessionSnapshot())
+    store.hydrate(sessionSnapshot(), initialAuthority())
     const source = {
       sourceEventId: "presentation.event:test-event-00000000000000000004",
       sourceKind: "presentation.test",

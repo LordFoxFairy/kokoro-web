@@ -15,7 +15,7 @@ Chat has exactly two inputs with different jobs:
 - A complete Session HTTP snapshot hydrates the baseline: Session metadata, branches, active message history, command-safe attachment references, execution state, and `snapshot_revision_ref`.
 - The Session-owned strict AG-UI stream is the only live content path. It updates presentation lifecycle, assistant text, closed activities, and registered CUSTOM owner replacements.
 
-`ChatProjectionStore` exposes no generic event mutation and no second live reducer. Connection, command, and repair mutations are local control state only; they cannot manufacture durable content. A new snapshot replaces or repairs the complete baseline. The AG-UI adapter transactionally acknowledges each durable cursor as `applied|replayed`; decoder authority advances only after that acknowledgement.
+`ChatProjectionStore` exposes no generic event mutation and no second live reducer. Connection, command, and repair mutations are local control state only; they cannot manufacture durable content. Hydration atomically accepts the Session snapshot and its matching AG-UI presentation authority, then restores Run/message bindings only through exact Session message and text-part identities. Missing owners, terminal contradictions, and cross-snapshot binding drift fail closed without inventing control, receipt, or owner rows. The AG-UI adapter transactionally acknowledges each durable cursor as `applied|replayed`; decoder authority advances only after that acknowledgement.
 
 `snapshotRevision` is the opaque `snapshot_revision_ref` of the last successful hydrate. It is neither an SSE cursor nor a stream sequence and the browser never parses, compares, or increments it. The decoder alone owns the opaque resume cursor.
 

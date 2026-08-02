@@ -376,7 +376,7 @@ export function createChatController(options: {
     const previousStream = stream
     stream = null
     previousStream?.close()
-    projectionStore.hydrate(snapshot)
+    projectionStore.hydrate(snapshot, hydration.snapshotAuthority)
     const hydrated = projectionStore.getSnapshot()
     if (hydrated.repair.required) {
       const reason = hydrated.repair.reason ?? "snapshot_projection_invalid"
