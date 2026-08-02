@@ -279,9 +279,88 @@ describe("Chat projection", () => {
       activeRunProjectionVersion: null,
       repair: { required: true, reason: "run_launch_version_conflict" },
     })
+
+    const bindingDrift = createChatProjectionStore()
+    bindingDrift.hydrate(initial)
+    bindingDrift.dispatch({
+      type: "event",
+      event: event({
+        kind: "run.view.updated",
+        payload: { run: { ...run, branch_id: "branch-other-12345678", projection_version: 3 } },
+      }),
+    })
+    expect(bindingDrift.getSnapshot()).toMatchObject({
+      activeRunId: run.run_id,
+      activeRunProjectionVersion: 2,
+      repair: { required: true, reason: "run_projection_version_conflict" },
+    })
+
+    const terminalRun = createChatProjectionStore()
+    terminalRun.hydrate(initial)
+    terminalRun.dispatch({
+      type: "event",
+      event: event({
+        kind: "run.view.updated",
+        payload: { run: { ...run, execution_status: "completed", projection_version: 3 } },
+      }),
+    })
+    terminalRun.dispatch({
+      type: "event",
+      event: event({
+        kind: "run.view.updated",
+        payload: { run: { ...run, execution_status: "running", projection_version: 4 } },
+      }),
+    })
+    expect(terminalRun.getSnapshot()).toMatchObject({
+      activeRunId: null,
+      activeRunProjectionVersion: null,
+      repair: { required: true, reason: "run_projection_version_conflict" },
+    })
+
+    const terminalLaunchCannotClearRun = createChatProjectionStore()
+    const matchingLaunch = {
+      ...launch,
+      launch_id: run.launch_id,
+      proposed_run_id: run.run_id,
+    }
+    terminalLaunchCannotClearRun.hydrate({ ...initial, run_launches: [matchingLaunch] })
+    terminalLaunchCannotClearRun.dispatch({
+      type: "event",
+      event: event({
+        kind: "run.launch.updated",
+        payload: { launch: { ...matchingLaunch, status: "failed", version: 3 } },
+      }),
+    })
+    expect(terminalLaunchCannotClearRun.getSnapshot()).toMatchObject({
+      activeRunId: run.run_id,
+      activeRunProjectionVersion: run.projection_version,
+      activeRunState: "running",
+      repair: { required: false },
+    })
+
+    const terminalLaunch = createChatProjectionStore()
+    terminalLaunch.hydrate(launchInitial)
+    terminalLaunch.dispatch({
+      type: "event",
+      event: event({
+        kind: "run.launch.updated",
+        payload: { launch: { ...launch, status: "failed", version: 3 } },
+      }),
+    })
+    terminalLaunch.dispatch({
+      type: "event",
+      event: event({
+        kind: "run.launch.updated",
+        payload: { launch: { ...launch, status: "dispatched", version: 4 } },
+      }),
+    })
+    expect(terminalLaunch.getSnapshot()).toMatchObject({
+      activeRunId: null,
+      repair: { required: true, reason: "run_launch_version_conflict" },
+    })
   })
 
-  it("repairs an unproven active-leaf change but accepts an exact projected lineage", () => {
+  it("repairs every same-branch active-leaf change until a fresh snapshot updates branch authority", () => {
     const initial = snapshot()
     const unproven = createChatProjectionStore()
     unproven.hydrate(initial)
@@ -339,10 +418,54 @@ describe("Chat projection", () => {
       }),
     })
     expect(proven.getSnapshot()).toMatchObject({
-      session: { activeLeafMessageId: nextMessage.message_id, version: 3 },
+      session: { activeLeafMessageId: initial.session.active_leaf_message_id, version: 2 },
       messages: [{ id: "message-user-12345678" }, { id: "message-assistant-12345678" }, { id: nextMessage.message_id }],
-      repair: { required: false },
+      branches: [{ id: initial.session.active_branch_id, version: 2 }],
+      repair: { required: true, reason: "active_leaf_changed_refetch_snapshot" },
     })
+  })
+
+  it("rejects snapshots whose active branch is not one exact complete ordinal lineage", () => {
+    const initial = snapshot()
+    const assistant = initial.messages[1]
+    const branch = initial.branches[0]
+    if (assistant === undefined || branch === undefined) throw new Error("lineage fixture missing")
+    const attacks: readonly SessionSnapshot[] = [
+      {
+        ...initial,
+        messages: [initial.messages[0]!, { ...assistant, branch_id: "branch-other-12345678" }],
+      },
+      {
+        ...initial,
+        branches: [{ ...branch, leaf_message_id: initial.messages[0]!.message_id }],
+      },
+      {
+        ...initial,
+        messages: [initial.messages[0]!, { ...assistant, ordinal: 3 }],
+      },
+      {
+        ...initial,
+        messages: [initial.messages[0]!, { ...assistant, parent_message_id: "message-missing-12345678" }],
+      },
+      {
+        ...initial,
+        branches: [{ ...branch, root_message_id: assistant.message_id }],
+      },
+      {
+        ...initial,
+        session: { ...initial.session, active_leaf_message_id: undefined },
+        branches: [{ ...branch, root_message_id: undefined, leaf_message_id: undefined }],
+      },
+    ]
+
+    for (const attack of attacks) {
+      const store = createChatProjectionStore()
+      store.hydrate(attack)
+      expect(store.getSnapshot()).toMatchObject({
+        messages: [],
+        repair: { required: true, reason: "snapshot_active_lineage_incomplete" },
+      })
+    }
   })
 
   it("hydrates JSON-roundtripped authoritative snapshots without false replay conflicts", () => {
@@ -670,6 +793,11 @@ describe("Chat projection", () => {
     const longSnapshot: SessionSnapshot = {
       ...base,
       session: { ...base.session, active_leaf_message_id: tail.message_id },
+      branches: [{
+        ...base.branches[0]!,
+        root_message_id: messages[0]!.message_id,
+        leaf_message_id: tail.message_id,
+      }],
       messages,
     }
     const update = event({

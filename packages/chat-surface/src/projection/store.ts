@@ -191,11 +191,20 @@ type ChatProjectionAction =
   | { readonly type: "snapshot"; readonly snapshot: SessionSnapshot }
   | ChatProjectionMutation
 type PartEnvelopeFingerprints = WeakMap<ChatPart, string>
-type VersionedEnvelopeFingerprint = Readonly<{ version: number; fingerprint: string }>
+type RunView = SessionSnapshot["runs"][number]
+type RunStatus = RunView["execution_status"]
+type RunLaunch = SessionSnapshot["run_launches"][number]
+type RunLaunchStatus = RunLaunch["status"]
+type VersionedEnvelopeFingerprint<Status extends string = string> = Readonly<{
+  version: number
+  fingerprint: string
+  bindingFingerprint: string
+  status: Status
+}>
 type ProjectionEnvelopeAuthority = Readonly<{
   messages: Map<string, string>
-  runs: Map<string, VersionedEnvelopeFingerprint>
-  launches: Map<string, VersionedEnvelopeFingerprint>
+  runs: Map<string, VersionedEnvelopeFingerprint<RunStatus>>
+  launches: Map<string, VersionedEnvelopeFingerprint<RunLaunchStatus>>
 }>
 type ProjectionIndexes = Readonly<{
   messageIndexById: Map<string, number>
@@ -221,6 +230,64 @@ const ACTIVE_LAUNCH_STATUSES = new Set([
   "event_observed",
   "outcome_unknown",
 ])
+const TERMINAL_RUN_STATUSES = new Set<RunStatus>(["completed", "failed", "canceled"])
+const TERMINAL_LAUNCH_STATUSES = new Set<RunLaunchStatus>(["released", "denied", "failed"])
+
+const RUN_TRANSITIONS: Readonly<Record<Exclude<RunStatus, "outcome_unknown">, ReadonlySet<RunStatus>>> = {
+  admission_pending: new Set(["admission_pending", "waiting_prerequisite", "running", "failed", "outcome_unknown"]),
+  waiting_prerequisite: new Set(["waiting_prerequisite", "admission_pending", "running", "failed", "outcome_unknown"]),
+  running: new Set(["running", "paused", "cancelling", "completed", "failed", "canceled", "outcome_unknown"]),
+  paused: new Set(["paused", "running", "cancelling", "completed", "failed", "canceled", "outcome_unknown"]),
+  cancelling: new Set(["cancelling", "running", "completed", "failed", "canceled", "outcome_unknown"]),
+  completed: new Set(["completed"]),
+  failed: new Set(["failed"]),
+  canceled: new Set(["canceled"]),
+}
+
+const LAUNCH_TRANSITIONS: Readonly<Record<Exclude<RunLaunchStatus, "outcome_unknown">, ReadonlySet<RunLaunchStatus>>> = {
+  intent_recorded: new Set(["intent_recorded", "admission_pending", "denied", "failed", "outcome_unknown"]),
+  admission_pending: new Set(["admission_pending", "waiting_prerequisite", "reserved", "denied", "failed", "outcome_unknown"]),
+  waiting_prerequisite: new Set(["waiting_prerequisite", "admission_pending", "reserved", "denied", "failed", "outcome_unknown"]),
+  reserved: new Set(["reserved", "committed", "released", "failed", "outcome_unknown"]),
+  committed: new Set(["committed", "dispatch_pending", "released", "failed", "outcome_unknown"]),
+  dispatch_pending: new Set(["dispatch_pending", "dispatched", "released", "failed", "outcome_unknown"]),
+  dispatched: new Set(["dispatched", "event_observed", "failed", "outcome_unknown"]),
+  event_observed: new Set(["event_observed"]),
+  released: new Set(["released"]),
+  denied: new Set(["denied"]),
+  failed: new Set(["failed"]),
+}
+
+function runBinding(run: RunView): string {
+  return stableStringify({
+    run_id: run.run_id,
+    launch_id: run.launch_id,
+    branch_id: run.branch_id,
+    assistant_message_id: run.assistant_message_id,
+  })
+}
+
+function launchBinding(launch: RunLaunch): string {
+  return stableStringify({
+    launch_id: launch.launch_id,
+    branch_id: launch.branch_id,
+    trigger_message_id: launch.trigger_message_id,
+    proposed_run_id: launch.proposed_run_id,
+    command_receipt_ref: launch.command_receipt_ref,
+  })
+}
+
+function runTransitionAllowed(previous: RunStatus, next: RunStatus): boolean {
+  if (previous === "outcome_unknown") return true
+  if (TERMINAL_RUN_STATUSES.has(previous)) return previous === next
+  return RUN_TRANSITIONS[previous].has(next)
+}
+
+function launchTransitionAllowed(previous: RunLaunchStatus, next: RunLaunchStatus): boolean {
+  if (previous === "outcome_unknown") return true
+  if (TERMINAL_LAUNCH_STATUSES.has(previous)) return previous === next
+  return LAUNCH_TRANSITIONS[previous].has(next)
+}
 
 function emptyEnvelopeAuthority(): ProjectionEnvelopeAuthority {
   return { messages: new Map(), runs: new Map(), launches: new Map() }
@@ -241,6 +308,8 @@ function snapshotEnvelopeAuthority(snapshot: SessionSnapshot): Readonly<{
     else authority.runs.set(run.run_id, {
       version: run.projection_version,
       fingerprint: stableStringify(run),
+      bindingFingerprint: runBinding(run),
+      status: run.execution_status,
     })
   }
   for (const launch of snapshot.run_launches) {
@@ -248,27 +317,33 @@ function snapshotEnvelopeAuthority(snapshot: SessionSnapshot): Readonly<{
     else authority.launches.set(launch.launch_id, {
       version: launch.version,
       fingerprint: stableStringify(launch),
+      bindingFingerprint: launchBinding(launch),
+      status: launch.status,
     })
   }
   return { authority, ...(conflict === undefined ? {} : { conflict }) }
 }
 
-function acceptVersionedEnvelope(
-  authority: Map<string, VersionedEnvelopeFingerprint>,
+function acceptVersionedEnvelope<Status extends string>(
+  authority: Map<string, VersionedEnvelopeFingerprint<Status>>,
   id: string,
   version: number,
   envelope: unknown,
+  bindingFingerprint: string,
+  status: Status,
+  transitionAllowed: (previous: Status, next: Status) => boolean,
 ): "accepted" | "exact_replay" | "conflict" {
   const fingerprint = stableStringify(envelope)
   const current = authority.get(id)
   if (current === undefined) {
     if (version !== 1) return "conflict"
-    authority.set(id, { version, fingerprint })
+    authority.set(id, { version, fingerprint, bindingFingerprint, status })
     return "accepted"
   }
+  if (bindingFingerprint !== current.bindingFingerprint) return "conflict"
   if (version === current.version && fingerprint === current.fingerprint) return "exact_replay"
-  if (version !== current.version + 1) return "conflict"
-  authority.set(id, { version, fingerprint })
+  if (version !== current.version + 1 || !transitionAllowed(current.status, status)) return "conflict"
+  authority.set(id, { version, fingerprint, bindingFingerprint, status })
   return "accepted"
 }
 
@@ -595,28 +670,43 @@ function activeMessageRecords(snapshot: SessionSnapshot): Readonly<{
   messages: readonly MessageRecord[]
   complete: boolean
 }> {
+  const invalid = { messages: [] as readonly MessageRecord[], complete: false }
+  const activeBranchId = snapshot.session.active_branch_id
+  const branch = snapshot.branches.find((candidate) => candidate.branch_id === activeBranchId)
+  if (branch === undefined) return invalid
+  const branchMessages = snapshot.messages.filter((message) => message.branch_id === activeBranchId)
   const leafId = snapshot.session.active_leaf_message_id
   if (leafId === undefined) {
-    return {
-      messages: snapshot.messages
-        .filter((message) => message.branch_id === snapshot.session.active_branch_id)
-        .sort((left, right) => left.ordinal - right.ordinal),
-      complete: true,
-    }
+    return branch.root_message_id === undefined && branch.leaf_message_id === undefined && branchMessages.length === 0
+      ? { messages: [], complete: true }
+      : invalid
   }
-  const byId = new Map(snapshot.messages.map((message) => [message.message_id, message]))
+  const rootId = branch.root_message_id
+  if (rootId === undefined || branch.leaf_message_id !== leafId) return invalid
+  const byId = new Map(branchMessages.map((message) => [message.message_id, message]))
+  if (byId.size !== branchMessages.length) return invalid
   const seen = new Set<string>()
   const reverse: MessageRecord[] = []
   let currentId: string | undefined = leafId
   while (currentId !== undefined) {
-    if (seen.has(currentId)) return { messages: [], complete: false }
+    if (seen.has(currentId)) return invalid
     seen.add(currentId)
     const message = byId.get(currentId)
-    if (message === undefined) return { messages: [], complete: false }
+    if (message === undefined || message.branch_id !== activeBranchId) return invalid
     reverse.push(message)
+    if (message.message_id === rootId) break
     currentId = message.parent_message_id
   }
-  return { messages: reverse.reverse(), complete: true }
+  const messages = reverse.reverse()
+  if (
+    messages[0]?.message_id !== rootId ||
+    messages.at(-1)?.message_id !== leafId ||
+    messages.length !== branchMessages.length ||
+    messages.some((message, index) =>
+      message.ordinal !== index ||
+      index > 0 && message.parent_message_id !== messages[index - 1]?.message_id)
+  ) return invalid
+  return { messages, complete: true }
 }
 
 function activeRun(snapshot: SessionSnapshot): Pick<
@@ -646,30 +736,6 @@ function activeRun(snapshot: SessionSnapshot): Pick<
     activeRunProjectionVersion,
     activeRunState: run === undefined ? "launching" : "running",
   }
-}
-
-function projectionProvesActiveLineage(
-  messages: readonly ChatProjectionMessage[],
-  activeBranchId: string | null,
-  leafMessageId: string | undefined,
-): boolean {
-  if (activeBranchId === null) return false
-  if (leafMessageId === undefined) return messages.length === 0
-  const byId = new Map(messages.map((message) => [message.id, message]))
-  if (byId.size !== messages.length) return false
-  const seen = new Set<string>()
-  const reverse: ChatProjectionMessage[] = []
-  let currentId: string | undefined = leafMessageId
-  while (currentId !== undefined) {
-    if (seen.has(currentId)) return false
-    seen.add(currentId)
-    const message = byId.get(currentId)
-    if (message === undefined || message.branchId !== activeBranchId) return false
-    reverse.push(message)
-    currentId = message.parentMessageId
-  }
-  const lineage = reverse.reverse()
-  return lineage.length === messages.length && lineage.every((message, index) => message.id === messages[index]?.id)
 }
 
 function reduceEvent(
@@ -745,12 +811,22 @@ function reduceEvent(
         launch.launch_id,
         launch.version,
         launch,
+        launchBinding(launch),
+        launch.status,
+        launchTransitionAllowed,
       )
       if (admission === "conflict") {
         return { ...state, repair: { required: true, reason: "run_launch_version_conflict" } }
       }
       if (admission === "exact_replay") return state
       if (launch.branch_id !== state.activeBranchId) {
+        next = state
+        break
+      }
+      if (state.activeRunProjectionVersion !== null) {
+        if (state.activeRunId !== launch.proposed_run_id) {
+          return { ...state, repair: { required: true, reason: "run_launch_version_conflict" } }
+        }
         next = state
         break
       }
@@ -775,6 +851,9 @@ function reduceEvent(
         run.run_id,
         run.projection_version,
         run,
+        runBinding(run),
+        run.execution_status,
+        runTransitionAllowed,
       )
       if (admission === "conflict") {
         return { ...state, repair: { required: true, reason: "run_projection_version_conflict" } }
@@ -785,6 +864,13 @@ function reduceEvent(
         break
       }
       const active = ACTIVE_RUN_STATUSES.has(run.execution_status)
+      if (
+        active &&
+        state.activeRunId !== null &&
+        state.activeRunId !== run.run_id
+      ) {
+        return { ...state, repair: { required: true, reason: "run_projection_version_conflict" } }
+      }
       const messages = state.messages.map((message) =>
         message.runId === run.run_id && !active
           ? { ...message, status: run.execution_status === "completed" ? "complete" as const : "incomplete" as const }
@@ -879,10 +965,7 @@ function reduceEvent(
         break
       }
       if (event.payload.session.active_branch_id === state.activeBranchId) {
-        if (
-          updated.activeLeafMessageId !== session.activeLeafMessageId &&
-          !projectionProvesActiveLineage(state.messages, state.activeBranchId, updated.activeLeafMessageId)
-        ) {
+        if (updated.activeLeafMessageId !== session.activeLeafMessageId) {
           return { ...state, repair: { required: true, reason: "active_leaf_changed_refetch_snapshot" } }
         }
         next = { ...state, session: updated }

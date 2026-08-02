@@ -108,6 +108,26 @@ describe("contract-bound Session v3 client", () => {
     expect(calls).toEqual(["/v1/sessions/session-12345678/snapshot"]);
   });
 
+  it("forwards caller cancellation to snapshot fetch and hydration", async () => {
+    const requests: Parameters<SessionTransport["request"]>[0][] = [];
+    const transport: SessionTransport = {
+      request: async (request) => {
+        requests.push(request);
+        return jsonResponse(200, snapshot());
+      },
+      stream: async () => ({ status: 500, headers: new Headers(), body: null }),
+    };
+    const client = createSessionClient({ transport });
+    const fetchController = new AbortController();
+    const hydrateController = new AbortController();
+
+    await client.fetchSnapshot("session-12345678", { signal: fetchController.signal });
+    await client.hydrate("session-12345678", { signal: hydrateController.signal });
+
+    expect(requests[0]?.signal).toBe(fetchController.signal);
+    expect(requests[1]?.signal).toBe(hydrateController.signal);
+  });
+
   it("uses only opaque Last-Event-ID and validates event/id/cursor equality", async () => {
     const seen: Array<{ path: string; headers?: Readonly<Record<string, string>> }> = [];
     const event = {

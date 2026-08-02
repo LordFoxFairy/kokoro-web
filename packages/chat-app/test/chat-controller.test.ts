@@ -63,6 +63,9 @@ function withAssistantText(base: SessionSnapshot, text: string): SessionSnapshot
   return {
     ...base,
     session: { ...base.session, active_leaf_message_id: messageId },
+    branches: base.branches.map((branch) => branch.branch_id === base.session.active_branch_id
+      ? { ...branch, root_message_id: messageId, leaf_message_id: messageId }
+      : branch),
     messages: [{
       message_id: messageId,
       branch_id: base.session.active_branch_id,
@@ -263,7 +266,7 @@ describe("Chat recovery controller", () => {
       last_durable_cursor: "signed.cursor.1",
       projection_version: 1,
     }
-    const invalid: SessionSnapshot = { ...valid, branches: [], runs: [run] }
+    const invalid: SessionSnapshot = { ...withAssistantText(valid, "must not render"), branches: [], runs: [run] }
     let resolveSnapshot: ((value: SessionSnapshot) => void) | undefined
     const fetchSnapshot = vi.fn<SessionClient["fetchSnapshot"]>(() => new Promise((resolve) => {
       resolveSnapshot = (value) => resolve(value)
@@ -315,9 +318,13 @@ describe("Chat recovery controller", () => {
       phase: "loading",
       failure: { code: "SNAPSHOT_REQUIRED", action: "refetch_snapshot" },
       projection: {
+        session: null,
+        messages: [],
         connection: { kind: "reconnecting" },
         repair: { required: true, reason: "snapshot_active_branch_missing" },
       },
+      selectedModelOptionRevisionRef: null,
+      selectedEffort: null,
     })
     expect(streams).toHaveLength(0)
 
@@ -357,10 +364,10 @@ describe("Chat recovery controller", () => {
     await controller.cancel()
     await controller.decideAction({
       runId: run.run_id,
-      part: approval,
+      partId: approval.id,
       decision: { kind: "approve", payload: { acknowledged_risk: true } },
     })
-    await controller.decidePlan({ runId: run.run_id, part: plan, decision: { kind: "accept", payload: {} } })
+    await controller.decidePlan({ runId: run.run_id, partId: plan.id, decision: { kind: "accept", payload: {} } })
     expect(submitMessage).not.toHaveBeenCalled()
     expect(editMessage).not.toHaveBeenCalled()
     expect(regenerateMessage).not.toHaveBeenCalled()
@@ -383,6 +390,286 @@ describe("Chat recovery controller", () => {
       projection: { repair: { required: false } },
     })
     controller.close()
+  })
+
+  it("requires live idle authority and synchronously owns one browser command slot", async () => {
+    const initial = snapshot("branch-original-12345678", "signed.cursor.1", "1")
+    const submitMessage = vi.fn<SessionClient["submitMessage"]>(async () => {
+      throw new TypeError("response lost")
+    })
+    const getCommandReceipt = vi.fn<SessionClient["getCommandReceipt"]>(async () => {
+      throw new TypeError("receipt unavailable")
+    })
+    const { client, streams } = clientFixture({
+      initial,
+      fetchSnapshot: vi.fn(async () => initial),
+      submitMessage,
+      getCommandReceipt,
+    })
+    const controller = createChatController({
+      client,
+      trustedLocale: "en-US",
+      chatCatalog: {
+        surfaceId: "chat",
+        catalogRevisionRef: "catalog-12345678",
+        defaultModelOptionRevisionRef: "model-option-12345678",
+        publishedAt: NOW,
+        options: [{
+          modelOptionRevisionRef: "model-option-12345678",
+          optionKey: "standard",
+          label: "Standard",
+          inputModalities: ["text"],
+          outputModalities: ["text"],
+          supportedEfforts: [],
+          badges: [],
+          availability: "available",
+        }],
+      },
+      defaultProjectRef: initial.session.project_ref,
+    })
+
+    await controller.open(initial.session.session_id)
+    streams[0]?.onConnection({ kind: "reconnecting" })
+    await expect(controller.submit("offline mutation")).resolves.toBe(false)
+    expect(submitMessage).not.toHaveBeenCalled()
+
+    streams[0]?.onConnection({ kind: "live" })
+    const first = controller.submit("first")
+    const second = controller.submit("second")
+    await expect(Promise.all([first, second])).resolves.toEqual([false, false])
+    expect(submitMessage).toHaveBeenCalledOnce()
+    controller.close()
+  })
+
+  it("single-flights concurrent creation and makes close permanently terminal", async () => {
+    const initial = snapshot("branch-original-12345678", "signed.cursor.1", "1")
+    const hydrate = vi.fn<SessionClient["hydrate"]>(async () => ({
+      kind: "ready",
+      snapshot: initial,
+      watermark: initial.snapshot_watermark,
+      cursor: initial.snapshot_watermark.cursor as SessionCursor,
+    }))
+    const createSession = vi.fn<SessionClient["createSession"]>(async (body) =>
+      appliedSessionCreation(body.command, "standard"))
+    const submitMessage = vi.fn<SessionClient["submitMessage"]>()
+    const { client } = clientFixture({
+      initial,
+      hydrate,
+      fetchSnapshot: vi.fn(async () => initial),
+      createSession,
+      submitMessage,
+    })
+    const controller = createChatController({
+      client,
+      trustedLocale: "en-US",
+      chatCatalog: null,
+      defaultProjectRef: initial.session.project_ref,
+    })
+
+    const first = controller.create("standard")
+    const second = controller.create("standard")
+    await Promise.all([first, second])
+    expect(createSession).toHaveBeenCalledOnce()
+
+    controller.close()
+    await expect(controller.submit("after close")).resolves.toBe(false)
+    await expect(controller.create("standard")).resolves.toBeNull()
+    await controller.open(initial.session.session_id)
+    expect(createSession).toHaveBeenCalledOnce()
+    expect(submitMessage).not.toHaveBeenCalled()
+    expect(hydrate).toHaveBeenCalledOnce()
+  })
+
+  it("marks repair immediately, aborts the request on close, and fully resets a missing owner", async () => {
+    const initial = withAssistantText(
+      snapshot("branch-original-12345678", "signed.cursor.1", "1"),
+      "sensitive projection",
+    )
+    let resolveRepair: ((value: SessionSnapshot | null) => void) | undefined
+    let repairSignal: AbortSignal | undefined
+    const fetchSnapshot = vi.fn<SessionClient["fetchSnapshot"]>((_sessionId, requestOptions) => {
+      repairSignal = requestOptions?.signal
+      return new Promise((resolve) => {
+        resolveRepair = resolve
+      })
+    })
+    const { client, streams } = clientFixture({ initial, fetchSnapshot })
+    const controller = createChatController({
+      client,
+      trustedLocale: "en-US",
+      chatCatalog: null,
+      defaultProjectRef: initial.session.project_ref,
+    })
+
+    await controller.open(initial.session.session_id)
+    streams[0]?.onConnection({ kind: "repair_required", recovery: { kind: "rehydrate", reason: "cursor_expired" } })
+    expect(controller.getSnapshot().projection).toMatchObject({
+      connection: { kind: "reconnecting" },
+      repair: { required: true, reason: "snapshot_repair_in_progress" },
+    })
+    expect(repairSignal).toBeInstanceOf(AbortSignal)
+    controller.close()
+    expect(repairSignal?.aborted).toBe(true)
+
+    const missingFetch = vi.fn<SessionClient["fetchSnapshot"]>(async () => null)
+    const secondFixture = clientFixture({ initial, fetchSnapshot: missingFetch })
+    const missing = createChatController({
+      client: secondFixture.client,
+      trustedLocale: "en-US",
+      chatCatalog: null,
+      defaultProjectRef: initial.session.project_ref,
+    })
+    await missing.open(initial.session.session_id)
+    secondFixture.streams[0]?.onConnection({ kind: "repair_required", recovery: { kind: "rehydrate", reason: "cursor_expired" } })
+    await vi.waitFor(() => expect(missing.getSnapshot().phase).toBe("not_found"))
+    expect(missing.getSnapshot()).toMatchObject({
+      sessionId: null,
+      projection: { session: null, messages: [], branches: [] },
+      selectedModelOptionRevisionRef: null,
+      selectedEffort: null,
+      appliedDraft: null,
+    })
+    resolveRepair?.(null)
+    missing.close()
+  })
+
+  it("aborts superseded hydration when a different Session is opened", async () => {
+    const initial = snapshot("branch-original-12345678", "signed.cursor.1", "1")
+    let firstSignal: AbortSignal | undefined
+    const hydrate = vi.fn<SessionClient["hydrate"]>((sessionId, requestOptions) => {
+      if (sessionId === initial.session.session_id) {
+        return Promise.resolve({
+          kind: "ready",
+          snapshot: initial,
+          watermark: initial.snapshot_watermark,
+          cursor: initial.snapshot_watermark.cursor as SessionCursor,
+        })
+      }
+      firstSignal = requestOptions?.signal
+      return new Promise((resolve) => {
+        requestOptions?.signal?.addEventListener("abort", () => resolve({ kind: "not_found" }), { once: true })
+      })
+    })
+    const { client } = clientFixture({ initial, hydrate, fetchSnapshot: vi.fn(async () => initial) })
+    const controller = createChatController({
+      client,
+      trustedLocale: "en-US",
+      chatCatalog: null,
+      defaultProjectRef: initial.session.project_ref,
+    })
+
+    const superseded = controller.open("session-superseded-12345678")
+    await vi.waitFor(() => expect(firstSignal).toBeInstanceOf(AbortSignal))
+    await controller.open(initial.session.session_id)
+    await superseded
+
+    expect(firstSignal?.aborted).toBe(true)
+    expect(controller.getSnapshot()).toMatchObject({
+      phase: "ready",
+      sessionId: initial.session.session_id,
+      projection: { session: { id: initial.session.session_id } },
+    })
+    controller.close()
+  })
+
+  it("re-resolves HITL identities and rejects terminal parts instead of trusting caller envelopes", async () => {
+    const base = snapshot("branch-original-12345678", "signed.cursor.1", "1")
+    const messageId = "message-assistant-12345678"
+    const runId = "run-12345678"
+    const initial: SessionSnapshot = {
+      ...base,
+      session: { ...base.session, active_leaf_message_id: messageId },
+      branches: [{ ...base.branches[0]!, root_message_id: messageId, leaf_message_id: messageId }],
+      messages: [{
+        message_id: messageId,
+        branch_id: base.session.active_branch_id,
+        role: "assistant",
+        ordinal: 0,
+        run_id: runId,
+        lifecycle: "streaming",
+        parts: [{
+          part_id: "approval-part-12345678",
+          message_id: messageId,
+          ordinal: 0,
+          version: 2,
+          schema_version: 1,
+          lifecycle: "completed",
+          kind: "approval",
+          payload: {
+            owner_ref: "approval-owner-12345678",
+            expected_version: 2,
+            decision_group_ref: "decision-group-12345678",
+            required_owner_refs: ["approval-owner-12345678"],
+            title: "Already applied",
+            description: "This decision is terminal",
+            allowed_actions: ["approve", "reject"],
+            status: "applied",
+          },
+        }, {
+          part_id: "plan-part-12345678",
+          message_id: messageId,
+          ordinal: 1,
+          version: 2,
+          schema_version: 1,
+          lifecycle: "completed",
+          kind: "plan",
+          payload: {
+            plan_proposal_ref: "plan-proposal-12345678",
+            plan_version: 2,
+            summary: "Already accepted",
+            steps: [],
+            allowed_actions: ["accept", "reject"],
+            status: "accepted",
+          },
+        }],
+        attachments: [],
+        created_at: NOW,
+      }],
+      runs: [{
+        run_id: runId,
+        launch_id: "launch-12345678",
+        branch_id: base.session.active_branch_id,
+        assistant_message_id: messageId,
+        execution_status: "paused",
+        cost_status: "committed",
+        last_durable_cursor: base.snapshot_watermark.cursor,
+        projection_version: 2,
+      }],
+    }
+
+    for (const kind of ["action", "plan"] as const) {
+      const decideAction = vi.fn<SessionClient["decideAction"]>()
+      const decidePlan = vi.fn<SessionClient["decidePlan"]>()
+      const { client } = clientFixture({
+        initial,
+        fetchSnapshot: vi.fn(async () => initial),
+        decideAction,
+        decidePlan,
+      })
+      const controller = createChatController({
+        client,
+        trustedLocale: "en-US",
+        chatCatalog: null,
+        defaultProjectRef: initial.session.project_ref,
+      })
+      await controller.open(initial.session.session_id)
+      if (kind === "action") {
+        await controller.decideAction({
+          runId,
+          partId: "approval-part-12345678",
+          decision: { kind: "approve", payload: { acknowledged_risk: true } },
+        })
+      } else {
+        await controller.decidePlan({
+          runId,
+          partId: "plan-part-12345678",
+          decision: { kind: "accept", payload: {} },
+        })
+      }
+      expect(decideAction).not.toHaveBeenCalled()
+      expect(decidePlan).not.toHaveBeenCalled()
+      controller.close()
+    }
   })
 
   it("exposes one projection authority for live session and branch metadata", async () => {
@@ -471,6 +758,7 @@ describe("Chat recovery controller", () => {
     const initial: SessionSnapshot = {
       ...base,
       session: { ...base.session, active_leaf_message_id: message.message_id },
+      branches: [{ ...base.branches[0]!, root_message_id: message.message_id, leaf_message_id: message.message_id }],
       messages: [message],
     }
     const refreshed: SessionSnapshot = {
@@ -1037,6 +1325,7 @@ describe("Chat recovery controller", () => {
     const initial: SessionSnapshot = {
       ...base,
       session: { ...base.session, active_leaf_message_id: message.message_id },
+      branches: [{ ...base.branches[0]!, root_message_id: message.message_id, leaf_message_id: message.message_id }],
       messages: [message],
     }
     const repaired: SessionSnapshot = {

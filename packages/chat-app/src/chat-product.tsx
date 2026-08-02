@@ -281,7 +281,7 @@ function ActionPartCard(props: {
   })
 
   const decide = (decision: Parameters<ChatController["decideAction"]>[0]["decision"]): void => {
-    if (props.runId !== null) void props.controller.decideAction({ runId: props.runId, part: props.part, decision })
+    if (props.runId !== null) void props.controller.decideAction({ runId: props.runId, partId: props.part.id, decision })
   }
   const respond = (): void => {
     if (props.part.inputSchemaRef === undefined || schema === null) return
@@ -343,7 +343,7 @@ function PlanPartCard(props: {
   readonly copy: ChatProductCopy
 }) {
   const canDecide = props.runId !== null && props.part.status === "pending" && !props.disabled
-  return <aside className={styles.controlCard}><div className={styles.cardHeading}><span className={styles.controlDot} aria-hidden /><strong>{props.copy.plan}</strong><span>{props.part.status}</span></div><p>{props.part.summary}</p><ol className={styles.planSteps}>{props.part.steps.map((step) => <li data-status={step.status} key={step.stepRef}><span>{step.label}</span><small>{step.status}</small></li>)}</ol><div className={styles.actions}>{props.part.allowedActions.includes("accept") ? <button type="button" disabled={!canDecide} onClick={() => props.runId === null ? undefined : void props.controller.decidePlan({ runId: props.runId, part: props.part, decision: { kind: "accept", payload: {} } })}>{props.copy.approve}</button> : null}{props.part.allowedActions.includes("reject") ? <button type="button" disabled={!canDecide} onClick={() => props.runId === null ? undefined : void props.controller.decidePlan({ runId: props.runId, part: props.part, decision: { kind: "reject", payload: { reason_code: "user_rejected" } } })}>{props.copy.reject}</button> : null}</div></aside>
+  return <aside className={styles.controlCard}><div className={styles.cardHeading}><span className={styles.controlDot} aria-hidden /><strong>{props.copy.plan}</strong><span>{props.part.status}</span></div><p>{props.part.summary}</p><ol className={styles.planSteps}>{props.part.steps.map((step) => <li data-status={step.status} key={step.stepRef}><span>{step.label}</span><small>{step.status}</small></li>)}</ol><div className={styles.actions}>{props.part.allowedActions.includes("accept") ? <button type="button" disabled={!canDecide} onClick={() => props.runId === null ? undefined : void props.controller.decidePlan({ runId: props.runId, partId: props.part.id, decision: { kind: "accept", payload: {} } })}>{props.copy.approve}</button> : null}{props.part.allowedActions.includes("reject") ? <button type="button" disabled={!canDecide} onClick={() => props.runId === null ? undefined : void props.controller.decidePlan({ runId: props.runId, partId: props.part.id, decision: { kind: "reject", payload: { reason_code: "user_rejected" } } })}>{props.copy.reject}</button> : null}</div></aside>
 }
 
 function PlanProgressCard(props: Readonly<{
@@ -586,7 +586,7 @@ const ConversationMessageView = memo(function ConversationMessageView(
 ) {
   return <article className={styles.message} data-role={props.message.role} data-status={props.message.status}>
     <div className={styles.messageMeta}><strong>{props.message.role === "user" ? props.copy.you : props.copy.assistant}</strong><span>{props.message.status}</span></div>
-    {props.message.parts.map((part) => <ChatPartView controller={props.controller} copy={props.copy} disabled={props.commandPending} key={part.id} part={part} runId={props.message.runId} />)}
+    {props.message.parts.map((part) => <ChatPartView controller={props.controller} copy={props.copy} disabled={props.hitlDisabled} key={part.id} part={part} runId={props.message.runId} />)}
     <MessageActions controller={props.controller} copy={props.copy} disabled={props.mutationDisabled} message={props.message} />
   </article>
 }, sameConversationMessageRender)
@@ -751,7 +751,8 @@ export function ChatView(props: {
     event.preventDefault()
     submitDraft()
   }
-  const mutationDisabled = repairing || activeRun || commandPending || !connected
+  const mutationUnavailable = repairing || commandPending || !connected
+  const mutationDisabled = mutationUnavailable || activeRun
 
   return <main className={styles.shell}>
     <header className={styles.header}><div><span className={styles.eyebrow}>{props.copy.workspaceLabel}</span><h1>{props.state.projection.session?.title ?? props.brandName}</h1></div><nav className={styles.headerNav} aria-label="Workspace"><a href="/account">{props.copy.account}</a></nav></header>
@@ -765,10 +766,10 @@ export function ChatView(props: {
       key={`${props.sessionId}:${props.state.projection.activeBranchId ?? "no-branch"}:${props.state.projection.snapshotRevision ?? "no-snapshot"}`}
       messages={props.state.projection.messages}
       phase={props.state.phase}
-      renderMessage={(message) => <ConversationMessageView commandPending={commandPending} controller={props.controller} copy={props.copy} key={message.id} message={message} mutationDisabled={mutationDisabled} />}
+      renderMessage={(message) => <ConversationMessageView hitlDisabled={mutationUnavailable} controller={props.controller} copy={props.copy} key={message.id} message={message} mutationDisabled={mutationDisabled} />}
     />
     {props.state.phase === "ready" ? <form className={styles.composer} onSubmit={submit}>
-      <div className={styles.composerControls}>{props.state.chatCatalog ? <ModelOptionSelector catalog={props.state.chatCatalog} copy={props.copy} disabled={repairing || commandPending} onChange={(value) => {
+      <div className={styles.composerControls}>{props.state.chatCatalog ? <ModelOptionSelector catalog={props.state.chatCatalog} copy={props.copy} disabled={mutationUnavailable} onChange={(value) => {
         props.controller.selectModelOption(value)
         const selected = props.state.chatCatalog?.options.find((option) => option.modelOptionRevisionRef === value)
         const effort = selected === undefined || selected.supportedEfforts.length === 0
@@ -779,7 +780,7 @@ export function ChatView(props: {
               ? "medium"
               : selected.supportedEfforts[0] ?? null
         reviseComposer({ modelOptionRevisionRef: value, effort })
-      }} value={props.state.selectedModelOptionRevisionRef} /> : null}{currentOption && currentOption.supportedEfforts.length > 0 ? <label className={styles.compactSelector}><span>{props.copy.effort}</span><select disabled={repairing || commandPending} onChange={(event) => {
+      }} value={props.state.selectedModelOptionRevisionRef} /> : null}{currentOption && currentOption.supportedEfforts.length > 0 ? <label className={styles.compactSelector}><span>{props.copy.effort}</span><select disabled={mutationUnavailable} onChange={(event) => {
         props.controller.selectEffort(event.target.value)
         reviseComposer({ effort: event.target.value })
       }} value={props.state.selectedEffort ?? ""}>{currentOption.supportedEfforts.map((effort) => <option key={effort} value={effort}>{effort}</option>)}</select></label> : null}</div>

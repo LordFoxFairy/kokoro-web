@@ -173,6 +173,31 @@ describe("Chat Markdown rendering", () => {
         createdAt: "2026-07-29T00:00:00.000Z",
       }],
       activeBranchId: "branch-12345678",
+      activeRunId: "run-12345678",
+      activeRunProjectionVersion: 1,
+      activeRunState: "paused",
+      messages: [{
+        id: "message-assistant-12345678",
+        branchId: "branch-12345678",
+        role: "assistant",
+        ordinal: 0,
+        runId: "run-12345678",
+        status: "awaiting",
+        parts: [{
+          id: "plan-part-12345678",
+          ordinal: 0,
+          version: 1,
+          lifecycle: "streaming",
+          kind: "plan",
+          planProposalRef: "plan-proposal-12345678",
+          planVersion: 1,
+          summary: "Confirm the plan",
+          steps: [],
+          allowedActions: ["accept", "reject"],
+          status: "pending",
+        }],
+        attachments: [],
+      }],
       connection: { kind: "live" },
       repair: { required: true, reason: "cursor_expired" },
     }
@@ -239,5 +264,6 @@ describe("Chat Markdown rendering", () => {
     expect(html).toMatch(/<textarea[^>]*disabled=""/u)
     expect(html).toMatch(/<select[^>]*aria-label="Switch branch"[^>]*disabled=""/u)
     expect(html).toMatch(/<select[^>]*aria-label="Model"[^>]*disabled=""/u)
+    expect(html).toMatch(/Confirm the plan[\s\S]*?<button type="button" disabled="">Approve<\/button>/u)
   })
 })

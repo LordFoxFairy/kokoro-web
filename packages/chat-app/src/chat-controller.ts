@@ -191,12 +191,12 @@ export type ChatController = Readonly<{
   selectEffort(effort: string | null): void
   decideAction(input: Readonly<{
     runId: string
-    part: Extract<ChatPart, { kind: "approval" | "interaction" }>
+    partId: string
     decision: ActionDecision
   }>): Promise<void>
   decidePlan(input: Readonly<{
     runId: string
-    part: Extract<ChatPart, { kind: "plan" }>
+    partId: string
     decision: PlanDecision
   }>): Promise<void>
   close(): void
@@ -228,6 +228,9 @@ export function createChatController(options: {
   })
   let generation = 0
   let selectionSessionId: string | null = null
+  let disposed = false
+  let commandClaim: symbol | null = null
+  let snapshotRequest: AbortController | null = null
   const listeners = new Set<() => void>()
 
   const publish = (next: ChatState): void => {
@@ -249,6 +252,9 @@ export function createChatController(options: {
   const failClosedForOwnerContract = (): void => {
     generation += 1
     repairTask = null
+    selectionSessionId = null
+    snapshotRequest?.abort()
+    snapshotRequest = null
     const activeStream = stream
     stream = null
     activeStream?.close()
@@ -258,6 +264,9 @@ export function createChatController(options: {
       phase: "not_found",
       sessionId: null,
       projection: projectionStore.getSnapshot(),
+      selectedModelOptionRevisionRef: null,
+      selectedEffort: null,
+      appliedDraft: null,
       failure: describeSessionFailure({
         stableCode: "CLIENT_CONTRACT_UPGRADE_REQUIRED",
         action: "upgrade_client",
@@ -278,28 +287,56 @@ export function createChatController(options: {
     return true
   }
 
+  const resetMissingOwner = (): void => {
+    selectionSessionId = null
+    projectionStore.reset()
+    publish({
+      ...state,
+      phase: "not_found",
+      sessionId: null,
+      projection: projectionStore.getSnapshot(),
+      failure: null,
+      selectedModelOptionRevisionRef: null,
+      selectedEffort: null,
+      appliedDraft: null,
+    })
+  }
+
   const repairFromSnapshot = (expectedGeneration: number): Promise<boolean> => {
+    if (disposed || expectedGeneration !== generation) return Promise.resolve(false)
     if (repairTask?.generation === expectedGeneration) return repairTask.task
     const sessionId = state.sessionId
     if (sessionId === null) return Promise.resolve(false)
 
+    const activeStream = stream
+    stream = null
+    activeStream?.close()
+    snapshotRequest?.abort()
+    const request = new AbortController()
+    snapshotRequest = request
+    publish({ ...state, failure: null })
+    project({
+      type: "repair",
+      reason: state.projection.repair.required
+        ? state.projection.repair.reason ?? "snapshot_repair_in_progress"
+        : "snapshot_repair_in_progress",
+    })
+    project({ type: "connection", connection: { kind: "reconnecting" } })
+
     const task = (async (): Promise<boolean> => {
-      const activeStream = stream
-      stream = null
-      activeStream?.close()
-      publish({ ...state, failure: null })
-      project({ type: "connection", connection: { kind: "reconnecting" } })
       try {
-        const snapshot = await options.client.fetchSnapshot(sessionId)
-        if (expectedGeneration !== generation) return false
+        const snapshot = await options.client.fetchSnapshot(sessionId, { signal: request.signal })
+        if (disposed || expectedGeneration !== generation) return false
         if (snapshot === null) {
-          publish({ ...state, phase: "not_found", failure: null })
+          resetMissingOwner()
           return false
         }
         return attach(sessionId, snapshot, expectedGeneration)
       } catch (error) {
-        if (expectedGeneration === generation) fail(failureFromError(error))
+        if (!disposed && expectedGeneration === generation && !request.signal.aborted) fail(failureFromError(error))
         return false
+      } finally {
+        if (snapshotRequest === request) snapshotRequest = null
       }
     })()
     const tracked = Object.freeze({ generation: expectedGeneration, task })
@@ -311,10 +348,39 @@ export function createChatController(options: {
   }
 
   const attach = (sessionId: string, snapshot: SessionSnapshot, currentGeneration: number): boolean => {
-    if (!observeOwnerPolicy(sessionId, snapshot.session.session_id, snapshot.session.context_policy)) return false
+    if (disposed || currentGeneration !== generation) return false
+    if (snapshot.session.session_id !== sessionId) {
+      failClosedForOwnerContract()
+      return false
+    }
     const previousStream = stream
     stream = null
     previousStream?.close()
+    projectionStore.hydrate(snapshot)
+    const hydrated = projectionStore.getSnapshot()
+    if (hydrated.repair.required) {
+      const reason = hydrated.repair.reason ?? "snapshot_projection_invalid"
+      selectionSessionId = null
+      projectionStore.reset()
+      projectionStore.dispatch({ type: "repair", reason })
+      projectionStore.dispatch({ type: "connection", connection: { kind: "reconnecting" } })
+      publish({
+        ...state,
+        phase: "loading",
+        sessionId,
+        selectedModelOptionRevisionRef: null,
+        selectedEffort: null,
+        appliedDraft: null,
+        projection: projectionStore.getSnapshot(),
+        failure: describeSessionFailure({
+          stableCode: "SNAPSHOT_REQUIRED",
+          action: "refetch_snapshot",
+          retryClass: "after_user_action",
+        }),
+      })
+      return false
+    }
+    if (!observeOwnerPolicy(sessionId, snapshot.session.session_id, snapshot.session.context_policy)) return false
     const availableOptions = new Set(
       options.chatCatalog?.options
         .filter(({ availability }) => availability === "available")
@@ -347,24 +413,6 @@ export function createChatController(options: {
             ? "medium"
             : selectedOption.supportedEfforts[0] ?? null
     selectionSessionId = sessionId
-    projectionStore.hydrate(snapshot)
-    if (projectionStore.getSnapshot().repair.required) {
-      projectionStore.dispatch({ type: "connection", connection: { kind: "reconnecting" } })
-      publish({
-        ...state,
-        phase: "loading",
-        sessionId,
-        selectedModelOptionRevisionRef,
-        selectedEffort,
-        projection: projectionStore.getSnapshot(),
-        failure: describeSessionFailure({
-          stableCode: "SNAPSHOT_REQUIRED",
-          action: "refetch_snapshot",
-          retryClass: "after_user_action",
-        }),
-      })
-      return false
-    }
     publish({
       ...state,
       phase: "ready",
@@ -376,7 +424,7 @@ export function createChatController(options: {
     })
     let nextStream: EventStreamHandle | null = null
     const isCurrentStream = (): boolean =>
-      currentGeneration === generation && (nextStream === null ? stream === null : stream === nextStream)
+      !disposed && currentGeneration === generation && (nextStream === null ? stream === null : stream === nextStream)
     nextStream = options.client.openEvents({
       sessionId,
       watermark: snapshot.snapshot_watermark,
@@ -419,6 +467,7 @@ export function createChatController(options: {
   }
 
   const open = async (sessionId: string): Promise<void> => {
+    if (disposed) return
     const normalized = sessionId.trim()
     if (normalized.length === 0 || normalized.length > 128) {
       fail(describeSessionFailure({ stableCode: "REQUEST_INVALID", action: "developer_error", retryClass: "never" }))
@@ -428,6 +477,10 @@ export function createChatController(options: {
     const currentGeneration = generation
     stream?.close()
     stream = null
+    snapshotRequest?.abort()
+    const request = new AbortController()
+    snapshotRequest = request
+    selectionSessionId = null
     projectionStore.reset()
     projectionStore.dispatch({
       type: "connection",
@@ -438,11 +491,14 @@ export function createChatController(options: {
       phase: "loading",
       sessionId: normalized,
       failure: null,
+      selectedModelOptionRevisionRef: null,
+      selectedEffort: null,
+      appliedDraft: null,
       projection: projectionStore.getSnapshot(),
     })
     try {
-      const hydration = await options.client.hydrate(normalized)
-      if (currentGeneration !== generation) return
+      const hydration = await options.client.hydrate(normalized, { signal: request.signal })
+      if (disposed || currentGeneration !== generation) return
       if (hydration.kind === "not_found") {
         publish({ ...state, phase: "not_found", failure: null })
         return
@@ -465,15 +521,26 @@ export function createChatController(options: {
       }
       attach(normalized, hydration.snapshot, currentGeneration)
     } catch (error) {
-      if (currentGeneration === generation) fail(failureFromError(error))
+      if (!disposed && currentGeneration === generation && !request.signal.aborted) fail(failureFromError(error))
+    } finally {
+      if (snapshotRequest === request) snapshotRequest = null
     }
   }
 
   const refresh = async (sessionId: string, expectedGeneration: number): Promise<boolean> => {
-    if (state.sessionId !== sessionId || generation !== expectedGeneration) return false
-    const snapshot = await options.client.fetchSnapshot(sessionId)
+    if (disposed || state.sessionId !== sessionId || generation !== expectedGeneration) return false
+    snapshotRequest?.abort()
+    const request = new AbortController()
+    snapshotRequest = request
+    let snapshot: SessionSnapshot | null
+    try {
+      snapshot = await options.client.fetchSnapshot(sessionId, { signal: request.signal })
+    } finally {
+      if (snapshotRequest === request) snapshotRequest = null
+    }
     if (
       snapshot === null ||
+      disposed ||
       generation !== expectedGeneration ||
       state.sessionId !== sessionId
     ) return false
@@ -539,34 +606,51 @@ export function createChatController(options: {
     clientDraftRevision?: string,
     contextPolicy: SessionContextPolicy | null = state.projection.session?.contextPolicy ?? null,
   ): Promise<SessionCommandResponse | null> => {
+    if (disposed || commandClaim !== null || state.projection.command.state !== "idle") return null
+    const claim = Symbol(operation)
+    commandClaim = claim
+    project({ type: "command", state: "pending" })
     const commandGeneration = generation
     const failIfCurrent = (failure: ChatFailure): void => {
       if (commandGeneration === generation) fail(failure)
     }
-    if (contextCoordinator.getPendingCommand() !== null) {
-      failIfCurrent(describeSessionFailure({
-        stableCode: "RUN_OUTCOME_UNKNOWN",
-        action: "reconcile_receipt",
-        retryClass: "reconcile_receipt",
-      }))
-      return null
-    }
-    const command = await commandIdentity({ operation, targets, effect })
-    if (commandGeneration !== generation) return null
-    rememberCommand(operation, targets, command, clientDraftRevision, contextPolicy)
-    let response: SessionCommandResponse
     try {
-      response = await sender(command)
-    } catch {
-      // An ambiguous transport failure is reconciled with the same command identity. It is
-      // never retried as a new mutation because the first effect may already be committed.
+      if (contextCoordinator.getPendingCommand() !== null) {
+        failIfCurrent(describeSessionFailure({
+          stableCode: "RUN_OUTCOME_UNKNOWN",
+          action: "reconcile_receipt",
+          retryClass: "reconcile_receipt",
+        }))
+        return null
+      }
+      const command = await commandIdentity({ operation, targets, effect })
+      if (disposed || commandGeneration !== generation) return null
+      rememberCommand(operation, targets, command, clientDraftRevision, contextPolicy)
+      let response: SessionCommandResponse
       try {
-        response = await options.client.getCommandReceipt(command.command_id, {
-          operation,
-          idempotency_key: command.idempotency_key,
-          digest_algorithm: command.digest_algorithm,
-          request_digest: command.request_digest,
-        })
+        response = await sender(command)
+      } catch {
+        // An ambiguous transport failure is reconciled with the same command identity. It is
+        // never retried as a new mutation because the first effect may already be committed.
+        try {
+          response = await options.client.getCommandReceipt(command.command_id, {
+            operation,
+            idempotency_key: command.idempotency_key,
+            digest_algorithm: command.digest_algorithm,
+            request_digest: command.request_digest,
+          })
+        } catch {
+          failIfCurrent(describeSessionFailure({
+            stableCode: pendingCode,
+            action: "reconcile_receipt",
+            retryClass: "reconcile_receipt",
+          }))
+          return null
+        }
+      }
+      let reconciled: SessionCommandResponse
+      try {
+        reconciled = await reconcileReceipt(response, command, operation)
       } catch {
         failIfCurrent(describeSessionFailure({
           stableCode: pendingCode,
@@ -575,93 +659,91 @@ export function createChatController(options: {
         }))
         return null
       }
+      const failure = pendingFailure(reconciled, pendingCode)
+      if (failure !== null) {
+        if (reconciled.command_receipt.status === "denied") forgetCommand(command.command_id)
+        failIfCurrent(failure)
+        return null
+      }
+      forgetCommand(command.command_id)
+      return reconciled
+    } finally {
+      if (commandClaim === claim) commandClaim = null
     }
-    let reconciled: SessionCommandResponse
-    try {
-      reconciled = await reconcileReceipt(response, command, operation)
-    } catch {
-      failIfCurrent(describeSessionFailure({
-        stableCode: pendingCode,
-        action: "reconcile_receipt",
-        retryClass: "reconcile_receipt",
-      }))
-      return null
-    }
-    const failure = pendingFailure(reconciled, pendingCode)
-    if (failure !== null) {
-      if (reconciled.command_receipt.status === "denied") forgetCommand(command.command_id)
-      failIfCurrent(failure)
-      return null
-    }
-    forgetCommand(command.command_id)
-    return reconciled
   }
 
   const resumePendingCommand = async (): Promise<boolean> => {
+    if (disposed || commandClaim !== null) return false
     const pending = contextCoordinator.getPendingCommand()
     if (pending === null) return false
+    const claim = Symbol("resume_pending_command")
+    commandClaim = claim
     project({ type: "command", state: "pending" })
-    let response: SessionCommandResponse
     try {
-      response = await options.client.getCommandReceipt(pending.command.command_id, {
-        operation: pending.operation,
-        idempotency_key: pending.command.idempotency_key,
-        digest_algorithm: pending.command.digest_algorithm,
-        request_digest: pending.command.request_digest,
-      })
-      response = await reconcileReceipt(response, pending.command, pending.operation)
-    } catch {
-      fail(describeSessionFailure({
-        stableCode: "RUN_OUTCOME_UNKNOWN",
-        action: "reconcile_receipt",
-        retryClass: "reconcile_receipt",
-      }))
-      return false
-    }
-    const failure = pendingFailure(response, "RUN_OUTCOME_UNKNOWN")
-    if (failure !== null) {
-      if (response.command_receipt.status === "denied") forgetCommand(pending.command.command_id)
-      fail(failure)
-      return false
-    }
-    if (response.command_receipt.status !== "accepted" && response.command_receipt.status !== "applied") {
-      fail(describeSessionFailure({
-        stableCode: "RUN_OUTCOME_UNKNOWN",
-        action: "reconcile_receipt",
-        retryClass: "reconcile_receipt",
-      }))
-      return false
-    }
-    forgetCommand(pending.command.command_id)
-    const effect = response.command_receipt.payload
-    const appliedDraftRevision = pending.operation === "submit_message"
-      ? pending.clientDraftRevision ?? null
-      : null
-    if (effect.kind === "session-created") {
-      await open(effect.payload.session_id)
-      return state.phase === "ready" && state.sessionId === effect.payload.session_id
-    }
-    const sessionId = pending.sessionId ?? state.sessionId
-    if (sessionId === null) {
-      project({ type: "command", state: "idle" })
-      return true
-    }
-    if (state.sessionId !== sessionId) {
-      await open(sessionId)
-      const ready = state.phase === "ready" && state.sessionId === sessionId
-      if (ready) {
-        projectionStore.dispatch({ type: "command", state: "idle" })
-        publish({
-          ...state,
-          appliedDraft: appliedDraftRevision === null
-            ? state.appliedDraft
-            : { sessionId, revision: appliedDraftRevision },
-          projection: projectionStore.getSnapshot(),
+      let response: SessionCommandResponse
+      try {
+        response = await options.client.getCommandReceipt(pending.command.command_id, {
+          operation: pending.operation,
+          idempotency_key: pending.command.idempotency_key,
+          digest_algorithm: pending.command.digest_algorithm,
+          request_digest: pending.command.request_digest,
         })
+        response = await reconcileReceipt(response, pending.command, pending.operation)
+      } catch {
+        fail(describeSessionFailure({
+          stableCode: "RUN_OUTCOME_UNKNOWN",
+          action: "reconcile_receipt",
+          retryClass: "reconcile_receipt",
+        }))
+        return false
       }
-      return ready
+      const failure = pendingFailure(response, "RUN_OUTCOME_UNKNOWN")
+      if (failure !== null) {
+        if (response.command_receipt.status === "denied") forgetCommand(pending.command.command_id)
+        fail(failure)
+        return false
+      }
+      if (response.command_receipt.status !== "accepted" && response.command_receipt.status !== "applied") {
+        fail(describeSessionFailure({
+          stableCode: "RUN_OUTCOME_UNKNOWN",
+          action: "reconcile_receipt",
+          retryClass: "reconcile_receipt",
+        }))
+        return false
+      }
+      forgetCommand(pending.command.command_id)
+      const effect = response.command_receipt.payload
+      const appliedDraftRevision = pending.operation === "submit_message"
+        ? pending.clientDraftRevision ?? null
+        : null
+      if (effect.kind === "session-created") {
+        await open(effect.payload.session_id)
+        return state.phase === "ready" && state.sessionId === effect.payload.session_id
+      }
+      const sessionId = pending.sessionId ?? state.sessionId
+      if (sessionId === null) {
+        project({ type: "command", state: "idle" })
+        return true
+      }
+      if (state.sessionId !== sessionId) {
+        await open(sessionId)
+        const ready = state.phase === "ready" && state.sessionId === sessionId
+        if (ready) {
+          projectionStore.dispatch({ type: "command", state: "idle" })
+          publish({
+            ...state,
+            appliedDraft: appliedDraftRevision === null
+              ? state.appliedDraft
+              : { sessionId, revision: appliedDraftRevision },
+            projection: projectionStore.getSnapshot(),
+          })
+        }
+        return ready
+      }
+      return finishMutation(sessionId, generation, appliedDraftRevision)
+    } finally {
+      if (commandClaim === claim) commandClaim = null
     }
-    return finishMutation(sessionId, generation, appliedDraftRevision)
   }
 
   const selectedExecutionInput = (): Readonly<{
@@ -687,8 +769,12 @@ export function createChatController(options: {
     const sessionId = state.sessionId
     const session = state.projection.session
     if (
+      disposed ||
       state.phase !== "ready" ||
       state.projection.repair.required ||
+      state.projection.connection.kind !== "live" ||
+      state.projection.command.state !== "idle" ||
+      commandClaim !== null ||
       sessionId === null ||
       session === null ||
       session.id !== sessionId
@@ -746,6 +832,11 @@ export function createChatController(options: {
   }
 
   const create = async (contextPolicy: SessionContextPolicy): Promise<string | null> => {
+    if (
+      disposed || commandClaim !== null || state.projection.command.state !== "idle" ||
+      state.projection.repair.required || state.phase === "loading" ||
+      state.phase === "ready" && state.projection.connection.kind !== "live"
+    ) return null
     const projectRef = options.defaultProjectRef
     if (projectRef === null) {
       fail(describeSessionFailure({ stableCode: "SESSION_SCOPE_MISMATCH", action: "stop", retryClass: "never" }))
@@ -753,7 +844,6 @@ export function createChatController(options: {
     }
     const createGeneration = generation
     const effect = { project_ref: projectRef, context_policy: contextPolicy }
-    project({ type: "command", state: "pending" })
     try {
       const response = await sendCommand(
         "create_session",
@@ -829,7 +919,6 @@ export function createChatController(options: {
       model_option_revision_ref: execution.modelOptionRevisionRef,
       ...(execution.effort === undefined ? {} : { effort: execution.effort }),
     }
-    project({ type: "command", state: "pending" })
     try {
       const response = await sendCommand("submit_message", { session_id: sessionId }, effect, "LAUNCH_OUTCOME_UNKNOWN", (command) =>
         options.client.submitMessage(sessionId, { command, ...effect }), clientDraftRevision)
@@ -867,7 +956,6 @@ export function createChatController(options: {
       model_option_revision_ref: execution.modelOptionRevisionRef,
       ...(execution.effort === undefined ? {} : { effort: execution.effort }),
     }
-    project({ type: "command", state: "pending" })
     try {
       const response = await sendCommand("edit_message", { session_id: sessionId, message_id: source.id }, effect, "LAUNCH_OUTCOME_UNKNOWN", (command) =>
         options.client.editMessage(sessionId, source.id, { command, ...effect }))
@@ -906,7 +994,6 @@ export function createChatController(options: {
       model_option_revision_ref: execution.modelOptionRevisionRef,
       ...(execution.effort === undefined ? {} : { effort: execution.effort }),
     }
-    project({ type: "command", state: "pending" })
     try {
       const response = await sendCommand("regenerate_message", { session_id: sessionId, message_id: source.id }, effect, "LAUNCH_OUTCOME_UNKNOWN", (command) =>
         options.client.regenerateMessage(sessionId, source.id, { command, ...effect }))
@@ -931,7 +1018,6 @@ export function createChatController(options: {
       expected_session_version: session.version,
       expected_branch_version: branch.version,
     }
-    project({ type: "command", state: "pending" })
     try {
       const response = await sendCommand(operation, { session_id: sessionId, branch_id: branchId }, effect, "INTERNAL_UNAVAILABLE", (command) =>
         operation === "fork_branch"
@@ -961,7 +1047,6 @@ export function createChatController(options: {
     }
     const effect = { expected_run_projection_version: version, reason_code: "user_requested" }
     const commandGeneration = generation
-    project({ type: "command", state: "pending" })
     try {
       const response = await sendCommand("cancel_run", { session_id: sessionId, run_id: runId }, effect, "RUN_CANCELLATION_PENDING", (command) =>
         options.client.cancelRun(sessionId, runId, { command, ...effect }))
@@ -971,17 +1056,23 @@ export function createChatController(options: {
     }
   }
 
-  const decideAction: ChatController["decideAction"] = async ({ runId, part, decision }) => {
+  const decideAction: ChatController["decideAction"] = async ({ runId, partId, decision }) => {
     const authority = mutationAuthority()
     if (authority === null) return
     const { session, sessionId } = authority
     const runVersion = state.projection.activeRunId === runId
       ? state.projection.activeRunProjectionVersion
       : null
+    const part = state.projection.messages
+      .find((message) => message.runId === runId && message.parts.some((candidate) => candidate.id === partId))
+      ?.parts.find((candidate): candidate is Extract<ChatPart, { kind: "approval" | "interaction" }> =>
+        candidate.id === partId && (candidate.kind === "approval" || candidate.kind === "interaction"))
+    const deadline = part?.deadline === undefined ? null : Date.parse(part.deadline)
     if (
       runVersion === null ||
+      part === undefined ||
       part.status !== "pending" || !part.allowedActions.includes(decision.kind) ||
-      part.deadline !== undefined && Date.parse(part.deadline) <= Date.now()
+      deadline !== null && (!Number.isFinite(deadline) || deadline <= Date.now())
     ) {
       fail(describeSessionFailure({ stableCode: "ACTION_NOT_ALLOWED", action: "refetch_snapshot", retryClass: "after_user_action" }))
       return
@@ -996,7 +1087,6 @@ export function createChatController(options: {
       decision,
     }
     const commandGeneration = generation
-    project({ type: "command", state: "pending" })
     try {
       const response = await sendCommand("decide_action", { session_id: sessionId, run_id: runId }, effect, "ACTION_DECISION_PENDING", (command) =>
         options.client.decideAction(sessionId, runId, { command, ...effect }))
@@ -1006,17 +1096,23 @@ export function createChatController(options: {
     }
   }
 
-  const decidePlan: ChatController["decidePlan"] = async ({ runId, part, decision }) => {
+  const decidePlan: ChatController["decidePlan"] = async ({ runId, partId, decision }) => {
     const authority = mutationAuthority()
     if (authority === null) return
     const { session, sessionId } = authority
     const runVersion = state.projection.activeRunId === runId
       ? state.projection.activeRunProjectionVersion
       : null
+    const part = state.projection.messages
+      .find((message) => message.runId === runId && message.parts.some((candidate) => candidate.id === partId))
+      ?.parts.find((candidate): candidate is Extract<ChatPart, { kind: "plan" }> =>
+        candidate.id === partId && candidate.kind === "plan")
+    const deadline = part?.deadline === undefined ? null : Date.parse(part.deadline)
     if (
       runVersion === null ||
+      part === undefined ||
       part.status !== "pending" || !part.allowedActions.includes(decision.kind) ||
-      part.deadline !== undefined && Date.parse(part.deadline) <= Date.now()
+      deadline !== null && (!Number.isFinite(deadline) || deadline <= Date.now())
     ) {
       fail(describeSessionFailure({ stableCode: "PLAN_NOT_FOUND", action: "refetch_snapshot", retryClass: "after_user_action" }))
       return
@@ -1029,7 +1125,6 @@ export function createChatController(options: {
       decision,
     }
     const commandGeneration = generation
-    project({ type: "command", state: "pending" })
     try {
       const response = await sendCommand("decide_plan", { session_id: sessionId, run_id: runId }, effect, "PLAN_DECISION_PENDING", (command) =>
         options.client.decidePlan(sessionId, runId, { command, ...effect }))
@@ -1054,6 +1149,7 @@ export function createChatController(options: {
     activateBranch: (branchId) => branchMutation(branchId, "activate_branch"),
     cancel,
     recover() {
+      if (disposed) return Promise.resolve(false)
       if (repairTask?.generation === generation) return repairTask.task
       if (state.failure?.action === "reconcile_receipt") return resumePendingCommand()
       if (
@@ -1064,6 +1160,7 @@ export function createChatController(options: {
     },
     resumePendingCommand,
     selectModelOption(modelOptionRevisionRef) {
+      if (disposed) return
       const selectable = options.chatCatalog?.options.some(
         (option) => option.modelOptionRevisionRef === modelOptionRevisionRef && option.availability === "available",
       ) === true
@@ -1082,9 +1179,11 @@ export function createChatController(options: {
           : selected.supportedEfforts.includes("medium")
             ? "medium"
             : selected.supportedEfforts[0] ?? null
-      publish({ ...state, selectedModelOptionRevisionRef: modelOptionRevisionRef, selectedEffort, failure: null })
+      projectionStore.dispatch({ type: "command", state: "idle" })
+      publish({ ...state, selectedModelOptionRevisionRef: modelOptionRevisionRef, selectedEffort, failure: null, projection: projectionStore.getSnapshot() })
     },
     selectEffort(effort) {
+      if (disposed) return
       const selected = options.chatCatalog?.options.find(
         (option) => option.modelOptionRevisionRef === state.selectedModelOptionRevisionRef,
       )
@@ -1093,13 +1192,19 @@ export function createChatController(options: {
         return
       }
       selectionSessionId = state.sessionId
-      publish({ ...state, selectedEffort: effort, failure: null })
+      projectionStore.dispatch({ type: "command", state: "idle" })
+      publish({ ...state, selectedEffort: effort, failure: null, projection: projectionStore.getSnapshot() })
     },
     decideAction,
     decidePlan,
     close() {
+      if (disposed) return
+      disposed = true
       generation += 1
       repairTask = null
+      snapshotRequest?.abort()
+      snapshotRequest = null
+      commandClaim = null
       stream?.close()
       stream = null
       project({ type: "connection", connection: { kind: "closed" } })

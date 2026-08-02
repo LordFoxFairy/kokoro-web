@@ -49,9 +49,16 @@ complete snapshot before attaching again. A hydrate that still requires repair n
 submit, edit, regenerate, branch, cancel, approval, and plan commands share one fail-closed projection-authority guard, and their
 UI controls stay disabled until an explicit or automatic fresh-snapshot repair succeeds. A failed repair remains an explicit
 user-retryable state; the UI never displays internal recovery action tokens or treats a browser reconnect as a new Run.
+Mutation authority additionally requires a live stream, an idle projected command, and a non-disposed controller. The controller
+synchronously claims its single browser command slot before command-digest work begins, so double submit/create/HITL gestures cannot
+race through an async preimage calculation. `close()` is terminal: it aborts snapshot work, closes the stream, and no later callback,
+open, create, or mutation can revive that controller. Snapshot repair marks the projection unavailable before its request begins;
+an invalid or missing repair result clears all Session/UI authority instead of publishing stale content.
 Run and launch versions/fingerprints are fenced monotonically inside the projection store; a regression, conflicting replay, or gap
 forces snapshot repair instead of regressing visible terminal state. Cancel and HITL commands read only the active Run version
-published by `ChatProjection`, so the controller cannot retain a parallel execution authority.
+published by `ChatProjection`, so the controller cannot retain a parallel execution authority. HITL callers provide only
+`{runId, partId, decision}`; immediately before dispatch the controller re-resolves the current pending part, allowed actions,
+deadline, owner identity, and owner version from that projection. A previously rendered part object is never command authority.
 
 Before a Chat mutation crosses the BFF, its non-secret receipt lookup identity is bounded and stored in the
 current browser session. An ambiguous response can therefore only query the exact command/digest after a

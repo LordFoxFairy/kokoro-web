@@ -7,7 +7,7 @@ export type ConversationMessageRenderProps = Readonly<{
   message: ChatProjectionMessage
   controller: ChatController
   copy: ChatProductCopy
-  commandPending: boolean
+  hitlDisabled: boolean
   mutationDisabled: boolean
 }>
 
@@ -18,6 +18,6 @@ export function sameConversationMessageRender(
   return previous.message === next.message &&
     previous.controller === next.controller &&
     previous.copy === next.copy &&
-    previous.commandPending === next.commandPending &&
+    previous.hitlDisabled === next.hitlDisabled &&
     previous.mutationDisabled === next.mutationDisabled
 }

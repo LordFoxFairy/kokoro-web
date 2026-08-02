@@ -22,5 +22,8 @@ SSE resume tokens are opaque and travel only in `Last-Event-ID`. Numeric/empty c
 The initial effect-free SSE attach uses the same bounded full-jitter reconnect policy as later disconnects;
 a temporary network failure cannot terminalize a freshly hydrated Chat view. Authentication, contract and
 repair failures remain typed and are not retried as transport noise.
+Snapshot fetch and hydration accept an optional `AbortSignal` and forward the exact signal to the injected
+transport. Product controllers use it to cancel superseded, unmounted, and closed authority requests; cancellation
+does not create a second Session endpoint or a transport-specific escape hatch.
 
 Verification: `pnpm --filter @kokoro/session-client lint && pnpm --filter @kokoro/session-client typecheck && pnpm --filter @kokoro/session-client test && pnpm --filter @kokoro/session-client build`.

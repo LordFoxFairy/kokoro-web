@@ -133,9 +133,13 @@ export type EventStreamHandle = {
   readonly close: () => void;
 };
 
+export type SnapshotRequestOptions = Readonly<{
+  readonly signal?: AbortSignal;
+}>;
+
 export type SessionClient = {
-  readonly fetchSnapshot: (sessionId: string) => Promise<SessionSnapshot | null>;
-  readonly hydrate: (sessionId: string) => Promise<SessionHydration>;
+  readonly fetchSnapshot: (sessionId: string, options?: SnapshotRequestOptions) => Promise<SessionSnapshot | null>;
+  readonly hydrate: (sessionId: string, options?: SnapshotRequestOptions) => Promise<SessionHydration>;
   readonly listSessions: (query: ListSessionsQuery) => Promise<SessionList>;
   readonly createSession: (body: CreateSessionRequest) => Promise<SessionCommandResponse>;
   readonly submitMessage: (sessionId: string, body: SubmitMessageRequest) => Promise<SessionCommandResponse>;
@@ -492,11 +496,15 @@ export function createSessionClient(options: {
     return parseGenerated(response.body, endpoint.responseSchema) as OperationResponse<Operation>;
   };
 
-  const fetchSnapshot = async (sessionId: string): Promise<SessionSnapshot | null> => {
+  const fetchSnapshot = async (
+    sessionId: string,
+    requestOptions: SnapshotRequestOptions = {},
+  ): Promise<SessionSnapshot | null> => {
     const endpoint = SESSION_HTTP_ENDPOINTS.snapshot;
     const input = operationRequest("snapshot", {
       pathParameters: { session_id: sessionId },
       ...(endpoint.querySchema === null ? {} : { query: {} }),
+      ...(requestOptions.signal === undefined ? {} : { signal: requestOptions.signal }),
     });
     let response: SessionResponse;
     try {
@@ -518,8 +526,8 @@ export function createSessionClient(options: {
 
   return Object.freeze({
     fetchSnapshot,
-    async hydrate(sessionId) {
-      const snapshot = await fetchSnapshot(sessionId);
+    async hydrate(sessionId, requestOptions = {}) {
+      const snapshot = await fetchSnapshot(sessionId, requestOptions);
       if (snapshot === null) return { kind: "not_found" };
       const acceptance = cursorPolicy.accept(snapshot.snapshot_watermark.cursor);
       if (acceptance.kind !== "ready") return { ...acceptance, snapshot };
