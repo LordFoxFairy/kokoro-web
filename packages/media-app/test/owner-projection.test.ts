@@ -106,6 +106,15 @@ describe("Platform owner projections", () => {
     expect(projected.availability).toBe(availability)
     expect(projected).not.toHaveProperty("updatedAt")
     expect(projected).not.toHaveProperty("url")
+    if (projected.availability === "ready") {
+      expect(projected.display).toEqual({
+        kind: "image",
+        format: "png",
+        width: 1024,
+        height: 1024,
+        byteSize: "2048",
+      })
+    }
     if (projected.availability === "restricted" || projected.availability === "unavailable") {
       expect(projected.failure.safeMessage).toMatch(/policy|Restricted/u)
     }

@@ -116,7 +116,7 @@ export function projectPlatformArtifactOwnerState(input: ArtifactVersion): Artif
       return Object.freeze({
         ...base,
         availability: input.availability,
-        display: Object.freeze({ ...input.display }),
+        display: Object.freeze({ kind: input.mediaClass, ...input.display }),
       })
     case "restricted":
     case "unavailable":
