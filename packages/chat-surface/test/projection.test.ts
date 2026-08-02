@@ -168,16 +168,180 @@ describe("Chat projection", () => {
     expect(assertInvalidInputs).toBeTypeOf("function")
   })
 
-  it("does not fabricate message ownership for unsupported content before hydration", () => {
+  it("does not expose a synthetic unsupported-message mutation channel", () => {
     const store = createChatProjectionStore()
+    const dispatchSyntheticIdentity = (): void => {
+      // @ts-expect-error Message identities can only enter through Session snapshots/events.
+      store.dispatch({ type: "unsupported", runId: "run-12345678", originalKind: "future-kind" })
+    }
 
-    store.dispatch({ type: "unsupported", runId: "run-12345678", originalKind: "future-kind" })
+    expect(dispatchSyntheticIdentity).toBeTypeOf("function")
+    expect(store.getSnapshot()).toEqual(createChatProjection())
+  })
 
-    expect(store.getSnapshot()).toMatchObject({
-      session: null,
-      activeBranchId: null,
-      messages: [],
-      repair: { required: true, reason: "unsupported_without_active_branch" },
+  it("keeps message identity on exact replay and repairs same-ID envelope drift", () => {
+    const initial = snapshot()
+    const original = initial.messages[0]
+    if (original === undefined) throw new Error("message fixture missing")
+    const store = createChatProjectionStore()
+    store.hydrate(initial)
+    const beforeReplay = store.getSnapshot()
+
+    store.dispatch({
+      type: "event",
+      event: event({ kind: "message.created", payload: { message: original } }),
+    })
+    expect(store.getSnapshot()).toBe(beforeReplay)
+
+    store.dispatch({
+      type: "event",
+      event: event({
+        kind: "message.created",
+        payload: { message: { ...original, role: "system" } },
+      }),
+    })
+
+    expect(store.getSnapshot().messages[0]).toMatchObject({ id: original.message_id, role: "user" })
+    expect(store.getSnapshot().messages[1]).toMatchObject({ id: "message-assistant-12345678", role: "assistant" })
+    expect(store.getSnapshot().repair).toEqual({ required: true, reason: "message_identity_conflict" })
+  })
+
+  it("owns Run and launch version fences inside the projection store", () => {
+    const initial = snapshot()
+    const run = initial.runs[0]
+    if (run === undefined) throw new Error("run fixture missing")
+    const exactReplay = createChatProjectionStore()
+    exactReplay.hydrate(initial)
+    const beforeReplay = exactReplay.getSnapshot()
+
+    expect(beforeReplay.activeRunProjectionVersion).toBe(2)
+    exactReplay.dispatch({
+      type: "event",
+      event: event({ kind: "run.view.updated", payload: { run } }),
+    })
+    expect(exactReplay.getSnapshot()).toBe(beforeReplay)
+
+    const conflict = createChatProjectionStore()
+    conflict.hydrate(initial)
+    conflict.dispatch({
+      type: "event",
+      event: event({
+        kind: "run.view.updated",
+        payload: { run: { ...run, execution_status: "failed" } },
+      }),
+    })
+    expect(conflict.getSnapshot()).toMatchObject({
+      activeRunId: run.run_id,
+      activeRunState: "running",
+      activeRunProjectionVersion: 2,
+      repair: { required: true, reason: "run_projection_version_conflict" },
+    })
+
+    const consecutive = createChatProjectionStore()
+    consecutive.hydrate(initial)
+    consecutive.dispatch({
+      type: "event",
+      event: event({
+        kind: "run.view.updated",
+        payload: { run: { ...run, execution_status: "paused", projection_version: 3 } },
+      }),
+    })
+    expect(consecutive.getSnapshot()).toMatchObject({
+      activeRunId: run.run_id,
+      activeRunState: "paused",
+      activeRunProjectionVersion: 3,
+      repair: { required: false },
+    })
+
+    const launch = {
+      launch_id: "launch-pending-12345678",
+      branch_id: initial.session.active_branch_id,
+      proposed_run_id: "run-pending-12345678",
+      trigger_message_id: "message-user-12345678",
+      status: "dispatch_pending" as const,
+      command_receipt_ref: "receipt-launch-12345678",
+      version: 2,
+      updated_at: NOW,
+    }
+    const launchInitial: SessionSnapshot = { ...initial, runs: [], run_launches: [launch] }
+    const launchConflict = createChatProjectionStore()
+    launchConflict.hydrate(launchInitial)
+    launchConflict.dispatch({
+      type: "event",
+      event: event({
+        kind: "run.launch.updated",
+        payload: { launch: { ...launch, status: "failed" } },
+      }),
+    })
+    expect(launchConflict.getSnapshot()).toMatchObject({
+      activeRunId: launch.proposed_run_id,
+      activeRunState: "launching",
+      activeRunProjectionVersion: null,
+      repair: { required: true, reason: "run_launch_version_conflict" },
+    })
+  })
+
+  it("repairs an unproven active-leaf change but accepts an exact projected lineage", () => {
+    const initial = snapshot()
+    const unproven = createChatProjectionStore()
+    unproven.hydrate(initial)
+    unproven.dispatch({
+      type: "event",
+      event: event({
+        kind: "session.updated",
+        payload: {
+          session: {
+            ...initial.session,
+            active_leaf_message_id: "message-unknown-12345678",
+            version: 3,
+          },
+        },
+      }),
+    })
+    expect(unproven.getSnapshot()).toMatchObject({
+      session: { activeLeafMessageId: initial.session.active_leaf_message_id, version: 2 },
+      repair: { required: true, reason: "active_leaf_changed_refetch_snapshot" },
+    })
+
+    const nextMessage = {
+      message_id: "message-next-12345678",
+      branch_id: initial.session.active_branch_id,
+      parent_message_id: initial.session.active_leaf_message_id,
+      role: "user" as const,
+      ordinal: 2,
+      lifecycle: "completed" as const,
+      parts: [{
+        part_id: "part-next-12345678",
+        message_id: "message-next-12345678",
+        ordinal: 0,
+        version: 1,
+        schema_version: 1 as const,
+        lifecycle: "completed" as const,
+        kind: "text" as const,
+        payload: { spans: [{ text: "next" }] },
+      }],
+      attachments: [],
+      created_at: NOW,
+    }
+    const proven = createChatProjectionStore()
+    proven.hydrate(initial)
+    proven.dispatch({
+      type: "event",
+      event: event({ kind: "message.created", payload: { message: nextMessage } }),
+    })
+    proven.dispatch({
+      type: "event",
+      event: event({
+        kind: "session.updated",
+        payload: {
+          session: { ...initial.session, active_leaf_message_id: nextMessage.message_id, version: 3 },
+        },
+      }),
+    })
+    expect(proven.getSnapshot()).toMatchObject({
+      session: { activeLeafMessageId: nextMessage.message_id, version: 3 },
+      messages: [{ id: "message-user-12345678" }, { id: "message-assistant-12345678" }, { id: nextMessage.message_id }],
+      repair: { required: false },
     })
   })
 

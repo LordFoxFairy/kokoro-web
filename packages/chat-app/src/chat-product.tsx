@@ -649,8 +649,9 @@ export function ChatView(props: {
   const commandPending = props.state.projection.command.state === "pending"
   const connected = props.state.projection.connection.kind === "live"
   const activeRun = props.state.projection.activeRunId !== null
+  const repairing = props.state.projection.repair.required
   const attachmentPending = attachments.some(({ status }) => status !== "ready")
-  const sendDisabled = !hasModel || !connected || activeRun || commandPending || attachmentPending ||
+  const sendDisabled = repairing || !hasModel || !connected || activeRun || commandPending || attachmentPending ||
     !hasSubmittableComposerContent(composer.text, attachments)
   const branch = props.state.projection.branches.find(({ id }) => id === props.state.projection.activeBranchId)
   const currentOption = props.state.chatCatalog?.options.find(({ modelOptionRevisionRef }) => modelOptionRevisionRef === props.state.selectedModelOptionRevisionRef)
@@ -750,12 +751,12 @@ export function ChatView(props: {
     event.preventDefault()
     submitDraft()
   }
-  const mutationDisabled = activeRun || commandPending || !connected
+  const mutationDisabled = repairing || activeRun || commandPending || !connected
 
   return <main className={styles.shell}>
     <header className={styles.header}><div><span className={styles.eyebrow}>{props.copy.workspaceLabel}</span><h1>{props.state.projection.session?.title ?? props.brandName}</h1></div><nav className={styles.headerNav} aria-label="Workspace"><a href="/account">{props.copy.account}</a></nav></header>
     {contextPolicy === "temporary" ? <TemporaryChatStatus copy={props.copy} /> : null}
-    <section className={styles.runBand} data-run={props.state.projection.activeRunState ?? "idle"} aria-live="polite"><div><span className={styles.liveDot} aria-hidden /><strong>{runLabel(props.state, props.copy)}</strong><small>{connectionLabel(props.state, props.copy)}</small></div><div className={styles.branchControls}><label><span>{props.copy.branch}</span><select aria-label={props.copy.switchBranch} disabled={mutationDisabled} onChange={(event) => void props.controller.activateBranch(event.target.value)} value={props.state.projection.activeBranchId ?? ""}>{props.state.projection.branches.map((candidate, index) => <option key={candidate.id} value={candidate.id}>{candidate.id === props.state.projection.activeBranchId ? `${props.copy.currentBranch} · ` : ""}${candidate.origin} ${index + 1}</option>)}</select></label>{branch ? <button type="button" disabled={mutationDisabled} onClick={() => void props.controller.forkBranch(branch.id)}>{props.copy.forkBranch}</button> : null}{activeRun ? <button type="button" className={styles.stop} onClick={() => void props.controller.cancel()} disabled={commandPending}>{props.copy.stop}</button> : null}</div></section>
+    <section className={styles.runBand} data-run={props.state.projection.activeRunState ?? "idle"} aria-live="polite"><div><span className={styles.liveDot} aria-hidden /><strong>{runLabel(props.state, props.copy)}</strong><small>{connectionLabel(props.state, props.copy)}</small></div><div className={styles.branchControls}><label><span>{props.copy.branch}</span><select aria-label={props.copy.switchBranch} disabled={mutationDisabled} onChange={(event) => void props.controller.activateBranch(event.target.value)} value={props.state.projection.activeBranchId ?? ""}>{props.state.projection.branches.map((candidate, index) => <option key={candidate.id} value={candidate.id}>{candidate.id === props.state.projection.activeBranchId ? `${props.copy.currentBranch} · ` : ""}${candidate.origin} ${index + 1}</option>)}</select></label>{branch ? <button type="button" disabled={mutationDisabled} onClick={() => void props.controller.forkBranch(branch.id)}>{props.copy.forkBranch}</button> : null}{activeRun ? <button type="button" className={styles.stop} onClick={() => void props.controller.cancel()} disabled={repairing || commandPending || !connected}>{props.copy.stop}</button> : null}</div></section>
     {props.state.failure ? <section className={styles.failure} role="alert"><strong>{props.state.failure.message}</strong>{["refetch_snapshot", "refresh_grant", "retry_same_cursor", "poll_or_stream", "reconcile_receipt"].includes(props.state.failure.action) ? <button type="button" onClick={() => void props.controller.recover()}>{props.copy.refreshConversation}</button> : null}</section> : null}
     {props.state.projection.repair.required ? <section className={styles.repair} role="status">{props.copy.repairRequired}</section> : null}
     <ConversationThread
@@ -767,7 +768,7 @@ export function ChatView(props: {
       renderMessage={(message) => <ConversationMessageView commandPending={commandPending} controller={props.controller} copy={props.copy} key={message.id} message={message} mutationDisabled={mutationDisabled} />}
     />
     {props.state.phase === "ready" ? <form className={styles.composer} onSubmit={submit}>
-      <div className={styles.composerControls}>{props.state.chatCatalog ? <ModelOptionSelector catalog={props.state.chatCatalog} copy={props.copy} disabled={false} onChange={(value) => {
+      <div className={styles.composerControls}>{props.state.chatCatalog ? <ModelOptionSelector catalog={props.state.chatCatalog} copy={props.copy} disabled={repairing || commandPending} onChange={(value) => {
         props.controller.selectModelOption(value)
         const selected = props.state.chatCatalog?.options.find((option) => option.modelOptionRevisionRef === value)
         const effort = selected === undefined || selected.supportedEfforts.length === 0
@@ -778,14 +779,14 @@ export function ChatView(props: {
               ? "medium"
               : selected.supportedEfforts[0] ?? null
         reviseComposer({ modelOptionRevisionRef: value, effort })
-      }} value={props.state.selectedModelOptionRevisionRef} /> : null}{currentOption && currentOption.supportedEfforts.length > 0 ? <label className={styles.compactSelector}><span>{props.copy.effort}</span><select onChange={(event) => {
+      }} value={props.state.selectedModelOptionRevisionRef} /> : null}{currentOption && currentOption.supportedEfforts.length > 0 ? <label className={styles.compactSelector}><span>{props.copy.effort}</span><select disabled={repairing || commandPending} onChange={(event) => {
         props.controller.selectEffort(event.target.value)
         reviseComposer({ effort: event.target.value })
       }} value={props.state.selectedEffort ?? ""}>{currentOption.supportedEfforts.map((effort) => <option key={effort} value={effort}>{effort}</option>)}</select></label> : null}</div>
       {!hasModel && props.state.phase === "ready" ? <p className={styles.modelNotice}>{props.copy.modelRequired}</p> : null}
       {attachments.length > 0 ? <ul className={styles.attachments} aria-live="polite">{attachments.map((entry) => <li key={entry.id} data-status={entry.status}><span aria-hidden>◆</span><div><strong>{entry.file.name}</strong><small>{entry.status === "uploading" ? `${props.copy.uploadingFile} ${entry.progress === null ? "" : `${Math.round(entry.progress.uploadedBytes / entry.progress.totalBytes * 100)}%`}` : entry.status === "ready" ? props.copy.attachmentReady : props.copy.attachmentFailed}</small></div>{entry.status === "failed" ? <button type="button" onClick={() => beginUpload(entry)}>{props.copy.retryUpload}</button> : null}<button type="button" disabled={entry.status === "uploading"} onClick={() => { setAttachments((current) => current.filter(({ id }) => id !== entry.id)); reviseComposer() }}>{props.copy.removeAttachment}</button></li>)}</ul> : null}
-      <div className={styles.composerBox}><textarea aria-describedby={activeRun ? "kokoro-active-run-draft" : undefined} aria-label={props.copy.messageLabel} maxLength={1_048_576} onChange={(event) => reviseComposer({ text: event.target.value })} onCompositionEnd={() => setComposing(false)} onCompositionStart={() => setComposing(true)} onKeyDown={onComposerKeyDown} placeholder={activeRun ? props.copy.activeRunPlaceholder : props.copy.messagePlaceholder} rows={3} value={composer.text} /><button type="submit" disabled={sendDisabled}>{commandPending ? props.copy.sending : props.copy.send}<span aria-hidden>↗</span></button></div>{activeRun ? <p className={styles.composerHint} id="kokoro-active-run-draft" role="status">{props.copy.draftWhileRunning}</p> : <p className={styles.composerHint}>Enter to send · Shift + Enter for a new line</p>}
-      {props.assetUploader !== null && props.assetUploader !== undefined ? <label className={styles.attachButton} data-disabled={attachments.length >= 8}><input type="file" multiple disabled={attachments.length >= 8} onChange={attach} /><span aria-hidden>＋</span>{props.copy.attachFiles}</label> : null}
+      <div className={styles.composerBox}><textarea aria-describedby={activeRun ? "kokoro-active-run-draft" : undefined} aria-label={props.copy.messageLabel} disabled={repairing} maxLength={1_048_576} onChange={(event) => reviseComposer({ text: event.target.value })} onCompositionEnd={() => setComposing(false)} onCompositionStart={() => setComposing(true)} onKeyDown={onComposerKeyDown} placeholder={activeRun ? props.copy.activeRunPlaceholder : props.copy.messagePlaceholder} rows={3} value={composer.text} /><button type="submit" disabled={sendDisabled}>{commandPending ? props.copy.sending : props.copy.send}<span aria-hidden>↗</span></button></div>{activeRun ? <p className={styles.composerHint} id="kokoro-active-run-draft" role="status">{props.copy.draftWhileRunning}</p> : <p className={styles.composerHint}>Enter to send · Shift + Enter for a new line</p>}
+      {props.assetUploader !== null && props.assetUploader !== undefined ? <label className={styles.attachButton} data-disabled={repairing || attachments.length >= 8}><input type="file" multiple disabled={repairing || attachments.length >= 8} onChange={attach} /><span aria-hidden>＋</span>{props.copy.attachFiles}</label> : null}
     </form> : null}
   </main>
 }

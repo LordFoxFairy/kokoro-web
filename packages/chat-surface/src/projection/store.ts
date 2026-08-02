@@ -167,6 +167,7 @@ export type ChatProjection = {
   readonly activeBranchId: string | null
   readonly snapshotRevision: string | null
   readonly activeRunId: string | null
+  readonly activeRunProjectionVersion: number | null
   readonly activeRunState: "launching" | "running" | "paused" | "cancelling" | "outcome_unknown" | null
   readonly connection: SessionConnectionState | { readonly kind: "idle" }
   readonly command: {
@@ -185,12 +186,17 @@ export type ChatProjectionMutation =
       readonly detail?: string
     }
   | { readonly type: "repair"; readonly reason: string }
-  | { readonly type: "unsupported"; readonly runId: string; readonly originalKind: string }
 
 type ChatProjectionAction =
   | { readonly type: "snapshot"; readonly snapshot: SessionSnapshot }
   | ChatProjectionMutation
 type PartEnvelopeFingerprints = WeakMap<ChatPart, string>
+type VersionedEnvelopeFingerprint = Readonly<{ version: number; fingerprint: string }>
+type ProjectionEnvelopeAuthority = Readonly<{
+  messages: Map<string, string>
+  runs: Map<string, VersionedEnvelopeFingerprint>
+  launches: Map<string, VersionedEnvelopeFingerprint>
+}>
 type ProjectionIndexes = Readonly<{
   messageIndexById: Map<string, number>
   partOwnerById: Map<string, string>
@@ -215,6 +221,56 @@ const ACTIVE_LAUNCH_STATUSES = new Set([
   "event_observed",
   "outcome_unknown",
 ])
+
+function emptyEnvelopeAuthority(): ProjectionEnvelopeAuthority {
+  return { messages: new Map(), runs: new Map(), launches: new Map() }
+}
+
+function snapshotEnvelopeAuthority(snapshot: SessionSnapshot): Readonly<{
+  authority: ProjectionEnvelopeAuthority
+  conflict?: "message_identity_conflict" | "run_projection_version_conflict" | "run_launch_version_conflict"
+}> {
+  const authority = emptyEnvelopeAuthority()
+  let conflict: "message_identity_conflict" | "run_projection_version_conflict" | "run_launch_version_conflict" | undefined
+  for (const message of snapshot.messages) {
+    if (authority.messages.has(message.message_id)) conflict ??= "message_identity_conflict"
+    else authority.messages.set(message.message_id, stableStringify(message))
+  }
+  for (const run of snapshot.runs) {
+    if (authority.runs.has(run.run_id)) conflict ??= "run_projection_version_conflict"
+    else authority.runs.set(run.run_id, {
+      version: run.projection_version,
+      fingerprint: stableStringify(run),
+    })
+  }
+  for (const launch of snapshot.run_launches) {
+    if (authority.launches.has(launch.launch_id)) conflict ??= "run_launch_version_conflict"
+    else authority.launches.set(launch.launch_id, {
+      version: launch.version,
+      fingerprint: stableStringify(launch),
+    })
+  }
+  return { authority, ...(conflict === undefined ? {} : { conflict }) }
+}
+
+function acceptVersionedEnvelope(
+  authority: Map<string, VersionedEnvelopeFingerprint>,
+  id: string,
+  version: number,
+  envelope: unknown,
+): "accepted" | "exact_replay" | "conflict" {
+  const fingerprint = stableStringify(envelope)
+  const current = authority.get(id)
+  if (current === undefined) {
+    if (version !== 1) return "conflict"
+    authority.set(id, { version, fingerprint })
+    return "accepted"
+  }
+  if (version === current.version && fingerprint === current.fingerprint) return "exact_replay"
+  if (version !== current.version + 1) return "conflict"
+  authority.set(id, { version, fingerprint })
+  return "accepted"
+}
 
 function copyUnknown(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(copyUnknown)
@@ -244,6 +300,7 @@ export function createChatProjection(): ChatProjection {
     activeBranchId: null,
     snapshotRevision: null,
     activeRunId: null,
+    activeRunProjectionVersion: null,
     activeRunState: null,
     connection: { kind: "idle" },
     command: { state: "idle" },
@@ -462,17 +519,11 @@ function projectMessage(
   })
 }
 
-function upsertMessage(
+function appendMessage(
   messages: readonly ChatProjectionMessage[],
   message: ChatProjectionMessage,
-  knownIndex?: number,
 ): readonly ChatProjectionMessage[] {
-  const index = knownIndex ?? -1
-  const frozenMessage = deepFreeze(message)
-  if (index < 0) return Object.freeze([...messages, frozenMessage])
-  const next = [...messages]
-  next[index] = frozenMessage
-  return Object.freeze(next)
+  return Object.freeze([...messages, deepFreeze(message)])
 }
 
 function buildProjectionIndexes(messages: readonly ChatProjectionMessage[]): Readonly<{
@@ -568,7 +619,10 @@ function activeMessageRecords(snapshot: SessionSnapshot): Readonly<{
   return { messages: reverse.reverse(), complete: true }
 }
 
-function activeRun(snapshot: SessionSnapshot): Pick<ChatProjection, "activeRunId" | "activeRunState"> {
+function activeRun(snapshot: SessionSnapshot): Pick<
+  ChatProjection,
+  "activeRunId" | "activeRunProjectionVersion" | "activeRunState"
+> {
   const candidates = snapshot.runs.filter((run) =>
     run.branch_id === snapshot.session.active_branch_id && ACTIVE_RUN_STATUSES.has(run.execution_status),
   )
@@ -577,22 +631,52 @@ function activeRun(snapshot: SessionSnapshot): Pick<ChatProjection, "activeRunId
     .filter((candidate) => candidate.branch_id === snapshot.session.active_branch_id && ACTIVE_LAUNCH_STATUSES.has(candidate.status))
     .at(-1)
   const runId = run?.run_id ?? launch?.proposed_run_id ?? null
-  if (runId === null) return { activeRunId: null, activeRunState: null }
+  if (runId === null) return { activeRunId: null, activeRunProjectionVersion: null, activeRunState: null }
+  const activeRunProjectionVersion = run?.projection_version ?? null
   const cancelling = snapshot.controls.some((control) =>
     control.run_id === runId && control.kind === "cancel" && ["pending", "persisted", "applied", "outcome_unknown"].includes(control.status),
   )
-  if (cancelling) return { activeRunId: runId, activeRunState: "cancelling" }
-  if (run?.execution_status === "paused") return { activeRunId: runId, activeRunState: "paused" }
+  if (cancelling) return { activeRunId: runId, activeRunProjectionVersion, activeRunState: "cancelling" }
+  if (run?.execution_status === "paused") return { activeRunId: runId, activeRunProjectionVersion, activeRunState: "paused" }
   if (run?.execution_status === "outcome_unknown" || launch?.status === "outcome_unknown") {
-    return { activeRunId: runId, activeRunState: "outcome_unknown" }
+    return { activeRunId: runId, activeRunProjectionVersion, activeRunState: "outcome_unknown" }
   }
-  return { activeRunId: runId, activeRunState: run === undefined ? "launching" : "running" }
+  return {
+    activeRunId: runId,
+    activeRunProjectionVersion,
+    activeRunState: run === undefined ? "launching" : "running",
+  }
+}
+
+function projectionProvesActiveLineage(
+  messages: readonly ChatProjectionMessage[],
+  activeBranchId: string | null,
+  leafMessageId: string | undefined,
+): boolean {
+  if (activeBranchId === null) return false
+  if (leafMessageId === undefined) return messages.length === 0
+  const byId = new Map(messages.map((message) => [message.id, message]))
+  if (byId.size !== messages.length) return false
+  const seen = new Set<string>()
+  const reverse: ChatProjectionMessage[] = []
+  let currentId: string | undefined = leafMessageId
+  while (currentId !== undefined) {
+    if (seen.has(currentId)) return false
+    seen.add(currentId)
+    const message = byId.get(currentId)
+    if (message === undefined || message.branchId !== activeBranchId) return false
+    reverse.push(message)
+    currentId = message.parentMessageId
+  }
+  const lineage = reverse.reverse()
+  return lineage.length === messages.length && lineage.every((message, index) => message.id === messages[index]?.id)
 }
 
 function reduceEvent(
   state: ChatProjection,
   event: SessionEvent,
   fingerprints: PartEnvelopeFingerprints,
+  envelopes: ProjectionEnvelopeAuthority,
   indexes: ProjectionIndexes,
 ): ChatProjection {
   const session = state.session
@@ -608,14 +692,25 @@ function reduceEvent(
   let next: ChatProjection
   switch (event.kind) {
     case "message.created": {
-      if (event.payload.message.branch_id !== state.activeBranchId) {
+      const record = event.payload.message
+      const fingerprint = stableStringify(record)
+      const currentFingerprint = envelopes.messages.get(record.message_id)
+      if (currentFingerprint !== undefined) {
+        if (currentFingerprint !== fingerprint) {
+          return { ...state, repair: { required: true, reason: "message_identity_conflict" } }
+        }
         next = state
         break
       }
-      const message = projectMessage(event.payload.message, fingerprints)
+      envelopes.messages.set(record.message_id, fingerprint)
+      if (record.branch_id !== state.activeBranchId) {
+        next = state
+        break
+      }
+      const message = projectMessage(record, fingerprints)
       next = message === null ? state : {
         ...state,
-        messages: upsertMessage(state.messages, message, indexes.messageIndexById.get(message.id)),
+        messages: appendMessage(state.messages, message),
       }
       break
     }
@@ -645,6 +740,16 @@ function reduceEvent(
     }
     case "run.launch.updated": {
       const launch = event.payload.launch
+      const admission = acceptVersionedEnvelope(
+        envelopes.launches,
+        launch.launch_id,
+        launch.version,
+        launch,
+      )
+      if (admission === "conflict") {
+        return { ...state, repair: { required: true, reason: "run_launch_version_conflict" } }
+      }
+      if (admission === "exact_replay") return state
       if (launch.branch_id !== state.activeBranchId) {
         next = state
         break
@@ -653,17 +758,28 @@ function reduceEvent(
         next = {
           ...state,
           activeRunId: launch.proposed_run_id,
+          activeRunProjectionVersion: null,
           activeRunState: launch.status === "outcome_unknown" ? "outcome_unknown" : "launching",
         }
         break
       }
       next = state.activeRunId === launch.proposed_run_id
-        ? { ...state, activeRunId: null, activeRunState: null }
+        ? { ...state, activeRunId: null, activeRunProjectionVersion: null, activeRunState: null }
         : state
       break
     }
     case "run.view.updated": {
       const run = event.payload.run
+      const admission = acceptVersionedEnvelope(
+        envelopes.runs,
+        run.run_id,
+        run.projection_version,
+        run,
+      )
+      if (admission === "conflict") {
+        return { ...state, repair: { required: true, reason: "run_projection_version_conflict" } }
+      }
+      if (admission === "exact_replay") return state
       if (run.branch_id !== state.activeBranchId) {
         next = state
         break
@@ -678,6 +794,9 @@ function reduceEvent(
         ...state,
         messages,
         activeRunId: active ? run.run_id : state.activeRunId === run.run_id ? null : state.activeRunId,
+        activeRunProjectionVersion: active
+          ? run.projection_version
+          : state.activeRunId === run.run_id ? null : state.activeRunProjectionVersion,
         activeRunState: active
           ? run.execution_status === "paused" || run.execution_status === "cancelling" || run.execution_status === "outcome_unknown"
             ? run.execution_status
@@ -732,6 +851,7 @@ function reduceEvent(
         messages: [],
         activeBranchId: event.payload.branch_id,
         activeRunId: null,
+        activeRunProjectionVersion: null,
         activeRunState: null,
         repair: { required: true, reason: "active_branch_changed_refetch_snapshot" },
       }
@@ -759,6 +879,12 @@ function reduceEvent(
         break
       }
       if (event.payload.session.active_branch_id === state.activeBranchId) {
+        if (
+          updated.activeLeafMessageId !== session.activeLeafMessageId &&
+          !projectionProvesActiveLineage(state.messages, state.activeBranchId, updated.activeLeafMessageId)
+        ) {
+          return { ...state, repair: { required: true, reason: "active_leaf_changed_refetch_snapshot" } }
+        }
         next = { ...state, session: updated }
         break
       }
@@ -771,6 +897,7 @@ function reduceEvent(
         messages: [],
         activeBranchId: event.payload.session.active_branch_id,
         activeRunId: null,
+        activeRunProjectionVersion: null,
         activeRunState: null,
         repair: { required: true, reason: "active_branch_changed_refetch_snapshot" },
       }
@@ -807,6 +934,7 @@ function reduceChatProjection(
   state: ChatProjection,
   action: ChatProjectionAction,
   fingerprints: PartEnvelopeFingerprints,
+  envelopes: ProjectionEnvelopeAuthority,
   indexes: ProjectionIndexes,
 ): ChatProjection {
   switch (action.type) {
@@ -841,42 +969,13 @@ function reduceChatProjection(
       }
     }
     case "event":
-      return reduceEvent(state, action.event, fingerprints, indexes)
+      return reduceEvent(state, action.event, fingerprints, envelopes, indexes)
     case "connection":
       return { ...state, connection: copyUnknown(action.connection) as SessionConnectionState }
     case "command":
       return { ...state, command: { state: action.state, ...(action.detail ? { detail: action.detail } : {}) } }
     case "repair":
       return { ...state, repair: { required: true, reason: action.reason } }
-    case "unsupported": {
-      if (state.session === null || state.activeBranchId === null) {
-        return { ...state, repair: { required: true, reason: "unsupported_without_active_branch" } }
-      }
-      const existing = state.messages.find((message) => message.role === "assistant" && message.runId === action.runId)
-      const message = existing ?? {
-        id: `assistant:${action.runId}`,
-        branchId: state.activeBranchId,
-        runId: action.runId,
-        role: "assistant" as const,
-        createdAt: new Date(0).toISOString(),
-        parts: [],
-        attachments: [],
-        status: "running" as const,
-      }
-      return {
-        ...state,
-        messages: upsertMessage(state.messages, upsertPart(message, {
-          kind: "unsupported",
-          id: `unsupported:${action.originalKind}:${message.parts.length}`,
-          ordinal: message.parts.length,
-          version: 1,
-          lifecycle: "streaming",
-          originalKind: action.originalKind,
-          originalSchemaVersion: 1,
-          safeFallback: "This content requires a newer client.",
-        }, fingerprints).message, indexes.messageIndexById.get(message.id)),
-      }
-    }
   }
 }
 
@@ -891,6 +990,7 @@ export type ChatProjectionStore = {
 export function createChatProjectionStore(): ChatProjectionStore {
   let state = createChatProjection()
   let fingerprints: PartEnvelopeFingerprints = new WeakMap()
+  let envelopes = emptyEnvelopeAuthority()
   let indexes = buildProjectionIndexes(state.messages).indexes
   const listeners = new Set<() => void>()
   const commit = (next: ChatProjection): void => {
@@ -906,30 +1006,37 @@ export function createChatProjectionStore(): ChatProjectionStore {
     },
     hydrate(snapshot) {
       const nextFingerprints: PartEnvelopeFingerprints = new WeakMap()
-      let next = reduceChatProjection(state, { type: "snapshot", snapshot }, nextFingerprints, indexes)
+      const nextEnvelopes = snapshotEnvelopeAuthority(snapshot)
+      let next = reduceChatProjection(
+        state,
+        { type: "snapshot", snapshot },
+        nextFingerprints,
+        nextEnvelopes.authority,
+        indexes,
+      )
       const built = buildProjectionIndexes(next.messages)
-      if (built.conflict !== undefined) {
-        next = { ...next, repair: { required: true, reason: built.conflict } }
+      const conflict = nextEnvelopes.conflict ?? built.conflict
+      if (conflict !== undefined) {
+        next = { ...next, repair: { required: true, reason: conflict } }
       }
       fingerprints = nextFingerprints
+      envelopes = nextEnvelopes.authority
       indexes = built.indexes
       commit(next)
     },
     reset() {
       fingerprints = new WeakMap()
+      envelopes = emptyEnvelopeAuthority()
       const next = createChatProjection()
       indexes = buildProjectionIndexes(next.messages).indexes
       commit(next)
     },
     dispatch(action) {
-      let next = reduceChatProjection(state, action, fingerprints, indexes)
+      let next = reduceChatProjection(state, action, fingerprints, envelopes, indexes)
       if (next !== state && next.messages !== state.messages) {
         if (action.type === "event" && action.event.kind === "message.part.updated") {
           indexes.partOwnerById.set(action.event.payload.part.part_id, action.event.payload.part.message_id)
-        } else if (
-          action.type === "unsupported" ||
-          action.type === "event" && ["message.created", "branch.activated", "session.updated"].includes(action.event.kind)
-        ) {
+        } else if (action.type === "event" && ["message.created", "branch.activated", "session.updated"].includes(action.event.kind)) {
           const built = buildProjectionIndexes(next.messages)
           indexes = built.indexes
           if (built.conflict !== undefined) {

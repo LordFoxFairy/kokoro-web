@@ -158,7 +158,22 @@ describe("Chat Markdown rendering", () => {
   it("renders a safe recovery control instead of an internal action token", () => {
     const projection: ChatProjection = {
       ...createChatProjection(),
-      connection: { kind: "repair_required", recovery: { kind: "rehydrate", reason: "cursor_expired" } },
+      session: {
+        id: "session-12345678",
+        projectRef: "project-12345678",
+        title: "Repairing",
+        lifecycle: "active",
+        contextPolicy: "standard",
+        version: 1,
+      },
+      branches: [{
+        id: "branch-12345678",
+        origin: "original",
+        version: 1,
+        createdAt: "2026-07-29T00:00:00.000Z",
+      }],
+      activeBranchId: "branch-12345678",
+      connection: { kind: "live" },
       repair: { required: true, reason: "cursor_expired" },
     }
     const state: ChatState = {
@@ -171,8 +186,23 @@ describe("Chat Markdown rendering", () => {
         retryClass: "after_user_action",
         message: "Chat is temporarily unavailable.",
       },
-      chatCatalog: null,
-      selectedModelOptionRevisionRef: null,
+      chatCatalog: {
+        surfaceId: "chat",
+        catalogRevisionRef: "catalog-12345678",
+        defaultModelOptionRevisionRef: "model-option-12345678",
+        publishedAt: "2026-07-29T00:00:00.000Z",
+        options: [{
+          modelOptionRevisionRef: "model-option-12345678",
+          optionKey: "standard",
+          label: "Standard",
+          inputModalities: ["text"],
+          outputModalities: ["text"],
+          supportedEfforts: [],
+          badges: [],
+          availability: "available",
+        }],
+      },
+      selectedModelOptionRevisionRef: "model-option-12345678",
       selectedEffort: null,
       appliedDraft: null,
       hitlDecisionSupported: true,
@@ -206,5 +236,8 @@ describe("Chat Markdown rendering", () => {
 
     expect(html).toContain(">Refresh conversation<")
     expect(html).not.toContain("refetch_snapshot")
+    expect(html).toMatch(/<textarea[^>]*disabled=""/u)
+    expect(html).toMatch(/<select[^>]*aria-label="Switch branch"[^>]*disabled=""/u)
+    expect(html).toMatch(/<select[^>]*aria-label="Model"[^>]*disabled=""/u)
   })
 })

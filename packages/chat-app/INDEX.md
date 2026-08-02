@@ -44,11 +44,14 @@ Artifact delivery capabilities. On narrow screens the session organizer is an ar
 moves focus into its first enabled action when opened.
 
 Transport reconnect is effect-free and resumes the opaque Session cursor with bounded jitter. Any cursor,
-branch, part-version, or authorization projection repair closes the stale stream and single-flights a fresh
-complete snapshot before attaching again. A failed repair remains an explicit user-retryable state; the UI
-never displays internal recovery action tokens or treats a browser reconnect as a new Run.
-Run and launch projection versions are also fenced monotonically; a regression, conflicting replay, or gap
-forces snapshot repair instead of regressing visible terminal state or issuing control with a stale version.
+branch, message identity, part-version, or authorization projection repair closes the stale stream and single-flights a fresh
+complete snapshot before attaching again. A hydrate that still requires repair never enters ready/live or opens an event stream;
+submit, edit, regenerate, branch, cancel, approval, and plan commands share one fail-closed projection-authority guard, and their
+UI controls stay disabled until an explicit or automatic fresh-snapshot repair succeeds. A failed repair remains an explicit
+user-retryable state; the UI never displays internal recovery action tokens or treats a browser reconnect as a new Run.
+Run and launch versions/fingerprints are fenced monotonically inside the projection store; a regression, conflicting replay, or gap
+forces snapshot repair instead of regressing visible terminal state. Cancel and HITL commands read only the active Run version
+published by `ChatProjection`, so the controller cannot retain a parallel execution authority.
 
 Before a Chat mutation crosses the BFF, its non-secret receipt lookup identity is bounded and stored in the
 current browser session. An ambiguous response can therefore only query the exact command/digest after a

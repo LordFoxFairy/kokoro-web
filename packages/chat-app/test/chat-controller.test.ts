@@ -11,6 +11,7 @@ import type {
   SessionEvent,
   SessionSnapshot,
 } from "@kokoro/session-client/contracts"
+import type { ChatPart } from "@kokoro/chat-surface"
 import { describe, expect, it, vi } from "vitest"
 
 import { createChatController } from "../src/chat-controller.js"
@@ -200,6 +201,11 @@ function clientFixture(input: Readonly<{
   submitMessage?: SessionClient["submitMessage"]
   editMessage?: SessionClient["editMessage"]
   regenerateMessage?: SessionClient["regenerateMessage"]
+  forkBranch?: SessionClient["forkBranch"]
+  activateBranch?: SessionClient["activateBranch"]
+  cancelRun?: SessionClient["cancelRun"]
+  decideAction?: SessionClient["decideAction"]
+  decidePlan?: SessionClient["decidePlan"]
 }>) {
   const streams: OpenEventsInput[] = []
   const streamHandles: EventStreamHandle[] = []
@@ -219,11 +225,11 @@ function clientFixture(input: Readonly<{
     submitMessage: input.submitMessage ?? unavailable,
     editMessage: input.editMessage ?? unavailable,
     regenerateMessage: input.regenerateMessage ?? unavailable,
-    forkBranch: unavailable,
-    activateBranch: unavailable,
-    cancelRun: unavailable,
-    decideAction: unavailable,
-    decidePlan: unavailable,
+    forkBranch: input.forkBranch ?? unavailable,
+    activateBranch: input.activateBranch ?? unavailable,
+    cancelRun: input.cancelRun ?? unavailable,
+    decideAction: input.decideAction ?? unavailable,
+    decidePlan: input.decidePlan ?? unavailable,
     getCommandReceipt: input.getCommandReceipt ?? unavailable,
     updateSession: unavailable,
     archiveSession: unavailable,
@@ -245,6 +251,140 @@ function clientFixture(input: Readonly<{
 }
 
 describe("Chat recovery controller", () => {
+  it("keeps an invalid hydration out of ready/live and fail-closes every Session mutation", async () => {
+    const valid = snapshot("branch-original-12345678", "signed.cursor.2", "2")
+    const run = {
+      run_id: "run-12345678",
+      launch_id: "launch-12345678",
+      branch_id: valid.session.active_branch_id,
+      assistant_message_id: "message-assistant-12345678",
+      execution_status: "running" as const,
+      cost_status: "committed" as const,
+      last_durable_cursor: "signed.cursor.1",
+      projection_version: 1,
+    }
+    const invalid: SessionSnapshot = { ...valid, branches: [], runs: [run] }
+    let resolveSnapshot: ((value: SessionSnapshot) => void) | undefined
+    const fetchSnapshot = vi.fn<SessionClient["fetchSnapshot"]>(() => new Promise((resolve) => {
+      resolveSnapshot = (value) => resolve(value)
+    }))
+    const submitMessage = vi.fn<SessionClient["submitMessage"]>()
+    const editMessage = vi.fn<SessionClient["editMessage"]>()
+    const regenerateMessage = vi.fn<SessionClient["regenerateMessage"]>()
+    const forkBranch = vi.fn<SessionClient["forkBranch"]>()
+    const activateBranch = vi.fn<SessionClient["activateBranch"]>()
+    const cancelRun = vi.fn<SessionClient["cancelRun"]>()
+    const decideAction = vi.fn<SessionClient["decideAction"]>()
+    const decidePlan = vi.fn<SessionClient["decidePlan"]>()
+    const { client, streams } = clientFixture({
+      initial: invalid,
+      fetchSnapshot,
+      submitMessage,
+      editMessage,
+      regenerateMessage,
+      forkBranch,
+      activateBranch,
+      cancelRun,
+      decideAction,
+      decidePlan,
+    })
+    const controller = createChatController({
+      client,
+      trustedLocale: "en-US",
+      chatCatalog: {
+        surfaceId: "chat",
+        catalogRevisionRef: "catalog-12345678",
+        defaultModelOptionRevisionRef: "model-option-12345678",
+        publishedAt: NOW,
+        options: [{
+          modelOptionRevisionRef: "model-option-12345678",
+          optionKey: "standard",
+          label: "Standard",
+          inputModalities: ["text"],
+          outputModalities: ["text"],
+          supportedEfforts: [],
+          badges: [],
+          availability: "available",
+        }],
+      },
+      defaultProjectRef: valid.session.project_ref,
+    })
+
+    await controller.open(valid.session.session_id)
+    expect(controller.getSnapshot()).toMatchObject({
+      phase: "loading",
+      failure: { code: "SNAPSHOT_REQUIRED", action: "refetch_snapshot" },
+      projection: {
+        connection: { kind: "reconnecting" },
+        repair: { required: true, reason: "snapshot_active_branch_missing" },
+      },
+    })
+    expect(streams).toHaveLength(0)
+
+    const approval: Extract<ChatPart, { kind: "approval" }> = {
+      id: "approval-part-12345678",
+      ordinal: 0,
+      version: 1,
+      lifecycle: "streaming",
+      kind: "approval",
+      ownerRef: "approval-owner-12345678",
+      expectedVersion: 1,
+      decisionGroupRef: "decision-group-12345678",
+      requiredOwnerRefs: ["approval-owner-12345678"],
+      title: "Approve",
+      description: "Approve action",
+      allowedActions: ["approve", "reject"],
+      status: "pending",
+    }
+    const plan: Extract<ChatPart, { kind: "plan" }> = {
+      id: "plan-part-12345678",
+      ordinal: 1,
+      version: 1,
+      lifecycle: "streaming",
+      kind: "plan",
+      planProposalRef: "plan-proposal-12345678",
+      planVersion: 1,
+      summary: "Plan",
+      steps: [],
+      allowedActions: ["accept", "reject"],
+      status: "pending",
+    }
+    await expect(controller.submit("blocked")).resolves.toBe(false)
+    await expect(controller.editMessage("message-user-12345678", "blocked")).resolves.toBe(false)
+    await expect(controller.regenerateMessage("message-assistant-12345678")).resolves.toBe(false)
+    await expect(controller.forkBranch(valid.session.active_branch_id)).resolves.toBe(false)
+    await expect(controller.activateBranch(valid.session.active_branch_id)).resolves.toBe(false)
+    await controller.cancel()
+    await controller.decideAction({
+      runId: run.run_id,
+      part: approval,
+      decision: { kind: "approve", payload: { acknowledged_risk: true } },
+    })
+    await controller.decidePlan({ runId: run.run_id, part: plan, decision: { kind: "accept", payload: {} } })
+    expect(submitMessage).not.toHaveBeenCalled()
+    expect(editMessage).not.toHaveBeenCalled()
+    expect(regenerateMessage).not.toHaveBeenCalled()
+    expect(forkBranch).not.toHaveBeenCalled()
+    expect(activateBranch).not.toHaveBeenCalled()
+    expect(cancelRun).not.toHaveBeenCalled()
+    expect(decideAction).not.toHaveBeenCalled()
+    expect(decidePlan).not.toHaveBeenCalled()
+
+    const firstRepair = controller.recover()
+    const secondRepair = controller.recover()
+    expect(fetchSnapshot).toHaveBeenCalledOnce()
+    resolveSnapshot?.(valid)
+    await expect(firstRepair).resolves.toBe(true)
+    await expect(secondRepair).resolves.toBe(true)
+    expect(streams).toHaveLength(1)
+    expect(controller.getSnapshot()).toMatchObject({
+      phase: "ready",
+      failure: null,
+      projection: { repair: { required: false } },
+    })
+    controller.close()
+  })
+
   it("exposes one projection authority for live session and branch metadata", async () => {
     const initial: SessionSnapshot = {
       ...snapshot("branch-original-12345678", "signed.cursor.1", "1", "standard"),

@@ -228,10 +228,6 @@ export function createChatController(options: {
   })
   let generation = 0
   let selectionSessionId: string | null = null
-  const runProjectionVersions = new Map<string, number>()
-  const runProjectionFingerprints = new Map<string, string>()
-  const launchVersions = new Map<string, number>()
-  const launchFingerprints = new Map<string, string>()
   const listeners = new Set<() => void>()
 
   const publish = (next: ChatState): void => {
@@ -256,10 +252,6 @@ export function createChatController(options: {
     const activeStream = stream
     stream = null
     activeStream?.close()
-    runProjectionVersions.clear()
-    runProjectionFingerprints.clear()
-    launchVersions.clear()
-    launchFingerprints.clear()
     projectionStore.reset()
     publish({
       ...state,
@@ -320,18 +312,9 @@ export function createChatController(options: {
 
   const attach = (sessionId: string, snapshot: SessionSnapshot, currentGeneration: number): boolean => {
     if (!observeOwnerPolicy(sessionId, snapshot.session.session_id, snapshot.session.context_policy)) return false
-    runProjectionVersions.clear()
-    runProjectionFingerprints.clear()
-    launchVersions.clear()
-    launchFingerprints.clear()
-    for (const run of snapshot.runs) {
-      runProjectionVersions.set(run.run_id, run.projection_version)
-      runProjectionFingerprints.set(run.run_id, JSON.stringify(run))
-    }
-    for (const launch of snapshot.run_launches) {
-      launchVersions.set(launch.launch_id, launch.version)
-      launchFingerprints.set(launch.launch_id, JSON.stringify(launch))
-    }
+    const previousStream = stream
+    stream = null
+    previousStream?.close()
     const availableOptions = new Set(
       options.chatCatalog?.options
         .filter(({ availability }) => availability === "available")
@@ -365,6 +348,23 @@ export function createChatController(options: {
             : selectedOption.supportedEfforts[0] ?? null
     selectionSessionId = sessionId
     projectionStore.hydrate(snapshot)
+    if (projectionStore.getSnapshot().repair.required) {
+      projectionStore.dispatch({ type: "connection", connection: { kind: "reconnecting" } })
+      publish({
+        ...state,
+        phase: "loading",
+        sessionId,
+        selectedModelOptionRevisionRef,
+        selectedEffort,
+        projection: projectionStore.getSnapshot(),
+        failure: describeSessionFailure({
+          stableCode: "SNAPSHOT_REQUIRED",
+          action: "refetch_snapshot",
+          retryClass: "after_user_action",
+        }),
+      })
+      return false
+    }
     publish({
       ...state,
       phase: "ready",
@@ -374,9 +374,6 @@ export function createChatController(options: {
       selectedEffort,
       projection: projectionStore.getSnapshot(),
     })
-    const previousStream = stream
-    stream = null
-    previousStream?.close()
     let nextStream: EventStreamHandle | null = null
     const isCurrentStream = (): boolean =>
       currentGeneration === generation && (nextStream === null ? stream === null : stream === nextStream)
@@ -391,44 +388,6 @@ export function createChatController(options: {
         }
         if (event.kind === "session.updated") {
           if (!observeOwnerPolicy(sessionId, event.payload.session.session_id, event.payload.session.context_policy)) return
-        } else if (event.kind === "run.view.updated") {
-          const fingerprint = JSON.stringify(event.payload.run)
-          const currentVersion = runProjectionVersions.get(event.payload.run.run_id)
-          const currentFingerprint = runProjectionFingerprints.get(event.payload.run.run_id)
-          const versionConflict = currentVersion === undefined
-            ? event.payload.run.projection_version !== 1
-            : (
-              event.payload.run.projection_version < currentVersion ||
-              event.payload.run.projection_version === currentVersion && fingerprint !== currentFingerprint ||
-              event.payload.run.projection_version > currentVersion + 1
-            )
-          if (versionConflict) {
-            project({ type: "repair", reason: "run_projection_version_conflict" })
-            void repairFromSnapshot(currentGeneration)
-            return
-          }
-          if (event.payload.run.projection_version === currentVersion && fingerprint === currentFingerprint) return
-          runProjectionVersions.set(event.payload.run.run_id, event.payload.run.projection_version)
-          runProjectionFingerprints.set(event.payload.run.run_id, fingerprint)
-        } else if (event.kind === "run.launch.updated") {
-          const fingerprint = JSON.stringify(event.payload.launch)
-          const currentVersion = launchVersions.get(event.payload.launch.launch_id)
-          const currentFingerprint = launchFingerprints.get(event.payload.launch.launch_id)
-          const versionConflict = currentVersion === undefined
-            ? event.payload.launch.version !== 1
-            : (
-              event.payload.launch.version < currentVersion ||
-              event.payload.launch.version === currentVersion && fingerprint !== currentFingerprint ||
-              event.payload.launch.version > currentVersion + 1
-            )
-          if (versionConflict) {
-            project({ type: "repair", reason: "run_launch_version_conflict" })
-            void repairFromSnapshot(currentGeneration)
-            return
-          }
-          if (event.payload.launch.version === currentVersion && fingerprint === currentFingerprint) return
-          launchVersions.set(event.payload.launch.launch_id, event.payload.launch.version)
-          launchFingerprints.set(event.payload.launch.launch_id, fingerprint)
         }
         project({ type: "event", event })
         if (state.projection.repair.required) void repairFromSnapshot(currentGeneration)
@@ -724,6 +683,19 @@ export function createChatController(options: {
     }
   }
 
+  const mutationAuthority = () => {
+    const sessionId = state.sessionId
+    const session = state.projection.session
+    if (
+      state.phase !== "ready" ||
+      state.projection.repair.required ||
+      sessionId === null ||
+      session === null ||
+      session.id !== sessionId
+    ) return null
+    return { sessionId, session }
+  }
+
   const inputParts = (messageId: string): MessageInputPart[] | null => {
     const message = state.projection.messages.find((candidate) => candidate.id === messageId)
     if (message === undefined) return null
@@ -820,14 +792,13 @@ export function createChatController(options: {
     attachments: readonly AttachmentIntent[] = [],
     clientDraftRevision?: string,
   ): Promise<boolean> => {
-    const session = state.projection.session
+    const authority = mutationAuthority()
+    if (authority === null) return false
+    const { session, sessionId } = authority
     const branchId = state.projection.activeBranchId
-    const sessionId = state.sessionId
     const text = content.trim()
     if (
-      session === null ||
       branchId === null ||
-      sessionId === null ||
       (text.length === 0 && attachments.length === 0) ||
       attachments.length > 64
     ) return false
@@ -872,16 +843,17 @@ export function createChatController(options: {
   }
 
   const editMessage = async (messageId: string, content: string): Promise<boolean> => {
-    const session = state.projection.session
-    const sessionId = state.sessionId
+    const authority = mutationAuthority()
+    if (authority === null) return false
+    const { session, sessionId } = authority
     const source = state.projection.messages.find((message) => message.id === messageId)
     const branch = state.projection.branches.find((candidate) => candidate.id === source?.branchId)
     const text = content.trim()
-    const execution = selectedExecutionInput()
     if (
-      session === null || sessionId === null || source?.role !== "user" || branch === undefined ||
-      text.length === 0 || execution === null || state.projection.activeRunId !== null
+      source?.role !== "user" || branch === undefined || text.length === 0 || state.projection.activeRunId !== null
     ) return false
+    const execution = selectedExecutionInput()
+    if (execution === null) return false
     const commandGeneration = generation
     const effect = {
       expected_session_version: session.version,
@@ -907,17 +879,19 @@ export function createChatController(options: {
   }
 
   const regenerateMessage = async (messageId: string): Promise<boolean> => {
-    const session = state.projection.session
-    const sessionId = state.sessionId
+    const authority = mutationAuthority()
+    if (authority === null) return false
+    const { session, sessionId } = authority
     const source = state.projection.messages.find((message) => message.id === messageId)
     const trigger = state.projection.messages.find((message) => message.id === source?.triggerMessageId)
     const branch = state.projection.branches.find((candidate) => candidate.id === source?.branchId)
     const parts = trigger === undefined ? null : inputParts(trigger.id)
-    const execution = selectedExecutionInput()
     if (
-      session === null || sessionId === null || source?.role !== "assistant" || trigger?.role !== "user" ||
-      branch === undefined || parts === null || execution === null || state.projection.activeRunId !== null
+      source?.role !== "assistant" || trigger?.role !== "user" || branch === undefined ||
+      parts === null || state.projection.activeRunId !== null
     ) return false
+    const execution = selectedExecutionInput()
+    if (execution === null) return false
     const commandGeneration = generation
     const effect = {
       expected_session_version: session.version,
@@ -947,10 +921,11 @@ export function createChatController(options: {
     branchId: string,
     operation: "fork_branch" | "activate_branch",
   ): Promise<boolean> => {
-    const session = state.projection.session
-    const sessionId = state.sessionId
+    const authority = mutationAuthority()
+    if (authority === null) return false
+    const { session, sessionId } = authority
     const branch = state.projection.branches.find((candidate) => candidate.id === branchId)
-    if (session === null || sessionId === null || branch === undefined || state.projection.activeRunId !== null) return false
+    if (branch === undefined || state.projection.activeRunId !== null) return false
     const commandGeneration = generation
     const effect = {
       expected_session_version: session.version,
@@ -970,11 +945,13 @@ export function createChatController(options: {
   }
 
   const cancel = async (): Promise<void> => {
-    const sessionId = state.sessionId
+    const authority = mutationAuthority()
+    if (authority === null) return
+    const { sessionId } = authority
     const runId = state.projection.activeRunId
-    if (sessionId === null || runId === null) return
-    const version = runProjectionVersions.get(runId)
-    if (version === undefined) {
+    if (runId === null) return
+    const version = state.projection.activeRunProjectionVersion
+    if (version === null) {
       fail(describeSessionFailure({
         stableCode: "RUN_OUTCOME_UNKNOWN",
         action: "refetch_snapshot",
@@ -995,11 +972,14 @@ export function createChatController(options: {
   }
 
   const decideAction: ChatController["decideAction"] = async ({ runId, part, decision }) => {
-    const session = state.projection.session
-    const sessionId = state.sessionId
-    const runVersion = runProjectionVersions.get(runId)
+    const authority = mutationAuthority()
+    if (authority === null) return
+    const { session, sessionId } = authority
+    const runVersion = state.projection.activeRunId === runId
+      ? state.projection.activeRunProjectionVersion
+      : null
     if (
-      session === null || sessionId === null || runVersion === undefined ||
+      runVersion === null ||
       part.status !== "pending" || !part.allowedActions.includes(decision.kind) ||
       part.deadline !== undefined && Date.parse(part.deadline) <= Date.now()
     ) {
@@ -1027,11 +1007,14 @@ export function createChatController(options: {
   }
 
   const decidePlan: ChatController["decidePlan"] = async ({ runId, part, decision }) => {
-    const session = state.projection.session
-    const sessionId = state.sessionId
-    const runVersion = runProjectionVersions.get(runId)
+    const authority = mutationAuthority()
+    if (authority === null) return
+    const { session, sessionId } = authority
+    const runVersion = state.projection.activeRunId === runId
+      ? state.projection.activeRunProjectionVersion
+      : null
     if (
-      session === null || sessionId === null || runVersion === undefined ||
+      runVersion === null ||
       part.status !== "pending" || !part.allowedActions.includes(decision.kind) ||
       part.deadline !== undefined && Date.parse(part.deadline) <= Date.now()
     ) {
@@ -1071,6 +1054,7 @@ export function createChatController(options: {
     activateBranch: (branchId) => branchMutation(branchId, "activate_branch"),
     cancel,
     recover() {
+      if (repairTask?.generation === generation) return repairTask.task
       if (state.failure?.action === "reconcile_receipt") return resumePendingCommand()
       if (
         state.failure === null ||
