@@ -145,6 +145,41 @@ function sseFrame(value: unknown, options: { readonly id?: string; readonly even
   return new TextEncoder().encode(`${id}event: ${event}\ndata: ${JSON.stringify(value)}\n\n`);
 }
 
+function sequenceZeroSnapshot() {
+  return {
+    session: {
+      session_id: "session-12345678",
+      project_ref: bootstrap.defaultProjectRef,
+      title: "Thread",
+      lifecycle: "active",
+      context_policy: "standard",
+      active_branch_id: "branch-12345678",
+      version: 1,
+      created_at: "2026-07-28T12:00:00.000Z",
+      updated_at: "2026-07-28T12:00:00.000Z",
+    },
+    branches: [{
+      branch_id: "branch-12345678",
+      origin: "original",
+      version: 1,
+      created_at: "2026-07-28T12:00:00.000Z",
+    }],
+    messages: [],
+    run_launches: [],
+    runs: [],
+    controls: [],
+    costs: [],
+    model_history: [],
+    snapshot_watermark: {
+      snapshot_revision_ref: `session.snapshot:sha256:${DIGEST}`,
+      projection_version: 1,
+    },
+    presentation_snapshot: {
+      cursor: "signed.presentation.cursor.0",
+    },
+  };
+}
+
 describe("Session browser v3 operation authority", () => {
   it("matches only exact generated method/path pairs", () => {
     expect(matchSessionBrowserV3Request({
@@ -323,6 +358,52 @@ describe("Session browser v3 operation authority", () => {
       },
     });
     expect(response.status).toBe(200);
+  });
+
+  it("accepts the canonical sequence-zero snapshot without a retired watermark cursor", async () => {
+    const accessGrant = grant("read");
+    const access = {
+      acquire: vi.fn(async () => accessGrant),
+    } as unknown as SessionAccessManager;
+    const proxy = createSessionBrowserV3Proxy({
+      bootstrap,
+      access,
+      browserRequestVerifier: {
+        verify: vi.fn((input) => ({
+          kind: "same-origin-browser" as const,
+          operationId: input.operationId,
+          method: input.method,
+          origin: "https://chat.example.test",
+        })),
+      },
+      transport: createSessionBrowserV3Transport({
+        send: async () => ({
+          status: 200,
+          headers: { "content-type": "application/json" },
+          body: new Response(JSON.stringify(sequenceZeroSnapshot())).body,
+          authenticatedBinding: authenticatedBinding(accessGrant),
+        }),
+      }),
+    });
+
+    const response = await proxy.execute({
+      operationId: "snapshot",
+      browser: {
+        method: "GET",
+        headers: { origin: "https://chat.example.test", "sec-fetch-site": "same-origin" },
+        pathParameters: { session_id: "session-12345678" },
+        query: {},
+      },
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      snapshot_watermark: {
+        snapshot_revision_ref: `session.snapshot:sha256:${DIGEST}`,
+        projection_version: 1,
+      },
+      presentation_snapshot: { cursor: "signed.presentation.cursor.0" },
+    });
   });
 });
 

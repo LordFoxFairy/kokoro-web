@@ -281,9 +281,9 @@ function responseParser(operationId: SessionBrowserV3OperationId, schema: ZodTyp
     const parsed: unknown = schema.parse(value);
     if (operationId === "snapshot") {
       const snapshot = asPlainRecord(parsed);
-      const watermark = asPlainRecord(snapshot.snapshot_watermark);
-      if (typeof watermark.cursor !== "string") throw new SessionProxyError("UPSTREAM_PROTOCOL_ERROR");
-      assertOpaqueCursor(watermark.cursor);
+      const presentation = asPlainRecord(snapshot.presentation_snapshot);
+      if (typeof presentation.cursor !== "string") throw new SessionProxyError("UPSTREAM_PROTOCOL_ERROR");
+      assertOpaqueCursor(presentation.cursor);
     }
     return parsed;
   };
