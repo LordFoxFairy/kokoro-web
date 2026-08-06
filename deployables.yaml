@@ -1,0 +1,62 @@
+schemaVersion: 1
+image:
+  buildRoot: .
+  dockerfile: apps/admin/Dockerfile
+  owner: web
+deployables:
+  - id: admin-web
+    command: node apps/admin/server.js
+    processRole: admin-security-bff
+    artifactReferencePolicy: oci-digest-only
+    activationAuthorized: true
+    runtimeTraffic: true
+    launchReadiness: ready
+    inboundContracts: [admin-web-https]
+    outboundContracts: [platform-admin-connect]
+    requiredEnvironment:
+      - AUTH_SECRET
+      - KOKORO_ADMIN_RPC_URL
+      - KOKORO_ADMIN_TLS_KEY_FILE
+      - KOKORO_ADMIN_TLS_CERT_FILE
+      - KOKORO_ADMIN_TLS_CA_FILE
+      - KOKORO_ADMIN_TLS_SERVER_NAME
+      - KOKORO_ADMIN_DELIVERY_KEY_RING_FILE
+      - KOKORO_ADMIN_WORKLOAD_IDENTITY_REF
+      - KOKORO_ADMIN_AUDIENCE
+      - KOKORO_ADMIN_ENVIRONMENT
+      - KOKORO_ADMIN_REGION
+      - KOKORO_ADMIN_MANAGED_DEVICE_REF
+      - KOKORO_ADMIN_RETURN_INTENT_REF
+      - KOKORO_ADMIN_STEP_UP_CALLBACK_REF
+    secretClasses:
+      - admin-web-session-encryption
+      - platform-admin-mtls-client
+      - platform-admin-delivery-keyring
+    ports:
+      - { name: http, containerPort: 3000, protocol: http, exposure: service, mtls: false }
+    probes:
+      liveness: { path: /api/health/live, port: http, scheme: HTTP }
+      readiness: { path: /api/health/ready, port: http, scheme: HTTP }
+    containerSecurity:
+      runAsUser: 10001
+      runAsGroup: 10001
+      readOnlyRootFilesystem: true
+      allowPrivilegeEscalation: false
+      dropCapabilities: [ALL]
+      writableTmpfs: [/tmp]
+    readiness: /api/health/ready
+    drain: http-graceful
+    releaseOwner: web
+    rollbackAuthority: previous-verified-oci-digest
+
+  - id: independent-site-release
+    processRole: independently-released-site
+    artifactSource: independent-site-project
+    artifactReferencePolicy: exact-site-release-oci-digest
+    activationAuthorized: false
+    runtimeTraffic: false
+    launchReadiness: blocked
+    launchBlockers:
+      - no-exact-site-release-selected
+    releaseOwner: site-project
+    rollbackAuthority: site-project-previous-verified-oci-digest

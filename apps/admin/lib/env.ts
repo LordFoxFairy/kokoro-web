@@ -4,7 +4,7 @@ import { z } from "zod";
 // 仅 node 运行时导入（auth.ts / email.ts）；edge middleware 另行直读 process.env。
 // SMTP 全可选：未配则 email.ts 退回 console。生产是否强制 SMTP 属部署编排关注，不在构建期硬卡。
 const schema = z.object({
-  AUTH_SECRET: z.string().min(1),
+  AUTH_SECRET: z.string().min(32),
   KOKORO_ADMIN_RPC_URL: z.string().url().refine((value) => value.startsWith("https://")),
   KOKORO_ADMIN_TLS_KEY_FILE: z.string().min(1),
   KOKORO_ADMIN_TLS_CERT_FILE: z.string().min(1),

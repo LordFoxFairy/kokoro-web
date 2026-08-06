@@ -16,6 +16,7 @@
     "build": "pnpm run build:site && pnpm run build:admin",
     "build:site": "pnpm --filter @kokoro/site-scaffold... --filter @kokoro/reference-site... build",
     "build:admin": "pnpm --filter @kokoro/admin-web... build",
+    "build:admin:image": "docker build --file apps/admin/Dockerfile .",
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm run test:repository && pnpm -r test",

@@ -1,3 +1,5 @@
+import { resolve } from "node:path";
+
 import type { NextConfig } from "next";
 
 // 仅应用语义的响应头。传输层（HSTS）与边缘限流归反代/TLS 终结点（nginx/APISIX），不在此。
@@ -11,6 +13,8 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  output: "standalone",
+  outputFileTracingRoot: resolve(import.meta.dirname, "../.."),
   allowedDevOrigins: ["127.0.0.1"],
   // 共享窄包以 TS 源码分发（exports→src），需 Next 编译。
   transpilePackages: ["@kokoro/i18n"],

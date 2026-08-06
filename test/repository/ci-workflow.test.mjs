@@ -39,10 +39,11 @@ test("web CI installs and verifies with its pinned pnpm lock", async () => {
   assert.equal(packageJson.scripts.build, "pnpm run build:site && pnpm run build:admin");
   assert.match(workflow, /- name: build Site factory and reference fixture\s+run:\s*pnpm run build:site/u);
   assert.match(workflow, /- name: build admin console\s+run:\s*pnpm run build:admin/u);
+  assert.equal(packageJson.scripts["build:admin:image"], "docker build --file apps/admin/Dockerfile .");
+  assert.match(workflow, /- name: build dedicated Admin production image\s+run:\s*docker build --file apps\/admin\/Dockerfile/u);
   assert.doesNotMatch(workflow, /@kokoro\/web-user|build user site/u);
-  assert.match(workflow, /AUTH_SECRET:\s*example-/u);
+  assert.doesNotMatch(workflow, /AUTH_SECRET|KOKORO_ADMIN_TLS_|KOKORO_ADMIN_DELIVERY_KEY_RING_FILE/u);
   assert.doesNotMatch(workflow, /DATABASE_URL_ADMIN/u);
-  assert.match(workflow, /KOKORO_GATEWAY_URL:\s*http:\/\/127\.0\.0\.1:/u);
-  assert.match(workflow, /KOKORO_ADMIN_PROXY_SECRET:\s*example-/u);
+  assert.doesNotMatch(workflow, /KOKORO_GATEWAY_URL|KOKORO_ADMIN_PROXY_SECRET/u);
   assert.doesNotMatch(workflow, /npm ci/u);
 });

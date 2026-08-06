@@ -20,4 +20,7 @@ describe("Admin Web environment", () => {
     expect(() => parseEnv({ ...base, KOKORO_ADMIN_RPC_URL: "http://platform-admin.test" })).toThrow();
     expect(() => parseEnv({ ...base, KOKORO_ADMIN_WORKLOAD_IDENTITY_REF: "admin-web" })).toThrow();
   });
+  it("rejects an authority-session secret shorter than 32 bytes", () => {
+    expect(() => parseEnv({ ...base, AUTH_SECRET: "x".repeat(31) })).toThrow();
+  });
 });

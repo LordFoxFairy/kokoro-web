@@ -108,6 +108,14 @@ const ADMIN_CONTROL_ROUTES = new Map([
     methods: ["GET"],
     imports: ["@/lib/control-plane/http", "@/lib/control-plane/strict-query", "@/lib/control-plane/user-client"],
   }],
+  ["apps/admin/app/api/health/live/route.ts", {
+    methods: ["GET"],
+    imports: ["@/lib/health"],
+  }],
+  ["apps/admin/app/api/health/ready/route.ts", {
+    methods: ["GET"],
+    imports: ["@/lib/health"],
+  }],
   ["apps/admin/app/api/control/models/route.ts", {
     methods: ["GET", "POST"],
     imports: ["@/lib/control-plane/client", "@/lib/control-plane/http", "@/lib/control-plane/strict-query"],

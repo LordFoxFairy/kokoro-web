@@ -33,6 +33,9 @@ packages/
 
 正式 Next.js surfaces 锁在 Next 16.2.12 / React 19.2.8。根仓不提供默认 `dev`/`start`；
 `build:site` 验证 Site factory、共享依赖与 reference fixture，`build:admin` 独立验证 Admin。
+仓根 `deployables.yaml` 是 Web-owned 发布库存：`admin-web` 绑定独立 standalone Dockerfile、
+digest-only 发布、非特权只读运行和依赖感知 readiness；未绑定精确 Site release 时
+`independent-site-release` 保持 blocked，reference fixture 永不替代生产 Site 制品。
 
 ## Non-responsibilities
 
@@ -104,5 +107,7 @@ Put app-specific behavior in its app and truly shared Web code in `packages/*`. 
 ## Verification
 
 Run `pnpm -r lint`, `pnpm -r typecheck`, `pnpm test`, `pnpm run build:site`, and `pnpm run build:admin`.
+Admin production CI additionally runs `docker build --file apps/admin/Dockerfile .` and promotes only
+the resulting registry digest.
 CI 另跑 `pnpm audit --prod --audit-level high`；外部 Site 项目还必须执行模板内自己的 CI/artifact verification。
 Web Chat/Credit runtime cut 使用 `pnpm exec node --test test/runtime/web-chat-credit-runtime.test.mjs`。

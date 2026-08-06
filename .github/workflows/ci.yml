@@ -33,9 +33,5 @@ jobs:
         run: pnpm --filter @kokoro/site-bff verify:dist
       - name: build admin console
         run: pnpm run build:admin
-        env:
-          AUTH_SECRET: example-ci-auth-secret
-          KOKORO_GATEWAY_URL: http://127.0.0.1:4250
-          KOKORO_ADMIN_PROXY_SECRET: example-ci-proxy-secret
-          EMAIL_SERVER_HOST: 127.0.0.1
-          EMAIL_SERVER_PORT: "2525"
+      - name: build dedicated Admin production image
+        run: docker build --file apps/admin/Dockerfile --tag kokoro/admin-web:${{ github.sha }} .

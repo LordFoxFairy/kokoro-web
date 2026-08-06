@@ -3,6 +3,11 @@ import { AUTHORITY_COOKIE } from "./lib/control-plane/session-constants";
 
 export default function proxy(req: NextRequest): NextResponse {
   const { pathname } = req.nextUrl;
+  const isHealthRoute =
+    pathname === "/api/health/live" ||
+    pathname === "/api/health/ready";
+  if (isHealthRoute) return NextResponse.next();
+
   const isAuthPage = pathname.startsWith("/login");
   const isAuthRoute = pathname.startsWith("/api/control/auth/");
   const hasSession = req.cookies.has(AUTHORITY_COOKIE);
