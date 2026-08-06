@@ -145,8 +145,8 @@ function safeInteractionSchema(value: Readonly<Record<string, unknown>> | undefi
   return fields.length > 0 ? { kind: "form", fields } : null
 }
 
-function safeHref(value: string | undefined): string | null {
-  if (value === undefined || value.length > 4096) return null
+function safeHref(value: unknown): string | null {
+  if (typeof value !== "string" || value.length > 4096) return null
   try {
     const parsed = new URL(value)
     return parsed.protocol === "https:" && parsed.username === "" && parsed.password === "" ? parsed.href : null

@@ -4,7 +4,7 @@ import {
   CreditBucketClass,
   CreditGrantSourceType,
   CreditReadFreshness,
-} from "@/lib/generated/admin-credit/kokoro/platform/credit/v1/admin_credit_pb";
+} from "@/lib/generated/proto/kokoro/platform/credit/v1/admin_credit_pb";
 import { createAdminCreditReader } from "./credit-client";
 
 const at = (seconds: bigint) => ({ seconds, nanos: 0 });
@@ -32,7 +32,7 @@ describe("typed Admin Credit client", () => {
       freshness: CreditReadFreshness.AUTHORITATIVE_DATABASE_OBSERVATION, asOf: watermark,
       providerPayload: { forbidden: true },
     } }));
-    const runtime = vi.fn(async () => ({ rpc: { getSiteCreditSummary }, context: { requestId: "request-one" },
+    const runtime = vi.fn(async () => ({ rpc: { getSiteCreditSummary }, authority: { requestId: "request-one" },
       headers: new Headers({ authorization: "Bearer sealed" }) }));
     const reader = createAdminCreditReader(runtime as never);
 
@@ -45,7 +45,7 @@ describe("typed Admin Credit client", () => {
     });
     expect(runtime).toHaveBeenCalledWith("site-one", "creditSummary");
     expect(getSiteCreditSummary).toHaveBeenCalledWith(
-      { context: { requestId: "request-one" }, siteId: "site-one" },
+      { authority: { requestId: "request-one" } },
       { headers: expect.any(Headers) },
     );
   });
@@ -64,7 +64,7 @@ describe("typed Admin Credit client", () => {
       listRatedUsage: vi.fn(async () => ({ ratedUsage: [], ...page })),
       listRatedUsageSourceAllocations: vi.fn(async () => ({ allocations: [], ...page })),
     };
-    const runtime = vi.fn(async () => ({ rpc, context: {}, headers: new Headers() }));
+    const runtime = vi.fn(async () => ({ rpc, authority: {}, headers: new Headers() }));
     const reader = createAdminCreditReader(runtime as never);
     const reads = [
       reader.getSiteCreditSummary("site-one"),
@@ -103,7 +103,7 @@ describe("typed Admin Credit client", () => {
       effectiveAt: watermark, expiresAt: undefined, issuedAt: watermark,
       relatedHoldCount: 1n, relatedExecutionCount: 2n,
     }], nextPageToken: "next", membershipWatermark: watermark, observedAt: at(1_785_369_601n) }));
-    const reader = createAdminCreditReader(vi.fn(async () => ({ rpc: { listCreditGrants }, context: {},
+    const reader = createAdminCreditReader(vi.fn(async () => ({ rpc: { listCreditGrants }, authority: {},
       headers: new Headers() })) as never);
 
     const response = await reader.listCreditGrants({ siteId: "site-one",
@@ -111,7 +111,7 @@ describe("typed Admin Credit client", () => {
     expect(response).toMatchObject({ items: [{ sourceType: "redemption", bucketClass: "permanent",
       relatedHoldCount: "1", relatedExecutionCount: "2", expiresAt: null }], nextPageToken: "next",
       membershipWatermark: "2026-07-30T00:00:00.000Z", observedAt: "2026-07-30T00:00:01.000Z" });
-    expect(listCreditGrants).toHaveBeenCalledWith(expect.objectContaining({ siteId: "site-one",
+    expect(listCreditGrants).toHaveBeenCalledWith(expect.objectContaining({ authority: {},
       sourceType: CreditGrantSourceType.REDEMPTION, sourceRef: "redeem:one", pageToken: "opaque",
       pageSize: 100 }), expect.anything());
   });
@@ -132,7 +132,7 @@ describe("typed Admin Credit client", () => {
       lineItemCount: 1, sourceCount: 1n, createdAt: watermark,
     }], nextPageToken: undefined, membershipWatermark: watermark, observedAt: watermark }));
     const reader = createAdminCreditReader(vi.fn(async () => ({
-      rpc: { listCreditHoldAllocations, listRatedUsage }, context: {}, headers: new Headers(),
+      rpc: { listCreditHoldAllocations, listRatedUsage }, authority: {}, headers: new Headers(),
     })) as never);
 
     await reader.listCreditHoldAllocations({ siteId: "site-one",
@@ -160,7 +160,7 @@ describe("typed Admin Credit client", () => {
       listRatedUsage: vi.fn(async () => ({ ratedUsage: [identityOnly({ siteId: wrongSite })], ...page })),
       listRatedUsageSourceAllocations: vi.fn(async () => ({ allocations: [identityOnly({ siteId: wrongSite })], ...page })),
     };
-    const reader = createAdminCreditReader(vi.fn(async () => ({ rpc, context: {}, headers: new Headers() })) as never);
+    const reader = createAdminCreditReader(vi.fn(async () => ({ rpc, authority: {}, headers: new Headers() })) as never);
     const accountRef = "11111111-1111-4111-8111-111111111111";
     const transactionRef = "22222222-2222-4222-8222-222222222222";
     const grantRef = "33333333-3333-4333-8333-333333333333";
@@ -201,7 +201,7 @@ describe("typed Admin Credit client", () => {
       listRatedUsageSourceAllocations: vi.fn(async () => ({ allocations: [identityOnly({ siteId: "site-one",
         ratedUsageRef: otherRef, settlementRef: otherRef })], ...page })),
     };
-    const reader = createAdminCreditReader(vi.fn(async () => ({ rpc, context: {}, headers: new Headers() })) as never);
+    const reader = createAdminCreditReader(vi.fn(async () => ({ rpc, authority: {}, headers: new Headers() })) as never);
     await expect(reader.getCreditAccount("site-one", accountRef)).rejects.toMatchObject(invalidResponse);
     await expect(reader.listCreditHoldAllocations({ siteId: "site-one", trace: { kind: "grant", ref: grantRef } }))
       .rejects.toMatchObject(invalidResponse);

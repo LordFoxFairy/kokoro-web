@@ -1,22 +1,22 @@
-export { PLATFORM_PUBLIC_CONTRACT_METADATA } from "./generated/platform-public/contract-metadata.js";
+export { PLATFORM_PUBLIC_CONTRACT_METADATA } from "./generated/contracts/openapi/platform-public/contract-metadata.js";
 export {
   canonicalMediaOperationInputV1Bytes,
   MediaCanonicalError,
   mediaCallerRequestFingerprintHeaders,
   mediaCallerRequestFingerprintPreimage,
   mediaCallerRequestFingerprintSha256,
-} from "./generated/platform-public/media-canonical.js";
+} from "./generated/contracts/openapi/platform-public/media-canonical.js";
 export type {
   CanonicalMediaOperationInputV1,
   MediaCallerRequestFingerprintHeaders,
-} from "./generated/platform-public/media-canonical.js";
-export type * from "./generated/platform-public/types.gen.js";
+} from "./generated/contracts/openapi/platform-public/media-canonical.js";
+export type * from "./generated/contracts/openapi/platform-public/types.gen.js";
 export type {
   PlatformPublicOperationDataMap,
   PlatformPublicOperationErrorMap,
   PlatformPublicOperationId,
   PlatformPublicOperationResponseMap,
-} from "./generated/platform-public/operations.gen.js";
+} from "./generated/contracts/openapi/platform-public/operations.gen.js";
 // Browser-safe runtime validators for public inputs, references, and read models. These remain generated
 // contract authority; consumers must not maintain parallel hand-written schemas.
 export {
@@ -60,4 +60,4 @@ export {
   zMemorySettings,
   zMemorySettingsUpdateInput,
   zMemorySourceKind,
-} from "./generated/platform-public/zod.gen.js";
+} from "./generated/contracts/openapi/platform-public/zod.gen.js";

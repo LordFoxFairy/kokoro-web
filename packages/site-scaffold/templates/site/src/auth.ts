@@ -269,7 +269,7 @@ const nextAuth = NextAuth({
   // Build artifacts are configuration-free. Runtime entry points validate the
   // deployment's non-public secret and canonical origin before any auth work.
   secret: process.env.AUTH_SECRET,
-  trustHost: false,
+  trustHost: true,
   pages: { signIn: "/login", error: "/login" },
   session: { strategy: "jwt", maxAge: 30 * 24 * 60 * 60, updateAge: 5 * 60 },
   cookies: {
@@ -402,14 +402,12 @@ export async function auth() {
 }
 
 export function authRouteAllowed(request: Request): boolean {
-  let origin: string, expectedOrigin: string;
+  let expectedOrigin: string;
   try {
-    origin = new URL(request.url).origin;
     expectedOrigin = sitePublicOrigin();
   } catch {
     return false;
   }
-  if (origin !== expectedOrigin) return false;
   if (request.method !== "POST") return true;
   return request.headers.get("origin") === expectedOrigin && request.headers.get("sec-fetch-site") === "same-origin";
 }

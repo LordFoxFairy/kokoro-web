@@ -7,7 +7,7 @@ import type { CreditSurface } from "../admin-surface-permissions";
 import { requireAdminSurfaceSession } from "./admin-surface-authority";
 import { AdminControlPlaneError, authHeaders, queryContext } from "./client";
 import { adminControlPlaneTransport } from "./transport";
-import { KokoroErrorDetailSchema } from "@/lib/generated/admin-credit/kokoro/common/v1/error_pb";
+import { KokoroErrorDetailSchema } from "@/lib/generated/proto/kokoro/common/v1/error_pb";
 import {
   AdminCreditService,
   CreditAccountState,
@@ -30,11 +30,11 @@ import {
   type RatedUsageSourceAllocationSummary,
   type RatedUsageSummary,
   type SiteCreditSummary,
-} from "@/lib/generated/admin-credit/kokoro/platform/credit/v1/admin_credit_pb";
+} from "@/lib/generated/proto/kokoro/platform/credit/v1/admin_credit_pb";
 import type { CreditSourceType } from "@/lib/credit-contract";
 
 type CreditRpc = Client<typeof AdminCreditService>;
-type CreditRuntime = Readonly<{ rpc: CreditRpc; context: Parameters<CreditRpc["getSiteCreditSummary"]>[0]["context"];
+type CreditRuntime = Readonly<{ rpc: CreditRpc; authority: Parameters<CreditRpc["getSiteCreditSummary"]>[0]["authority"];
   headers: Headers }>;
 type RuntimeResolver = (siteId: string, surface: CreditSurface) => Promise<CreditRuntime>;
 
@@ -67,31 +67,31 @@ export class AdminCreditInvalidResponseError extends AdminControlPlaneError {
 export function createAdminCreditReader(runtime: RuntimeResolver) {
   return Object.freeze({
     async getSiteCreditSummary(siteId: string) {
-      const { rpc, context, headers } = await runtime(siteId, "creditSummary");
-      const response = await call(() => rpc.getSiteCreditSummary({ context, siteId }, { headers }));
+      const { rpc, authority, headers } = await runtime(siteId, "creditSummary");
+      const response = await call(() => rpc.getSiteCreditSummary({ authority }, { headers }));
       if (response.summary === undefined) throw invalidResponse();
       assertEqual(response.summary.siteId, siteId);
       return siteSummaryJson(response.summary);
     },
     async listCreditAccounts(input: PageInput & Readonly<{ billingAccountRef?: string }>) {
-      const { rpc, context, headers } = await runtime(input.siteId, "creditAccounts");
-      const response = await call(() => rpc.listCreditAccounts({ context, siteId: input.siteId, pageSize: 100,
+      const { rpc, authority, headers } = await runtime(input.siteId, "creditAccounts");
+      const response = await call(() => rpc.listCreditAccounts({ authority, pageSize: 100,
         ...optional("billingAccountRef", input.billingAccountRef), ...optional("pageToken", input.pageToken) }, { headers }));
       assertItems(response.accounts, input.siteId, (item) => assertOptional(item.billingAccountRef,
         input.billingAccountRef));
       return listJson(response, response.accounts.map(accountJson));
     },
     async getCreditAccount(siteId: string, creditAccountRef: string) {
-      const { rpc, context, headers } = await runtime(siteId, "creditAccountDetail");
-      const response = await call(() => rpc.getCreditAccount({ context, siteId, creditAccountRef }, { headers }));
+      const { rpc, authority, headers } = await runtime(siteId, "creditAccountDetail");
+      const response = await call(() => rpc.getCreditAccount({ authority, creditAccountRef }, { headers }));
       if (response.account === undefined) throw invalidResponse();
       assertEqual(response.account.siteId, siteId);
       assertEqual(response.account.creditAccountRef, creditAccountRef);
       return accountJson(response.account);
     },
     async listCreditGrants(input: CreditGrantListInput) {
-      const { rpc, context, headers } = await runtime(input.siteId, "creditGrants");
-      const response = await call(() => rpc.listCreditGrants({ context, siteId: input.siteId, pageSize: 100,
+      const { rpc, authority, headers } = await runtime(input.siteId, "creditGrants");
+      const response = await call(() => rpc.listCreditGrants({ authority, pageSize: 100,
         ...optional("creditAccountRef", input.creditAccountRef), ...optional("creditGrantId", input.creditGrantId),
         ...sourceInput(input), ...optional("executionRootRef", input.executionRootRef),
         ...optional("pageToken", input.pageToken) }, { headers }));
@@ -104,8 +104,8 @@ export function createAdminCreditReader(runtime: RuntimeResolver) {
       return listJson(response, response.grants.map(grantJson));
     },
     async listCreditHolds(input: CreditHoldListInput) {
-      const { rpc, context, headers } = await runtime(input.siteId, "creditHolds");
-      const response = await call(() => rpc.listCreditHolds({ context, siteId: input.siteId, pageSize: 100,
+      const { rpc, authority, headers } = await runtime(input.siteId, "creditHolds");
+      const response = await call(() => rpc.listCreditHolds({ authority, pageSize: 100,
         ...optional("creditAccountRef", input.creditAccountRef), ...optional("creditGrantId", input.creditGrantId),
         ...sourceInput(input), ...optional("executionRootRef", input.executionRootRef),
         ...optional("pageToken", input.pageToken) }, { headers }));
@@ -116,18 +116,18 @@ export function createAdminCreditReader(runtime: RuntimeResolver) {
       return listJson(response, response.holds.map(holdJson));
     },
     async listCreditHoldAllocations(input: PageInput & Readonly<{ trace: HoldAllocationTrace }>) {
-      const { rpc, context, headers } = await runtime(input.siteId, "creditHoldAllocations");
+      const { rpc, authority, headers } = await runtime(input.siteId, "creditHoldAllocations");
       const trace = input.trace.kind === "hold" ? { case: "creditHoldRef" as const, value: input.trace.ref } :
         { case: "creditGrantId" as const, value: input.trace.ref };
-      const response = await call(() => rpc.listCreditHoldAllocations({ context, siteId: input.siteId, trace,
+      const response = await call(() => rpc.listCreditHoldAllocations({ authority, trace,
         pageSize: 100, ...optional("pageToken", input.pageToken) }, { headers }));
       assertItems(response.allocations, input.siteId, (item) => assertEqual(
         input.trace.kind === "hold" ? item.creditHoldRef : item.creditGrantId, input.trace.ref));
       return listJson(response, response.allocations.map(holdAllocationJson));
     },
     async listCreditJournalTransactions(input: CreditJournalTransactionListInput) {
-      const { rpc, context, headers } = await runtime(input.siteId, "creditJournalTransactions");
-      const response = await call(() => rpc.listCreditJournalTransactions({ context, siteId: input.siteId,
+      const { rpc, authority, headers } = await runtime(input.siteId, "creditJournalTransactions");
+      const response = await call(() => rpc.listCreditJournalTransactions({ authority,
         pageSize: 100, ...optional("creditAccountRef", input.creditAccountRef),
         ...optional("creditGrantId", input.creditGrantId), ...optional("creditHoldRef", input.creditHoldRef),
         ...sourceInput(input), ...optional("executionRootRef", input.executionRootRef),
@@ -137,8 +137,8 @@ export function createAdminCreditReader(runtime: RuntimeResolver) {
       return listJson(response, response.transactions.map(journalTransactionJson));
     },
     async listCreditJournalEntries(input: PageInput & Readonly<{ journalTransactionRef: string }>) {
-      const { rpc, context, headers } = await runtime(input.siteId, "creditJournalEntries");
-      const response = await call(() => rpc.listCreditJournalEntries({ context, siteId: input.siteId,
+      const { rpc, authority, headers } = await runtime(input.siteId, "creditJournalEntries");
+      const response = await call(() => rpc.listCreditJournalEntries({ authority,
         journalTransactionRef: input.journalTransactionRef, pageSize: 100,
         ...optional("pageToken", input.pageToken) }, { headers }));
       assertItems(response.entries, input.siteId, (item) => assertEqual(item.journalTransactionRef,
@@ -146,8 +146,8 @@ export function createAdminCreditReader(runtime: RuntimeResolver) {
       return listJson(response, response.entries.map(journalEntryJson));
     },
     async listRatedUsage(input: RatedUsageListInput) {
-      const { rpc, context, headers } = await runtime(input.siteId, "creditRatedUsage");
-      const response = await call(() => rpc.listRatedUsage({ context, siteId: input.siteId, pageSize: 100,
+      const { rpc, authority, headers } = await runtime(input.siteId, "creditRatedUsage");
+      const response = await call(() => rpc.listRatedUsage({ authority, pageSize: 100,
         ...optional("creditAccountRef", input.creditAccountRef), ...optional("creditGrantId", input.creditGrantId),
         ...optional("creditHoldRef", input.creditHoldRef), ...sourceInput(input),
         ...optional("executionRootRef", input.executionRootRef), ...optional("attemptRef", input.attemptRef),
@@ -161,10 +161,10 @@ export function createAdminCreditReader(runtime: RuntimeResolver) {
       return listJson(response, response.ratedUsage.map(ratedUsageJson));
     },
     async listRatedUsageSourceAllocations(input: PageInput & Readonly<{ trace: RatedUsageAllocationTrace }>) {
-      const { rpc, context, headers } = await runtime(input.siteId, "creditRatedUsageSourceAllocations");
+      const { rpc, authority, headers } = await runtime(input.siteId, "creditRatedUsageSourceAllocations");
       const trace = input.trace.kind === "usage" ? { case: "ratedUsageRef" as const, value: input.trace.ref } :
         { case: "settlementRef" as const, value: input.trace.ref };
-      const response = await call(() => rpc.listRatedUsageSourceAllocations({ context, siteId: input.siteId, trace,
+      const response = await call(() => rpc.listRatedUsageSourceAllocations({ authority, trace,
         pageSize: 100, ...optional("pageToken", input.pageToken) }, { headers }));
       assertItems(response.allocations, input.siteId, (item) => assertEqual(
         input.trace.kind === "usage" ? item.ratedUsageRef : item.settlementRef, input.trace.ref));
@@ -176,7 +176,8 @@ export function createAdminCreditReader(runtime: RuntimeResolver) {
 async function liveRuntime(siteId: string, surface: CreditSurface): Promise<CreditRuntime> {
   const session = await requireAdminSurfaceSession(surface);
   return { rpc: createClient(AdminCreditService, await adminControlPlaneTransport()),
-    context: queryContext(session, { kind: "site", siteId }), headers: authHeaders(session) };
+    authority: { operator: queryContext(session, { kind: "site", siteId }), siteId },
+    headers: authHeaders(session) };
 }
 
 export const adminCreditReader = createAdminCreditReader(liveRuntime);

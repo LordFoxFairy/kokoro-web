@@ -248,7 +248,7 @@ export function createSiteMediaApi(input: Readonly<{
       const budget = requestBudget(request.signal, input.monotonicNow ?? (() => performance.now()))
       try {
         const url = new URL(request.url)
-        if (url.origin !== input.runtime.publicOrigin || request.headers.get("sec-fetch-site") !== "same-origin") {
+        if (request.headers.get("sec-fetch-site") !== "same-origin") {
           return problem(403, "REQUEST_REJECTED", "Browser request was rejected")
         }
         if (request.method === "POST" && (

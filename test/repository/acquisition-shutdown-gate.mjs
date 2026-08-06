@@ -29,11 +29,11 @@ const ALLOWED_USER_CATCH_ALL_ROUTES = new Set([
   "apps/user/src/app/api/session/[...path]/route.ts",
   "apps/user/src/app/api/team/[...path]/route.ts",
 ]);
-const ADMIN_FILTERED_ROUTES = new Map([
-  ["apps/admin/app/api/manifests/route.ts", { method: "GET", handler: "getFilteredManifests" }],
-  ["apps/admin/app/api/openapi/[moduleId]/route.ts", { method: "GET", handler: "getFilteredOpenApi" }],
-  ["apps/admin/app/api/resource/route.ts", { method: "GET", handler: "getFilteredResource" }],
-  ["apps/admin/app/api/action/route.ts", { method: "POST", handler: "postFilteredAction" }],
+const RETIRED_ADMIN_GENERIC_ROUTES = new Set([
+  "apps/admin/app/api/manifests/route.ts",
+  "apps/admin/app/api/openapi/[moduleId]/route.ts",
+  "apps/admin/app/api/resource/route.ts",
+  "apps/admin/app/api/action/route.ts",
 ]);
 const ADMIN_CONTROL_ROUTES = new Map([
   ["apps/admin/app/api/control/approvals/route.ts", {
@@ -63,14 +63,6 @@ const ADMIN_CONTROL_ROUTES = new Map([
   ["apps/admin/app/api/control/auth/step-up/route.ts", {
     methods: ["GET"],
     imports: ["@/lib/control-plane/authority-session", "@/lib/control-plane/identity-client"],
-  }],
-  ["apps/admin/app/api/control/code-batches/[batchRef]/[action]/route.ts", {
-    methods: ["POST"],
-    imports: ["@/lib/control-plane/client", "@/lib/control-plane/http"],
-  }],
-  ["apps/admin/app/api/control/code-batches/route.ts", {
-    methods: ["GET", "POST"],
-    imports: ["@/lib/control-plane/client", "@/lib/control-plane/http"],
   }],
   ["apps/admin/app/api/control/credit/accounts/[accountRef]/route.ts", {
     methods: ["GET"],
@@ -120,20 +112,12 @@ const ADMIN_CONTROL_ROUTES = new Map([
     methods: ["GET", "POST"],
     imports: ["@/lib/control-plane/client", "@/lib/control-plane/http", "@/lib/control-plane/strict-query"],
   }],
-  ["apps/admin/app/api/control/offers/route.ts", {
-    methods: ["GET", "POST"],
-    imports: ["@/lib/control-plane/client", "@/lib/control-plane/http"],
-  }],
   ["apps/admin/app/api/control/operator/route.ts", {
     methods: ["GET"],
     imports: ["@/lib/control-plane/client", "@/lib/control-plane/http"],
   }],
   ["apps/admin/app/api/control/operators/route.ts", {
     methods: ["GET"],
-    imports: ["@/lib/control-plane/client", "@/lib/control-plane/http"],
-  }],
-  ["apps/admin/app/api/control/redemption-programs/route.ts", {
-    methods: ["GET", "POST"],
     imports: ["@/lib/control-plane/client", "@/lib/control-plane/http"],
   }],
   ["apps/admin/app/api/control/sites/[siteId]/route.ts", {
@@ -150,7 +134,6 @@ const ADMIN_CONTROL_ROUTES = new Map([
   }],
 ]);
 const ADMIN_API_ROUTES = new Set([
-  ...ADMIN_FILTERED_ROUTES.keys(),
   ...ADMIN_CONTROL_ROUTES.keys(),
 ]);
 
@@ -328,15 +311,7 @@ const RULES = [
   {
     id: "admin-payment-bff",
     rejects(path, source) {
-      const expected = ADMIN_FILTERED_ROUTES.get(path);
-      if (expected !== undefined) {
-        return (
-          !source.includes(`@/lib/admin-gateway`) ||
-          !source.includes(expected.handler) ||
-          !new RegExp(`export\\s+async\\s+function\\s+${expected.method}\\b`, "u").test(source) ||
-          /\bfetch\s*\(/u.test(source)
-        );
-      }
+      if (RETIRED_ADMIN_GENERIC_ROUTES.has(path)) return true;
       if (path === "apps/admin/next.config.ts") {
         return /^\s*["']\/api\/(?:manifests|billing-overview|user360|resource|action)["'],?\s*$/mu.test(source);
       }
@@ -434,29 +409,6 @@ export async function acquisitionShutdownTopologyViolations(
       /export\s*\*/u.test(plansSource)
     ) {
       violations.push({ rule: "user-plans-get-only", path: USER_PLANS_ROUTE });
-    }
-  }
-
-  for (const [path, expected] of ADMIN_FILTERED_ROUTES) {
-    let source = "";
-    try {
-      source = await readFile(resolve(root, path), "utf8");
-    } catch {
-      violations.push({ rule: "admin-filtered-route-missing", path });
-      continue;
-    }
-    if (
-      !source.includes("@/lib/admin-gateway") ||
-      !source.includes(expected.handler) ||
-      !new RegExp(`export\\s+async\\s+function\\s+${expected.method}\\b`, "u").test(source)
-    ) {
-      violations.push({ rule: "admin-filtered-route-shape", path });
-    }
-    const importSources = new Set(
-      [...source.matchAll(/^\s*(?:import|export)\b[^"']*\bfrom\s*["']([^"']+)["']/gmu)].map((match) => match[1]),
-    );
-    if (!sameSet(importSources, new Set(["@/lib/admin-gateway"])) || /export\s*\*/u.test(source)) {
-      violations.push({ rule: "admin-filtered-route-import-graph", path });
     }
   }
 

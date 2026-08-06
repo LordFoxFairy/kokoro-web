@@ -56,7 +56,8 @@ export interface NodeSiteRuntimeConfig {
 export interface NodeSiteRuntimeTls {
   readonly certificate: Buffer;
   readonly privateKey: Buffer;
-  readonly certificateAuthority: Buffer;
+  readonly platformCertificateAuthority: Buffer;
+  readonly sessionCertificateAuthority: Buffer;
 }
 
 export interface NodeSiteRuntimeProvider {
@@ -195,7 +196,16 @@ export function loadNodeSiteRuntime(input: NodeJS.ProcessEnv = process.env): Rea
     tls: Object.freeze({
       certificate: secretFile(input, "KOKORO_SITE_RUNTIME_MTLS_CERT_FILE", "certificate"),
       privateKey: secretFile(input, "KOKORO_SITE_RUNTIME_MTLS_KEY_FILE", "private_key"),
-      certificateAuthority: secretFile(input, "KOKORO_SITE_RUNTIME_MTLS_CA_FILE", "certificate"),
+      platformCertificateAuthority: secretFile(
+        input,
+        "KOKORO_SITE_RUNTIME_PLATFORM_CA_FILE",
+        "certificate",
+      ),
+      sessionCertificateAuthority: secretFile(
+        input,
+        "KOKORO_SITE_RUNTIME_SESSION_CA_FILE",
+        "certificate",
+      ),
     }),
   });
 }
@@ -343,7 +353,7 @@ export function createNodeSiteRuntimeProvider(input: Readonly<{
   now?: () => number;
   nonce?: () => Buffer;
 }>): Readonly<NodeSiteRuntimeProvider> {
-  const agent = new Agent({
+  const platformAgent = new Agent({
     keepAlive: true,
     maxSockets: 64,
     maxFreeSockets: 16,
@@ -352,7 +362,18 @@ export function createNodeSiteRuntimeProvider(input: Readonly<{
     rejectUnauthorized: true,
     cert: input.tls.certificate,
     key: input.tls.privateKey,
-    ca: input.tls.certificateAuthority,
+    ca: input.tls.platformCertificateAuthority,
+  });
+  const sessionAgent = new Agent({
+    keepAlive: true,
+    maxSockets: 64,
+    maxFreeSockets: 16,
+    minVersion: "TLSv1.3",
+    maxVersion: "TLSv1.3",
+    rejectUnauthorized: true,
+    cert: input.tls.certificate,
+    key: input.tls.privateKey,
+    ca: input.tls.sessionCertificateAuthority,
   });
   const browserCsrf = csrf({
     secret: input.config.browserCsrfSecret,
@@ -375,6 +396,7 @@ export function createNodeSiteRuntimeProvider(input: Readonly<{
           const headers: Record<string, string> = {
             ...request.headers,
             accept: "application/json",
+            "x-kokoro-workload-credential": runtimeInput.binding.workloadCredential,
             ...(body === null ? {} : { "content-type": "application/json", "content-length": String(Buffer.byteLength(body)) }),
             ...(authSession === undefined ? {} : { authorization: `Bearer ${authSession.sessionCredential}` }),
             ...(request.security.receiptRecoveryCapability === undefined ? {} : {
@@ -385,7 +407,7 @@ export function createNodeSiteRuntimeProvider(input: Readonly<{
           const startedAt = Date.now();
           const response = await openHttps({
             origin: input.config.platformOrigin,
-            agent,
+            agent: platformAgent,
             method: request.method,
             path: `${request.path}${queryString(request.query)}`,
             headers,
@@ -412,7 +434,7 @@ export function createNodeSiteRuntimeProvider(input: Readonly<{
         maximumTimeoutMs: input.config.upstreamTimeoutMs,
         open: (request) => openHttps({
           origin: input.config.platformOrigin,
-          agent,
+          agent: platformAgent,
           ...request,
         }),
       });
@@ -432,7 +454,7 @@ export function createNodeSiteRuntimeProvider(input: Readonly<{
           };
           const response = await openHttps({
             origin: input.config.sessionOrigin,
-            agent,
+            agent: sessionAgent,
             method: request.method,
             path: `${request.pathname}${request.query === "" ? "" : `?${request.query}`}`,
             headers,
@@ -452,7 +474,10 @@ export function createNodeSiteRuntimeProvider(input: Readonly<{
     platformCsrfToken: () => input.config.platformCsrfToken,
     issueBrowserCsrf: () => browserCsrf.issue(),
     verifyBrowserCsrf: (verification) => verification.operationId.length > 0 && browserCsrf.verify(verification.token),
-    close: () => agent.destroy(),
+    close() {
+      platformAgent.destroy();
+      sessionAgent.destroy();
+    },
   };
   return Object.freeze(provider);
 }

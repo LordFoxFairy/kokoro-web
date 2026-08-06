@@ -1,9 +1,7 @@
 import { z } from "zod";
 
-// 网关统一信封：成功 {data}，失败 {error:{code,message,details?},requestId?}。
-// 信封真源是 kokoro-platform/kokoro-platform-kit/src/http/responses.ts 的 sendData / sendError。
-// 注意：网关未挂 registerErrorHandler，未捕获异常走 Fastify 默认形状 {statusCode,error,message}
-// （error 是字符串而非对象），解析不中，因此落到下面的兜底 code/message。
+// Typed control BFF envelope: success {data}; failure
+// {error:{code,message,details?,receiptRef?,recoveryRef?},requestId?}.
 const errorEnvelope = z
   .object({
     error: z.object({ code: z.string(), message: z.string(), details: z.unknown(),
@@ -15,15 +13,7 @@ const errorEnvelope = z
 // 解析不出 error.code 时的兜底值。不假装有 code，调用方可据此判断“这不是一个 domain error”。
 export const UNKNOWN_ERROR_CODE = "unknown";
 
-/**
- * domain error code。用 string 承载而不收窄成联合类型：后端新增 code 时前端不该崩。
- *
- * 事实源是根仓 `contract/openapi/admin-web-v1.yaml` 的 `DomainErrorCode`。截至该契约，
- * 网关在浏览器面发出的全集只有 4 个：
- *   operator.auth / request.invalid / gateway.error / approval.error
- * 另有 `auth.unauthenticated` 由本 app 自己的 BFF middleware（proxy.ts）在未登录时直接产生，
- * 不来自网关，故不在契约的枚举里。
- */
+/** Domain error codes stay open so a newer typed BFF response remains readable. */
 export type DomainErrorCode = string;
 
 export class ApiError extends Error {
@@ -31,7 +21,7 @@ export class ApiError extends Error {
   readonly code: DomainErrorCode;
   /** 目前唯一实际形态是 zod 校验失败的 `{ issues: ZodIssue[] }`；无则 undefined。 */
   readonly details: unknown;
-  /** 链路 id，只有 POST /api/action 会回显；排障时把它带给后端。 */
+  /** Optional correlation reference returned by a typed control route. */
   readonly requestId: string | undefined;
   readonly receiptRef: string | null;
   /** Opaque、有限长的 Model 写结果恢复引用；浏览器只保存并原样交回 BFF。 */

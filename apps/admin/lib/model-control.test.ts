@@ -354,6 +354,12 @@ describe("Model control console boundary", () => {
     }
   });
 
+  it("defaults new provider drafts to Direct while keeping LiteLLM explicit", () => {
+    const forms = source("app/models/model-control-forms.tsx");
+    expect(forms).toContain('initialValue={[{ adapterKind: "direct", priority: 0 }]}');
+    expect(forms).toContain('{ value: "litellm", label: "LiteLLM" }');
+  });
+
   it("renders structured nested editors and an exact inventory detail instead of JSON textareas", () => {
     const consoleSource = `${source("app/models/models-console.tsx")}\n${source("app/models/model-control-forms.tsx")}`;
 

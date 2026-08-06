@@ -88,7 +88,7 @@ function sessionSnapshot(materializedAgui = false): SessionSnapshot {
       snapshot_revision_ref: "snapshot.revision.agui",
       projection_version: 1,
     },
-    presentation_authority: {},
+    presentation_snapshot: {},
   }
 }
 

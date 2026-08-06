@@ -51,7 +51,7 @@ export default function Page(): React.ReactElement {
   useEffect(() => {
     (async () => {
       try {
-        const rows = await apiGet("/api/approvals", pendingSchema);
+        const rows = await apiGet("/api/control/approvals", pendingSchema);
         setPending(rows.filter((r) => r.status === "pending").length);
       } catch {
         setPending(null);
@@ -104,7 +104,7 @@ export default function Page(): React.ReactElement {
       </StatisticCard.Group>
 
       {/* Typed AdminCredit summary：所有金额保持 decimal string，不跨 unit 求和。 */}
-      {canReadCreditSummary && <ProCard title="积分总览" variant="outlined" headerBordered style={{ marginBottom: 16 }}>
+      {canReadCreditSummary && <ProCard title="积分总览" bordered headerBordered style={{ marginBottom: 16 }}>
         <StatisticCard.Group direction="row">
           <StatisticCard
             statistic={{ title: "积分账户", value: credit ?
@@ -133,11 +133,11 @@ export default function Page(): React.ReactElement {
         </StatisticCard.Group>
       </ProCard>}
 
-      <ProCard title="快捷入口" variant="outlined" headerBordered>
+      <ProCard title="快捷入口" bordered headerBordered>
         <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))" }}>
           {ENTRIES.filter((entry) => !("signedSurface" in entry) || signedNavigation[entry.signedSurface]).map((e) => (
             <Link key={e.href} href={e.href}>
-              <ProCard hoverable variant="outlined" size="small" style={{ height: "100%" }}>
+              <ProCard hoverable bordered size="small" style={{ height: "100%" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                   <span style={{ fontSize: 20, color: "#2f6b4f" }}>{e.icon}</span>
                   <div>

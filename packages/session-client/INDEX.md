@@ -8,10 +8,10 @@ owners: ["@LordFoxFairy"]
 
 Brand-neutral client over Root-generated Session HTTP/SSE schemas. Callers inject a path-only transport; this package accepts no raw Session URL, Site identity, namespace, bearer token, or credential resolver.
 
-The Root-generated Session browser contract is live. The client exposes the complete browser command surface, including typed action/plan decisions and receipt reconciliation. One `/snapshot` response carries the complete projection, a snapshot revision watermark, and mandatory Session-owned `presentation_authority`; hydration is ready only after the strict AG-UI decoder validates that authority.
+The Root-generated Session browser contract is live. The client exposes the complete browser command surface, including typed action/plan decisions and receipt reconciliation. One `/snapshot` response carries the complete projection, a snapshot revision watermark, and mandatory Session-owned `presentation_snapshot`; hydration is ready only after the strict AG-UI decoder validates that snapshot.
 Session creation requires an explicit immutable `standard|temporary` `context_policy`; both the create receipt
 and every owner snapshot carry the policy. The client does not infer a default or offer an update operation.
-The generated HTTP mirror carries the full durable part union, including reasoning summaries, plan progress,
+The generated HTTP mirror under `src/generated/contracts/legacy/**` carries the full durable part union, including reasoning summaries, plan progress,
 subagent state, media operations, versioned artifacts, typed notices/errors, and the unsupported compatibility
 fallback. Generated control and HTTP sources remain Root-owned artifacts and are never hand-maintained here.
 Submit keeps renderable `parts` and Asset-owned `attachment_refs` separate. Its generated cross-field constraint
@@ -31,15 +31,16 @@ The strict AG-UI presentation consumer is public through the explicit production
 `AguiPresentationSource` port implemented directly by `SessionClient`; concrete snapshot/SSE paths and the `after` query remain Root-generated and Web never handwrites them.
 That subpath is a whitelist façade over one production state-machine implementation; there is no synthetic,
 future-authority, preload, or test-only decoder variant.
-Its Run/message binding and atomic binding-delta validators are a committed static TypeScript runtime mirror generated
-from Root's `presentation-run-binding-v1`, `presentation-message-binding-v1`, and
-`presentation-binding-authority-delta-v1` JSON Schemas, with all three Root source SHA-256 digests embedded in the
-artifact. Root-owned event, Run, message, thread, and binding identities retain branded opaque TypeScript types and
-closed runtime patterns at the browser boundary. The deterministic Web-local generator accepts only the reviewed v1 schema shape;
-the federated repository gate regenerates the complete artifact and compares it byte-for-byte, rather than allowing
-a digest-only mirror to conceal validator drift. Run `pnpm generate:agui-binding-authority` from a federated checkout
-after an approved Root contract change. An independently built Web package skips that repository-only gate and never
-reads a parent checkout at build time or runtime, nor treats the conformance corpus as a schema authority.
+Root's unified generated roots are `src/generated/schema/**` and `src/generated/contracts/**`; the exact input/output
+ledger is `src/generated/provenance.json`, and duplicate top-level generated contract files are forbidden.
+Root's unified Presentation source ledger is `binding-v1`, `binding-update-v1`, `owner-state-v1`, and `snapshot-v1`.
+The Root consumer registry owns their committed mirrors under
+`src/generated/schema/presentation/`; Web has no editable binding schema source. The package drift gate pins the exact
+Root source digests and schema IDs in a federated checkout, while the repository gate validates the typed
+source-to-output mappings and rejects every retired split binding/delta schema path. An independently built Web package
+skips the Root-only checks and never reads a parent checkout at build time or runtime, nor treats the conformance corpus
+as a schema authority. Root-owned event, Run, message, thread, binding, owner-state, and snapshot identities retain
+closed runtime patterns at the browser boundary.
 `@ag-ui/core@0.0.57` is pinned exactly and
 `EventSchemas` is used only after Kokoro's smaller closed profile has passed UTF-8 byte, JSON depth/node/key/array,
 event, source-mapping, grant, cursor, Session, epoch, sequence, timestamp, binding, thread, message-END, and terminal

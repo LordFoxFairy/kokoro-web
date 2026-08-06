@@ -66,7 +66,7 @@ function snapshot(input: Readonly<{
       snapshot_revision_ref: input.snapshotRevision ?? `snapshot.revision.${sessionVersion}`,
       projection_version: sessionVersion,
     },
-    presentation_authority: {},
+    presentation_snapshot: {},
   }
 }
 

@@ -9,10 +9,10 @@ import { adminWorkloadConfig } from "./config";
 import { adminControlPlaneTransport } from "./transport";
 import { beginOperatorLoginRequestDigest, beginStepUpRequestDigest, completeStepUpRequestDigest,
   exchangeOidcSessionRequestDigest, signOutRequestDigest } from
-  "@/lib/generated/admin-identity/command-envelope-digest";
-import { KokoroErrorDetailSchema } from "@/lib/generated/admin-identity/kokoro/common/v1/error_pb";
+  "@/lib/generated/contracts/platform-admin-identity@v1/digest";
+import { KokoroErrorDetailSchema } from "@/lib/generated/proto/kokoro/common/v1/error_pb";
 import { CommandDigestAlgorithmV2, CommandIdentityV2Schema, CommandReceiptStateV2, OperatorAssuranceLevel } from
-  "@/lib/generated/admin-identity/kokoro/common/v2/command_envelope_pb";
+  "@/lib/generated/proto/kokoro/common/v2/command_envelope_pb";
 import {
   AdminAuthTransactionContextSchema,
   AdminIdentityService,
@@ -23,7 +23,7 @@ import {
   CompleteStepUpEffectSchema,
   ExchangeOidcSessionEffectSchema,
   SignOutEffectSchema,
-} from "@/lib/generated/admin-identity/kokoro/platform/identity/v1/admin_identity_pb";
+} from "@/lib/generated/proto/kokoro/platform/identity/v1/admin_identity_pb";
 import { authHeaders, commandContext, verifiedAxes } from "./client";
 import { requireAuthoritySession } from "./authority-session";
 

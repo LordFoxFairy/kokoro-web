@@ -4,9 +4,9 @@ import {
   type PlatformPublicOperationId,
   type PlatformPublicOperationDataMap,
   type PlatformPublicOperationResponseMap,
-} from "./generated/platform-public/index.js";
-import { zErrorResponse } from "./generated/platform-public/zod.gen.js";
-import type { ErrorResponse } from "./generated/platform-public/types.gen.js";
+} from "./generated/contracts/openapi/platform-public/index.js";
+import { zErrorResponse } from "./generated/contracts/openapi/platform-public/zod.gen.js";
+import type { ErrorResponse } from "./generated/contracts/openapi/platform-public/types.gen.js";
 
 export type PlatformPublicOperationInput<Operation extends PlatformPublicOperationId> = Omit<
   PlatformPublicOperationDataMap[Operation],

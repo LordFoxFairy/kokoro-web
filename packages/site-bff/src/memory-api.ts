@@ -375,7 +375,7 @@ export function createSiteMemoryApi(input: Readonly<{
       let dispatchedCommandId: string | undefined
       try {
         const url = new URL(request.url)
-        if (url.origin !== input.runtime.publicOrigin || request.headers.get("sec-fetch-site") !== "same-origin") {
+        if (request.headers.get("sec-fetch-site") !== "same-origin") {
           return problem(403, "REQUEST_REJECTED", "Browser request was rejected")
         }
         if (!knownRoute(request.method, path)) return problem(404, "NOT_FOUND", "Memory operation was not found")

@@ -191,15 +191,8 @@ export function createSiteLaunchApi(input) {
         nonce: input.nonce,
     });
     async function handle(request, action) {
-        let url;
-        try {
-            url = new URL(request.url);
-        }
-        catch {
-            return unavailable(400);
-        }
         const mutation = POST_ACTIONS.has(action);
-        if (url.origin !== input.runtime.publicOrigin || request.headers.get("sec-fetch-site") !== "same-origin" ||
+        if (request.headers.get("sec-fetch-site") !== "same-origin" ||
             (mutation && (request.method !== "POST" || request.headers.get("origin") !== input.runtime.publicOrigin ||
                 !input.runtime.verifyBrowserMutation({ operationId: `site.launch.${action}`, token: request.headers.get("x-kokoro-browser-csrf") ?? "" }))) ||
             (!mutation && request.method !== "GET"))

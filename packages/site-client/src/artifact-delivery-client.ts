@@ -2,8 +2,8 @@ import {
   ARTIFACT_DELIVERY_MAX_RANGE_BYTES,
   artifactDeliveryCall,
   type ArtifactDeliveryByteRange,
-} from "./generated/platform-public/artifact-delivery.js";
-import { PLATFORM_PUBLIC_CONTRACT_METADATA } from "./generated/platform-public/contract-metadata.js";
+} from "./generated/contracts/openapi/platform-public/artifact-delivery.js";
+import { PLATFORM_PUBLIC_CONTRACT_METADATA } from "./generated/contracts/openapi/platform-public/contract-metadata.js";
 
 const REFERENCE = /^[A-Za-z0-9][A-Za-z0-9._:@-]{0,255}$/u;
 const CAPABILITY_MINIMUM = 32;

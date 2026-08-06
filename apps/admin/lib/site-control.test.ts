@@ -84,26 +84,23 @@ describe("typed Site control routes", () => {
     expect(calls.registerSite).toHaveBeenCalledWith(input);
   });
 
-  it("submits complete externally signed release facts without accepting a private key", async () => {
+  it("publishes one exact authorized release candidate and rejects retired inline release facts", async () => {
     const route = await import("../app/api/control/sites/releases/route").catch(() => null);
     expect(route).not.toBeNull();
     if (route === null) return;
-    const input = { siteId: "site-one", releaseRef: "release-001", webArtifactDigest: "a".repeat(64),
-      releaseManifestDigest: "b".repeat(64), certificationDigest: "c".repeat(64),
-      launchProfileRef: "launch-profile:one", siteConfigRevisionRef: "site-config:one",
-      legalRevisionRef: "legal:one", featurePolicyRevision: "features:one",
-      modelOptionCatalogRef: "model-options:one", agentCatalogRef: "agents:one", identityIssuerLabel: "example",
-      identityAuthStrengthPolicyRevision: "auth-strength:one", enabledSurfaceIds: ["chat"],
-      localePolicy: { defaultLocale: "en", allowedLocales: ["en", "zh-CN"] },
-      certification: { signingKeyRef: "release-key:one", issuedAt: "2026-07-30T00:00:00.000Z",
-        expiresAt: "2026-07-31T00:00:00.000Z", signatureBase64: Buffer.alloc(64, 7).toString("base64") } };
+    const input = { siteId: "site-one", candidateRef: "site-release-candidate:one",
+      candidateVersion: "7", candidateAuthorizationEpoch: "3",
+      candidateDigest: `sha256:${"a".repeat(64)}`, reason: "Publish the reviewed candidate" };
     const response = await route.POST(jsonRequest("https://admin.example/api/control/sites/releases", input));
     expect(response.status).toBe(201);
     expect(calls.publishSiteRelease).toHaveBeenCalledWith(input);
 
     const rejected = await route.POST(jsonRequest("https://admin.example/api/control/sites/releases",
-      { ...input, signingPrivateKey: "never-accepted" }));
+      { ...input, releaseRef: "retired-inline-release" }));
     expect(rejected.status).toBe(400);
+    const malformedVersion = await route.POST(jsonRequest("https://admin.example/api/control/sites/releases",
+      { ...input, candidateVersion: "not-a-number" }));
+    expect(malformedVersion.status).toBe(400);
     expect(calls.publishSiteRelease).toHaveBeenCalledTimes(1);
   });
 });

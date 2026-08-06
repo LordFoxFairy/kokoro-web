@@ -15,6 +15,32 @@ function responseCookie(response: Response): string {
 }
 
 describe("Site launch HTTP boundary", () => {
+  it("accepts an internal listener URL after strict ingress Host resolution", async () => {
+    const api = createSiteLaunchApi({
+      runtime: {
+        publicOrigin: "https://site.example",
+        deploymentIdentity: {
+          deploymentRef: "deployment-12345678",
+          webArtifactDigest: "a".repeat(64),
+        },
+        bindingIdentity: {
+          siteProjectBindingRef: "binding-12345678",
+          siteReleaseRef: "release-12345678",
+        },
+        verifyBrowserMutation: () => false,
+      } as never,
+      stateSecret: "k".repeat(64),
+      readAuthSession: async () => null,
+    })
+
+    const response = await api.handle(new Request(
+      "http://127.0.0.1:4000/api/account/dashboard",
+      { headers: { "sec-fetch-site": "same-origin" } },
+    ), "dashboard")
+
+    expect(response.status).toBe(401)
+  })
+
   it("persists a command before redemption RPC and never returns Code or authority", async () => {
     const calls: string[] = []
     const runtime = {

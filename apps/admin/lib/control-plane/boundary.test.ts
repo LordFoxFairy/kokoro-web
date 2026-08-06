@@ -6,27 +6,12 @@ const root = resolve(import.meta.dirname, "../..");
 const source = (path: string) => readFileSync(resolve(root, path), "utf8");
 
 describe("Admin typed control-plane boundary", () => {
-  it("binds Commerce routes to the operator-selected Site and never a deployment default", () => {
-    for (const path of ["app/api/control/offers/route.ts", "app/api/control/code-batches/route.ts",
-      "app/api/control/redemption-programs/route.ts", "app/api/control/code-batches/[batchRef]/[action]/route.ts"]) {
-      const value = source(path);
-      expect(value).toContain("siteId");
-      expect(value).not.toContain("adminWorkloadConfig");
-    }
+  it("derives Site scope from operator authority instead of a deployment default", () => {
     expect(source("lib/env.ts")).not.toContain("KOKORO_ADMIN_SITE_ID");
     expect(source("lib/control-plane/config.ts")).not.toMatch(/readonly siteId: string/u);
     const session = source("lib/control-plane/authority-session.ts");
     expect(session).toContain("matchingSites");
     expect(session).not.toContain("scope.site_id === config.siteId");
-  });
-
-  it("never persists or automatically replays a raw card-code export", () => {
-    const client = source("lib/control-plane/client.ts");
-    const page = source("app/code-batches/page.tsx");
-    expect(client).toContain("commerce.code_batch.delivery_outcome_unknown");
-    expect(client).not.toContain("localStorage");
-    expect(`${client}\n${page}`).not.toContain("sessionStorage");
-    expect(page).toContain("setSecretExport(null)");
   });
 
   it("replaces the rotated session epoch and attestation after step-up", () => {
@@ -63,21 +48,20 @@ describe("Admin typed control-plane boundary", () => {
     expect(session).toContain("globalScope");
     expect(client).toContain('commandContext(session, { kind: "global" })');
     expect(client).toContain('commandContext(session, { kind: "site", siteId: input.siteId })');
-    expect(client).toContain("certification.signatureBase64");
-    expect(client).toContain("canonicalSignature(input.certification.signatureBase64)");
-    expect(client).toContain('Buffer.from(value, "base64")');
+    expect(client).toContain("CandidateAuthorityBindingSchema");
+    expect(client).toContain("candidateAuthorizationEpoch: strictPositiveUint64(input.candidateAuthorizationEpoch)");
+    expect(client).not.toContain("certification.signatureBase64");
+    expect(client).not.toContain("SiteLocalePolicySchema");
   });
 
-  it("keeps existing Commerce scope semantics outside the Site provisioning contract", () => {
+  it("contains no retired Commerce client entry points", () => {
     const client = source("lib/control-plane/client.ts");
-    const issue = client.slice(client.indexOf("export async function issueCodeBatch"),
-      client.indexOf("export async function listCodeBatches"));
-    const commerceMutation = client.slice(client.indexOf("async function mutation<"),
-      client.indexOf("async function committedMutation"));
-    expect(issue).toContain("const context = commandContext(session);");
-    expect(issue).not.toContain('kind: "site"');
-    expect(commerceMutation).toContain("const context = commandContext(session);");
-    expect(commerceMutation).not.toContain('kind: "site"');
+    for (const name of ["listOffers", "publishOffer", "listRedemptionPrograms",
+      "publishRedemptionProgram", "issueCodeBatch", "listCodeBatches", "codeBatchAction"]) {
+      expect(client).not.toContain(`export async function ${name}`);
+    }
+    expect(client).not.toContain("AdminCommerceService");
+    expect(client).not.toContain("commerceHardCut");
   });
 
   it("loads every bounded Site selector page and preserves cursor-paginated tables", () => {

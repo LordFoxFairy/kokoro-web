@@ -34,7 +34,8 @@ async function environment(): Promise<NodeJS.ProcessEnv> {
     KOKORO_BROWSER_CSRF_SECRET: "b".repeat(64),
     KOKORO_SITE_RUNTIME_MTLS_CERT_FILE: certificate,
     KOKORO_SITE_RUNTIME_MTLS_KEY_FILE: key,
-    KOKORO_SITE_RUNTIME_MTLS_CA_FILE: ca,
+    KOKORO_SITE_RUNTIME_PLATFORM_CA_FILE: ca,
+    KOKORO_SITE_RUNTIME_SESSION_CA_FILE: ca,
     KOKORO_SITE_UPSTREAM_TIMEOUT_MS: "2500",
     KOKORO_BROWSER_CSRF_TTL_SECONDS: "300",
   };
@@ -51,6 +52,8 @@ describe("Node Site deployment adapter", () => {
       browserCsrfTtlSeconds: 300,
     });
     expect(loaded.tls.certificate.toString()).toContain("BEGIN CERTIFICATE");
+    expect(loaded.tls.platformCertificateAuthority.toString()).toContain("BEGIN CERTIFICATE");
+    expect(loaded.tls.sessionCertificateAuthority.toString()).toContain("BEGIN CERTIFICATE");
   });
 
   it("rejects non-TLS origins and relative credential files before creating a transport", async () => {

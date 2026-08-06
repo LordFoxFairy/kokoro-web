@@ -57,7 +57,7 @@ function snapshot(presentationAuthority: unknown = {
       snapshot_revision_ref: "snapshot.revision.1",
       projection_version: 1,
     },
-    presentation_authority: presentationAuthority,
+    presentation_snapshot: presentationAuthority,
   };
 }
 

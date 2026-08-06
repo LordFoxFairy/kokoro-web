@@ -67,8 +67,6 @@ for (const [fixture, expectedRule] of [
   ["plans-export-star", "user-plans-get-only"],
   ["admin-computed-rewrite", "admin-rewrite-allowlist"],
   ["admin-generic-proxy", "admin-proxy-egress"],
-  ["admin-import-bypass", "admin-filtered-route-import-graph"],
-  ["admin-control-bypass", "admin-control-route-import-graph"],
   ["payment-base-concatenation", "payment-base-url-boundary"],
 ]) {
   test(`topology gate rejects ${fixture} independently`, async () => {

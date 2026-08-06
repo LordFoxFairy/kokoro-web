@@ -16,12 +16,9 @@ type Site = z.infer<typeof site>;
 const siteList = z.object({ items: z.array(site), nextPageToken: z.string().min(1).max(256).nullable() });
 const receipt = z.object({ commandId: z.string(), state: z.string() });
 const registered = z.object({ siteId: z.string(), state: z.string(), replayed: z.boolean(), receipt });
-const published = z.object({ siteId: z.string(), releaseRef: z.string(), state: z.string(),
-  replayed: z.boolean(), receipt });
+const published = z.object({ siteId: z.string(), releaseRef: z.string(), releaseRevision: z.string(),
+  releaseDigest: z.string(), state: z.string(), replayed: z.boolean(), receipt });
 const loadMoreLimits = { identity: (item: Site) => item.siteRef, maxItems: 1000, maxPages: 20 } as const;
-
-const splitValues = (value: unknown): string[] => String(value ?? "").split(/[\n,]/u)
-  .map((item) => item.trim()).filter(Boolean);
 
 export default function SitesPage(): React.ReactElement {
   const { message } = App.useApp();
@@ -139,42 +136,17 @@ function PublishRelease({ siteId, onPublished }: Readonly<{
   return <ModalForm title="发布已认证 SiteRelease" trigger={<Button type="primary" disabled={!siteId}>发布 release</Button>}
     width={760} modalProps={{ destroyOnHidden: true }} onFinish={async (values) => { try {
       await apiPost("/api/control/sites/releases", {
-        siteId, releaseRef: String(values.releaseRef), webArtifactDigest: String(values.webArtifactDigest),
-        releaseManifestDigest: String(values.releaseManifestDigest), certificationDigest: String(values.certificationDigest),
-        launchProfileRef: String(values.launchProfileRef), siteConfigRevisionRef: String(values.siteConfigRevisionRef),
-        legalRevisionRef: String(values.legalRevisionRef), featurePolicyRevision: String(values.featurePolicyRevision),
-        modelOptionCatalogRef: String(values.modelOptionCatalogRef), agentCatalogRef: String(values.agentCatalogRef),
-        identityIssuerLabel: String(values.identityIssuerLabel),
-        identityAuthStrengthPolicyRevision: String(values.identityAuthStrengthPolicyRevision),
-        enabledSurfaceIds: splitValues(values.enabledSurfaceIds),
-        localePolicy: { defaultLocale: String(values.defaultLocale), allowedLocales: splitValues(values.allowedLocales) },
-        certification: { signingKeyRef: String(values.signingKeyRef), issuedAt: String(values.issuedAt),
-          expiresAt: String(values.expiresAt), signatureBase64: String(values.signatureBase64) },
+        siteId, candidateRef: String(values.candidateRef), candidateVersion: String(values.candidateVersion),
+        candidateAuthorizationEpoch: String(values.candidateAuthorizationEpoch),
+        candidateDigest: String(values.candidateDigest), reason: String(values.reason),
       }, published);
       message.success("SiteRelease 已发布"); onPublished(); return true;
     } catch (error) { message.error(error instanceof Error ? error.message : "发布失败"); return false; } }}>
-    <ProFormText name="releaseRef" label="Release ref" rules={[{ required: true }]} />
-    <ProFormText name="webArtifactDigest" label="Web artifact SHA-256" rules={[{ required: true }]} />
-    <ProFormText name="releaseManifestDigest" label="Release manifest SHA-256" rules={[{ required: true }]} />
-    <ProFormText name="certificationDigest" label="Certification facts SHA-256" rules={[{ required: true }]} />
-    <ProFormText name="launchProfileRef" label="Launch profile ref" rules={[{ required: true }]} />
-    <ProFormText name="siteConfigRevisionRef" label="Site config revision ref" rules={[{ required: true }]} />
-    <ProFormText name="legalRevisionRef" label="Legal revision ref" rules={[{ required: true }]} />
-    <ProFormText name="featurePolicyRevision" label="Feature policy revision" rules={[{ required: true }]} />
-    <ProFormText name="modelOptionCatalogRef" label="Model option catalog ref" rules={[{ required: true }]} />
-    <ProFormText name="agentCatalogRef" label="Agent catalog ref" rules={[{ required: true }]} />
-    <ProFormText name="identityIssuerLabel" label="Identity issuer label" rules={[{ required: true }]} />
-    <ProFormText name="identityAuthStrengthPolicyRevision" label="Identity auth-strength policy revision"
+    <ProFormText name="candidateRef" label="Authorized candidate ref" rules={[{ required: true }]} />
+    <ProFormText name="candidateVersion" label="Candidate version" rules={[{ required: true }]} />
+    <ProFormText name="candidateAuthorizationEpoch" label="Candidate authorization epoch"
       rules={[{ required: true }]} />
-    <ProFormTextArea name="enabledSurfaceIds" label="Enabled surface IDs（逗号或换行）" initialValue="chat"
-      rules={[{ required: true }]} />
-    <ProFormText name="defaultLocale" label="Default locale" initialValue="en" rules={[{ required: true }]} />
-    <ProFormTextArea name="allowedLocales" label="Allowed locales（逗号或换行）" initialValue="en"
-      rules={[{ required: true }]} />
-    <ProFormText name="signingKeyRef" label="CI/release signing key ref" rules={[{ required: true }]} />
-    <ProFormText name="issuedAt" label="Proof issued_at（ISO 8601）" rules={[{ required: true }]} />
-    <ProFormText name="expiresAt" label="Proof expires_at（ISO 8601）" rules={[{ required: true }]} />
-    <ProFormTextArea name="signatureBase64" label="CI/release authority signature（Base64，仅签名，不提交私钥）"
-      fieldProps={{ rows: 4 }} rules={[{ required: true }]} />
+    <ProFormText name="candidateDigest" label="Candidate digest（sha256:…）" rules={[{ required: true }]} />
+    <ProFormTextArea name="reason" label="发布原因" fieldProps={{ rows: 4 }} rules={[{ required: true }]} />
   </ModalForm>;
 }

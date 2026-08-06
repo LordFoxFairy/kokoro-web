@@ -1,9 +1,9 @@
 import { Code, ConnectError } from "@connectrpc/connect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { CommandReceiptStateV2 } from
-  "@/lib/generated/admin-commerce/kokoro/common/v2/command_envelope_pb";
+  "@/lib/generated/proto/kokoro/common/v2/command_envelope_pb";
 import { MODEL_CONTROL_ADMIN_ERRORS, modelControlAdminErrorDetail } from
-  "@/lib/generated/model-control/model-control-errors";
+  "@/lib/generated/contracts/platform-model-control@v1/errors";
 
 const calls = vi.hoisted(() => ({
   model: {

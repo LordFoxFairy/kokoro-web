@@ -21,7 +21,7 @@ type Submit = (body: unknown, success: string) => Promise<boolean>;
 
 const products = ["chat", "music", "image", "video"].map((value) => ({ value, label: value.toUpperCase() }));
 const roles = [{ value: "main", label: "主模型" }, { value: "generation", label: "生成模型" }];
-const adapterKinds = [{ value: "litellm", label: "LiteLLM" }, { value: "direct", label: "Direct" }];
+const adapterKinds = [{ value: "direct", label: "Direct" }, { value: "litellm", label: "LiteLLM" }];
 const lifecycle = [{ value: "active", label: "启用" }, { value: "disabled", label: "停用" }];
 
 export function ImportInventoryAction(props: Readonly<{ submit: Submit; disabled?: boolean }>) {
@@ -36,7 +36,7 @@ export function ImportInventoryAction(props: Readonly<{ submit: Submit; disabled
         productRoutes: records(values.productRoutes), providerAvailability: records(values.providerAvailability),
       }, "目录已导入") }>
       <ProFormText name="sourceReference" label="来源引用" width="lg" rules={[{ required: true }]} />
-      <ObjectList name="providers" title="提供方" required initialValue={[{ adapterKind: "litellm", priority: 0 }]}>
+      <ObjectList name="providers" title="提供方" required initialValue={[{ adapterKind: "direct", priority: 0 }]}>
         <ProFormText name="key" label="Provider key" rules={[{ required: true }]} />
         <ProFormText name="provider" label="实现" rules={[{ required: true }]} />
         <ProFormText name="accountKey" label="账号 key" rules={[{ required: true }]} />
@@ -204,7 +204,7 @@ export function PublishSiteCatalogAction(props: Readonly<{ submit: Submit; siteI
 
 function ObjectList(props: Readonly<{ name: string; title: string; required?: boolean;
   initialValue?: readonly Record<string, unknown>[]; children: React.ReactNode }>) {
-  return <><Divider titlePlacement="start" plain>{props.title}</Divider><ProFormList name={props.name}
+  return <><Divider orientation="left" plain>{props.title}</Divider><ProFormList name={props.name}
     initialValue={props.initialValue ? [...props.initialValue] : undefined}
     creatorButtonProps={{ creatorButtonText: `添加${props.title}` }}
     rules={props.required ? [{ validator: async (_rule, value) => {

@@ -76,7 +76,7 @@ function SiteUserLookup({ siteId }: Readonly<{ siteId: string }>): React.ReactEl
     </ProCard>
     {error && <Alert type="error" showIcon message="用户查询失败" description={error} style={{ marginBottom: 16 }} />}
     {!result ? <ProCard loading={loading}><Empty description="输入 User ref，查询当前 Site 内的身份" /></ProCard> :
-      <ProCard title="身份事实" variant="outlined" headerBordered>
+      <ProCard title="身份事实" bordered headerBordered>
         <Descriptions column={{ xs: 1, sm: 2 }} size="small" items={[
           { key: "site", label: "Site", children: result.siteId },
           { key: "user", label: "User ref", children: result.userRef },

@@ -69,6 +69,13 @@ Web owns cookies, rendering state, drafts, and client caches. Session owns conve
 Server-only credentials stay outside browser bundles; every non-explicit-development host fails closed to bounded trusted Site resolution, and Admin has no Platform database credential. Admin removes browser-spoofable internal headers before server injection and its filtered BFFs enforce bounded, positive-schema JSON responses.
 Admin runtime 只依赖本仓 generated mirror，不允许 sibling repository source import。
 
+`test/fixtures/web-chat-credit-runtime.mjs` 是 Root 兼容性场景唯一的 Web-owned child entry。它通过
+`@kokoro/site-scaffold` 公开 export 构建独立 Site candidate，以 `setup -> serve -> exercise -> observe`
+闭合生成 CA、standalone + strict-Host HTTPS、NextAuth cookie jar、Account before/after、Session client/SSE terminal
+和 logical replay。Auth、Platform/Session upstream 或 mTLS 材料不完整时保持 fail-closed；最终 observation
+只含固定 owner-safe 计数/布尔值，不返回内容、金额、credential 或 Usage/Gateway 内部引用。该入口不导入或
+启动 `apps/reference-site`。
+
 ## Idempotency, failure, and recovery
 
 Client commands carry stable identity; reconnect uses Session snapshots/cursors; Admin effects reconcile durable receipts after ambiguous timeouts.
@@ -84,7 +91,7 @@ Put app-specific behavior in its app and truly shared Web code in `packages/*`. 
 
 ## Current gotchas
 
-- **Acquisition shutdown**：User Web 保留固定 Site 的只读套餐/credit/account 展示与 Platform Public 合同绑定的卡密 preview→confirm→recover；checkout/mock-pay/refund BFF、购买 CTA、provider secret/SDK 仍禁止。卡密只走 server-only generated client，raw Code 不落状态/日志/响应。仓库门禁对两 app 的完整 API route inventory、Admin rewrite 清单、proxy egress 和 plans GET-only export 采用闭合 allowlist。Admin 的 manifests/billing-overview/user360/resource/action 先经过本地 BFF 深度正向 schema 过滤，payment module/metrics/orders/action 对浏览器恒不可达。
+- **Acquisition shutdown**：User Web 保留固定 Site 的只读套餐/credit/account 展示与 Platform Public 合同绑定的卡密 preview→confirm→recover；checkout/mock-pay/refund BFF、购买 CTA、provider secret/SDK 仍禁止。卡密只走 server-only generated client，raw Code 不落状态/日志/响应。仓库门禁对两 app 的完整 API route inventory、Admin rewrite 清单、proxy egress 和 plans GET-only export 采用闭合 allowlist。Admin 的 generic manifests/resource/action/OpenAPI、billing overview、User360、未实现 Commerce 页面与 routes 已物理删除；payment module/metrics/orders/action 对浏览器恒不可达。
 - **每 Site 一个独立 Web 项目**：Site factory 输出独立产品名、repository、artifact、release、cookie/account
   边界与 rollback 权；仓内不存在共享用户站 runtime，reference fixture 也不可作为生产部署入口。
 - **`.npmrc` 使用 `node-linker=isolated`**（非 hoisted），防止 app/private package 依赖被根级幽灵依赖掩盖。切换
@@ -98,3 +105,4 @@ Put app-specific behavior in its app and truly shared Web code in `packages/*`. 
 
 Run `pnpm -r lint`, `pnpm -r typecheck`, `pnpm test`, `pnpm run build:site`, and `pnpm run build:admin`.
 CI 另跑 `pnpm audit --prod --audit-level high`；外部 Site 项目还必须执行模板内自己的 CI/artifact verification。
+Web Chat/Credit runtime cut 使用 `pnpm exec node --test test/runtime/web-chat-credit-runtime.test.mjs`。

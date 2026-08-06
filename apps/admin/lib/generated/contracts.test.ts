@@ -4,11 +4,12 @@ import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
-import { AdminIdentityService } from "./admin-identity/kokoro/platform/identity/v1/admin_identity_pb";
-import { AdminQueryService } from "./admin-query-v2/kokoro/platform/admin/v2/admin_query_pb";
-import { AdminCommerceService } from "./admin-commerce/kokoro/platform/commerce/v1/admin_commerce_pb";
-import { AdminCreditService } from "./admin-credit/kokoro/platform/credit/v1/admin_credit_pb";
-import { SiteProvisioningService } from "./site-provisioning/kokoro/platform/site/v1/site_provisioning_pb";
+import { AdminIdentityService } from "./proto/kokoro/platform/identity/v1/admin_identity_pb";
+import { AdminQueryService } from "./proto/kokoro/platform/admin/v2/admin_query_pb";
+import { AdminCommerceService } from "./proto/kokoro/platform/commerce/v1/admin_commerce_pb";
+import { AdminCreditService } from "./proto/kokoro/platform/credit/v1/admin_credit_pb";
+import { SiteProvisioningService } from "./proto/kokoro/platform/site/v1/site_provisioning_pb";
+import { SitePublicationService } from "./proto/kokoro/platform/site/v1/site_publication_pb";
 
 const generatedRoot = dirname(fileURLToPath(import.meta.url));
 const appRoot = resolve(generatedRoot, "../..");
@@ -43,16 +44,29 @@ describe("typed Admin control-plane mirrors", () => {
     expect(Object.keys(AdminQueryService.method)).toContain("getCurrentOperator");
     expect(Object.keys(AdminQueryService.method)).toContain("listPendingApprovals");
     expect(Object.keys(AdminCommerceService.method)).toEqual(["publishCreditProgramRevision",
-      "listCreditProgramRevisions", "getCreditProgramRevision", "publishEntitlementTemplateRevision",
-      "listEntitlementTemplateRevisions", "getEntitlementTemplateRevision", "publishOffer", "listOffers", "getOffer",
-      "publishRedemptionProgram", "listRedemptionPrograms", "getRedemptionProgram", "issueCodeBatch",
-      "listCodeBatches", "getCodeBatch", "approveCodeBatch", "activateCodeBatch", "abandonCodeBatch",
-      "suspendCodeBatch", "revokeCodeBatch"]);
+      "listCreditProgramRevisions", "getCreditProgramRevision", "publishPlanRevision", "listPlanRevisions",
+      "getPlanRevision", "publishOfferRevision", "listOfferRevisions", "getOfferRevision",
+      "publishOfferPriceRevision", "listOfferPriceRevisions", "getOfferPriceRevision",
+      "publishFulfillmentProgramRevision", "listFulfillmentProgramRevisions", "getFulfillmentProgramRevision",
+      "publishRedemptionProgramRevision", "listRedemptionProgramRevisions", "getRedemptionProgramRevision",
+      "requestSiteCommerceAssignmentPromotion", "decideSiteCommerceAssignmentPromotion",
+      "listSiteCommerceAssignments", "getSiteCommerceAssignment", "requestCodeBatchIssuance",
+      "decideCodeBatchIssuance", "requestCodeBatchTransition", "decideCodeBatchTransition",
+      "emergencySuspendCodeBatch", "beginCodeBatchDelivery", "readCodeDeliveryRange",
+      "acknowledgeCodeDeliveryRange", "getCodeDeliverySession", "listCodeBatches", "getCodeBatch",
+      "requestSourceCorrection", "decideSourceCorrection", "listSourceCorrections", "getSourceCorrection",
+      "requestCommerceReconciliationResolution", "decideCommerceReconciliationResolution",
+      "listCommerceReconciliations", "getCommerceReconciliation", "getCommerceApproval",
+      "getCommerceExecution", "getGlobalCommerceCommandReceipt", "getSiteCommerceCommandReceipt"]);
     expect(Object.keys(AdminCreditService.method)).toEqual(["getSiteCreditSummary", "listCreditAccounts",
       "getCreditAccount", "listCreditGrants", "listCreditHolds", "listCreditHoldAllocations",
       "listCreditJournalTransactions", "listCreditJournalEntries", "listRatedUsage",
-      "listRatedUsageSourceAllocations"]);
-    expect(Object.keys(SiteProvisioningService.method)).toEqual(["registerSite", "publishSiteRelease"]);
+      "listRatedUsageSourceAllocations", "requestCreditReconciliationResolution",
+      "decideCreditReconciliationResolution", "getCreditReconciliationResolution"]);
+    expect(Object.keys(SiteProvisioningService.method)).toEqual(["registerSite"]);
+    expect(Object.keys(SitePublicationService.method)).toEqual(["authorizeSiteReleaseCandidate",
+      "revokeSiteReleaseCandidate", "publishSurfaceInventory", "publishWebBuildMaterialBundle",
+      "issueWebBuildIntent", "publishReleaseCertification", "publishSiteRelease"]);
   });
 
   it("uses only the server-only HTTP/2 mTLS client boundary", () => {
@@ -61,7 +75,7 @@ describe("typed Admin control-plane mirrors", () => {
     expect(transport).toContain('import "server-only"');
     expect(transport).toContain('httpVersion: "2"');
     expect(transport).toContain("rejectUnauthorized: true");
-    expect(client).toContain("AdminCommerceService");
+    expect(client).not.toContain("AdminCommerceService");
     expect(client).toContain("SiteProvisioningService");
     expect(readFileSync(resolve(appRoot, "lib/control-plane/credit-client.ts"), "utf8")).toContain("AdminCreditService");
     expect(client).not.toContain("/api/action");

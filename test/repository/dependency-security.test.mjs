@@ -43,7 +43,7 @@ test("deployable apps pin the reviewed security patch line", () => {
   assert.equal(adminPackage.dependencies["@connectrpc/connect"], "2.1.2");
   assert.equal(adminPackage.dependencies["@connectrpc/connect-node"], "2.1.2");
   assert.equal(adminPackage.dependencies["server-only"], "0.0.1");
-  assert.equal(adminPackage.dependencies["@ant-design/pro-components"], "3.1.14-5");
+  assert.equal(adminPackage.dependencies["@ant-design/pro-components"], "2.8.10");
 });
 
 test("workspace overrides close transitive production advisories", () => {

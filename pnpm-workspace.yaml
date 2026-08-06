@@ -12,6 +12,13 @@ overrides:
   path-to-regexp: 8.4.2
   sharp: 0.35.3
 
+# pro-descriptions 2.6.10 imports @ant-design/icons but omits it from its published manifest.
+# Keep the correction exact and local instead of weakening pnpm's isolated dependency boundary.
+packageExtensions:
+  "@ant-design/pro-descriptions@2.6.10":
+    peerDependencies:
+      "@ant-design/icons": ">=5.6.1 <6"
+
 minimumReleaseAgeExclude:
   - "@next/env@16.2.12"
   - "@next/eslint-plugin-next@16.2.12"

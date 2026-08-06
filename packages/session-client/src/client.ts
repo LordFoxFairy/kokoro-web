@@ -536,7 +536,7 @@ export function createSessionClient(options: {
       try {
         const authorityDecoder = createAguiPresentationDecoder({
           grant,
-          snapshotAuthority: snapshot.presentation_authority,
+          snapshotAuthority: snapshot.presentation_snapshot,
         });
         const snapshotAuthority: AguiPresentationSnapshotAuthority = authorityDecoder.getSnapshotAuthority();
         return { kind: "ready", snapshot, grant, snapshotAuthority };

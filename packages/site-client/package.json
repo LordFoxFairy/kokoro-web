@@ -23,9 +23,9 @@
       "import": "./dist/server.js"
     },
     "./asset-data-plane": {
-      "types": "./src/generated/asset-data-plane/index.ts",
-      "development": "./src/generated/asset-data-plane/index.ts",
-      "import": "./dist/generated/asset-data-plane/index.js"
+      "types": "./src/generated/contracts/openapi/asset-data-plane/index.ts",
+      "development": "./src/generated/contracts/openapi/asset-data-plane/index.ts",
+      "import": "./dist/generated/contracts/openapi/asset-data-plane/index.js"
     }
   },
   "scripts": {

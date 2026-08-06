@@ -13,6 +13,11 @@ Auth.js owns the Site-local encrypted cookie and browser authentication ceremony
 credentials with Platform and resolves authoritative actor claims on every runtime bootstrap. Only the
 browser-safe bootstrap projection may cross into React props or JSON responses.
 
+The deployment edge owns exact Host resolution before traffic reaches the standalone listener. Site BFF routes do not
+reconstruct the public origin from the internal request URL or trust forwarded Host headers. Reads require the browser's
+same-origin fetch signal; mutations additionally require the configured public `Origin` and the independent browser CSRF
+capability.
+
 One-time credential calls require a caller-supplied secret command that was persisted before dispatch. Generic transport failure
 retains that exact identity. A superseding command is legal only after Platform returns typed `delivery_unavailable`, and must carry
 the generated prior-command recovery input.

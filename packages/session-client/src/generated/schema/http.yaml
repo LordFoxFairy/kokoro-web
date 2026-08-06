@@ -1,0 +1,773 @@
+# Breaking browser contract. Session snapshot hydrates the base read model and
+# carries the protocol-neutral Presentation snapshot; SSE is the single browser
+# stream and resumes only under the Presentation stream policy.
+schema_id: kokoro.session.browser.v3
+schema_version: 3
+last_event_id_header: last-event-id
+path_param_types:
+  session_id: entity_id
+  message_id: entity_id
+  branch_id: entity_id
+  run_id: entity_id
+  command_id: entity_id
+  folder_id: entity_id
+
+# Browser command identities bind the complete semantic target, not only the JSON body. The
+# canonical helper generated into Session and Web validates the exact path-target key set for the
+# operation and hashes UTF8(canonical JSON({operation,targets,effect})). `effect` is the validated
+# request body with `command` removed; semantic mutation query parameters are forbidden in v3.
+command_digest:
+  algorithm: SHA256_CANONICAL_JSON_V2
+  preimage_fields: [operation, targets, effect]
+
+enums:
+  message_role: [user, assistant, system]
+  message_lifecycle: [created, streaming, completed, partial, failed, canceled]
+  part_lifecycle: [created, streaming, completed, partial, failed, canceled, unsupported]
+  supported_part_lifecycle: [created, streaming, completed, partial, failed, canceled]
+  branch_origin: [original, edit, regenerate, fork]
+  session_lifecycle: [active, archived, trashed]
+  context_policy: [standard, temporary]
+  execution_status: [admission_pending, waiting_prerequisite, running, paused, cancelling, completed, failed, canceled, outcome_unknown]
+  cost_status: [none, reserved, committed, cost_pending, settled, released, reconciliation_required]
+  notice_severity: [info, warning]
+  subagent_status: [pending, running, completed, failed, canceled]
+  media_operation_state: [admission_pending, authorized, queued, active, finalizing, cancel_requested, reconciling, completed, partial, failed, canceled]
+  media_terminal_outcome_class: [canonical, irreconcilable]
+  media_candidate_state: [allocated, producing, output_received, validating, ready, restricted, failed, unknown, cancel_requested, canceled]
+  artifact_availability: [processing, ready, restricted, unavailable, deleted]
+  artifact_media_class: [image]
+  credit_cost_projection_state: [pending, estimated, final, corrected, unavailable]
+  projection_freshness_state: [current, stale, rebuilding, unavailable]
+  media_safe_failure_code: [input_rejected, policy_rejected, credit_rejected, generation_failed, validation_failed, temporarily_unavailable, outcome_unknown, artifact_restricted, artifact_unavailable]
+  artifact_image_format: [png, jpeg, webp]
+  launch_status: [intent_recorded, admission_pending, waiting_prerequisite, reserved, committed, dispatch_pending, dispatched, event_observed, released, denied, outcome_unknown, failed]
+  control_status: [pending, persisted, applied, failed, outcome_unknown]
+  retry_class: [never, after_delay, after_user_action, reconcile_receipt]
+  browser_command_operation: [create_session, submit_message, edit_message, regenerate_message, fork_branch, activate_branch, cancel_run, decide_action, decide_plan, update_session, archive_session, restore_session, trash_session, put_preference, create_folder, update_folder, delete_folder]
+  action_owner_kind: [approval, interaction]
+  session_sort: [updated_desc]
+  repair_action: [retry_same_cursor, refresh_grant, reauthenticate, refetch_snapshot, upgrade_client, stop, developer_error, wait_or_cancel, fork_new_session, choose_model, wait_prerequisite, remove_attachment, show_reason, reconcile_receipt, poll_or_stream, render_unsupported]
+  message_part_kind: [text, reasoning-summary, citation, tool-call, approval, interaction, plan, plan-progress, subagent, media-operation, artifact, cost, notice, error, unsupported]
+  stable_error_code: [REQUEST_INVALID, PAYLOAD_TOO_LARGE, METHOD_NOT_ALLOWED, UNSUPPORTED_MEDIA_TYPE, BFF_WORKLOAD_REQUIRED, BFF_WORKLOAD_REVOKED, SESSION_ACCESS_GRANT_REQUIRED, SESSION_ACCESS_GRANT_EXPIRED, SESSION_ACCESS_GRANT_REVOKED, SESSION_SCOPE_MISMATCH, SESSION_NOT_FOUND, SESSION_VERSION_CONFLICT, IDEMPOTENCY_CONFLICT, ACTIVE_RUN_EXISTS, CAPABILITY_SNAPSHOT_LOCKED, MODEL_OPTION_UNAVAILABLE, ATTACHMENT_NOT_READY, ATTACHMENT_REVOKED, ADMISSION_DENIED, ADMISSION_OUTCOME_UNKNOWN, LAUNCH_OUTCOME_UNKNOWN, RUN_CANCELLATION_PENDING, RUN_OUTCOME_UNKNOWN, ACTION_NOT_FOUND, ACTION_VERSION_CONFLICT, ACTION_EXPIRED, ACTION_NOT_ALLOWED, ACTION_DECISION_PENDING, PLAN_NOT_FOUND, PLAN_VERSION_CONFLICT, PLAN_EXPIRED, PLAN_DECISION_PENDING, CURSOR_INVALID, CURSOR_CONFLICT, CURSOR_AHEAD, SNAPSHOT_REQUIRED, CURSOR_SCOPE_MISMATCH, STREAM_EPOCH_MISMATCH, CLIENT_CONTRACT_UPGRADE_REQUIRED, PART_SCHEMA_UNSUPPORTED, INTERNAL_UNAVAILABLE]
+
+objects:
+  - name: CommandIdentity
+    fields:
+      - {name: command_id, type: entity_id}
+      - {name: idempotency_key, type: idempotency_key}
+      - {name: digest_algorithm, type: literal:SHA256_CANONICAL_JSON_V2}
+      - {name: request_digest, type: sha256}
+  - name: ErrorDetail
+    fields:
+      - {name: code, type: enum:stable_error_code}
+      - {name: message, type: string_nonempty}
+      - {name: retry_class, type: enum:retry_class}
+      - {name: action, type: enum:repair_action}
+      - {name: details, type: record, optional: true}
+  - name: ErrorEnvelope
+    fields:
+      - {name: error, type: object:ErrorDetail}
+      - {name: request_id, type: string_nonempty}
+      - {name: correlation_id, type: string_nonempty}
+  - name: SessionCreatedCommandResult
+    fields:
+      - {name: session_id, type: string_nonempty}
+      - {name: initial_branch_id, type: string_nonempty}
+      - {name: session_version, type: positive_int}
+      - {name: context_policy, type: enum:context_policy}
+  - name: RunLaunchCommandResult
+    fields:
+      - {name: session_id, type: string_nonempty}
+      - {name: branch_id, type: string_nonempty}
+      - {name: trigger_message_id, type: string_nonempty}
+      - {name: assistant_message_id, type: string_nonempty}
+      - {name: launch_id, type: string_nonempty}
+      - {name: proposed_run_id, type: string_nonempty}
+      - {name: session_version, type: positive_int}
+      - {name: branch_version, type: positive_int}
+  - name: BranchCommandResult
+    fields:
+      - {name: session_id, type: string_nonempty}
+      - {name: branch_id, type: string_nonempty}
+      - {name: active_leaf_message_id, type: string_nonempty, nullable: true}
+      - {name: session_version, type: positive_int}
+      - {name: branch_version, type: positive_int}
+  - name: CancellationCommandResult
+    fields:
+      - {name: session_id, type: string_nonempty}
+      - {name: run_id, type: string_nonempty}
+      - {name: decision_id, type: string_nonempty}
+      - {name: run_projection_version, type: positive_int}
+  - name: ActionDecisionCommandResult
+    fields:
+      - {name: session_id, type: string_nonempty}
+      - {name: run_id, type: string_nonempty}
+      - {name: decision_id, type: string_nonempty}
+      - {name: owner_kind, type: enum:action_owner_kind}
+      - {name: owner_ref, type: string_nonempty}
+      - {name: owner_version, type: uint64_string}
+      - {name: control_status, type: enum:control_status}
+  - name: PlanDecisionCommandResult
+    fields:
+      - {name: session_id, type: string_nonempty}
+      - {name: run_id, type: string_nonempty}
+      - {name: decision_id, type: string_nonempty}
+      - {name: plan_proposal_ref, type: string_nonempty}
+      - {name: plan_version, type: uint64_string}
+      - {name: control_status, type: enum:control_status}
+  - name: SessionMutationCommandResult
+    fields:
+      - {name: session_id, type: string_nonempty}
+      - {name: session_version, type: positive_int}
+      - {name: lifecycle, type: enum:session_lifecycle}
+  - name: FolderUpdatedCommandResult
+    fields:
+      - {name: folder_id, type: string_nonempty}
+      - {name: project_ref, type: string_nonempty}
+      - {name: folder_version, type: positive_int}
+  - name: FolderDeletedCommandResult
+    fields:
+      - {name: folder_id, type: string_nonempty}
+      - {name: project_ref, type: string_nonempty}
+  - name: PreferenceCommandResult
+    fields:
+      - {name: session_id, type: string_nonempty}
+      - {name: pinned, type: boolean}
+      - {name: folder_id, type: string_nonempty, nullable: true}
+      - {name: preference_version, type: positive_int}
+  - name: SessionCommandEffect
+    discriminator: kind
+    common_fields: []
+    variants:
+      - {value: session-created, payload_type: object:SessionCreatedCommandResult}
+      - {value: run-launch-created, payload_type: object:RunLaunchCommandResult}
+      - {value: branch-updated, payload_type: object:BranchCommandResult}
+      - {value: cancellation-requested, payload_type: object:CancellationCommandResult}
+      - {value: action-decision-recorded, payload_type: object:ActionDecisionCommandResult}
+      - {value: plan-decision-recorded, payload_type: object:PlanDecisionCommandResult}
+      - {value: session-updated, payload_type: object:SessionMutationCommandResult}
+      - {value: preference-updated, payload_type: object:PreferenceCommandResult}
+      - {value: folder-updated, payload_type: object:FolderUpdatedCommandResult}
+      - {value: folder-deleted, payload_type: object:FolderDeletedCommandResult}
+  - name: CommandRecoveryPayload
+    fields:
+      - {name: retry_class, type: enum:retry_class}
+      - {name: action, type: enum:repair_action}
+      - {name: retry_after_ms, type: nonnegative_int, optional: true}
+  - name: CommandReceiptView
+    discriminator: status
+    effect_kind_by_operation:
+      create_session: session-created
+      submit_message: run-launch-created
+      edit_message: run-launch-created
+      regenerate_message: run-launch-created
+      fork_branch: branch-updated
+      activate_branch: branch-updated
+      cancel_run: cancellation-requested
+      decide_action: action-decision-recorded
+      decide_plan: plan-decision-recorded
+      update_session: session-updated
+      archive_session: session-updated
+      restore_session: session-updated
+      trash_session: session-updated
+      put_preference: preference-updated
+      create_folder: folder-updated
+      update_folder: folder-updated
+      delete_folder: folder-deleted
+    common_fields:
+      - {name: operation, type: enum:browser_command_operation}
+      - {name: command_id, type: entity_id}
+      - {name: idempotency_key, type: idempotency_key}
+      - {name: digest_algorithm, type: literal:SHA256_CANONICAL_JSON_V2}
+      - {name: request_digest, type: sha256}
+      - {name: updated_at, type: timestamp}
+    variants:
+      - {value: pending, payload_type: object:CommandRecoveryPayload}
+      - {value: outcome_unknown, payload_type: object:CommandRecoveryPayload}
+      - {value: accepted, payload_type: object:SessionCommandEffect}
+      - {value: applied, payload_type: object:SessionCommandEffect}
+      - {value: denied, payload_type: object:ErrorDetail}
+  - name: CommandReceiptLookupQuery
+    fields:
+      - {name: operation, type: enum:browser_command_operation}
+      - {name: idempotency_key, type: idempotency_key}
+      - {name: digest_algorithm, type: literal:SHA256_CANONICAL_JSON_V2}
+      - {name: request_digest, type: sha256}
+  - name: SessionCommandResponse
+    fields:
+      - {name: command_receipt, type: object:CommandReceiptView}
+  - name: TextSpan
+    fields:
+      - {name: text, type: string}
+  - name: TextPartPayload
+    fields:
+      - {name: part_ref, type: opaque_ref, optional: true}
+      - {name: spans, type: array:object:TextSpan}
+  - name: ReasoningPartPayload
+    fields:
+      - {name: part_ref, type: opaque_ref}
+      - {name: safe_summary, type: string}
+  - name: CitationPartPayload
+    fields:
+      - {name: source_ref, type: string_nonempty}
+      - {name: title, type: string_nonempty}
+      - {name: locator, type: string_nonempty, optional: true}
+      - {name: attribution, type: string_nonempty, optional: true}
+  - name: ToolCallPartPayload
+    fields:
+      # Stable Agent-owned identity used to correlate tool start/finish output records.
+      - {name: tool_call_id, type: string_nonempty}
+      - {name: tool_label, type: string_nonempty}
+      - {name: input_summary, type: record, optional: true}
+      - {name: status, type: string_nonempty}
+      # Bounded/redacted by Agent before browser projection; never raw provider output.
+      - {name: safe_result_preview, type: safe_preview, optional: true}
+      - {name: is_error, type: boolean, optional: true}
+      - {name: truncated, type: boolean, optional: true}
+      - {name: effect_ref, type: string_nonempty, optional: true}
+      - {name: receipt_ref, type: string_nonempty, optional: true}
+  - name: ActionPartPayload
+    fields:
+      - {name: owner_ref, type: string_nonempty}
+      - {name: expected_version, type: positive_int}
+      - {name: decision_group_ref, type: string_nonempty}
+      - {name: required_owner_refs, type: array:string_nonempty, min_items: 1, max_items: 64}
+      - {name: title, type: string_nonempty}
+      - {name: description, type: string_nonempty}
+      - {name: risk_summary, type: string_nonempty, optional: true}
+      - {name: safe_request_summary, type: record, optional: true}
+      - {name: input_schema_ref, type: string_nonempty, optional: true}
+      # Deliberately restricted/sanitized JSON Schema for browser rendering; never an executable
+      # validator or provider-owned secret-bearing schema. GA re-validates the submitted value.
+      - {name: safe_input_schema, type: record, optional: true}
+      - {name: deadline, type: timestamp, optional: true}
+      - {name: allowed_actions, type: array:string_nonempty}
+      - {name: receipt_ref, type: string_nonempty, optional: true}
+      - {name: status, type: string_nonempty}
+  - name: PlanStep
+    fields:
+      - {name: step_ref, type: string_nonempty}
+      - {name: label, type: string_nonempty}
+      - {name: status, type: string_nonempty}
+  - name: PlanPartPayload
+    fields:
+      - {name: plan_proposal_ref, type: string_nonempty}
+      - {name: plan_version, type: positive_int}
+      - {name: summary, type: string_nonempty}
+      - {name: steps, type: array:object:PlanStep}
+      - {name: allowed_actions, type: array:string_nonempty}
+      - {name: deadline, type: timestamp, optional: true}
+      - {name: receipt_ref, type: string_nonempty, optional: true}
+      - {name: status, type: string_nonempty}
+  - name: PlanProgressPartPayload
+    fields:
+      - {name: plan_ref, type: opaque_ref}
+      - {name: safe_summary, type: string_nonempty}
+      - {name: steps, type: array:object:PlanStep}
+  - name: SubagentPartPayload
+    fields:
+      - {name: subagent_ref, type: opaque_ref}
+      - {name: status, type: enum:subagent_status}
+      - {name: safe_summary, type: string, optional: true}
+  - name: MediaSafeFailure
+    fields:
+      - {name: code, type: enum:media_safe_failure_code}
+      - {name: retry_class, type: enum:retry_class}
+      - {name: safe_message, type: string, optional: true}
+  - name: MediaCandidatePart
+    discriminator: state
+    common_fields:
+      - {name: candidate_ref, type: opaque_ref}
+      - {name: ordinal, type: nonnegative_int}
+      - {name: owner_version, type: uint64_string}
+    variants:
+      - {value: allocated}
+      - {value: producing}
+      - {value: output_received}
+      - {value: validating}
+      - {value: ready, fields: [{name: artifact_ref, type: opaque_ref}, {name: artifact_version_ref, type: opaque_ref}]}
+      - {value: restricted, fields: [{name: safe_failure, type: object:MediaSafeFailure}]}
+      - {value: failed, fields: [{name: safe_failure, type: object:MediaSafeFailure}]}
+      - {value: unknown}
+      - {value: cancel_requested}
+      - {value: canceled}
+  - name: CostProjectionLink
+    fields:
+      - {name: cost_projection_ref, type: opaque_ref}
+      - {name: owner_version, type: uint64_string}
+  - name: MediaOperationPartPayload
+    discriminator: state
+    common_fields:
+      - {name: media_operation_ref, type: opaque_ref}
+      - {name: definition_ref, type: opaque_ref}
+      - {name: definition_revision_ref, type: opaque_ref}
+      - {name: owner_version, type: uint64_string}
+      - {name: progress_bps, type: basis_points}
+      - {name: candidates, type: array:object:MediaCandidatePart, max_items: 4}
+      - {name: cost_projection, type: object:CostProjectionLink, optional: true}
+      - {name: updated_at, type: timestamp}
+    variants:
+      - {value: admission_pending}
+      - {value: authorized}
+      - {value: queued}
+      - {value: active}
+      - {value: finalizing}
+      - {value: cancel_requested}
+      - {value: reconciling}
+      - {value: completed, fields: [{name: outcome_class, type: enum:media_terminal_outcome_class}]}
+      - {value: partial, fields: [{name: outcome_class, type: enum:media_terminal_outcome_class}]}
+      - {value: failed, fields: [{name: outcome_class, type: enum:media_terminal_outcome_class}, {name: safe_failure, type: object:MediaSafeFailure}]}
+      - {value: canceled, fields: [{name: outcome_class, type: enum:media_terminal_outcome_class}]}
+  - name: ArtifactImageDisplay
+    fields:
+      - {name: format, type: enum:artifact_image_format}
+      - {name: width, type: positive_int}
+      - {name: height, type: positive_int}
+      - {name: byte_size, type: uint64_string}
+  - name: ArtifactPartPayload
+    discriminator: availability
+    common_fields:
+      - {name: artifact_ref, type: opaque_ref}
+      - {name: artifact_version_ref, type: opaque_ref}
+      - {name: owner_version, type: uint64_string}
+      - {name: media_class, type: enum:artifact_media_class}
+      - {name: updated_at, type: timestamp}
+    variants:
+      - {value: processing}
+      - {value: ready, payload_type: object:ArtifactImageDisplay}
+      - {value: restricted, fields: [{name: safe_failure, type: object:MediaSafeFailure}]}
+      - {value: unavailable, fields: [{name: safe_failure, type: object:MediaSafeFailure}]}
+      - {value: deleted}
+  - name: CreditCostAmount
+    fields:
+      - {name: credit_unit, type: opaque_ref}
+      - {name: amount, type: credit_decimal}
+  - name: CostPartPayload
+    discriminator: state
+    common_fields:
+      - {name: media_operation_ref, type: opaque_ref}
+      - {name: cost_projection_ref, type: opaque_ref}
+      - {name: owner_version, type: uint64_string}
+      - {name: freshness, type: enum:projection_freshness_state}
+      - {name: updated_at, type: timestamp}
+    variants:
+      - {value: pending}
+      - {value: estimated, payload_type: object:CreditCostAmount}
+      - {value: final, payload_type: object:CreditCostAmount}
+      - {value: corrected, fields: [{name: corrects_owner_version, type: uint64_string}], payload_type: object:CreditCostAmount}
+      - {value: unavailable, fields: [{name: safe_reason, type: string_nonempty}]}
+  - name: NoticePartPayload
+    fields:
+      - {name: notice_ref, type: opaque_ref}
+      - {name: code, type: string_nonempty}
+      - {name: message, type: string}
+      - {name: severity, type: enum:notice_severity}
+      - {name: retry_class, type: enum:retry_class, optional: true}
+      - {name: support_correlation_ref, type: string_nonempty, optional: true}
+  - name: ErrorPartPayload
+    fields:
+      - {name: error_ref, type: opaque_ref}
+      - {name: code, type: string_nonempty}
+      - {name: message, type: string}
+      - {name: retry_class, type: enum:retry_class}
+      - {name: support_correlation_ref, type: string_nonempty, optional: true}
+  - name: UnsupportedPartPayload
+    fields:
+      - {name: original_kind, type: string_nonempty}
+      - {name: original_schema_version, type: positive_int}
+      - {name: safe_fallback, type: string_nonempty}
+  - name: MessagePartEnvelope
+    discriminator: kind
+    common_fields:
+      - {name: part_id, type: string_nonempty}
+      - {name: message_id, type: string_nonempty}
+      - {name: ordinal, type: nonnegative_int}
+      - {name: version, type: positive_int}
+    variants:
+      - {value: text, fields: [{name: schema_version, type: literal_int:1}, {name: lifecycle, type: enum:supported_part_lifecycle}], payload_type: object:TextPartPayload}
+      - {value: reasoning-summary, fields: [{name: schema_version, type: literal_int:1}, {name: lifecycle, type: enum:supported_part_lifecycle}], payload_type: object:ReasoningPartPayload}
+      - {value: citation, fields: [{name: schema_version, type: literal_int:1}, {name: lifecycle, type: enum:supported_part_lifecycle}], payload_type: object:CitationPartPayload}
+      - {value: tool-call, fields: [{name: schema_version, type: literal_int:1}, {name: lifecycle, type: enum:supported_part_lifecycle}], payload_type: object:ToolCallPartPayload}
+      - {value: approval, fields: [{name: schema_version, type: literal_int:1}, {name: lifecycle, type: enum:supported_part_lifecycle}], payload_type: object:ActionPartPayload}
+      - {value: interaction, fields: [{name: schema_version, type: literal_int:1}, {name: lifecycle, type: enum:supported_part_lifecycle}], payload_type: object:ActionPartPayload}
+      - {value: plan, fields: [{name: schema_version, type: literal_int:1}, {name: lifecycle, type: enum:supported_part_lifecycle}], payload_type: object:PlanPartPayload}
+      - {value: plan-progress, fields: [{name: schema_version, type: literal_int:1}, {name: lifecycle, type: enum:supported_part_lifecycle}], payload_type: object:PlanProgressPartPayload}
+      - {value: subagent, fields: [{name: schema_version, type: literal_int:1}, {name: lifecycle, type: enum:supported_part_lifecycle}], payload_type: object:SubagentPartPayload}
+      - {value: media-operation, fields: [{name: schema_version, type: literal_int:1}, {name: lifecycle, type: enum:supported_part_lifecycle}], payload_type: object:MediaOperationPartPayload}
+      - {value: artifact, fields: [{name: schema_version, type: literal_int:1}, {name: lifecycle, type: enum:supported_part_lifecycle}], payload_type: object:ArtifactPartPayload}
+      - {value: cost, fields: [{name: schema_version, type: literal_int:1}, {name: lifecycle, type: enum:supported_part_lifecycle}], payload_type: object:CostPartPayload}
+      - {value: notice, fields: [{name: schema_version, type: literal_int:1}, {name: lifecycle, type: enum:supported_part_lifecycle}], payload_type: object:NoticePartPayload}
+      - {value: error, fields: [{name: schema_version, type: literal_int:1}, {name: lifecycle, type: enum:supported_part_lifecycle}], payload_type: object:ErrorPartPayload}
+      - {value: unsupported, fields: [{name: schema_version, type: literal_int:1}, {name: lifecycle, type: literal:unsupported}], payload_type: object:UnsupportedPartPayload}
+  - name: AttachmentSafeRef
+    fields:
+      - {name: ordinal, type: nonnegative_int}
+      - {name: asset_ref, type: string_nonempty}
+      - {name: asset_version_ref, type: string_nonempty}
+      - {name: asset_grant_ref, type: string_nonempty}
+      - {name: readiness, type: string_nonempty}
+      - {name: media_type, type: string_nonempty}
+      - {name: display_name, type: string_nonempty}
+      - {name: size_bytes, type: nonnegative_int}
+  - name: MessageRecord
+    fields:
+      - {name: message_id, type: string_nonempty}
+      - {name: branch_id, type: string_nonempty}
+      - {name: parent_message_id, type: string_nonempty, optional: true}
+      - {name: role, type: enum:message_role}
+      - {name: ordinal, type: nonnegative_int}
+      - {name: trigger_message_id, type: string_nonempty, optional: true}
+      - {name: run_id, type: string_nonempty, optional: true}
+      - {name: lifecycle, type: enum:message_lifecycle}
+      - {name: parts, type: array:object:MessagePartEnvelope}
+      - {name: attachments, type: array:object:AttachmentSafeRef}
+      - {name: created_at, type: timestamp}
+  - name: ConversationBranch
+    fields:
+      - {name: branch_id, type: string_nonempty}
+      - {name: parent_branch_id, type: string_nonempty, optional: true}
+      - {name: forked_from_message_id, type: string_nonempty, optional: true}
+      - {name: root_message_id, type: string_nonempty, optional: true}
+      - {name: leaf_message_id, type: string_nonempty, optional: true}
+      - {name: origin, type: enum:branch_origin}
+      - {name: version, type: positive_int}
+      - {name: created_at, type: timestamp}
+  - name: SessionMetadata
+    fields:
+      - {name: session_id, type: string_nonempty}
+      - {name: project_ref, type: string_nonempty}
+      - {name: title, type: string_nonempty}
+      - {name: lifecycle, type: enum:session_lifecycle}
+      # Owner-written at create and immutable for the Session lifetime. Every branch inherits it;
+      # changing policy always creates a different Session without inherited context.
+      - {name: context_policy, type: enum:context_policy}
+      - {name: active_branch_id, type: string_nonempty}
+      - {name: active_leaf_message_id, type: string_nonempty, optional: true}
+      - {name: version, type: positive_int}
+      - {name: created_at, type: timestamp}
+      - {name: updated_at, type: timestamp}
+  - name: RunLaunchProjection
+    fields:
+      - {name: launch_id, type: string_nonempty}
+      - {name: branch_id, type: string_nonempty}
+      - {name: trigger_message_id, type: string_nonempty}
+      - {name: proposed_run_id, type: string_nonempty}
+      - {name: status, type: enum:launch_status}
+      - {name: command_receipt_ref, type: string_nonempty}
+      - {name: manifest_ref, type: string_nonempty, optional: true}
+      - {name: failure_code, type: string_nonempty, optional: true}
+      - {name: version, type: positive_int}
+      - {name: updated_at, type: timestamp}
+  - name: RunView
+    fields:
+      - {name: run_id, type: string_nonempty}
+      - {name: launch_id, type: string_nonempty}
+      - {name: branch_id, type: string_nonempty}
+      - {name: assistant_message_id, type: string_nonempty}
+      - {name: execution_status, type: enum:execution_status}
+      - {name: cost_status, type: enum:cost_status}
+      - {name: terminal_outcome, type: string_nonempty, optional: true}
+      - {name: projection_version, type: positive_int}
+  - name: ControlProjection
+    fields:
+      - {name: decision_id, type: string_nonempty}
+      - {name: run_id, type: string_nonempty}
+      - {name: kind, type: string_nonempty}
+      - {name: status, type: enum:control_status}
+      - {name: command_receipt_ref, type: string_nonempty}
+      - {name: updated_at, type: timestamp}
+  - name: RunCostProjection
+    fields:
+      - {name: run_id, type: string_nonempty}
+      - {name: cost_status, type: enum:cost_status}
+      - {name: estimate, type: string_nonempty, optional: true}
+      - {name: rated_amount, type: string_nonempty, optional: true}
+      - {name: currency_or_credit_unit, type: string_nonempty, optional: true}
+      - {name: rating_snapshot_ref, type: string_nonempty, optional: true}
+      - {name: usage_evidence_refs, type: array:string_nonempty}
+      - {name: freshness, type: timestamp}
+  - name: CapabilityDisplaySnapshot
+    fields:
+      - {name: capability_snapshot_ref, type: string_nonempty}
+      - {name: agent_label, type: string_nonempty, optional: true}
+      - {name: skill_labels, type: array:string_nonempty}
+      - {name: mcp_labels, type: array:string_nonempty}
+      # Historical display facts come from the immutable admission snapshot;
+      # current package availability belongs to Platform capability catalog reads.
+      - {name: source, type: literal:admission_snapshot}
+  - name: ModelDisplaySnapshot
+    fields:
+      - {name: model_option_revision_ref, type: string_nonempty}
+      - {name: label, type: string_nonempty}
+      - {name: effort, type: effort, optional: true}
+  - name: SnapshotWatermark
+    fields:
+      # Base read-model revision only. It is never accepted by the Presentation SSE stream.
+      - {name: snapshot_revision_ref, type: string_nonempty}
+      - {name: projection_version, type: positive_int}
+  - name: SessionSnapshot
+    fields:
+      - {name: session, type: object:SessionMetadata}
+      - {name: branches, type: array:object:ConversationBranch}
+      - {name: messages, type: array:object:MessageRecord}
+      - {name: run_launches, type: array:object:RunLaunchProjection}
+      - {name: runs, type: array:object:RunView}
+      - {name: controls, type: array:object:ControlProjection}
+      - {name: costs, type: array:object:RunCostProjection}
+      - {name: capability_display, type: object:CapabilityDisplaySnapshot, optional: true}
+      - {name: model_history, type: array:object:ModelDisplaySnapshot}
+      - {name: snapshot_watermark, type: object:SnapshotWatermark}
+      # Strictly parsed against contract/spec/presentation/snapshot-v1.yaml by
+      # both Session and Web. `record` is only the HTTP transport slot; the
+      # dedicated closed-schema decoder owns the snapshot invariants.
+      - {name: presentation_snapshot, type: record}
+      - {name: next_page_cursor, type: string_nonempty, optional: true}
+  - name: SessionListItem
+    fields:
+      - {name: session, type: object:SessionMetadata}
+      - {name: pinned, type: boolean}
+      - {name: folder_id, type: string_nonempty, optional: true}
+      # Subject-scoped preference CAS; absent preference rows are exposed as implicit version 1.
+      - {name: preference_version, type: positive_int}
+      - {name: safe_text_highlight, type: string, optional: true}
+  - name: SessionList
+    fields:
+      - {name: sessions, type: array:object:SessionListItem}
+      - {name: index_watermark, type: string_nonempty}
+      - {name: next_cursor, type: string_nonempty, optional: true}
+  - name: ListSessionsQuery
+    fields:
+      - {name: project_ref, type: opaque_ref}
+      - {name: q, type: search_query, optional: true}
+      - {name: lifecycle, type: enum:session_lifecycle, optional: true}
+      - {name: folder_id, type: entity_id, optional: true}
+      - {name: pinned, type: boolean, optional: true}
+      - {name: sort, type: enum:session_sort, optional: true}
+      - {name: cursor, type: opaque_cursor, optional: true}
+      - {name: limit, type: page_limit, optional: true}
+  - name: SnapshotQuery
+    # The first page contains the complete active Branch and every active card.
+    # Cursor pages contain only immutable historical Branch projection rows at
+    # the first page's watermark; cursor scope/version drift requires a refetch.
+    fields:
+      - {name: cursor, type: opaque_cursor, optional: true}
+      - {name: limit, type: page_limit, optional: true}
+  - name: StreamQuery
+    fields:
+      - {name: after, type: opaque_cursor, optional: true}
+  - name: CreateSessionRequest
+    fields:
+      - {name: project_ref, type: opaque_ref}
+      - {name: command, type: object:CommandIdentity}
+      # Required so the command digest binds an explicit privacy mode; there is no wire default.
+      - {name: context_policy, type: enum:context_policy}
+      - {name: title, type: title, optional: true}
+  - name: AttachmentIntent
+    fields:
+      - {name: asset_ref, type: opaque_ref}
+      - {name: asset_version_ref, type: opaque_ref}
+      - {name: asset_grant_ref, type: opaque_ref}
+  - name: UserTextInputPayload
+    fields:
+      - {name: text, type: input_text}
+  - name: MessageInputPart
+    discriminator: kind
+    common_fields:
+      - {name: schema_version, type: literal_int:1}
+    variants:
+      - {value: text, payload_type: object:UserTextInputPayload}
+  - name: SubmitMessageRequest
+    # Text parts and attachment intents have separate owners and wire shapes. A
+    # Submit may contain either, but an empty message is never a valid command.
+    require_nonempty_any: [parts, attachment_refs]
+    fields:
+      - {name: command, type: object:CommandIdentity}
+      - {name: expected_session_version, type: positive_int}
+      - {name: branch_id, type: entity_id}
+      - {name: parent_message_id, type: entity_id, nullable: true}
+      - {name: trusted_locale, type: trusted_locale}
+      - {name: parts, type: array:object:MessageInputPart, max_items: 64}
+      - {name: attachment_refs, type: array:object:AttachmentIntent, max_items: 64}
+      - {name: model_option_revision_ref, type: opaque_ref}
+      - {name: effort, type: effort, optional: true}
+      - {name: requested_agent_option_ref, type: opaque_ref, optional: true}
+      - {name: requested_skill_option_refs, type: array:opaque_ref, max_items: 64, optional: true}
+      - {name: requested_mcp_option_refs, type: array:opaque_ref, max_items: 64, optional: true}
+  - name: EditMessageRequest
+    fields:
+      - {name: command, type: object:CommandIdentity}
+      - {name: expected_session_version, type: positive_int}
+      - {name: expected_branch_version, type: positive_int}
+      - {name: source_branch_id, type: entity_id}
+      - {name: source_message_id, type: entity_id}
+      - {name: parent_message_id, type: entity_id, nullable: true}
+      - {name: trusted_locale, type: trusted_locale}
+      - {name: replacement_parts, type: array:object:MessageInputPart, min_items: 1, max_items: 64}
+      - {name: replacement_attachment_refs, type: array:object:AttachmentIntent, max_items: 64}
+      - {name: model_option_revision_ref, type: opaque_ref}
+      - {name: effort, type: effort, optional: true}
+  - name: RegenerateMessageRequest
+    fields:
+      - {name: command, type: object:CommandIdentity}
+      - {name: expected_session_version, type: positive_int}
+      - {name: expected_branch_version, type: positive_int}
+      - {name: source_branch_id, type: entity_id}
+      - {name: source_assistant_message_id, type: entity_id}
+      - {name: trigger_message_id, type: entity_id}
+      - {name: parent_message_id, type: entity_id, nullable: true}
+      - {name: trusted_locale, type: trusted_locale}
+      - {name: input_parts, type: array:object:MessageInputPart, min_items: 1, max_items: 64}
+      - {name: attachment_refs, type: array:object:AttachmentIntent, max_items: 64}
+      - {name: model_option_revision_ref, type: opaque_ref}
+      - {name: effort, type: effort, optional: true}
+  - name: BranchCommandRequest
+    fields:
+      - {name: command, type: object:CommandIdentity}
+      - {name: expected_session_version, type: positive_int}
+      - {name: expected_branch_version, type: positive_int}
+  - name: SessionLifecycleCommandRequest
+    fields:
+      - {name: command, type: object:CommandIdentity}
+      - {name: expected_session_version, type: positive_int}
+  - name: CancellationRequest
+    fields:
+      - {name: command, type: object:CommandIdentity}
+      - {name: expected_run_projection_version, type: positive_int}
+      - {name: reason_code, type: reason_code}
+  - name: ApproveActionDecision
+    fields:
+      - {name: acknowledged_risk, type: literal_true}
+  - name: RejectActionDecision
+    fields:
+      - {name: reason_code, type: reason_code, optional: true}
+  - name: EditActionDecision
+    fields:
+      - {name: input_schema_ref, type: opaque_ref}
+      # The selected tool owns this schema. Session treats the value as bounded opaque JSON,
+      # persists its digest, and GA re-validates it against the frozen interrupt schema.
+      - {name: edited_input, type: record}
+  - name: InteractionTextResponse
+    fields:
+      - {name: text, type: input_text}
+  - name: InteractionSelectionResponse
+    fields:
+      - {name: selected_option_ids, type: array:opaque_ref, min_items: 1, max_items: 64}
+  - name: InteractionFormResponse
+    fields:
+      - {name: fields, type: record}
+  - name: InteractionResponse
+    discriminator: kind
+    common_fields: []
+    variants:
+      - {value: text, payload_type: object:InteractionTextResponse}
+      - {value: selection, payload_type: object:InteractionSelectionResponse}
+      - {value: form, payload_type: object:InteractionFormResponse}
+  - name: RespondActionDecision
+    fields:
+      - {name: input_schema_ref, type: opaque_ref}
+      - {name: response, type: object:InteractionResponse}
+  - name: ActionDecision
+    discriminator: kind
+    common_fields: []
+    variants:
+      - {value: approve, payload_type: object:ApproveActionDecision}
+      - {value: reject, payload_type: object:RejectActionDecision}
+      - {value: edit, payload_type: object:EditActionDecision}
+      - {value: respond, payload_type: object:RespondActionDecision}
+  - name: ActionDecisionRequest
+    fields:
+      - {name: command, type: object:CommandIdentity}
+      - {name: expected_session_version, type: positive_int}
+      - {name: expected_run_projection_version, type: positive_int}
+      - {name: owner_kind, type: enum:action_owner_kind}
+      - {name: owner_ref, type: opaque_ref}
+      - {name: decision_group_ref, type: opaque_ref}
+      - {name: expected_owner_version, type: uint64_string}
+      - {name: decision, type: object:ActionDecision}
+  - name: AcceptPlanDecision
+    fields: []
+  - name: RejectPlanDecision
+    fields:
+      - {name: reason_code, type: reason_code, optional: true}
+  - name: PlanDecision
+    discriminator: kind
+    common_fields: []
+    variants:
+      - {value: accept, payload_type: object:AcceptPlanDecision}
+      - {value: reject, payload_type: object:RejectPlanDecision}
+  - name: PlanDecisionRequest
+    fields:
+      - {name: command, type: object:CommandIdentity}
+      - {name: expected_session_version, type: positive_int}
+      - {name: expected_run_projection_version, type: positive_int}
+      - {name: plan_proposal_ref, type: opaque_ref}
+      - {name: expected_plan_version, type: uint64_string}
+      - {name: decision, type: object:PlanDecision}
+  - name: UpdateSessionRequest
+    fields:
+      - {name: command, type: object:CommandIdentity}
+      - {name: expected_version, type: positive_int}
+      - {name: title, type: title}
+  - name: PreferenceRequest
+    fields:
+      - {name: command, type: object:CommandIdentity}
+      - {name: expected_version, type: positive_int}
+      - {name: pinned, type: boolean}
+      - {name: folder_id, type: entity_id, nullable: true}
+  - name: CreateFolderRequest
+    fields:
+      - {name: command, type: object:CommandIdentity}
+      - {name: project_ref, type: opaque_ref}
+      - {name: name, type: folder_name}
+  - name: UpdateFolderRequest
+    fields:
+      - {name: command, type: object:CommandIdentity}
+      - {name: expected_version, type: positive_int}
+      - {name: name, type: folder_name}
+  - name: FolderDeleteRequest
+    fields:
+      - {name: command, type: object:CommandIdentity}
+      - {name: expected_version, type: positive_int}
+  - name: FolderView
+    fields:
+      - {name: folder_id, type: string_nonempty}
+      - {name: project_ref, type: string_nonempty}
+      - {name: name, type: string_nonempty}
+      - {name: version, type: positive_int}
+  - name: FolderListQuery
+    fields:
+      - {name: project_ref, type: opaque_ref}
+      - {name: cursor, type: opaque_cursor, optional: true}
+      - {name: limit, type: page_limit, optional: true}
+  - name: FolderList
+    fields:
+      - {name: folders, type: array:object:FolderView}
+      - {name: next_cursor, type: string_nonempty, optional: true}
+
+endpoints:
+  create_session: {method: POST, path_fn: sessionsPath, path_template: "/v1/sessions", params: [], status: 201, request_object: CreateSessionRequest, response_object: SessionCommandResponse}
+  list_sessions: {method: GET, path_fn: sessionsPath, path_template: "/v1/sessions", params: [], status: 200, query_object: ListSessionsQuery, response_object: SessionList}
+  snapshot: {method: GET, path_fn: snapshotPath, path_template: "/v1/sessions/{session_id}/snapshot", params: [session_id], status: 200, query_object: SnapshotQuery, response_object: SessionSnapshot}
+  stream: {method: GET, path_fn: eventsPath, path_template: "/v1/sessions/{session_id}/events", params: [session_id], status: 200, query_object: StreamQuery, protocol: sse, stream_profile: kokoro.presentation.stream.v1, cursor_policy: kokoro.presentation.stream-policy.v1}
+  submit_message: {method: POST, path_fn: messagesPath, path_template: "/v1/sessions/{session_id}/messages", params: [session_id], status: 202, request_object: SubmitMessageRequest, response_object: SessionCommandResponse}
+  edit_message: {method: POST, path_fn: editMessagePath, path_template: "/v1/sessions/{session_id}/messages/{message_id}:edit", params: [session_id, message_id], status: 202, request_object: EditMessageRequest, response_object: SessionCommandResponse}
+  regenerate_message: {method: POST, path_fn: regenerateMessagePath, path_template: "/v1/sessions/{session_id}/messages/{message_id}:regenerate", params: [session_id, message_id], status: 202, request_object: RegenerateMessageRequest, response_object: SessionCommandResponse}
+  fork_branch: {method: POST, path_fn: forkBranchPath, path_template: "/v1/sessions/{session_id}/branches/{branch_id}:fork", params: [session_id, branch_id], status: 202, request_object: BranchCommandRequest, response_object: SessionCommandResponse}
+  activate_branch: {method: POST, path_fn: activateBranchPath, path_template: "/v1/sessions/{session_id}/branches/{branch_id}:activate", params: [session_id, branch_id], status: 202, request_object: BranchCommandRequest, response_object: SessionCommandResponse}
+  cancel_run: {method: POST, path_fn: cancellationPath, path_template: "/v1/sessions/{session_id}/runs/{run_id}:cancel", params: [session_id, run_id], status: 202, request_object: CancellationRequest, response_object: SessionCommandResponse}
+  decide_action: {method: POST, path_fn: actionDecisionPath, path_template: "/v1/sessions/{session_id}/runs/{run_id}/actions:decide", params: [session_id, run_id], status: 202, request_object: ActionDecisionRequest, response_object: SessionCommandResponse}
+  decide_plan: {method: POST, path_fn: planDecisionPath, path_template: "/v1/sessions/{session_id}/runs/{run_id}/plans:decide", params: [session_id, run_id], status: 202, request_object: PlanDecisionRequest, response_object: SessionCommandResponse}
+  get_command_receipt: {method: GET, path_fn: commandReceiptPath, path_template: "/v1/session-commands/{command_id}/receipt", params: [command_id], status: 200, query_object: CommandReceiptLookupQuery, response_object: SessionCommandResponse, authorization: subject-site-command-receipt-grant}
+  update_session: {method: PATCH, path_fn: sessionPath, path_template: "/v1/sessions/{session_id}", params: [session_id], status: 202, request_object: UpdateSessionRequest, response_object: SessionCommandResponse}
+  archive_session: {method: POST, path_fn: archiveSessionPath, path_template: "/v1/sessions/{session_id}:archive", params: [session_id], status: 202, request_object: SessionLifecycleCommandRequest, response_object: SessionCommandResponse}
+  restore_session: {method: POST, path_fn: restoreSessionPath, path_template: "/v1/sessions/{session_id}:restore", params: [session_id], status: 202, request_object: SessionLifecycleCommandRequest, response_object: SessionCommandResponse}
+  trash_session: {method: POST, path_fn: trashSessionPath, path_template: "/v1/sessions/{session_id}:trash", params: [session_id], status: 202, request_object: SessionLifecycleCommandRequest, response_object: SessionCommandResponse}
+  put_preference: {method: PUT, path_fn: preferencePath, path_template: "/v1/sessions/{session_id}/preference", params: [session_id], status: 202, request_object: PreferenceRequest, response_object: SessionCommandResponse}
+  list_folders: {method: GET, path_fn: foldersPath, path_template: "/v1/session-folders", params: [], status: 200, query_object: FolderListQuery, response_object: FolderList}
+  create_folder: {method: POST, path_fn: foldersPath, path_template: "/v1/session-folders", params: [], status: 201, request_object: CreateFolderRequest, response_object: SessionCommandResponse}
+  update_folder: {method: PATCH, path_fn: folderPath, path_template: "/v1/session-folders/{folder_id}", params: [folder_id], status: 202, request_object: UpdateFolderRequest, response_object: SessionCommandResponse}
+  delete_folder: {method: DELETE, path_fn: folderPath, path_template: "/v1/session-folders/{folder_id}", params: [folder_id], status: 202, request_object: FolderDeleteRequest, response_object: SessionCommandResponse}
+
+error_const: errorEnvelopeSchema
+error_object: ErrorEnvelope

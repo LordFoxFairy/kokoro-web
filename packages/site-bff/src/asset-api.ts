@@ -158,7 +158,7 @@ export function createSiteAssetApi(input: Readonly<{
   return Object.freeze({
     async handle(request: Request, path: readonly string[]) {
       try {
-        if (new URL(request.url).origin !== input.runtime.publicOrigin || request.headers.get("sec-fetch-site") !== "same-origin") {
+        if (request.headers.get("sec-fetch-site") !== "same-origin") {
           return problem(403, "REQUEST_REJECTED", "Browser request was rejected")
         }
         const mutation = request.method === "POST"

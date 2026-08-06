@@ -9,6 +9,7 @@
   "description": "Kokoro Web shared Site factory, reference fixture, and independently deployed admin console.",
   "scripts": {
     "dev:reference": "pnpm --filter @kokoro/reference-site dev",
+    "fixture:web-chat-credit-runtime": "node test/fixtures/web-chat-credit-runtime.mjs",
     "compat:agui-consumer": "pnpm --filter @kokoro/chat-surface compat:agui-consumer",
     "generate:agui-binding-authority": "node scripts/generate-agui-binding-authority.mjs --write",
     "verify:agui-binding-authority": "node scripts/generate-agui-binding-authority.mjs --check",
@@ -21,6 +22,9 @@
     "test:repository": "node --test test/repository/*.test.mjs"
   },
   "devDependencies": {
+    "@kokoro/session-client": "workspace:*",
+    "@kokoro/site-client": "workspace:*",
+    "@kokoro/site-scaffold": "workspace:*",
     "rolldown": "1.1.4"
   }
 }

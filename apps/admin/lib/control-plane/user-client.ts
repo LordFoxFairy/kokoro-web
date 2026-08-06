@@ -8,9 +8,9 @@ import { requireAdminSurfaceSession } from "./admin-surface-authority";
 import { AdminControlPlaneError, authHeaders, queryContext } from "./client";
 import { adminControlPlaneTransport } from "./transport";
 import { KokoroErrorDetailSchema } from
-  "@/lib/generated/admin-query-v2/kokoro/common/v1/error_pb";
+  "@/lib/generated/proto/kokoro/common/v1/error_pb";
 import { AdminQueryService } from
-  "@/lib/generated/admin-query-v2/kokoro/platform/admin/v2/admin_query_pb";
+  "@/lib/generated/proto/kokoro/platform/admin/v2/admin_query_pb";
 
 type UserRpc = Client<typeof AdminQueryService>;
 type UserRuntime = Readonly<{ rpc: UserRpc;

@@ -130,7 +130,7 @@ async function main() {
     ]);
 
     const metadataModule = await import(
-      pathToFileURL(resolve(webRoot, "packages/site-client/dist/generated/platform-public/contract-metadata.js"))
+      pathToFileURL(resolve(webRoot, "packages/site-client/dist/generated/contracts/openapi/platform-public/contract-metadata.js"))
     );
     const metadata = metadataModule.PLATFORM_PUBLIC_CONTRACT_METADATA;
     const { privateKey, publicKey } = generateKeyPairSync("ed25519");

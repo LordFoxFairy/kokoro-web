@@ -76,7 +76,7 @@ function snapshot(
       snapshot_revision_ref: cursor,
       projection_version: Number(durableSeq),
     },
-    presentation_authority: testPresentationAuthority(TEST_SESSION_ID),
+    presentation_snapshot: testPresentationAuthority(TEST_SESSION_ID),
   }
 }
 

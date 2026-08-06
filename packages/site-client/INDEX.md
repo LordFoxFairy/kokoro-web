@@ -27,7 +27,10 @@ The package never accepts a raw Platform URL and never selects a Site. A registe
 
 ## Generated source
 
-`src/generated/platform-public/*` and `src/generated/asset-data-plane/*` are produced by Root contract authority and must not be hand edited. They are the Site-facing Platform Public and scoped browser upload mirrors.
+`src/generated/contracts/openapi/platform-public/*` and
+`src/generated/contracts/openapi/asset-data-plane/*` are the only generated TypeScript clients. Root-owned schemas,
+corpora, and metadata live beside them under `src/generated/{schema,contracts}` and the exact generation ledger is
+`src/generated/provenance.json`. Per-contract duplicate trees and compatibility re-exports are forbidden.
 
 ## Verification
 

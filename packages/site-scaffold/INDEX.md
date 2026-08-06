@@ -18,6 +18,10 @@ brandless BFF kernel, and Node deployment-adapter package closure.
 - Each tgz must match the caller-provided SHA-256 and its internal `package/package.json` name/version; copied bytes are hashed again before publication to close source-path TOCTOU.
 - Generated config, scripts, routes/imports and environment access are scanned for Host switching, raw Platform/DB coupling, backend imports and shared-account/session semantics.
 - Contract-floor verification requires a keyring injected by trusted CI/deploy authority; an artifact cannot declare its own key trusted.
+- Host switching is a deployment-edge responsibility because standalone routes see only the internal listener URL.
+  Generated app code does not read or trust forwarded Host headers; auth writes require the exact configured browser
+  `Origin` and same-origin fetch marker after the runtime configuration gate succeeds. Auth.js `trustHost` is enabled
+  only under this strict ingress and exact `AUTH_URL`/`KOKORO_SITE_PUBLIC_ORIGIN` deployment contract.
 
 ## Qualification boundary
 

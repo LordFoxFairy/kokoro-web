@@ -15,6 +15,8 @@ Defines the brand-neutral, immutable Site manifest and the environment-neutral c
 
 - `defineSiteAppManifest` validates package/Site/release/domain/contract-floor identity plus the closed, duplicate-free
   `enabledProductIds` release set and returns an immutable manifest.
+- Release IDs are opaque Platform Site lifecycle references and use the owner authority's
+  `[A-Za-z0-9][A-Za-z0-9._:-]{2,127}` contract; they are not Web-owned slugs.
 - `verifySiteContractFloor` compares the exact Platform Public contract floor, resolves the signing key from an injected trusted keyring, and delegates cryptography to an injected verification port.
 - `SiteWebSessionBridge` accepts only an already sealed server-created envelope; it never exposes Platform credentials to browser code.
 

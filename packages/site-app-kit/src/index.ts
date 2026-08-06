@@ -2,7 +2,7 @@ export const SITE_APP_KIT_VERSION = "0.1.0" as const;
 
 const SITE_KEY_PATTERN = /^[a-z][a-z0-9-]{1,62}$/u;
 const PACKAGE_NAME_PATTERN = /^@[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._-]*$/u;
-const RELEASE_ID_PATTERN = /^[a-z0-9][a-z0-9._-]{7,127}$/u;
+const RELEASE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$/u;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/u;
 
 export interface SiteContractFloor {

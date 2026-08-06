@@ -1,6 +1,6 @@
 import { describe, expect, expectTypeOf, test } from "vitest"
 
-import { PLATFORM_PUBLIC_OPERATIONS } from "../src/generated/platform-public/operations.gen.js"
+import { PLATFORM_PUBLIC_OPERATIONS } from "../src/generated/contracts/openapi/platform-public/operations.gen.js"
 import {
   createPlatformPublicClient,
   PlatformPublicInputError,

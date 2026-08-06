@@ -6,20 +6,18 @@ import { usePathname } from "next/navigation";
 import { App, ConfigProvider, Dropdown, Select } from "antd";
 import zhCN from "antd/locale/zh_CN";
 import { ProLayout } from "@ant-design/pro-components";
+import { Refine } from "@refinedev/core";
+import routerProvider from "@refinedev/nextjs-router";
 import {
   ApiOutlined,
-  AppstoreOutlined,
   CheckCircleOutlined,
   DashboardOutlined,
   FileTextOutlined,
   GlobalOutlined,
   LogoutOutlined,
   SafetyOutlined,
-  TeamOutlined,
   UserOutlined,
   WalletOutlined,
-  ShoppingOutlined,
-  KeyOutlined,
 } from "@ant-design/icons";
 import { apiGet } from "@/lib/api";
 import { collectCursorPages } from "@/lib/cursor-pagination";
@@ -27,7 +25,6 @@ import { LatestRequest } from "@/lib/cursor-window";
 import {
   permits,
   type Me,
-  type ModuleManifest,
   type Site,
 } from "@/lib/schemas";
 import { z } from "zod";
@@ -35,6 +32,7 @@ import { antdTheme, proLayoutToken } from "@/lib/theme";
 import { LocaleProvider, useLocale, useT } from "@/lib/i18n/context";
 import type { MessageKey } from "@/lib/i18n/messages";
 import { adminNavigationAccess } from "@/lib/admin-surface-permissions";
+import { adminDataProvider } from "@/lib/refine/admin-data-provider";
 
 interface AdminCtx {
   me: Me | null;
@@ -42,7 +40,6 @@ interface AdminCtx {
   siteId: string;
   setSiteId: (id: string) => void;
   can: (permission: string | null) => boolean;
-  manifests: ModuleManifest[];
   reloadSites: () => void;
 }
 
@@ -69,13 +66,9 @@ const NAV: { groupKey: MessageKey | null; items: NavItem[] }[] = [
     groupKey: "nav.group.business",
     items: [
       { labelKey: "nav.users", href: "/users", icon: <UserOutlined />, perm: null, signedSurface: "users" },
-      { labelKey: "nav.teams", href: "/teams", icon: <TeamOutlined />, perm: null },
       { labelKey: "nav.credit", href: "/credit", icon: <WalletOutlined />, perm: null, signedSurface: "credit" },
-      { labelKey: "nav.offers", href: "/offers", icon: <ShoppingOutlined />, perm: "commerce.offer.read" },
-      { labelKey: "nav.codeBatches", href: "/code-batches", icon: <KeyOutlined />, perm: "commerce.code-batch.read" },
       { labelKey: "nav.sites", href: "/sites", icon: <GlobalOutlined />, perm: "site.read" },
       { labelKey: "nav.models", href: "/models", icon: <ApiOutlined />, perm: "model.read" },
-      { labelKey: "nav.hub", href: "/hub", icon: <AppstoreOutlined />, perm: "hub.skill.read" },
     ],
   },
   {
@@ -102,7 +95,6 @@ function AppShellInner({ children }: { children: React.ReactNode }): React.React
   const [sites, setSites] = useState<Site[]>([]);
   const [siteId, setSiteId] = useState("");
   const [siteCatalogError, setSiteCatalogError] = useState<string | null>(null);
-  const [manifests] = useState<ModuleManifest[]>([]);
   const siteCatalogRequests = useRef(new LatestRequest());
   const pathname = usePathname();
 
@@ -146,14 +138,26 @@ function AppShellInner({ children }: { children: React.ReactNode }): React.React
     permission === null || permits(me?.permissions ?? [], permission);
   const signedNavigation = adminNavigationAccess(me?.permissions ?? []);
 
-  const ctx: AdminCtx = { me, sites, siteId, setSiteId, can, manifests, reloadSites };
+  const ctx: AdminCtx = { me, sites, siteId, setSiteId, can, reloadSites };
+  const framework = (
+    <Refine
+      dataProvider={adminDataProvider}
+      routerProvider={routerProvider}
+      resources={[
+        { name: "operators", list: "/operators", meta: { label: "操作员" } },
+      ]}
+      options={{ disableTelemetry: true, syncWithLocation: true, warnWhenUnsavedChanges: true }}
+    >
+      {children}
+    </Refine>
+  );
 
   // 登录/确认页只给主题、不套 ProLayout。
   if (pathname.startsWith("/login") || pathname.startsWith("/auth/verify")) {
     return (
       <ConfigProvider locale={zhCN} theme={antdTheme}>
         <App>
-          <AdminContext.Provider value={ctx}>{children}</AdminContext.Provider>
+          <AdminContext.Provider value={ctx}>{framework}</AdminContext.Provider>
         </App>
       </ConfigProvider>
     );
@@ -237,7 +241,7 @@ function AppShellInner({ children }: { children: React.ReactNode }): React.React
               />,
             ]}
           >
-            {children}
+            {framework}
           </ProLayout>
         </AdminContext.Provider>
       </App>
