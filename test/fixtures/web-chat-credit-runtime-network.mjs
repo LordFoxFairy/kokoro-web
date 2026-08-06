@@ -173,7 +173,10 @@ export async function startStrictPublicProxy(input) {
       if (!response.headersSent) response.writeHead(502, { "content-length": "0", "cache-control": "no-store" });
       response.end();
     });
-    request.once("error", () => upstream.destroy());
+    const closeUpstream = () => upstream.destroy();
+    request.once("aborted", closeUpstream);
+    request.once("error", closeUpstream);
+    response.once("close", closeUpstream);
     request.pipe(upstream);
   });
   server.on("clientError", (_error, socket) => socket.destroy());
@@ -295,6 +298,16 @@ export function createBrowserHttpClient(state) {
     };
     if (input.body !== undefined) headers["content-length"] = String(Buffer.byteLength(input.body));
     return new Promise((resolvePromise, rejectPromise) => {
+      let responseRef;
+      const abortError = () => input.signal?.reason instanceof Error
+        ? input.signal.reason
+        : new Error("WEB_FIXTURE_BROWSER_ABORTED");
+      const abort = () => {
+        const error = abortError();
+        if (responseRef === undefined) request.destroy(error);
+        else responseRef.destroy(error);
+      };
+      const cleanup = () => input.signal?.removeEventListener("abort", abort);
       const request = httpsRequest({
         hostname: "127.0.0.1",
         port: Number(origin.port),
@@ -305,6 +318,8 @@ export function createBrowserHttpClient(state) {
         path: input.path,
         headers,
       }, (response) => {
+        responseRef = response;
+        response.once("close", cleanup);
         try {
           jar.store(response.headers["set-cookie"]);
           resolvePromise(response);
@@ -313,7 +328,12 @@ export function createBrowserHttpClient(state) {
           rejectPromise(error);
         }
       });
-      request.once("error", rejectPromise);
+      if (input.signal?.aborted === true) abort();
+      else input.signal?.addEventListener("abort", abort, { once: true });
+      request.once("error", (error) => {
+        if (responseRef === undefined) cleanup();
+        rejectPromise(error);
+      });
       request.setTimeout(input.timeoutMs ?? 30_000, () => request.destroy(new Error("WEB_FIXTURE_BROWSER_TIMEOUT")));
       request.end(input.body);
     });

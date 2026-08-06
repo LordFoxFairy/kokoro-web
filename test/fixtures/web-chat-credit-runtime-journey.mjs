@@ -95,7 +95,7 @@ async function commandIdentity(operation, targets, effect) {
   });
 }
 
-function createSessionTransport(http, state, browserCsrfToken) {
+export function createSessionTransport(http, state, browserCsrfToken) {
   const requestInput = (request) => ({
     path: `/api/session${request.path}`,
     method: request.method,
@@ -106,6 +106,7 @@ function createSessionTransport(http, state, browserCsrfToken) {
       ...(request.method === "GET" ? {} : { "x-csrf-token": browserCsrfToken }),
       ...(request.body === undefined ? {} : { "content-type": "application/json" }),
     },
+    ...(request.signal === undefined ? {} : { signal: request.signal }),
     ...(request.body === undefined ? {} : { body: JSON.stringify(request.body) }),
   });
   return Object.freeze({

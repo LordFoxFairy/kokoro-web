@@ -16,6 +16,8 @@ import {
   runWebChatCreditRuntimeFixture,
   setupWebChatCreditRuntime,
 } from "../fixtures/web-chat-credit-runtime.mjs";
+import { createBrowserHttpClient } from "../fixtures/web-chat-credit-runtime-network.mjs";
+import { createSessionTransport } from "../fixtures/web-chat-credit-runtime-journey.mjs";
 
 const WEB_ROOT = new URL("../../", import.meta.url);
 
@@ -403,6 +405,77 @@ test("the loopback HTTPS proxy accepts only the generated Site Host", async (t) 
   const expectedHost = new URL(setup.publicOrigin).host;
   assert.deepEqual(await request(expectedHost), { status: 200, body: expectedHost });
   assert.deepEqual(await request("wrong.fixture.local:4343"), { status: 421, body: "" });
+});
+
+test("the browser fixture aborts a live SSE socket when the Session client closes", async (t) => {
+  const privateDirectory = await mkdtemp(join(tmpdir(), "kokoro-web-browser-abort-test-"));
+  t.after(() => rm(privateDirectory, { recursive: true, force: true }));
+  const environment = fixtureEnvironment(privateDirectory);
+  const setup = await setupWebChatCreditRuntime(environment, { buildCandidate: false });
+  const state = JSON.parse(await readFile(setup.runtimeStateFile, "utf8"));
+  let resolveUpstreamClosed;
+  const upstreamClosed = new Promise((resolvePromise) => { resolveUpstreamClosed = resolvePromise; });
+  const upstream = createServer((_request, response) => {
+    response.once("close", resolveUpstreamClosed);
+    response.writeHead(200, { "content-type": "text/event-stream" });
+    response.write(": connected\n\n");
+  });
+  await new Promise((resolvePromise, rejectPromise) => {
+    upstream.once("error", rejectPromise);
+    upstream.listen(0, "127.0.0.1", resolvePromise);
+  });
+  t.after(() => new Promise((resolvePromise) => {
+    upstream.closeAllConnections?.();
+    upstream.close(() => resolvePromise());
+  }));
+  const upstreamAddress = upstream.address();
+  assert.notEqual(upstreamAddress, null);
+  assert.equal(typeof upstreamAddress, "object");
+  const proxy = await runtimeFixture.startStrictPublicProxy({
+    candidateHost: setup.candidateHost,
+    publicOrigin: setup.publicOrigin,
+    certificateFile: state.publicTlsCertificateFile,
+    privateKeyFile: state.publicTlsKeyFile,
+    upstreamPort: upstreamAddress.port,
+  });
+  t.after(() => proxy.close());
+  const client = createBrowserHttpClient(state);
+  const controller = new AbortController();
+  const response = await client.stream({ path: "/stream", signal: controller.signal });
+  const reader = response.body.getReader();
+  assert.equal((await reader.read()).done, false);
+
+  controller.abort(new Error("fixture stream closed"));
+
+  await Promise.race([
+    upstreamClosed,
+    new Promise((_resolvePromise, rejectPromise) => {
+      setTimeout(() => rejectPromise(new Error("browser fixture did not close SSE upstream")), 500).unref();
+    }),
+  ]);
+  await reader.cancel().catch(() => undefined);
+});
+
+test("the production journey forwards Session cancellation to the browser transport", async () => {
+  const controller = new AbortController();
+  let forwardedSignal;
+  const transport = createSessionTransport({
+    async stream(input) {
+      forwardedSignal = input.signal;
+      return { status: 200, headers: new Headers(), body: null };
+    },
+  }, {
+    publicOrigin: "https://web-chat-credit.fixture.local:4343",
+  }, "v1.1786032000.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA.BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB");
+
+  await transport.stream({
+    method: "GET",
+    path: "/v1/sessions/session-1/events?after=signed.cursor.0",
+    headers: { accept: "text/event-stream" },
+    signal: controller.signal,
+  });
+
+  assert.equal(forwardedSignal, controller.signal);
 });
 
 test("observe reads only the durable owner-safe result written by exercise", async (t) => {
