@@ -243,10 +243,17 @@ async function buildCandidate(input) {
   for (const packageName of SITE_PACKAGES) {
     packages.push(await packSitePackage(packageName, packageDirectory));
   }
-  const [{ createSiteProject }, { PLATFORM_PUBLIC_CONTRACT_METADATA }] = await Promise.all([
-    import("@kokoro/site-scaffold"),
-    import("@kokoro/site-client"),
-  ]);
+  await fixturePhase(
+    "WEB_FIXTURE_SCAFFOLD_BUILD_FAILED",
+    () => run(PNPM, ["--filter", "@kokoro/site-scaffold", "build"], WEB_ROOT),
+  );
+  const [{ createSiteProject }, { PLATFORM_PUBLIC_CONTRACT_METADATA }] = await fixturePhase(
+    "WEB_FIXTURE_SCAFFOLD_LOAD_FAILED",
+    () => Promise.all([
+      import("@kokoro/site-scaffold"),
+      import("@kokoro/site-client"),
+    ]),
+  );
   await createSiteProject({
     directory: input.candidateDirectory,
     packageName: "@kokoro/web-chat-credit-runtime-site",
@@ -297,7 +304,7 @@ function setupRecord(input) {
   });
 }
 
-export async function setupWebChatCreditRuntime(environment, options = {}) {
+async function setupWebChatCreditRuntimeUnsafe(environment, options) {
   const root = await privateDirectory(environment);
   const siteId = boundedIdentifier(environment, "KOKORO_WEB_FIXTURE_SITE_ID");
   const siteReleaseRef = boundedIdentifier(environment, "KOKORO_WEB_FIXTURE_SITE_RELEASE_REF", 128);
@@ -353,6 +360,13 @@ export async function setupWebChatCreditRuntime(environment, options = {}) {
     ...input,
     missingRuntimeMaterials: materials.missing,
   });
+}
+
+export async function setupWebChatCreditRuntime(environment, options = {}) {
+  return fixturePhase(
+    "WEB_FIXTURE_SETUP_FAILED",
+    () => setupWebChatCreditRuntimeUnsafe(environment, options),
+  );
 }
 
 async function readRuntimeState(environment) {

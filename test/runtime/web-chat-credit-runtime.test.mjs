@@ -265,6 +265,22 @@ test("setup rejects malformed private runtime material before reporting start re
   );
 });
 
+test("setup maps unexpected infrastructure errors to one bounded public code", async (t) => {
+  const privateDirectory = await mkdtemp(join(tmpdir(), "kokoro-web-runtime-diagnostic-test-"));
+  t.after(() => rm(privateDirectory, { recursive: true, force: true }));
+  const environment = fixtureEnvironment(privateDirectory);
+  await setupWebChatCreditRuntime(environment, { buildCandidate: false });
+
+  await assert.rejects(
+    setupWebChatCreditRuntime(environment, { buildCandidate: false }),
+    (error) => {
+      assert.equal(error.message, "WEB_FIXTURE_SETUP_FAILED");
+      assert.equal(error.message.includes(privateDirectory), false);
+      return true;
+    },
+  );
+});
+
 test("observe admits only a bounded owner-safe Web result", () => {
   const input = {
     generatedSiteHostResolved: true,
