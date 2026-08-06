@@ -70,6 +70,7 @@ function grant(purpose: "read" | "write" | "control" | "stream"): SessionAccessG
     credential: "headerheader.payloadpayload.signaturesignature",
     binding: {
       authorizationEpoch: "1",
+      authorizationStreamSequence: "11",
       credentialEpoch: "1",
       productContextRef: bootstrap.productContextRef,
       siteProjectBindingRef: bootstrap.siteProjectBindingRef,

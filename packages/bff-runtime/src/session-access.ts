@@ -46,6 +46,7 @@ export interface SessionGrantAuthorityPort {
 
 const grantBindingSchema = z.strictObject({
   authorizationEpoch: positiveUint64,
+  authorizationStreamSequence: positiveUint64,
   credentialEpoch: positiveUint64,
   productContextRef: reference,
   siteProjectBindingRef: reference,

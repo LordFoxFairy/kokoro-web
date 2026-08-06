@@ -191,6 +191,7 @@ describe("Product and Personal context composition", () => {
         credential: "headerheader.payloadpayload.signaturesignature",
         binding: {
           authorizationEpoch: "1",
+          authorizationStreamSequence: "11",
           credentialEpoch: "1",
           productContextRef: request.productContextRef,
           siteProjectBindingRef: bootstrap.siteProjectBindingRef,

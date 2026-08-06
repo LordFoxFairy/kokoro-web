@@ -77,6 +77,7 @@ function authority(overrides: Readonly<Record<string, unknown>> = {}) {
       credential: "headerheader.payloadpayload.signaturesignature",
       binding: {
         authorizationEpoch: "1",
+        authorizationStreamSequence: "11",
         credentialEpoch: "1",
         productContextRef: request.productContextRef,
         siteProjectBindingRef: bootstrap.siteProjectBindingRef,
@@ -149,6 +150,17 @@ describe("Session access grant boundary", () => {
   it.each(["0", "18446744073709551616"])("rejects non-positive or overflowing uint64 epoch %s", async (epoch) => {
     const { access } = manager(authority({ authorizationEpoch: epoch }));
     await expect(access.acquire({ purpose: "read", resource: { kind: "project" } }))
+      .rejects.toEqual(new SessionAccessError("GRANT_INVALID"));
+  });
+
+  it("requires the committed authorization stream sequence bound by Platform", async () => {
+    const adapter = authority();
+    adapter.mockImplementationOnce(async (request) => {
+      const response = await authority()(request);
+      Reflect.deleteProperty(response.grant.binding, "authorizationStreamSequence");
+      return response;
+    });
+    await expect(manager(adapter).access.acquire({ purpose: "read", resource: { kind: "project" } }))
       .rejects.toEqual(new SessionAccessError("GRANT_INVALID"));
   });
 
