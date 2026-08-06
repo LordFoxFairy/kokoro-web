@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { SessionClientError } from "@kokoro/session-client";
+import { SessionClientError, createSessionClient } from "@kokoro/session-client";
 
 import * as runtimeFixture from "../fixtures/web-chat-credit-runtime.mjs";
 import {
@@ -454,6 +454,76 @@ test("the browser fixture aborts a live SSE socket when the Session client close
     }),
   ]);
   await reader.cancel().catch(() => undefined);
+});
+
+test("the Session consumer reconnects when the strict proxy loses its upstream before SSE headers", async (t) => {
+  const privateDirectory = await mkdtemp(join(tmpdir(), "kokoro-web-proxy-sse-retry-test-"));
+  t.after(() => rm(privateDirectory, { recursive: true, force: true }));
+  const environment = fixtureEnvironment(privateDirectory);
+  const setup = await setupWebChatCreditRuntime(environment, { buildCandidate: false });
+  const state = JSON.parse(await readFile(setup.runtimeStateFile, "utf8"));
+  let requestCount = 0;
+  const upstream = createServer((request, response) => {
+    requestCount += 1;
+    if (requestCount === 1) {
+      request.socket.destroy();
+      return;
+    }
+    response.writeHead(200, { "content-type": "text/event-stream" });
+    response.write(": connected\n\n");
+  });
+  await new Promise((resolvePromise, rejectPromise) => {
+    upstream.once("error", rejectPromise);
+    upstream.listen(0, "127.0.0.1", resolvePromise);
+  });
+  t.after(() => new Promise((resolvePromise) => {
+    upstream.closeAllConnections?.();
+    upstream.close(() => resolvePromise());
+  }));
+  const upstreamAddress = upstream.address();
+  assert.notEqual(upstreamAddress, null);
+  assert.equal(typeof upstreamAddress, "object");
+  const proxy = await runtimeFixture.startStrictPublicProxy({
+    candidateHost: setup.candidateHost,
+    publicOrigin: setup.publicOrigin,
+    certificateFile: state.publicTlsCertificateFile,
+    privateKeyFile: state.publicTlsKeyFile,
+    upstreamPort: upstreamAddress.port,
+  });
+  t.after(() => proxy.close());
+  const connectionStates = [];
+  const client = createSessionClient({
+    transport: createSessionTransport(
+      createBrowserHttpClient(state),
+      state,
+      "v1.1786032000.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA.BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+    ),
+    reconnectDelayMs: 1,
+    reconnectMaxDelayMs: 1,
+    random: () => 0,
+  });
+  const handle = client.openPresentation({
+    sessionId: "session-runtime",
+    resume: () => ({
+      queryCursor: "signed.cursor.0",
+      headers: { "last-event-id": "signed.cursor.0" },
+      cursorBinding: { cursor: "signed.cursor.0", sessionId: "session-runtime" },
+    }),
+    onFrame: () => ({ kind: "durable" }),
+    onConnection: (connection) => connectionStates.push(connection.kind),
+  });
+  t.after(() => handle.close());
+
+  await Promise.race([
+    handle.ready,
+    new Promise((_resolvePromise, rejectPromise) => {
+      setTimeout(() => rejectPromise(new Error("Session SSE did not reconnect")), 1_000).unref();
+    }),
+  ]);
+
+  assert.equal(requestCount, 2);
+  assert.equal(connectionStates.includes("repair_required"), false);
+  handle.close();
 });
 
 test("the production journey forwards Session cancellation to the browser transport", async () => {

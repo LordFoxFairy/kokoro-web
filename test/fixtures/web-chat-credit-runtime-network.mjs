@@ -169,10 +169,7 @@ export async function startStrictPublicProxy(input) {
       response.writeHead(upstreamResponse.statusCode ?? 502, headers);
       upstreamResponse.pipe(response);
     });
-    upstream.once("error", () => {
-      if (!response.headersSent) response.writeHead(502, { "content-length": "0", "cache-control": "no-store" });
-      response.end();
-    });
+    upstream.once("error", () => response.destroy());
     const closeUpstream = () => upstream.destroy();
     request.once("aborted", closeUpstream);
     request.once("error", closeUpstream);
