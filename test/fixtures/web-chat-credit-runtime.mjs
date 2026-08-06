@@ -503,20 +503,38 @@ function withTimeout(promise, milliseconds, code) {
   ]).finally(() => clearTimeout(timer));
 }
 
+const SESSION_MUTATION_FAILURE_PHASES = new Set([
+  "WEB_FIXTURE_SESSION_CREATE_FAILED",
+  "WEB_FIXTURE_SESSION_SUBMIT_FAILED",
+  "WEB_FIXTURE_SESSION_REPLAY_FAILED",
+]);
+
+function stableSessionFailureSource(error, fallbackCode) {
+  if (error.stableCode === "SESSION_ACCESS_GRANT_REQUIRED") {
+    if (error.action === "refresh_grant") return "_SESSION_UPSTREAM";
+    if (error.action === "reauthenticate") return "_SITE_AUTH";
+  }
+  if (error.stableCode === "INTERNAL_UNAVAILABLE" && SESSION_MUTATION_FAILURE_PHASES.has(fallbackCode)) {
+    if (error.action === "retry_same_cursor" && error.retryClass === "after_delay") {
+      return "_SESSION_UPSTREAM";
+    }
+    if (error.action === "reconcile_receipt" && error.retryClass === "reconcile_receipt") {
+      return "_SITE_BFF";
+    }
+  }
+  return "";
+}
+
 function stableFixtureFailure(error, fallbackCode) {
   if (error instanceof Error && /^WEB_FIXTURE_[A-Z0-9_]{3,120}$/u.test(error.message)) {
     return error;
   }
   if (error instanceof Error && error.name === "SessionClientError") {
     if (typeof error.stableCode === "string" && /^[A-Z][A-Z0-9_]{2,63}$/u.test(error.stableCode)) {
-      const source = error.stableCode === "SESSION_ACCESS_GRANT_REQUIRED"
-        ? error.action === "refresh_grant"
-          ? "_SESSION_UPSTREAM"
-          : error.action === "reauthenticate"
-            ? "_SITE_AUTH"
-            : ""
-        : "";
-      return new Error(`${fallbackCode}_${error.stableCode}${source}`, { cause: error });
+      return new Error(
+        `${fallbackCode}_${error.stableCode}${stableSessionFailureSource(error, fallbackCode)}`,
+        { cause: error },
+      );
     }
     if (typeof error.kind === "string" && /^[a-z][a-z_]{1,31}$/u.test(error.kind)) {
       return new Error(`${fallbackCode}_SESSION_${error.kind.toUpperCase()}`, { cause: error });

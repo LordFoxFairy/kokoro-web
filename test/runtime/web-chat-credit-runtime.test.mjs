@@ -741,6 +741,60 @@ test("exercise distinguishes an upstream Session grant rejection from Site authe
   });
 });
 
+test("exercise distinguishes upstream Session unavailability from Site BFF mutation reconciliation", async (t) => {
+  const environment = await readyFixture(t, "kokoro-web-session-unavailable-source-test-");
+  const failure = (kind, action, retryClass) => new SessionClientError(
+    kind,
+    "private unavailable detail",
+    {
+      status: 503,
+      problem: {
+        error: {
+          code: "INTERNAL_UNAVAILABLE",
+          message: "private upstream detail",
+          retry_class: retryClass,
+          action,
+        },
+        correlation_id: "private-correlation-id",
+      },
+    },
+  );
+  const attempt = (error) => runtimeFixture.exerciseWebChatCreditRuntime(environment, {
+    runtime: {
+      browser: {
+        async authenticate() { return { generatedSiteHostResolved: true }; },
+        async readDashboard() { return dashboard(100, 0); },
+      },
+      session: {
+        async create() {
+          return { sessionId: "session-runtime", branchId: "branch-runtime", sessionVersion: 1 };
+        },
+        open() {
+          return { ready: Promise.resolve(), terminal: new Promise(() => {}), close() {} };
+        },
+        async submit() { throw error; },
+      },
+    },
+  });
+
+  await assert.rejects(attempt(failure("repair_required", "retry_same_cursor", "after_delay")), (error) => {
+    assert.equal(
+      error.message,
+      "WEB_FIXTURE_SESSION_SUBMIT_FAILED_INTERNAL_UNAVAILABLE_SESSION_UPSTREAM",
+    );
+    assert.equal(error.message.includes("private"), false);
+    return true;
+  });
+  await assert.rejects(attempt(failure("command_conflict", "reconcile_receipt", "reconcile_receipt")), (error) => {
+    assert.equal(
+      error.message,
+      "WEB_FIXTURE_SESSION_SUBMIT_FAILED_INTERNAL_UNAVAILABLE_SITE_BFF",
+    );
+    assert.equal(error.message.includes("private"), false);
+    return true;
+  });
+});
+
 test("production browser authentication carries the NextAuth credentials ceremony in one cookie jar", async (t) => {
   const environment = await readyFixture(t, "kokoro-web-nextauth-test-");
   const state = JSON.parse(await readFile(join(environment.KOKORO_WEB_FIXTURE_PRIVATE_DIR, "runtime-state.json"), "utf8"));
