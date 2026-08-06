@@ -509,7 +509,14 @@ function stableFixtureFailure(error, fallbackCode) {
   }
   if (error instanceof Error && error.name === "SessionClientError") {
     if (typeof error.stableCode === "string" && /^[A-Z][A-Z0-9_]{2,63}$/u.test(error.stableCode)) {
-      return new Error(`${fallbackCode}_${error.stableCode}`, { cause: error });
+      const source = error.stableCode === "SESSION_ACCESS_GRANT_REQUIRED"
+        ? error.action === "refresh_grant"
+          ? "_SESSION_UPSTREAM"
+          : error.action === "reauthenticate"
+            ? "_SITE_AUTH"
+            : ""
+        : "";
+      return new Error(`${fallbackCode}_${error.stableCode}${source}`, { cause: error });
     }
     if (typeof error.kind === "string" && /^[a-z][a-z_]{1,31}$/u.test(error.kind)) {
       return new Error(`${fallbackCode}_SESSION_${error.kind.toUpperCase()}`, { cause: error });

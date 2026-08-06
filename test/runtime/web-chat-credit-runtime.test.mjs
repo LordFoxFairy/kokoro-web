@@ -696,6 +696,51 @@ test("exercise retains only bounded Session client diagnostics", async (t) => {
   });
 });
 
+test("exercise distinguishes an upstream Session grant rejection from Site authentication", async (t) => {
+  const environment = await readyFixture(t, "kokoro-web-session-grant-source-test-");
+  const failure = (action) => new SessionClientError("auth_required", "private Session response detail", {
+    status: 401,
+    problem: {
+      error: {
+        code: "SESSION_ACCESS_GRANT_REQUIRED",
+        message: "private upstream detail",
+        retry_class: "after_user_action",
+        action,
+      },
+      correlation_id: "private-correlation-id",
+    },
+  });
+
+  const attempt = (action) => runtimeFixture.exerciseWebChatCreditRuntime(environment, {
+    runtime: {
+      browser: {
+        async authenticate() { return { generatedSiteHostResolved: true }; },
+        async readDashboard() { return dashboard(100, 0); },
+      },
+      session: {
+        async create() { throw failure(action); },
+      },
+    },
+  });
+
+  await assert.rejects(attempt("refresh_grant"), (error) => {
+    assert.equal(
+      error.message,
+      "WEB_FIXTURE_SESSION_CREATE_FAILED_SESSION_ACCESS_GRANT_REQUIRED_SESSION_UPSTREAM",
+    );
+    assert.equal(error.message.includes("private"), false);
+    return true;
+  });
+  await assert.rejects(attempt("reauthenticate"), (error) => {
+    assert.equal(
+      error.message,
+      "WEB_FIXTURE_SESSION_CREATE_FAILED_SESSION_ACCESS_GRANT_REQUIRED_SITE_AUTH",
+    );
+    assert.equal(error.message.includes("private"), false);
+    return true;
+  });
+});
+
 test("production browser authentication carries the NextAuth credentials ceremony in one cookie jar", async (t) => {
   const environment = await readyFixture(t, "kokoro-web-nextauth-test-");
   const state = JSON.parse(await readFile(join(environment.KOKORO_WEB_FIXTURE_PRIVATE_DIR, "runtime-state.json"), "utf8"));
