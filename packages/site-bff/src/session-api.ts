@@ -95,7 +95,8 @@ function internalFailurePhase(
   boundaryPhase: SessionFailurePhase,
 ): SessionFailurePhase {
   if (boundaryPhase === "auth_session_read" || boundaryPhase === "runtime_assembly") return boundaryPhase
-  if (error instanceof SessionAccessError || error instanceof PlatformPublicError) return "grant_issue"
+  if (error instanceof SessionAccessError) return "grant_validation"
+  if (error instanceof PlatformPublicError) return "grant_authority"
   if (error instanceof SessionProxyError && (
     error.code === "UPSTREAM_BINDING_MISMATCH" || error.code === "UPSTREAM_PROTOCOL_ERROR"
   )) return "upstream_contract"

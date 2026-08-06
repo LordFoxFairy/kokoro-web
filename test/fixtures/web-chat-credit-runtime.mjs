@@ -511,7 +511,8 @@ const SESSION_MUTATION_FAILURE_PHASES = new Set([
 const SITE_SESSION_FAILURE_PHASES = new Set([
   "auth_session_read",
   "runtime_assembly",
-  "grant_issue",
+  "grant_authority",
+  "grant_validation",
   "upstream_transport",
   "upstream_contract",
   "proxy_internal",

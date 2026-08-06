@@ -367,7 +367,9 @@ describe("contract-bound Session AG-UI client", () => {
       throw new Error("expected Session problem");
     };
 
-    await expect(failure("grant_issue")).resolves.toMatchObject({ failurePhase: "grant_issue" });
+    await expect(failure("grant_authority")).resolves.toMatchObject({ failurePhase: "grant_authority" });
+    await expect(failure("grant_validation")).resolves.toMatchObject({ failurePhase: "grant_validation" });
+    await expect(failure("grant_issue")).resolves.toMatchObject({ failurePhase: undefined });
     await expect(failure("private/provider/detail")).resolves.toMatchObject({ failurePhase: undefined });
   });
 

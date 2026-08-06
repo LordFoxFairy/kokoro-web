@@ -1,5 +1,6 @@
 import { SessionAccessError, SessionProxyError, type OpaqueAuthSession } from "@kokoro/bff-runtime"
 import { errorEnvelopeSchema } from "@kokoro/session-client/contracts"
+import { PlatformPublicError } from "@kokoro/site-client/server"
 import { describe, expect, it, vi } from "vitest"
 
 import { createSiteSessionApi, type SiteSessionApiRuntime } from "../src/session-api.js"
@@ -113,7 +114,15 @@ describe("Site Session API", () => {
   })
 
   it.each([
-    [new SessionAccessError("GRANT_INVALID"), "grant_issue"],
+    [new SessionAccessError("GRANT_INVALID"), "grant_validation"],
+    [new PlatformPublicError(503, {
+      code: "SITE_UNAVAILABLE",
+      correlationId: "private-platform-correlation",
+      receiptRef: "private-platform-receipt",
+      requestId: "private-platform-request",
+      retryClass: "after_delay",
+      safeMessage: "private Platform authority detail",
+    }), "grant_authority"],
     [new SessionProxyError("UPSTREAM_PROTOCOL_ERROR"), "upstream_contract"],
     [Object.assign(new Error("private transport detail"), { name: "NodeSiteRuntimeError" }), "upstream_transport"],
     [new Error("private proxy detail"), "proxy_internal"],
@@ -127,6 +136,41 @@ describe("Site Session API", () => {
 
     expect(response.status).toBeGreaterThanOrEqual(502)
     expect(response.headers.get("x-kokoro-session-failure-phase")).toBe(expectedPhase)
+  })
+
+  it.each([
+    [Object.assign(new SessionAccessError("GRANT_BINDING_MISMATCH"), {
+      status: 419,
+      ref: "private-validation-ref",
+      credential: "private-validation-credential",
+    }), ["419", "GRANT_BINDING_MISMATCH", "private-validation-ref", "private-validation-credential"]],
+    [Object.assign(new PlatformPublicError(529, {
+      code: "SITE_UNAVAILABLE",
+      correlationId: "private-authority-correlation",
+      receiptRef: "private-authority-receipt",
+      requestId: "private-authority-request",
+      retryClass: "after_delay",
+      safeMessage: "private authority message",
+    }), { credential: "private-authority-credential" }), [
+      "529",
+      "SITE_UNAVAILABLE",
+      "private-authority-correlation",
+      "private-authority-receipt",
+      "private-authority-request",
+      "private authority message",
+      "private-authority-credential",
+    ]],
+  ] as const)("does not disclose private grant failure details for %s", async (error, forbidden) => {
+    const api = createSiteSessionApi({
+      runtime: runtime(vi.fn(async () => { throw error })),
+      readAuthSession: () => auth,
+    })
+
+    const response = await api.handle(mutationRequest(), ["v1", "sessions"])
+    const visible = `${response.headers.get("x-kokoro-session-failure-phase")}\n${await response.text()}`
+
+    expect(response.status).toBe(503)
+    for (const secret of forbidden) expect(visible).not.toContain(secret)
   })
 
   it("distinguishes runtime assembly failure from a returned upstream problem", async () => {

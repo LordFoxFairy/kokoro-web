@@ -867,11 +867,24 @@ test("exercise distinguishes upstream Session unavailability from finite Site BF
     "command_conflict",
     "reconcile_receipt",
     "reconcile_receipt",
-    "grant_issue",
+    "grant_authority",
   )), (error) => {
     assert.equal(
       error.message,
-      "WEB_FIXTURE_SESSION_SUBMIT_FAILED_INTERNAL_UNAVAILABLE_SITE_BFF_GRANT_ISSUE",
+      "WEB_FIXTURE_SESSION_SUBMIT_FAILED_INTERNAL_UNAVAILABLE_SITE_BFF_GRANT_AUTHORITY",
+    );
+    assert.equal(error.message.includes("private"), false);
+    return true;
+  });
+  await assert.rejects(attempt(failure(
+    "command_conflict",
+    "reconcile_receipt",
+    "reconcile_receipt",
+    "grant_validation",
+  )), (error) => {
+    assert.equal(
+      error.message,
+      "WEB_FIXTURE_SESSION_SUBMIT_FAILED_INTERNAL_UNAVAILABLE_SITE_BFF_GRANT_VALIDATION",
     );
     assert.equal(error.message.includes("private"), false);
     return true;

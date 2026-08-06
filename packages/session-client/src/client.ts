@@ -81,7 +81,8 @@ export const SESSION_FAILURE_PHASE_HEADER = "x-kokoro-session-failure-phase" as 
 export const SESSION_FAILURE_PHASES = Object.freeze([
   "auth_session_read",
   "runtime_assembly",
-  "grant_issue",
+  "grant_authority",
+  "grant_validation",
   "upstream_transport",
   "upstream_contract",
   "proxy_internal",
