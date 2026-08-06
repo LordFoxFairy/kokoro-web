@@ -771,6 +771,15 @@ export type AguiDrainingFrame = Readonly<{
   data: Readonly<z.infer<typeof drainingSchema>>;
 }>;
 
+export type AguiPresentationWireFrame =
+  | Readonly<{
+      kind: "durable";
+      id: string;
+      event: AguiPresentationEvent["type"];
+      data: AguiDurableFrame["data"];
+    }>
+  | AguiDrainingFrame;
+
 export type AguiDecodedFrame = AguiDurableFrame | AguiDrainingFrame | Readonly<{
   kind: "replay";
   frame: AguiDurableFrame;
@@ -1155,6 +1164,69 @@ function validateBrowserEnvelopePreSchema(value: unknown): void {
     typeof sessionId === "string" && typeof streamEpoch === "string" && typeof durableSeq === "string" &&
     sourceEventId === `presentation.event:${sessionId}:${streamEpoch}:${durableSeq}`
   ) fail("agui_public_source_event_axes_exposed");
+}
+
+function admitAguiPresentationWireFrameFromAdmitted(
+  frame: AguiSseFrame,
+): AguiPresentationWireFrame {
+  const raw = parseBoundedJson(frame);
+  if (frame.event === "kokoro.stream.draining") {
+    if (frame.id !== null) fail("agui_draining_not_nondurable");
+    const parsed = drainingSchema.safeParse(raw);
+    if (!parsed.success) fail("agui_draining_shape_invalid");
+    return deepFreeze({
+      kind: "control",
+      id: null,
+      event: "kokoro.stream.draining",
+      data: parsed.data,
+    });
+  }
+
+  if (frame.id === null || frame.event === null) fail("agui_durable_sse_identity_missing");
+  if (
+    bytes(frame.id) > AGUI_PRESENTATION_LIMITS.maximumCursorBytes ||
+    !cursorSchema.safeParse(frame.id).success
+  ) fail("agui_cursor_invalid");
+  validateBrowserEnvelopePreSchema(raw);
+  if (raw !== null && typeof raw === "object" && !Array.isArray(raw)) {
+    const delta = Reflect.get(raw, "bindingAuthorityDelta");
+    if (delta !== null && typeof delta === "object" && !Array.isArray(delta) &&
+      Reflect.get(delta, "kind") === "message.replace" &&
+      !aguiPresentationMessageBindingSchema.safeParse(Reflect.get(delta, "binding")).success) {
+      fail("agui_message_binding_schema_invalid");
+    }
+  }
+  const envelope = projectionEnvelopeSchema.safeParse(raw);
+  if (!envelope.success) fail("agui_projection_payload_invalid");
+  validateClosedEventPreSchema(envelope.data.event);
+  const strictEvent = aguiPresentationEventSchema.safeParse(envelope.data.event);
+  if (!strictEvent.success) fail("agui_event_shape_invalid");
+  if (bytes(JSON.stringify(strictEvent.data)) > AGUI_PRESENTATION_LIMITS.maximumEventBytes) {
+    fail("agui_event_limit_exceeded");
+  }
+  if (!EventSchemas.safeParse(strictEvent.data).success) fail("agui_official_event_schema_invalid");
+
+  const data: AguiDurableFrame["data"] = deepFreeze({
+    ...envelope.data,
+    event: strictEvent.data,
+  });
+  if (frame.event !== data.event.type) fail("agui_sse_event_type_mismatch");
+  const mapping = sourceMappings.get(data.source.sourceKind);
+  const discriminator = data.event.type === EventType.ACTIVITY_SNAPSHOT
+    ? data.event.activityType
+    : data.event.type === EventType.CUSTOM ? data.event.name : undefined;
+  if (mapping === undefined || mapping.type !== data.event.type) {
+    fail("agui_closed_mapping_missing", data.source.sourceKind);
+  }
+  if (mapping.discriminator !== discriminator) {
+    fail("agui_mapping_discriminator_conflict", data.source.sourceKind);
+  }
+  return deepFreeze({ kind: "durable", id: frame.id, event: data.event.type, data });
+}
+
+/** Stateless canonical admission shared by the trusted BFF and stateful snapshot decoder. */
+export function admitAguiPresentationWireFrame(candidate: AguiSseFrame): AguiPresentationWireFrame {
+  return admitAguiPresentationWireFrameFromAdmitted(admitSseFrame(candidate));
 }
 
 type RunAuthority = Readonly<{
@@ -2192,24 +2264,17 @@ function createAguiPresentationDecoderInternal(options: Readonly<{
       if (sameSseFrame(pending.frame, frame)) return pending.prepared;
       fail("agui_admission_pending");
     }
-    const raw = parseBoundedJson(frame);
-    if (frame.event === "kokoro.stream.draining") {
-      if (frame.id !== null) fail("agui_draining_not_nondurable");
-      const parsed = drainingSchema.safeParse(raw);
-      if (!parsed.success) fail("agui_draining_shape_invalid");
+    const admitted = admitAguiPresentationWireFrameFromAdmitted(frame);
+    if (admitted.kind === "control") {
       if (
-        parsed.data.sessionId !== parsedGrant.data.sessionId ||
-        parsed.data.streamEpoch !== cursorBinding.streamEpoch ||
-        parsed.data.lastDurableCursor !== cursorBinding.cursor
+        admitted.data.sessionId !== parsedGrant.data.sessionId ||
+        admitted.data.streamEpoch !== cursorBinding.streamEpoch ||
+        admitted.data.lastDurableCursor !== cursorBinding.cursor
       ) fail("agui_draining_cursor_conflict");
-      return settled(deepFreeze({ kind: "control", id: null, event: "kokoro.stream.draining", data: parsed.data }));
+      return settled(admitted);
     }
 
-    if (frame.id === null || frame.event === null) fail("agui_durable_sse_identity_missing");
-    const durableCursor = frame.id;
-    if (bytes(durableCursor) > AGUI_PRESENTATION_LIMITS.maximumCursorBytes || !cursorSchema.safeParse(durableCursor).success) {
-      fail("agui_cursor_invalid");
-    }
+    const durableCursor = admitted.id;
     if (seenCursors.has(durableCursor)) {
       if (lastCommittedFrame !== undefined && sameSseFrame(lastCommittedFrame, frame) && lastDecoded?.id === durableCursor) {
         return settled(Object.freeze({ kind: "replay", frame: lastDecoded }));
@@ -2217,40 +2282,8 @@ function createAguiPresentationDecoderInternal(options: Readonly<{
       fail("agui_stream_identity_duplicate");
     }
 
-    validateBrowserEnvelopePreSchema(raw);
-    if (raw !== null && typeof raw === "object" && !Array.isArray(raw)) {
-      const delta = Reflect.get(raw, "bindingAuthorityDelta");
-      if (delta !== null && typeof delta === "object" && !Array.isArray(delta) &&
-        Reflect.get(delta, "kind") === "message.replace" &&
-        !aguiPresentationMessageBindingSchema.safeParse(Reflect.get(delta, "binding")).success) {
-        fail("agui_message_binding_schema_invalid");
-      }
-    }
-    const envelope = projectionEnvelopeSchema.safeParse(raw);
-    if (!envelope.success) fail("agui_projection_payload_invalid");
-    validateClosedEventPreSchema(envelope.data.event);
-    const strictEvent = aguiPresentationEventSchema.safeParse(envelope.data.event);
-    if (!strictEvent.success) fail("agui_event_shape_invalid");
-    if (bytes(JSON.stringify(strictEvent.data)) > AGUI_PRESENTATION_LIMITS.maximumEventBytes) {
-      fail("agui_event_limit_exceeded");
-    }
-    if (!EventSchemas.safeParse(strictEvent.data).success) fail("agui_official_event_schema_invalid");
-
-    const data: AguiDurableFrame["data"] = deepFreeze({
-      ...envelope.data,
-      event: strictEvent.data,
-    });
-    if (frame.event !== data.event.type) fail("agui_sse_event_type_mismatch");
-    const mapping = sourceMappings.get(data.source.sourceKind);
-    const discriminator = data.event.type === EventType.ACTIVITY_SNAPSHOT
-      ? data.event.activityType
-      : data.event.type === EventType.CUSTOM ? data.event.name : undefined;
-    if (mapping === undefined || mapping.type !== data.event.type) {
-      fail("agui_closed_mapping_missing", data.source.sourceKind);
-    }
-    if (mapping.discriminator !== discriminator) {
-      fail("agui_mapping_discriminator_conflict", data.source.sourceKind);
-    }
+    const data = admitted.data;
+    const mapping = sourceMappings.get(data.source.sourceKind) as SourceMapping;
     if (
       data.source.sessionId !== parsedGrant.data.sessionId ||
       data.source.streamEpoch !== cursorBinding.streamEpoch ||

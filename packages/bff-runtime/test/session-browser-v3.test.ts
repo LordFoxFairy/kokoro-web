@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 import { describe, expect, it, vi } from "vitest";
 
 import type { SessionAccessGrant, SessionAccessManager } from "../src/session-access.js";
@@ -14,6 +16,22 @@ import { SessionProxyError } from "../src/session-proxy.js";
 import type { SiteBootstrap } from "../src/site-binding.js";
 
 const DIGEST = "a".repeat(64);
+type CanonicalPresentationFrame = Readonly<{
+  id: string;
+  event: string;
+  data: Readonly<Record<string, unknown>>;
+}>;
+type CanonicalPresentationCase = Readonly<{
+  snapshot: Readonly<{ cursor: string; sessionId: string }>;
+  frames: readonly CanonicalPresentationFrame[];
+}>;
+const presentationCorpus = JSON.parse(readFileSync(
+  new URL("../../session-client/test/fixtures/root-agui-presentation-v1.json", import.meta.url),
+  "utf8",
+)) as Readonly<{ positiveCases: readonly CanonicalPresentationCase[] }>;
+const canonicalPresentation = presentationCorpus.positiveCases[0];
+if (canonicalPresentation === undefined) throw new Error("canonical AG-UI presentation fixture missing");
+
 const bootstrap: SiteBootstrap = {
   productContextRef: "product-context-12345678",
   personalContextRef: "personal-context-12345678",
@@ -114,35 +132,24 @@ function authenticatedBinding(accessGrant: SessionAccessGrant) {
   };
 }
 
-function sseValidator(initialCursor = "signed.cursor.0", sessionId = "session-12345678") {
+function sseValidator(
+  initialCursor = canonicalPresentation.snapshot.cursor,
+  sessionId = canonicalPresentation.snapshot.sessionId,
+) {
   return createSessionBrowserV3SseFrameValidator({ initialCursor, sessionId });
 }
 
-function browserEvent(overrides: Readonly<Record<string, unknown>> = {}) {
-  return {
-    kind: "branch.activated",
-    event_id: "event-12345678",
-    cursor: "signed.cursor.1",
-    session_id: "session-12345678",
-    stream_epoch: "epoch-12345678",
-    durable_seq: "1",
-    projection_version: 1,
-    schema_revision: 3,
-    recorded_at: "2026-07-28T12:00:00.000Z",
-    payload: {
-      branch_id: "branch-12345678",
-      session_version: 1,
-    },
-    ...overrides,
-  };
+function canonicalFrame(index: number): CanonicalPresentationFrame {
+  const frame = canonicalPresentation.frames[index];
+  if (frame === undefined) throw new Error(`canonical AG-UI frame ${index} missing`);
+  return structuredClone(frame);
 }
 
-function sseFrame(value: unknown, options: { readonly id?: string; readonly event?: string } = {}): Uint8Array {
-  const event = options.event ?? (typeof value === "object" && value !== null && "kind" in value
-    ? String(value.kind)
-    : "message");
-  const id = options.id === undefined ? "" : `id: ${options.id}\n`;
-  return new TextEncoder().encode(`${id}event: ${event}\ndata: ${JSON.stringify(value)}\n\n`);
+function sseFrame(
+  frame: Readonly<{ id?: string | null; event: string; data: unknown }>,
+): Uint8Array {
+  const id = frame.id === undefined || frame.id === null ? "" : `id: ${frame.id}\n`;
+  return new TextEncoder().encode(`${id}event: ${frame.event}\ndata: ${JSON.stringify(frame.data)}\n\n`);
 }
 
 function sequenceZeroSnapshot() {
@@ -408,77 +415,144 @@ describe("Session browser v3 operation authority", () => {
 });
 
 describe("Session browser v3 SSE validation", () => {
-  it("waits for a complete frame and validates the generated event envelope", () => {
+  it("waits for complete frames and validates the canonical AG-UI corpus contiguously", () => {
     const validator = sseValidator();
-    const frame = sseFrame(browserEvent(), { id: "signed.cursor.1" });
-    expect(validator.push(frame.slice(0, 17))).toEqual([]);
-    expect(validator.push(frame.slice(17))).toEqual([frame]);
+    const firstFixture = canonicalFrame(0);
+    const secondFixture = canonicalFrame(1);
+    const first = sseFrame(firstFixture);
+    const second = sseFrame(secondFixture);
+    expect(validator.push(first.slice(0, 17))).toEqual([]);
+    expect(validator.push(first.slice(17))).toEqual([first]);
+    expect(validator.push(second)).toEqual([second]);
     expect(validator.finish()).toEqual([]);
   });
 
   it("accepts CR, LF, CRLF, and mixed line endings", () => {
-    const value = browserEvent();
+    const frame = canonicalFrame(0);
     const mixed = new TextEncoder().encode(
-      `id: signed.cursor.1\revent: branch.activated\ndata: ${JSON.stringify(value)}\r\n\r`,
+      `id: ${frame.id}\revent: ${frame.event}\ndata: ${JSON.stringify(frame.data)}\r\n\r`,
     );
     const expected = new TextEncoder().encode(
-      `id: signed.cursor.1\revent: branch.activated\ndata: ${JSON.stringify(value)}\n\n`,
+      `id: ${frame.id}\revent: ${frame.event}\ndata: ${JSON.stringify(frame.data)}\n\n`,
     );
     expect(sseValidator().push(mixed)).toEqual([expected]);
   });
 
-  it("rejects numeric cursors, non-string uint64 values, and mismatched event identity", () => {
-    const cases = [
-      sseFrame(browserEvent({ cursor: "1" }), { id: "1" }),
-      sseFrame(browserEvent({ durable_seq: 1 }), { id: "signed.cursor.1" }),
-      sseFrame(browserEvent(), { id: "signed.cursor.other" }),
-      sseFrame(browserEvent(), { id: "signed.cursor.1", event: "message.created" }),
-    ];
-    for (const frame of cases) {
-      expect(() => sseValidator().push(frame)).toThrowError(
+  it("hard-cuts the legacy Session event envelope", () => {
+    expect(() => sseValidator().push(sseFrame({
+      id: canonicalFrame(0).id,
+      event: "branch.activated",
+      data: {
+        kind: "branch.activated",
+        event_id: "event-12345678",
+        cursor: canonicalFrame(0).id,
+        session_id: canonicalPresentation.snapshot.sessionId,
+        stream_epoch: "41",
+        durable_seq: "1",
+        projection_version: 1,
+        schema_revision: 3,
+        recorded_at: "2026-08-01T12:00:01.000Z",
+        payload: { branch_id: "branch-12345678", session_version: 1 },
+      },
+    }))).toThrowError(new SessionProxyError("UPSTREAM_PROTOCOL_ERROR"));
+  });
+
+  it("rejects event, Session, and uint64 drift from the canonical payload", () => {
+    const eventMismatch = canonicalFrame(0);
+    const sessionMismatch = canonicalFrame(0);
+    const numericSequence = canonicalFrame(0);
+    const sourceMappingMismatch = canonicalFrame(0);
+    const discriminatorMismatch = canonicalFrame(4);
+    const sessionSource = sessionMismatch.data.source as Record<string, unknown>;
+    const sequenceSource = numericSequence.data.source as Record<string, unknown>;
+    sessionSource.sessionId = "session.other";
+    sequenceSource.durableSeq = 1;
+    (sourceMappingMismatch.data.source as Record<string, unknown>).sourceKind =
+      "presentation.message.text.started";
+    (discriminatorMismatch.data.source as Record<string, unknown>).sourceKind =
+      "presentation.activity.safe-summary";
+
+    for (const frame of [
+      { ...eventMismatch, event: "TEXT_MESSAGE_START" },
+      sessionMismatch,
+      numericSequence,
+      sourceMappingMismatch,
+      discriminatorMismatch,
+    ]) {
+      expect(() => sseValidator().push(sseFrame(frame))).toThrowError(
         new SessionProxyError("UPSTREAM_PROTOCOL_ERROR"),
       );
     }
   });
 
-  it("keeps stream.draining outside durable cursor identity", () => {
+  it("keeps canonical stream draining outside durable cursor identity", () => {
+    const first = canonicalFrame(0);
+    const validator = sseValidator();
+    expect(validator.push(sseFrame(first))).toEqual([sseFrame(first)]);
     const draining = {
-      kind: "stream.draining",
-      session_id: "session-12345678",
-      stream_epoch: "epoch-12345678",
-      last_durable_cursor: "signed.cursor.1",
-      action: "retry_same_cursor",
-      retry_after_ms: 1000,
+      type: "stream.draining",
+      profileRevision: "kokoro-agui-presentation.v1",
+      sessionId: canonicalPresentation.snapshot.sessionId,
+      streamEpoch: String((first.data.source as Record<string, unknown>).streamEpoch),
+      lastDurableCursor: first.id,
+      action: "retry-same-cursor",
+      retryAfterMs: 1000,
     };
-    const frame = sseFrame(draining, { event: "stream.draining" });
-    expect(sseValidator("signed.cursor.1").push(frame)).toEqual([frame]);
-    expect(() => sseValidator("signed.cursor.1").push(
-      sseFrame(draining, { id: "signed.cursor.1", event: "stream.draining" }),
-    )).toThrowError(new SessionProxyError("UPSTREAM_PROTOCOL_ERROR"));
-    expect(() => sseValidator("signed.cursor.initial").push(frame)).toThrowError(
+    const frame = sseFrame({ event: "kokoro.stream.draining", data: draining });
+    expect(validator.push(frame)).toEqual([frame]);
+    expect(() => sseValidator(first.id).push(sseFrame({
+      id: first.id,
+      event: "kokoro.stream.draining",
+      data: draining,
+    }))).toThrowError(new SessionProxyError("UPSTREAM_PROTOCOL_ERROR"));
+    expect(() => sseValidator(canonicalPresentation.snapshot.cursor).push(frame)).toThrowError(
       new SessionProxyError("UPSTREAM_PROTOCOL_ERROR"),
     );
+    expect(() => sseValidator(first.id).push(sseFrame({
+      event: "stream.draining",
+      data: {
+        kind: "stream.draining",
+        session_id: canonicalPresentation.snapshot.sessionId,
+        stream_epoch: String((first.data.source as Record<string, unknown>).streamEpoch),
+        last_durable_cursor: first.id,
+        action: "retry_same_cursor",
+      },
+    }))).toThrowError(new SessionProxyError("UPSTREAM_PROTOCOL_ERROR"));
   });
 
-  it("binds every SSE frame to the requested Session identity", () => {
-    expect(() => sseValidator().push(sseFrame(browserEvent({
-      session_id: "session-other-12345678",
-    }), { id: "signed.cursor.1" }))).toThrowError(
+  it("rejects a durable gap", () => {
+    const first = canonicalFrame(0);
+    const skipped = canonicalFrame(1);
+    (skipped.data.source as Record<string, unknown>).durableSeq = "3";
+    const validator = sseValidator();
+    expect(validator.push(sseFrame(first))).toEqual([sseFrame(first)]);
+    expect(() => validator.push(sseFrame(skipped))).toThrowError(
       new SessionProxyError("UPSTREAM_PROTOCOL_ERROR"),
     );
   });
 
   it("accepts an exact replay but rejects reuse of a durable sequence for another event", () => {
-    const original = browserEvent();
-    const replay = sseFrame(original, { id: "signed.cursor.1" });
+    const original = canonicalFrame(0);
+    const replay = sseFrame(original);
     const validator = sseValidator();
 
     expect(validator.push(replay)).toEqual([replay]);
     expect(validator.push(replay)).toEqual([]);
-    expect(() => validator.push(sseFrame(browserEvent({
-      event_id: "event-different-12345678",
-      cursor: "signed.cursor.different",
-    }), { id: "signed.cursor.different" }))).toThrowError(
+    const changedCursor = canonicalFrame(0);
+    expect(() => validator.push(sseFrame({
+      ...changedCursor,
+      id: `${changedCursor.id.slice(0, -1)}A`,
+    }))).toThrowError(
+      new SessionProxyError("UPSTREAM_PROTOCOL_ERROR"),
+    );
+
+    const changedSource = canonicalFrame(0);
+    (changedSource.data.source as Record<string, unknown>).sourceEventId =
+      `presentation.event:${"f".repeat(64)}`;
+    expect(() => validator.push(sseFrame({
+      ...changedSource,
+      id: original.id,
+    }))).toThrowError(
       new SessionProxyError("UPSTREAM_PROTOCOL_ERROR"),
     );
   });
@@ -487,7 +561,7 @@ describe("Session browser v3 SSE validation", () => {
     const heartbeat = new TextEncoder().encode(": heartbeat\n\n");
     const validator = sseValidator();
     expect(validator.push(heartbeat)).toEqual([heartbeat]);
-    validator.push(new TextEncoder().encode("event: branch.activated\n"));
+    validator.push(new TextEncoder().encode("event: RUN_STARTED\n"));
     expect(() => validator.finish()).toThrowError(new SessionProxyError("UPSTREAM_PROTOCOL_ERROR"));
   });
 });

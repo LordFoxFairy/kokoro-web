@@ -21,6 +21,7 @@ export {
   aguiPresentationRunIdSchema,
   aguiPresentationThreadIdSchema,
   aguiPublicSourceEventIdSchema,
+  admitAguiPresentationWireFrame,
   createAguiPresentationDecoder,
 } from "./agui-presentation-state-machine.internal.js";
 
@@ -48,6 +49,7 @@ export type {
   AguiPresentationRunId,
   AguiPresentationSnapshotAuthority,
   AguiPresentationThreadId,
+  AguiPresentationWireFrame,
   AguiPublicSourceEventId,
   AguiSseFrame,
 } from "./agui-presentation-state-machine.internal.js";

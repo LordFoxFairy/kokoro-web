@@ -24,7 +24,8 @@ authority material to a browser.
 - `session-proxy.ts`: operation-bound proxy with browser authority rejection, request/response header allowlists, authenticated
   response binding checks, abort propagation, and pull-based SSE backpressure.
 - `session-browser-v3.ts`: exact Root-generated browser operation registry, path/query/body adapters (including action/plan decisions),
-  status-specific JSON/problem validators, complete SSE frame validation, and authenticated transport binding returned out-of-band.
+  status-specific JSON/problem validators, canonical AG-UI SSE frame validation through the Session client admission boundary, and
+  authenticated transport binding returned out-of-band.
 - `index.ts`: the sole package export and a `server-only` guard. Site browser bundles must never import this package.
 
 ## Dependency direction
@@ -54,8 +55,10 @@ Root-generated Session browser v3 client by operation id; browser-provided arbit
 - The Session transport returns the full authenticated grant binding out-of-band; response headers are never trusted as tenant evidence.
 - The low-level authenticated HTTP request receives that exact already-verified binding from this trust kernel. A deployment adapter
   may return it only after establishing its registered authenticated upstream response; it must never derive it from response headers.
-- JSON is bounded, decoded and validated before re-encoding. SSE adapters emit only complete validated frames, one downstream pull at a
-  time, and abort upstream on disconnect/cancel. Credentials, cookies, internal headers and `Set-Cookie` are never proxied.
+- JSON is bounded, decoded and validated before re-encoding. SSE adapters emit only complete canonical AG-UI projection frames, reuse
+  `@kokoro/session-client/agui-presentation` instead of the retired generated `SessionEvent` schema, enforce Session/sequence/replay/
+  draining continuity, pull one downstream frame at a time, and abort upstream on disconnect/cancel. Credentials, cookies, internal
+  headers and `Set-Cookie` are never proxied.
 
 ## Verification
 

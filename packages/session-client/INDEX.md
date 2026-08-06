@@ -29,6 +29,10 @@ does not create a second Session endpoint or a transport-specific escape hatch.
 The strict AG-UI presentation consumer is public through the explicit production
 `@kokoro/session-client/agui-presentation` subpath. It exports the transport-independent
 `AguiPresentationSource` port implemented directly by `SessionClient`; concrete snapshot/SSE paths and the `after` query remain Root-generated and Web never handwrites them.
+The same subpath exposes one stateless `admitAguiPresentationWireFrame` boundary for trusted server proxies.
+It and the stateful snapshot decoder execute the same closed projection-envelope, AG-UI event, source-mapping,
+cursor-shape, and draining schemas; the BFF does not parse the retired generated `SessionEvent` envelope or maintain
+a second wire validator.
 That subpath is a whitelist façade over one production state-machine implementation; there is no synthetic,
 future-authority, preload, or test-only decoder variant.
 Root's unified generated roots are `src/generated/schema/**` and `src/generated/contracts/**`; the exact input/output

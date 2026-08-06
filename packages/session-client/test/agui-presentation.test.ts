@@ -64,9 +64,37 @@ function expectCode(operation: () => unknown, code: string): void {
 }
 
 describe("AG-UI presentation decoder", () => {
-  it("exports only the Session snapshot decoder, never a future-authority seam", () => {
+  it("exports one stateless canonical wire admission with the Session snapshot decoder", () => {
     expect(AguiPresentationModule).toHaveProperty("createAguiPresentationDecoder");
+    expect(AguiPresentationModule).toHaveProperty("admitAguiPresentationWireFrame");
     expect(AguiPresentationModule).not.toHaveProperty("createAguiPresentationStateMachineForTesting");
+  });
+
+  it("admits canonical durable and draining wire syntax without manufacturing cursor authority", () => {
+    const contractCase = primary();
+    const first = contractCase.frames[0];
+    if (first === undefined) throw new Error("Root AG-UI frame missing");
+    const admit = Reflect.get(AguiPresentationModule, "admitAguiPresentationWireFrame") as
+      ((frame: AguiSseFrame) => Readonly<{ kind: string; data: unknown }>) | undefined;
+    expect(admit).toBeTypeOf("function");
+    expect(admit?.(sse(first))).toMatchObject({
+      kind: "durable",
+      id: first.id,
+      event: first.event,
+      data: first.data,
+    });
+    expect(admit?.({
+      id: null,
+      event: "kokoro.stream.draining",
+      data: JSON.stringify({
+        type: "stream.draining",
+        profileRevision: contractCase.grantBinding.presentationProfileRevision,
+        sessionId: contractCase.grantBinding.sessionId,
+        streamEpoch: String(contractCase.snapshot.streamEpoch),
+        lastDurableCursor: contractCase.snapshot.cursor,
+        action: "retry-same-cursor",
+      }),
+    })).toMatchObject({ kind: "control" });
   });
 
   it("serializes admission, acknowledgement, replay, and resume state", () => {

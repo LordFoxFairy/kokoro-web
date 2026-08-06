@@ -2,8 +2,8 @@ import {
   errorEnvelopeSchema,
   SESSION_HTTP_ENDPOINTS,
   sessionHttpContractMetadata,
-  sessionStreamFrameSchema,
 } from "@kokoro/session-client/contracts";
+import { admitAguiPresentationWireFrame } from "@kokoro/session-client/agui-presentation";
 import { z, type ZodType } from "zod";
 
 import type {
@@ -576,50 +576,47 @@ export function createSessionBrowserV3SseFrameValidator(input: Readonly<{
   const validateFrame = (frame: string): Uint8Array | null => {
     const fields = parseSseFields(frame);
     if (fields === null) return encoder.encode(`${frame}\n\n`);
-    let raw: unknown;
+    let parsed: ReturnType<typeof admitAguiPresentationWireFrame>;
     try {
-      raw = JSON.parse(fields.data);
+      parsed = admitAguiPresentationWireFrame({
+        id: fields.id ?? null,
+        event: fields.event,
+        data: fields.data,
+      });
     } catch {
       throw new SessionProxyError("UPSTREAM_PROTOCOL_ERROR");
     }
-    const parsed = sessionStreamFrameSchema.safeParse(raw);
-    if (!parsed.success || parsed.data.kind !== fields.event) {
-      throw new SessionProxyError("UPSTREAM_PROTOCOL_ERROR");
-    }
-    if (parsed.data.session_id !== input.sessionId) {
-      throw new SessionProxyError("UPSTREAM_PROTOCOL_ERROR");
-    }
-    if (parsed.data.kind === "stream.draining") {
-      if (fields.id !== undefined) throw new SessionProxyError("UPSTREAM_PROTOCOL_ERROR");
-      assertOpaqueCursor(parsed.data.last_durable_cursor);
+    if (parsed.kind === "control") {
+      if (parsed.data.sessionId !== input.sessionId) throw new SessionProxyError("UPSTREAM_PROTOCOL_ERROR");
+      assertOpaqueCursor(parsed.data.lastDurableCursor);
       if (
-        streamEpoch !== null && parsed.data.stream_epoch !== streamEpoch ||
-        parsed.data.last_durable_cursor !== (durableCursor ?? input.initialCursor)
+        streamEpoch !== null && parsed.data.streamEpoch !== streamEpoch ||
+        parsed.data.lastDurableCursor !== (durableCursor ?? input.initialCursor)
       ) {
         throw new SessionProxyError("UPSTREAM_PROTOCOL_ERROR");
       }
     } else {
-      if (fields.id === undefined || fields.id !== parsed.data.cursor) {
+      if (parsed.data.source.sessionId !== input.sessionId) {
         throw new SessionProxyError("UPSTREAM_PROTOCOL_ERROR");
       }
-      assertOpaqueCursor(parsed.data.cursor);
-      const nextSeq = BigInt(parsed.data.durable_seq);
-      if (streamEpoch !== null && parsed.data.stream_epoch !== streamEpoch) {
+      assertOpaqueCursor(parsed.id);
+      const nextSeq = BigInt(parsed.data.source.durableSeq);
+      if (streamEpoch !== null && parsed.data.source.streamEpoch !== streamEpoch) {
         throw new SessionProxyError("UPSTREAM_PROTOCOL_ERROR");
       }
       if (durableSeq !== null) {
         const exactReplay = nextSeq === durableSeq &&
-          parsed.data.cursor === durableCursor &&
-          parsed.data.event_id === durableEventId;
+          parsed.id === durableCursor &&
+          parsed.data.source.sourceEventId === durableEventId;
         if (exactReplay) return null;
         if (!exactReplay && nextSeq !== durableSeq + 1n) {
           throw new SessionProxyError("UPSTREAM_PROTOCOL_ERROR");
         }
       }
-      streamEpoch = parsed.data.stream_epoch;
+      streamEpoch = parsed.data.source.streamEpoch;
       durableSeq = nextSeq;
-      durableCursor = parsed.data.cursor;
-      durableEventId = parsed.data.event_id;
+      durableCursor = parsed.id;
+      durableEventId = parsed.data.source.sourceEventId;
     }
     return encoder.encode(`${frame}\n\n`);
   };
