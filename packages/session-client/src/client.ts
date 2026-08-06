@@ -77,6 +77,23 @@ export type SessionClientErrorKind =
   | "protocol"
   | "repair_required";
 
+export const SESSION_FAILURE_PHASE_HEADER = "x-kokoro-session-failure-phase" as const;
+export const SESSION_FAILURE_PHASES = Object.freeze([
+  "auth_session_read",
+  "runtime_assembly",
+  "grant_issue",
+  "upstream_transport",
+  "upstream_contract",
+  "proxy_internal",
+] as const);
+export type SessionFailurePhase = (typeof SESSION_FAILURE_PHASES)[number];
+const sessionFailurePhases = new Set<string>(SESSION_FAILURE_PHASES);
+
+function sessionFailurePhase(headers: Headers): SessionFailurePhase | undefined {
+  const value = headers.get(SESSION_FAILURE_PHASE_HEADER);
+  return value !== null && sessionFailurePhases.has(value) ? value as SessionFailurePhase : undefined;
+}
+
 export class SessionClientError extends Error {
   readonly status?: number;
   readonly recovery?: CursorRecovery;
@@ -84,6 +101,7 @@ export class SessionClientError extends Error {
   readonly action?: ErrorEnvelope["error"]["action"];
   readonly retryClass?: ErrorEnvelope["error"]["retry_class"];
   readonly correlationId?: string;
+  readonly failurePhase?: SessionFailurePhase;
 
   constructor(
     readonly kind: SessionClientErrorKind,
@@ -92,6 +110,7 @@ export class SessionClientError extends Error {
       readonly status?: number;
       readonly recovery?: CursorRecovery;
       readonly problem?: ErrorEnvelope;
+      readonly failurePhase?: SessionFailurePhase;
       readonly cause?: unknown;
     } = {},
   ) {
@@ -99,6 +118,7 @@ export class SessionClientError extends Error {
     this.name = "SessionClientError";
     if (options.status !== undefined) this.status = options.status;
     if (options.recovery !== undefined) this.recovery = options.recovery;
+    if (options.failurePhase !== undefined) this.failurePhase = options.failurePhase;
     if (options.problem !== undefined) {
       this.stableCode = options.problem.error.code;
       this.action = options.problem.error.action;
@@ -227,7 +247,7 @@ function responseError(
 ): SessionClientError {
   const problem = "body" in response ? parseProblem(response.body) : undefined;
   const message = problem?.error.message ?? `${method} ${path} failed with status ${response.status}`;
-  const common = { status: response.status, problem };
+  const common = { status: response.status, problem, failurePhase: sessionFailurePhase(response.headers) };
   if (problem === undefined) return new SessionClientError("http", message, common);
   const { action, code } = problem.error;
   if (

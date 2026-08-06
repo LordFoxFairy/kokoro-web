@@ -508,6 +508,14 @@ const SESSION_MUTATION_FAILURE_PHASES = new Set([
   "WEB_FIXTURE_SESSION_SUBMIT_FAILED",
   "WEB_FIXTURE_SESSION_REPLAY_FAILED",
 ]);
+const SITE_SESSION_FAILURE_PHASES = new Set([
+  "auth_session_read",
+  "runtime_assembly",
+  "grant_issue",
+  "upstream_transport",
+  "upstream_contract",
+  "proxy_internal",
+]);
 
 function stableSessionFailureSource(error, fallbackCode) {
   if (error.stableCode === "SESSION_ACCESS_GRANT_REQUIRED") {
@@ -515,11 +523,14 @@ function stableSessionFailureSource(error, fallbackCode) {
     if (error.action === "reauthenticate") return "_SITE_AUTH";
   }
   if (error.stableCode === "INTERNAL_UNAVAILABLE" && SESSION_MUTATION_FAILURE_PHASES.has(fallbackCode)) {
+    if (SITE_SESSION_FAILURE_PHASES.has(error.failurePhase)) {
+      return `_SITE_BFF_${error.failurePhase.toUpperCase()}`;
+    }
     if (error.action === "retry_same_cursor" && error.retryClass === "after_delay") {
       return "_SESSION_UPSTREAM";
     }
     if (error.action === "reconcile_receipt" && error.retryClass === "reconcile_receipt") {
-      return "_SITE_BFF";
+      return "_SESSION_UPSTREAM";
     }
   }
   return "";

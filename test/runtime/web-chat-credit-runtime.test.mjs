@@ -811,12 +811,10 @@ test("exercise distinguishes an upstream Session grant rejection from Site authe
   });
 });
 
-test("exercise distinguishes upstream Session unavailability from Site BFF mutation reconciliation", async (t) => {
+test("exercise distinguishes upstream Session unavailability from finite Site BFF phases", async (t) => {
   const environment = await readyFixture(t, "kokoro-web-session-unavailable-source-test-");
-  const failure = (kind, action, retryClass) => new SessionClientError(
-    kind,
-    "private unavailable detail",
-    {
+  const failure = (kind, action, retryClass, failurePhase) => {
+    const error = new SessionClientError(kind, "private unavailable detail", {
       status: 503,
       problem: {
         error: {
@@ -827,8 +825,10 @@ test("exercise distinguishes upstream Session unavailability from Site BFF mutat
         },
         correlation_id: "private-correlation-id",
       },
-    },
-  );
+      ...(failurePhase === undefined ? {} : { failurePhase }),
+    });
+    return error;
+  };
   const attempt = (error) => runtimeFixture.exerciseWebChatCreditRuntime(environment, {
     runtime: {
       browser: {
@@ -858,7 +858,20 @@ test("exercise distinguishes upstream Session unavailability from Site BFF mutat
   await assert.rejects(attempt(failure("command_conflict", "reconcile_receipt", "reconcile_receipt")), (error) => {
     assert.equal(
       error.message,
-      "WEB_FIXTURE_SESSION_SUBMIT_FAILED_INTERNAL_UNAVAILABLE_SITE_BFF",
+      "WEB_FIXTURE_SESSION_SUBMIT_FAILED_INTERNAL_UNAVAILABLE_SESSION_UPSTREAM",
+    );
+    assert.equal(error.message.includes("private"), false);
+    return true;
+  });
+  await assert.rejects(attempt(failure(
+    "command_conflict",
+    "reconcile_receipt",
+    "reconcile_receipt",
+    "grant_issue",
+  )), (error) => {
+    assert.equal(
+      error.message,
+      "WEB_FIXTURE_SESSION_SUBMIT_FAILED_INTERNAL_UNAVAILABLE_SITE_BFF_GRANT_ISSUE",
     );
     assert.equal(error.message.includes("private"), false);
     return true;

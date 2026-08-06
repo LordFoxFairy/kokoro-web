@@ -343,6 +343,34 @@ describe("contract-bound Session AG-UI client", () => {
     });
   });
 
+  it("retains only a closed Site BFF failure phase from a problem response", async () => {
+    const failureResponse = (phase: string) => ({
+      status: 503,
+      body: problem("INTERNAL_UNAVAILABLE", "reconcile_receipt", "reconcile_receipt"),
+      headers: new Headers({
+        "content-type": "application/problem+json",
+        "x-kokoro-session-failure-phase": phase,
+      }),
+    });
+    const failure = async (phase: string) => {
+      const client = createSessionClient({
+        transport: {
+          request: async () => failureResponse(phase),
+          stream: async () => ({ status: 500, headers: new Headers(), body: null }),
+        },
+      });
+      try {
+        await client.fetchSnapshot(SESSION_ID);
+      } catch (error) {
+        return error;
+      }
+      throw new Error("expected Session problem");
+    };
+
+    await expect(failure("grant_issue")).resolves.toMatchObject({ failurePhase: "grant_issue" });
+    await expect(failure("private/provider/detail")).resolves.toMatchObject({ failurePhase: undefined });
+  });
+
   it("validates Submit and preserves the complete command identity", async () => {
     const bodies: unknown[] = [];
     const client = createSessionClient({

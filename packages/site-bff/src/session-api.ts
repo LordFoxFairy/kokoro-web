@@ -4,10 +4,15 @@ import { randomUUID } from "node:crypto"
 
 import {
   matchSessionBrowserV3Request,
+  SessionAccessError,
   SessionProxyError,
   SiteBindingError,
   type OpaqueAuthSession,
 } from "@kokoro/bff-runtime"
+import {
+  SESSION_FAILURE_PHASE_HEADER,
+  type SessionFailurePhase,
+} from "@kokoro/session-client"
 import { errorEnvelopeSchema, type ErrorDetail } from "@kokoro/session-client/contracts"
 import { PlatformPublicError } from "@kokoro/site-client/server"
 
@@ -24,13 +29,16 @@ function problem(
   action: ErrorDetail["action"],
   retryClass: ErrorDetail["retry_class"],
   message: string,
+  failurePhase?: SessionFailurePhase,
 ): Response {
   const requestId = randomUUID()
+  const headers: Record<string, string> = { "cache-control": "no-store" }
+  if (failurePhase !== undefined) headers[SESSION_FAILURE_PHASE_HEADER] = failurePhase
   return Response.json(errorEnvelopeSchema.parse({
     error: { code, message, retry_class: retryClass, action },
     request_id: requestId,
     correlation_id: requestId,
-  }), { status, headers: { "cache-control": "no-store" } })
+  }), { status, headers })
 }
 
 async function boundedJson(request: Request): Promise<unknown> {
@@ -68,17 +76,38 @@ async function boundedJson(request: Request): Promise<unknown> {
   return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)) as unknown
 }
 
-function unavailable(status: 502 | 503, context: Readonly<{ method: string; operationId?: string }>): Response {
+function unavailable(
+  status: 502 | 503,
+  context: Readonly<{ method: string; operationId?: string }>,
+  failurePhase: SessionFailurePhase,
+): Response {
   if (MUTATIONS.has(context.method)) {
-    return problem(status, "INTERNAL_UNAVAILABLE", "reconcile_receipt", "reconcile_receipt", "Session command outcome is being reconciled")
+    return problem(status, "INTERNAL_UNAVAILABLE", "reconcile_receipt", "reconcile_receipt", "Session command outcome is being reconciled", failurePhase)
   }
   if (context.operationId === "stream") {
-    return problem(status, "INTERNAL_UNAVAILABLE", "retry_same_cursor", "after_delay", "Session stream is temporarily unavailable")
+    return problem(status, "INTERNAL_UNAVAILABLE", "retry_same_cursor", "after_delay", "Session stream is temporarily unavailable", failurePhase)
   }
-  return problem(status, "INTERNAL_UNAVAILABLE", "refetch_snapshot", "after_delay", "Session is temporarily unavailable")
+  return problem(status, "INTERNAL_UNAVAILABLE", "refetch_snapshot", "after_delay", "Session is temporarily unavailable", failurePhase)
 }
 
-function failure(error: unknown, context: Readonly<{ method: string; operationId?: string }>): Response {
+function internalFailurePhase(
+  error: unknown,
+  boundaryPhase: SessionFailurePhase,
+): SessionFailurePhase {
+  if (boundaryPhase === "auth_session_read" || boundaryPhase === "runtime_assembly") return boundaryPhase
+  if (error instanceof SessionAccessError || error instanceof PlatformPublicError) return "grant_issue"
+  if (error instanceof SessionProxyError && (
+    error.code === "UPSTREAM_BINDING_MISMATCH" || error.code === "UPSTREAM_PROTOCOL_ERROR"
+  )) return "upstream_contract"
+  if (error instanceof Error && error.name === "NodeSiteRuntimeError") return "upstream_transport"
+  return "proxy_internal"
+}
+
+function failure(error: unknown, context: Readonly<{
+  method: string
+  operationId?: string
+  boundaryPhase: SessionFailurePhase
+}>): Response {
   if (error instanceof RangeError) {
     return problem(413, "PAYLOAD_TOO_LARGE", "stop", "never", "Request body is too large")
   }
@@ -93,7 +122,7 @@ function failure(error: unknown, context: Readonly<{ method: string; operationId
     if (error.code === "REQUEST_INVALID") {
       return problem(400, "REQUEST_INVALID", "stop", "never", "Request was rejected")
     }
-    return unavailable(502, context)
+    return unavailable(502, context, internalFailurePhase(error, context.boundaryPhase))
   }
   if (error instanceof PlatformPublicError) {
     if (error.status === 401) {
@@ -109,9 +138,9 @@ function failure(error: unknown, context: Readonly<{ method: string; operationId
     return problem(401, "SESSION_ACCESS_GRANT_REQUIRED", "reauthenticate", "never", "Sign in again")
   }
   if (error instanceof Error && error.name === "NodeSiteRuntimeError") {
-    return unavailable(503, context)
+    return unavailable(503, context, internalFailurePhase(error, context.boundaryPhase))
   }
-  return unavailable(503, context)
+  return unavailable(503, context, internalFailurePhase(error, context.boundaryPhase))
 }
 
 export interface SiteSessionApi {
@@ -126,6 +155,7 @@ export function createSiteSessionApi(input: Readonly<{
   return Object.freeze({
     async handle(request: Request, path: readonly string[]) {
       let operationId: string | undefined
+      let boundaryPhase: SessionFailurePhase = "auth_session_read"
       try {
         const fetchSite = request.headers.get("sec-fetch-site")
         const origin = request.headers.get("origin")
@@ -137,6 +167,7 @@ export function createSiteSessionApi(input: Readonly<{
           return problem(401, "SESSION_ACCESS_GRANT_REQUIRED", "reauthenticate", "never", "Sign in again")
         }
         const url = new URL(request.url)
+        boundaryPhase = "proxy_internal"
         const matched = matchSessionBrowserV3Request({
           method: request.method,
           pathname: `/${path.join("/")}`,
@@ -148,7 +179,9 @@ export function createSiteSessionApi(input: Readonly<{
           const value = request.headers.get(name)
           if (value !== null) headers.set(name, value)
         }
+        boundaryPhase = "runtime_assembly"
         const session = await input.runtime.assemble(auth)
+        boundaryPhase = "proxy_internal"
         return await session.proxy.execute({
           operationId: matched.operationId,
           projectRef: session.bootstrap.defaultProjectRef,
@@ -162,7 +195,11 @@ export function createSiteSessionApi(input: Readonly<{
           },
         })
       } catch (error) {
-        return failure(error, { method: request.method, ...(operationId === undefined ? {} : { operationId }) })
+        return failure(error, {
+          method: request.method,
+          boundaryPhase,
+          ...(operationId === undefined ? {} : { operationId }),
+        })
       }
     },
   })

@@ -1,17 +1,21 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
-import { matchSessionBrowserV3Request, SessionProxyError, SiteBindingError, } from "@kokoro/bff-runtime";
+import { matchSessionBrowserV3Request, SessionAccessError, SessionProxyError, SiteBindingError, } from "@kokoro/bff-runtime";
+import { SESSION_FAILURE_PHASE_HEADER, } from "@kokoro/session-client";
 import { errorEnvelopeSchema } from "@kokoro/session-client/contracts";
 import { PlatformPublicError } from "@kokoro/site-client/server";
 const MAXIMUM_BODY_BYTES = 2_097_152;
 const MUTATIONS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
-function problem(status, code, action, retryClass, message) {
+function problem(status, code, action, retryClass, message, failurePhase) {
     const requestId = randomUUID();
+    const headers = { "cache-control": "no-store" };
+    if (failurePhase !== undefined)
+        headers[SESSION_FAILURE_PHASE_HEADER] = failurePhase;
     return Response.json(errorEnvelopeSchema.parse({
         error: { code, message, retry_class: retryClass, action },
         request_id: requestId,
         correlation_id: requestId,
-    }), { status, headers: { "cache-control": "no-store" } });
+    }), { status, headers });
 }
 async function boundedJson(request) {
     const mediaType = request.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase();
@@ -51,14 +55,25 @@ async function boundedJson(request) {
     }
     return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
 }
-function unavailable(status, context) {
+function unavailable(status, context, failurePhase) {
     if (MUTATIONS.has(context.method)) {
-        return problem(status, "INTERNAL_UNAVAILABLE", "reconcile_receipt", "reconcile_receipt", "Session command outcome is being reconciled");
+        return problem(status, "INTERNAL_UNAVAILABLE", "reconcile_receipt", "reconcile_receipt", "Session command outcome is being reconciled", failurePhase);
     }
     if (context.operationId === "stream") {
-        return problem(status, "INTERNAL_UNAVAILABLE", "retry_same_cursor", "after_delay", "Session stream is temporarily unavailable");
+        return problem(status, "INTERNAL_UNAVAILABLE", "retry_same_cursor", "after_delay", "Session stream is temporarily unavailable", failurePhase);
     }
-    return problem(status, "INTERNAL_UNAVAILABLE", "refetch_snapshot", "after_delay", "Session is temporarily unavailable");
+    return problem(status, "INTERNAL_UNAVAILABLE", "refetch_snapshot", "after_delay", "Session is temporarily unavailable", failurePhase);
+}
+function internalFailurePhase(error, boundaryPhase) {
+    if (boundaryPhase === "auth_session_read" || boundaryPhase === "runtime_assembly")
+        return boundaryPhase;
+    if (error instanceof SessionAccessError || error instanceof PlatformPublicError)
+        return "grant_issue";
+    if (error instanceof SessionProxyError && (error.code === "UPSTREAM_BINDING_MISMATCH" || error.code === "UPSTREAM_PROTOCOL_ERROR"))
+        return "upstream_contract";
+    if (error instanceof Error && error.name === "NodeSiteRuntimeError")
+        return "upstream_transport";
+    return "proxy_internal";
 }
 function failure(error, context) {
     if (error instanceof RangeError) {
@@ -75,7 +90,7 @@ function failure(error, context) {
         if (error.code === "REQUEST_INVALID") {
             return problem(400, "REQUEST_INVALID", "stop", "never", "Request was rejected");
         }
-        return unavailable(502, context);
+        return unavailable(502, context, internalFailurePhase(error, context.boundaryPhase));
     }
     if (error instanceof PlatformPublicError) {
         if (error.status === 401) {
@@ -89,15 +104,16 @@ function failure(error, context) {
         return problem(401, "SESSION_ACCESS_GRANT_REQUIRED", "reauthenticate", "never", "Sign in again");
     }
     if (error instanceof Error && error.name === "NodeSiteRuntimeError") {
-        return unavailable(503, context);
+        return unavailable(503, context, internalFailurePhase(error, context.boundaryPhase));
     }
-    return unavailable(503, context);
+    return unavailable(503, context, internalFailurePhase(error, context.boundaryPhase));
 }
 /** Closed Session Browser v3 adapter. The generated operation registry is the only route authority. */
 export function createSiteSessionApi(input) {
     return Object.freeze({
         async handle(request, path) {
             let operationId;
+            let boundaryPhase = "auth_session_read";
             try {
                 const fetchSite = request.headers.get("sec-fetch-site");
                 const origin = request.headers.get("origin");
@@ -109,6 +125,7 @@ export function createSiteSessionApi(input) {
                     return problem(401, "SESSION_ACCESS_GRANT_REQUIRED", "reauthenticate", "never", "Sign in again");
                 }
                 const url = new URL(request.url);
+                boundaryPhase = "proxy_internal";
                 const matched = matchSessionBrowserV3Request({
                     method: request.method,
                     pathname: `/${path.join("/")}`,
@@ -121,7 +138,9 @@ export function createSiteSessionApi(input) {
                     if (value !== null)
                         headers.set(name, value);
                 }
+                boundaryPhase = "runtime_assembly";
                 const session = await input.runtime.assemble(auth);
+                boundaryPhase = "proxy_internal";
                 return await session.proxy.execute({
                     operationId: matched.operationId,
                     projectRef: session.bootstrap.defaultProjectRef,
@@ -136,7 +155,11 @@ export function createSiteSessionApi(input) {
                 });
             }
             catch (error) {
-                return failure(error, { method: request.method, ...(operationId === undefined ? {} : { operationId }) });
+                return failure(error, {
+                    method: request.method,
+                    boundaryPhase,
+                    ...(operationId === undefined ? {} : { operationId }),
+                });
             }
         },
     });
