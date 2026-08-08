@@ -2,12 +2,8 @@
   "contractRevision": "kokoro.generated-artifact-provenance.v1",
   "boundaryId": "generated-kokoro-web-admin@v1",
   "consumerRepository": "kokoro-web",
-  "sourceRootCommit": "e66efb07a5839fe4085a719b77eb33cd534b01e9",
+  "sourceRootCommit": "623c012fa092039b439268e0f1d3a7992707494b",
   "sourceFiles": [
-    {
-      "path": "contract/buf.gen.yaml",
-      "sha256": "sha256:ba342b769bde295ee362a5876dd51ab06aa412ac84f117220bd78eb31d67ce6b"
-    },
     {
       "path": "contract/buf.lock",
       "sha256": "sha256:f167aece00cd881df9e57b220d5edeff1343c5020a6caed6b425a213f75991ee"
@@ -46,15 +42,15 @@
     },
     {
       "path": "contract/generate-public-openapi.mjs",
-      "sha256": "sha256:7a76893f453f79d02b8238302ec9d898714b225d07634824cb1b099afaff50a6"
+      "sha256": "sha256:50e42cc22fe2b06bc51c264698500c1a2ab49f902c1758592011f575a351c8b2"
     },
     {
       "path": "contract/generate.mjs",
-      "sha256": "sha256:91be368f2c9b275a3928e1859ea24fa9c5ba19e9791f83f84d41e02fe184fab7"
+      "sha256": "sha256:0411087ac583cd462f255ff0a71622e55d78ef8002321874a95ce0c6dbd823f7"
     },
     {
       "path": "contract/generate.py",
-      "sha256": "sha256:29220bc3360ac2b8994d1d5c59ca58f15ec9a597b144cc26e874979634db7b4e"
+      "sha256": "sha256:a4e3b00b12e4b6d135207e57a36e1a31599e033f63c6bb2f8f924e802242437b"
     },
     {
       "path": "contract/lib/committed-worktree.mjs",
@@ -78,15 +74,11 @@
     },
     {
       "path": "contract/lib/provenance/build-manifest.mjs",
-      "sha256": "sha256:dd8bf717c79756f837e732c5428aafd9cfe80639fcbeff7517a621da83066458"
+      "sha256": "sha256:cb39bdac75ccc4cdbf118d40ddeb64d9d5ca7ebe91103cc8b7cfd5da0a6d4eaf"
     },
     {
       "path": "contract/lib/provenance/canonical-manifest.mjs",
       "sha256": "sha256:969a057bb55ee2dd0f01f0148254d6a7339cdc4674413f2d16b49682da3afb2e"
-    },
-    {
-      "path": "contract/openapi/admin-web-v1.yaml",
-      "sha256": "sha256:0f8c267e5f2ad09e1c65a044beb5b5fcb88a4e50bd89602c2ad5dcccbf6be48c"
     },
     {
       "path": "contract/openapi/asset-data-plane-v1.yaml",
@@ -98,7 +90,7 @@
     },
     {
       "path": "contract/package.json",
-      "sha256": "sha256:378bfa9af5553465fe71265fac0548e2544c366888f73cc698809eb2961fe2d0"
+      "sha256": "sha256:f275c753aa98d5e155043cc16b725a148fa960131fae10bda12fb277e89ecfb5"
     },
     {
       "path": "contract/pnpm-lock.yaml",
@@ -138,11 +130,7 @@
     },
     {
       "path": "contract/proto/kokoro/common/v2/command_envelope.proto",
-      "sha256": "sha256:dd4451ec255413c5c3eb7f7a6caadc961d72e00828bdb54aa88fec5aed0a71e7"
-    },
-    {
-      "path": "contract/proto/kokoro/platform/admin/v1/admin_auth.proto",
-      "sha256": "sha256:890b152347e995ac592616172ff3aee32d1da019488297b3a37600de7d8b57b9"
+      "sha256": "sha256:2226a66e4fff475d4678a984445238695872336d6127ce3e307b4c33ec5ebc79"
     },
     {
       "path": "contract/proto/kokoro/platform/admin/v2/admin_command.proto",
@@ -150,7 +138,7 @@
     },
     {
       "path": "contract/proto/kokoro/platform/admin/v2/admin_query.proto",
-      "sha256": "sha256:9a8c650f37f57258ee382ec2249eb4bdd56ead6b46cdc70ac83e11bfe089768d"
+      "sha256": "sha256:a34b83b7672f9953fecb2cdb1efc2257fb5afcd155e6b93b2508df4da2522249"
     },
     {
       "path": "contract/proto/kokoro/platform/admin/v2/admin_shared.proto",
@@ -246,7 +234,7 @@
     },
     {
       "path": "contract/proto/kokoro/platform/site/v1/site_lifecycle.proto",
-      "sha256": "sha256:c08935b7a22f012bb55aaf7ab62d6586e5ebf7a001fa05d470be5e9124c97dc7"
+      "sha256": "sha256:f38d1b09e358b8bbcf7055c7e244d256cd7d9abfb083f75de91ded2700c8147a"
     },
     {
       "path": "contract/proto/kokoro/platform/site/v1/site_provisioning.proto",
@@ -281,16 +269,12 @@
       "sha256": "sha256:1c6768c25ea99ee2fa8904310e379e337d37ce67af0f5f7e6f801e194d33467a"
     },
     {
-      "path": "contract/registry/consumer-generation-transition-v1.yaml",
-      "sha256": "sha256:3553a52efdd00c53eed9e6bdd563575c57df5210967799bf2139f3e05902477f"
-    },
-    {
       "path": "contract/registry/generated-consumers.schema.json",
       "sha256": "sha256:2cc48b12ff5525bd2c940bb516d77b6c30578d74ecbbae9096b52d40aae0bdfe"
     },
     {
       "path": "contract/registry/generated-consumers.yaml",
-      "sha256": "sha256:a722c46506990de7a37fe2239d63025e0a1179bd6cc16c7b4994277b339220ce"
+      "sha256": "sha256:cea14ff2cc3a93e8d7d7aac9b361b06ab3eebe9a932445aad17c331c7563fd99"
     },
     {
       "path": "contract/registry/platform-session-authorization-v1.yaml",
@@ -302,7 +286,7 @@
     },
     {
       "path": "contract/registry/prelaunch-protobuf-hard-cuts.yaml",
-      "sha256": "sha256:6f311bccd1cf753faf08246069952ef91d6a05952c05d22d0fe1c21f4dc97239"
+      "sha256": "sha256:c3815d2193d3a19c796967963806c9462f9f4f6bf8aa3fc1e429f6abf9b4a9e6"
     },
     {
       "path": "contract/registry/prelaunch-schema-hard-cuts.yaml",
@@ -534,7 +518,7 @@
     },
     {
       "path": "apps/admin/lib/generated/contracts/platform-admin-command@v2/metadata.ts",
-      "sha256": "sha256:9b556cd9450052f7b9891c354222d479f2948ba0d9a7d9fed45b08dbdaa8d7c2"
+      "sha256": "sha256:ee18ea3f96490e04c19aec20416efa1c0be1487d32db80a83df6fa49842fdfca"
     },
     {
       "path": "apps/admin/lib/generated/contracts/platform-admin-commerce@v1/digest.ts",
@@ -542,7 +526,7 @@
     },
     {
       "path": "apps/admin/lib/generated/contracts/platform-admin-commerce@v1/metadata.ts",
-      "sha256": "sha256:5220e6118e9e298b2de283166ce3386c37a4d80afada298df8ac9a52834f0681"
+      "sha256": "sha256:ab03e5859d2c65360d08541be1a55aa2708447fefb6a2abff286bb89ddd9b17e"
     },
     {
       "path": "apps/admin/lib/generated/contracts/platform-admin-credit@v1/digest.ts",
@@ -550,7 +534,7 @@
     },
     {
       "path": "apps/admin/lib/generated/contracts/platform-admin-credit@v1/metadata.ts",
-      "sha256": "sha256:186acf6ee252ee4dc585e56ec095825203e333cea51d1950c8bad7b512cebd30"
+      "sha256": "sha256:80c84e8288bbc6a261f891410fd917f941a672d777d64b9acea96099e9ba123a"
     },
     {
       "path": "apps/admin/lib/generated/contracts/platform-admin-identity@v1/digest.ts",
@@ -558,11 +542,11 @@
     },
     {
       "path": "apps/admin/lib/generated/contracts/platform-admin-identity@v1/metadata.ts",
-      "sha256": "sha256:1bb4df9d091ffbdf6918d461e4c46096c9d5708f74499d30610b992d52dfb461"
+      "sha256": "sha256:9fa25f844bd1dc45345d1f370f37dc9f1315abeaa40e7c29ad105a7572683767"
     },
     {
       "path": "apps/admin/lib/generated/contracts/platform-admin-query@v2/metadata.ts",
-      "sha256": "sha256:43eaa5874a2a178b9a94f6638c9eedcfe14d7272d93a2a78d53abe58ab42dfc6"
+      "sha256": "sha256:e15df324d9d13425d110345eb2f0747d05a144b4acce4e21af4018c26a4d08e0"
     },
     {
       "path": "apps/admin/lib/generated/contracts/platform-model-control@v1/digest.ts",
@@ -574,7 +558,7 @@
     },
     {
       "path": "apps/admin/lib/generated/contracts/platform-model-control@v1/metadata.ts",
-      "sha256": "sha256:49f96ace7baeed0e3d913520f600f38fa58485ee417ad8c9e11530818c04b28f"
+      "sha256": "sha256:f8e6bb859efaafe7ba0933d2b756e01f35c080dbd693feb6f4b53f8c5f0ca285"
     },
     {
       "path": "apps/admin/lib/generated/contracts/platform-product-catalog-publication@v1/digest.ts",
@@ -582,7 +566,7 @@
     },
     {
       "path": "apps/admin/lib/generated/contracts/platform-product-catalog-publication@v1/metadata.ts",
-      "sha256": "sha256:e6df6547a33d7fb8b42abc77c36c219d4225beb11138a9e717a3a62181f2a01d"
+      "sha256": "sha256:0cc7013574352a629eb27d29c703b62602eb6110b11d64072ddd2dddda32086c"
     },
     {
       "path": "apps/admin/lib/generated/contracts/platform-site-evidence-admission@v1/digest.ts",
@@ -590,7 +574,7 @@
     },
     {
       "path": "apps/admin/lib/generated/contracts/platform-site-evidence-admission@v1/metadata.ts",
-      "sha256": "sha256:38176304847ffe66d05fabd1e4a27e349f022916e23a670821ead16fdd559e3d"
+      "sha256": "sha256:ca8dfd237e12977a52b13f3432844efcb5626053e72e81cf1056f85a21e74633"
     },
     {
       "path": "apps/admin/lib/generated/contracts/platform-site-lifecycle@v1/digest.ts",
@@ -598,7 +582,7 @@
     },
     {
       "path": "apps/admin/lib/generated/contracts/platform-site-lifecycle@v1/metadata.ts",
-      "sha256": "sha256:38a756b13aa2f48bc2fc1287b86ed8f870d961c0f1fc30a2bb166148df56e035"
+      "sha256": "sha256:9153107a1960da16b12b1e2bb372839ce3a54e6f4733df08bc1147f4e969e3f4"
     },
     {
       "path": "apps/admin/lib/generated/contracts/platform-site-provisioning@v1/digest.ts",
@@ -606,7 +590,7 @@
     },
     {
       "path": "apps/admin/lib/generated/contracts/platform-site-provisioning@v1/metadata.ts",
-      "sha256": "sha256:1261c4ba743621b5bd7a05310b3997c1651274fc11fed7b1aed6e64c4d6cc945"
+      "sha256": "sha256:b8148bfcbdaf1445be42744273409994666c418dacee7a925336c03c1cff3274"
     },
     {
       "path": "apps/admin/lib/generated/contracts/platform-site-publication@v1/digest.ts",
@@ -614,7 +598,7 @@
     },
     {
       "path": "apps/admin/lib/generated/contracts/platform-site-publication@v1/metadata.ts",
-      "sha256": "sha256:0a1acd39a3dff344b1947003738b334e4faeece286d36374788329ff17aa6a36"
+      "sha256": "sha256:61214236d810dbc2426906e675096675f7f0df29e4a5e793a540cf6e909394be"
     },
     {
       "path": "apps/admin/lib/generated/contracts/site/publication-command-v1.json",
@@ -630,7 +614,7 @@
     },
     {
       "path": "apps/admin/lib/generated/proto/kokoro/common/v2/command_envelope_pb.ts",
-      "sha256": "sha256:c0650bf4519b0b4a7f4b9f9ec665978297abc66847207ef720d534ce4ff73a5a"
+      "sha256": "sha256:5ea171917adbe71ba9b3bbd285d3d76c3f1a1608d6dd9fd43dac74bde62b001b"
     },
     {
       "path": "apps/admin/lib/generated/proto/kokoro/platform/admin/v2/admin_command_pb.ts",
@@ -638,7 +622,7 @@
     },
     {
       "path": "apps/admin/lib/generated/proto/kokoro/platform/admin/v2/admin_query_pb.ts",
-      "sha256": "sha256:ee09dfc7d84b928c139709a779c577fde2c86fcdf95270b7f26ca0b6799a78c0"
+      "sha256": "sha256:9f11bfee43bb61fc463d290d0580b881477047ae06f45d853fd2ba60e71a1678"
     },
     {
       "path": "apps/admin/lib/generated/proto/kokoro/platform/admin/v2/admin_shared_pb.ts",
@@ -682,7 +666,7 @@
     },
     {
       "path": "apps/admin/lib/generated/proto/kokoro/platform/site/v1/site_lifecycle_pb.ts",
-      "sha256": "sha256:230660dab0c00852889b806caf481af2a1289389d4d20ad314c59a98777559f7"
+      "sha256": "sha256:160f17922221f30179a3ea2d363b29ca0f1804f3154930046982c27a595f2eb8"
     },
     {
       "path": "apps/admin/lib/generated/proto/kokoro/platform/site/v1/site_provisioning_pb.ts",
@@ -693,5 +677,5 @@
       "sha256": "sha256:d2a34d27e92bc6c6e50b56cfad36e55f2f986e38bb6575a814718e3b501ee275"
     }
   ],
-  "manifestDigest": "sha256:4eea72aa8edd5fdc27a74be5a49a7c9ffab482479756e5a1d6f6e35c6f02f411"
+  "manifestDigest": "sha256:2342635217a89d10d10b2f402fff88fe3263a761d168c316198588f1cb86cd0b"
 }
