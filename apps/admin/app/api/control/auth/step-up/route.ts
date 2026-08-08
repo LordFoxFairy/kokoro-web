@@ -4,9 +4,7 @@ import { beginAdminStepUp } from "@/lib/control-plane/identity-client";
 import { setStepUpTransaction } from "@/lib/control-plane/authority-session";
 
 export const runtime = "nodejs";
-const operation = z.enum(["commerce.offer.publish", "commerce.code-batch.issue", "commerce.code-batch.approve",
-  "commerce.redemption-program.publish", "commerce.code-batch.activate", "commerce.code-batch.suspend",
-  "commerce.code-batch.revoke", "site.register", "site.release.publish", "model.inventory.import",
+const operation = z.enum(["site.register", "site.release.publish", "model.inventory.import",
   "model.inventory.activate", "model.option.materialize", "model.site-policy.change",
   "model.site-release-catalog.publish"]);
 

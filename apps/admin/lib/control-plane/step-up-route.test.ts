@@ -37,4 +37,24 @@ describe("Model control step-up admission", () => {
       expiresAt: "2026-07-30T03:00:00.000Z",
     });
   });
+
+  it.each([
+    "commerce.offer.publish",
+    "commerce.code-batch.issue",
+    "commerce.code-batch.approve",
+    "commerce.redemption-program.publish",
+    "commerce.code-batch.activate",
+    "commerce.code-batch.suspend",
+    "commerce.code-batch.revoke",
+  ])("rejects retired Commerce operation %s before starting step-up", async (operation) => {
+    const { NextRequest } = await import("next/server");
+    const route = await import("../../app/api/control/auth/step-up/route");
+    const response = await route.GET(new NextRequest(
+      `https://admin.example/api/control/auth/step-up?operation=${operation}&resource=resource-one&return=/`,
+    ));
+
+    expect(response.status).toBe(400);
+    expect(calls.beginAdminStepUp).not.toHaveBeenCalled();
+    expect(calls.setStepUpTransaction).not.toHaveBeenCalled();
+  });
 });
