@@ -1,107 +1,80 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Alert, App, Button, Descriptions, Modal, Space, Tag } from "antd";
+import { useState } from "react";
+import { Alert, App, Button, Descriptions, Modal, Space, Spin, Tag } from "antd";
 import { ModalForm, PageContainer, ProFormText, ProFormTextArea, ProTable,
   type ProColumns } from "@ant-design/pro-components";
+import { DownOutlined } from "@ant-design/icons";
+import { useInfiniteList, useOne } from "@refinedev/core";
 import { z } from "zod";
 
 import { useAdmin } from "@/components/shell/app-shell";
-import { apiGet, apiPost } from "@/lib/api";
-import { appendCursorPage, clearNextPageToken, CursorWindowError, LatestRequest, resetCursorWindow,
-  type CursorWindow } from "@/lib/cursor-window";
+import { apiPost } from "@/lib/api";
+import {
+  adminInfiniteResult,
+  adminNextPageParam,
+  type AdminSite,
+} from "@/lib/refine/admin-data-provider";
 
-const site = z.object({ siteRef: z.string(), status: z.string(), securityEpoch: z.string() });
-type Site = z.infer<typeof site>;
-const siteList = z.object({ items: z.array(site), nextPageToken: z.string().min(1).max(256).nullable() });
 const receipt = z.object({ commandId: z.string(), state: z.string() });
 const registered = z.object({ siteId: z.string(), state: z.string(), replayed: z.boolean(), receipt });
 const published = z.object({ siteId: z.string(), releaseRef: z.string(), releaseRevision: z.string(),
   releaseDigest: z.string(), state: z.string(), replayed: z.boolean(), receipt });
-const loadMoreLimits = { identity: (item: Site) => item.siteRef, maxItems: 1000, maxPages: 20 } as const;
 
 export default function SitesPage(): React.ReactElement {
-  const { message } = App.useApp();
   const { siteId, reloadSites } = useAdmin();
-  const [window, setWindow] = useState<CursorWindow<Site>>(() => resetCursorWindow());
-  const [paginationError, setPaginationError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [detail, setDetail] = useState<Site | null>(null);
-  const windowRef = useRef(window);
-  const requests = useRef(new LatestRequest());
-  const commitWindow = useCallback((next: CursorWindow<Site>) => {
-    windowRef.current = next;
-    setWindow(next);
-  }, []);
-  const loadPage = useCallback((pageToken: string | null, replace: boolean) => {
-    const generation = requests.current.begin();
-    const path = pageToken ? `/api/control/sites?pageToken=${encodeURIComponent(pageToken)}` : "/api/control/sites";
-    return apiGet(path, siteList)
-      .then((result) => {
-        if (!requests.current.isCurrent(generation)) return;
-        const base = replace ? resetCursorWindow<Site>() : windowRef.current;
-        commitWindow(appendCursorPage(base, result, loadMoreLimits));
-        setPaginationError(null);
-      })
-      .catch((error: unknown) => {
-        if (!requests.current.isCurrent(generation)) return;
-        const errorMessage = error instanceof Error ? error.message : "加载失败";
-        if (error instanceof CursorWindowError) {
-          const base = replace ? resetCursorWindow<Site>() : windowRef.current;
-          commitWindow(clearNextPageToken(base));
-        }
-        setPaginationError(errorMessage);
-        message.error(errorMessage);
-      })
-      .finally(() => {
-        if (requests.current.isCurrent(generation)) setLoading(false);
-      });
-  }, [commitWindow, message]);
-  const startLoad = useCallback((pageToken: string | null, replace: boolean) => {
-    if (replace) commitWindow(resetCursorWindow());
-    setPaginationError(null);
-    setLoading(true);
-    void loadPage(pageToken, replace);
-  }, [commitWindow, loadPage]);
-
-  useEffect(() => {
-    const requestGate = requests.current;
-    void loadPage(null, true);
-    return () => { requestGate.invalidate(); };
-  }, [loadPage]);
-
-  const columns: ProColumns<Site>[] = [
+  const [detailSiteRef, setDetailSiteRef] = useState<string | null>(null);
+  const { query: listQuery } = useInfiniteList<AdminSite>({
+    resource: "sites",
+    pagination: { mode: "server", currentPage: 1, pageSize: 100 },
+    queryOptions: { getNextPageParam: adminNextPageParam },
+  });
+  const { query: detailQuery, result: detail } = useOne<AdminSite>({
+    resource: "sites",
+    id: detailSiteRef ?? "",
+    queryOptions: { enabled: detailSiteRef !== null },
+  });
+  const list = adminInfiniteResult(listQuery.data);
+  const listError = listQuery.error ?? list.error;
+  const columns: ProColumns<AdminSite>[] = [
     { title: "Site", dataIndex: "siteRef", copyable: true, ellipsis: true },
     { title: "状态", dataIndex: "status", render: (_, row) => <Tag color="blue">{row.status}</Tag> },
     { title: "安全代次", dataIndex: "securityEpoch", width: 120 },
-    { title: "操作", valueType: "option", render: (_, row) => <Button type="link" onClick={async () => {
-      try { setDetail(await apiGet(`/api/control/sites/${encodeURIComponent(row.siteRef)}`, site)); }
-      catch (error) { message.error(error instanceof Error ? error.message : "加载失败"); }
-    }}>详情</Button> },
+    { title: "操作", valueType: "option", render: (_, row) =>
+      <Button type="link" onClick={() => setDetailSiteRef(row.siteRef)}>详情</Button> },
   ];
 
   return <PageContainer header={{ title: "站点与发布" }}
     content="中央 Admin 通过 Platform typed control plane 管理独立 Site。站点注册使用全局授权；发布只使用当前选中的 Site 授权。"
     extra={<Space wrap>
       <Button href="/api/control/auth/step-up?operation=site.register&resource=platform-sites&return=/sites">提升注册认证</Button>
-      <RegisterSite onRegistered={() => { reloadSites(); startLoad(null, true); }} />
+      <RegisterSite onRegistered={() => { reloadSites(); void listQuery.refetch(); }} />
       <Button disabled={!siteId}
         href={siteId ? `/api/control/auth/step-up?operation=site.release.publish&resource=${encodeURIComponent(siteId)}&return=/sites` : undefined}>
         提升发布认证
       </Button>
-      <PublishRelease siteId={siteId} onPublished={() => { startLoad(null, true); }} />
+      <PublishRelease siteId={siteId} onPublished={() => { void listQuery.refetch(); }} />
     </Space>}>
-    {paginationError && <Alert type="error" showIcon message="站点列表未完整加载" description={paginationError} />}
-    <ProTable<Site> rowKey="siteRef" columns={columns} search={false} pagination={false}
-      dataSource={[...window.rows]} loading={loading} options={{ reload: () => { startLoad(null, true); }, density: true }}
-      toolBarRender={() => window.nextPageToken ? [<Button key="load-more" loading={loading}
-        onClick={() => { startLoad(window.nextPageToken, false); }}>加载更多</Button>] : []} />
-    <Modal title="站点详情" open={detail !== null} footer={null} onCancel={() => setDetail(null)} destroyOnHidden>
-      {detail && <Descriptions column={1} items={[
-        { key: "site", label: "Site", children: detail.siteRef },
-        { key: "status", label: "状态", children: detail.status },
-        { key: "epoch", label: "安全代次", children: detail.securityEpoch },
-      ]} />}
+    {listError && <Alert type="error" showIcon message="站点列表加载失败"
+      description={listError.message} style={{ marginBottom: 16 }} />}
+    <ProTable<AdminSite> rowKey="siteRef" columns={columns} search={false} pagination={false}
+      dataSource={list.records}
+      loading={listQuery.isLoading || (listQuery.isFetching && !listQuery.isFetchingNextPage)}
+      options={{ reload: () => { void listQuery.refetch(); }, density: true }}
+      toolBarRender={() => listQuery.hasNextPage ? [<Button key="load-more" icon={<DownOutlined />}
+        loading={listQuery.isFetchingNextPage}
+        onClick={() => { void listQuery.fetchNextPage(); }}>加载更多</Button>] : []} />
+    <Modal title="站点详情" open={detailSiteRef !== null} footer={null}
+      onCancel={() => setDetailSiteRef(null)} destroyOnHidden>
+      <Spin spinning={detailQuery.isLoading || detailQuery.isFetching}>
+        {detailQuery.error && <Alert type="error" showIcon message="站点详情加载失败"
+          description={detailQuery.error.message} />}
+        {detail && <Descriptions column={1} items={[
+          { key: "site", label: "Site", children: detail.siteRef },
+          { key: "status", label: "状态", children: detail.status },
+          { key: "epoch", label: "安全代次", children: detail.securityEpoch },
+        ]} />}
+      </Spin>
     </Modal>
   </PageContainer>;
 }

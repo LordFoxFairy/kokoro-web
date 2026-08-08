@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const calls = vi.hoisted(() => ({
   listSites: vi.fn(), getSite: vi.fn(), registerSite: vi.fn(), publishSiteRelease: vi.fn(), getAuditWithinScope: vi.fn(),
+  listOperators: vi.fn(), listPendingApprovals: vi.fn(),
 }));
 
 vi.mock("@/lib/control-plane/client", () => ({
@@ -16,6 +17,8 @@ beforeEach(() => {
   calls.registerSite.mockResolvedValue({ siteId: "site-one" });
   calls.publishSiteRelease.mockResolvedValue({ siteId: "site-one", releaseRef: "release-001" });
   calls.getAuditWithinScope.mockResolvedValue({ items: [], nextPageToken: null });
+  calls.listOperators.mockResolvedValue({ items: [], nextPageToken: null });
+  calls.listPendingApprovals.mockResolvedValue({ items: [], nextPageToken: null });
 });
 
 function jsonRequest(url: string, body: unknown): Request {
@@ -28,16 +31,17 @@ describe("typed Site control routes", () => {
     const route = await import("../app/api/control/sites/route").catch(() => null);
     expect(route).not.toBeNull();
     if (route === null) return;
-    const response = await route.GET(new Request("https://admin.example/api/control/sites?pageToken=next"));
+    const pageToken = "x".repeat(1_024);
+    const response = await route.GET(new Request(`https://admin.example/api/control/sites?pageToken=${pageToken}`));
     expect(response.status).toBe(200);
-    expect(calls.listSites).toHaveBeenCalledWith("next");
+    expect(calls.listSites).toHaveBeenCalledWith(pageToken);
   });
 
   it.each([
     "https://admin.example/api/control/sites?unknown=value",
     "https://admin.example/api/control/sites?pageToken=one&pageToken=two",
     "https://admin.example/api/control/sites?pageToken=",
-    `https://admin.example/api/control/sites?pageToken=${"x".repeat(257)}`,
+    `https://admin.example/api/control/sites?pageToken=${"x".repeat(1_025)}`,
     `https://admin.example/api/control/sites?pageToken=${"x".repeat(4_097)}`,
   ])("rejects non-canonical Site list queries: %s", async (url) => {
     const route = await import("../app/api/control/sites/route");
@@ -110,9 +114,12 @@ describe("typed Audit control route", () => {
     const route = await import("../app/api/control/audit/route").catch(() => null);
     expect(route).not.toBeNull();
     if (route === null) return;
-    const response = await route.GET(new Request("https://admin.example/api/control/audit?siteId=site-one&pageToken=next"));
+    const pageToken = "x".repeat(1_024);
+    const response = await route.GET(new Request(
+      `https://admin.example/api/control/audit?siteId=site-one&pageToken=${pageToken}`,
+    ));
     expect(response.status).toBe(200);
-    expect(calls.getAuditWithinScope).toHaveBeenCalledWith("site-one", "next");
+    expect(calls.getAuditWithinScope).toHaveBeenCalledWith("site-one", pageToken);
   });
 
   it.each([
@@ -121,12 +128,55 @@ describe("typed Audit control route", () => {
     "https://admin.example/api/control/audit?pageToken=one&pageToken=two",
     "https://admin.example/api/control/audit?siteId=",
     "https://admin.example/api/control/audit?pageToken=",
-    `https://admin.example/api/control/audit?pageToken=${"x".repeat(257)}`,
+    `https://admin.example/api/control/audit?pageToken=${"x".repeat(1_025)}`,
     `https://admin.example/api/control/audit?pageToken=${"x".repeat(4_097)}`,
   ])("rejects non-canonical Audit queries: %s", async (url) => {
     const route = await import("../app/api/control/audit/route");
     const response = await route.GET(new Request(url));
     expect(response.status).toBe(400);
     expect(calls.getAuditWithinScope).not.toHaveBeenCalled();
+  });
+});
+
+describe("typed Refine resource control routes", () => {
+  it("forwards exact Operator and Approval cursors to AdminQuery", async () => {
+    const operators = await import("../app/api/control/operators/route");
+    const approvals = await import("../app/api/control/approvals/route");
+    const pageToken = "x".repeat(1_024);
+
+    expect((await operators.GET(new Request(
+      `https://admin.example/api/control/operators?pageToken=${pageToken}`,
+    ))).status).toBe(200);
+    expect(calls.listOperators).toHaveBeenCalledWith(pageToken);
+    expect((await approvals.GET(new Request(
+      `https://admin.example/api/control/approvals?siteId=site-one&pageToken=${pageToken}`,
+    ))).status).toBe(200);
+    expect(calls.listPendingApprovals).toHaveBeenCalledWith("site-one", pageToken);
+  });
+
+  it.each([
+    "https://admin.example/api/control/operators?unexpected=1",
+    "https://admin.example/api/control/operators?pageToken=one&pageToken=two",
+    "https://admin.example/api/control/operators?pageToken=",
+    `https://admin.example/api/control/operators?pageToken=${"x".repeat(1_025)}`,
+  ])("rejects non-canonical Operator list queries: %s", async (url) => {
+    const operators = await import("../app/api/control/operators/route");
+    const response = await operators.GET(new Request(url));
+    expect(response.status).toBe(400);
+    expect(calls.listOperators).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    "https://admin.example/api/control/approvals?unexpected=1",
+    "https://admin.example/api/control/approvals?siteId=one&siteId=two",
+    "https://admin.example/api/control/approvals?pageToken=one&pageToken=two",
+    "https://admin.example/api/control/approvals?siteId=",
+    "https://admin.example/api/control/approvals?pageToken=",
+    `https://admin.example/api/control/approvals?pageToken=${"x".repeat(1_025)}`,
+  ])("rejects non-canonical Approval list queries: %s", async (url) => {
+    const approvals = await import("../app/api/control/approvals/route");
+    const response = await approvals.GET(new Request(url));
+    expect(response.status).toBe(400);
+    expect(calls.listPendingApprovals).not.toHaveBeenCalled();
   });
 });

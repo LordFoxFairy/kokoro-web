@@ -26,17 +26,18 @@ describe("Admin typed control-plane boundary", () => {
     const client = source("lib/control-plane/client.ts");
     const sites = source("app/sites/page.tsx");
     const audit = source("app/audit/page.tsx");
+    const provider = source("lib/refine/admin-data-provider.ts");
     const shell = source("components/shell/app-shell.tsx");
     expect(client).toContain("listSites");
     expect(client).toContain("getSite");
     expect(client).toContain("registerSiteRequestDigest");
     expect(client).toContain("publishSiteReleaseRequestDigest");
     expect(client).toContain("getAuditWithinScope");
-    expect(sites).toContain("/api/control/sites");
+    expect(provider).toContain("/api/control/sites");
     expect(sites).toContain("/api/control/sites/releases");
     expect(sites).not.toContain("ResourceTable");
     expect(sites).not.toContain("/api/resource");
-    expect(audit).toContain("/api/control/audit");
+    expect(provider).toContain("/api/control/audit");
     expect(audit).not.toContain("EndpointTable");
     expect(audit).not.toContain("/api/audit");
     expect(shell).toContain("/api/control/sites");
@@ -64,25 +65,40 @@ describe("Admin typed control-plane boundary", () => {
     expect(client).not.toContain("commerceHardCut");
   });
 
-  it("loads every bounded Site selector page and preserves cursor-paginated tables", () => {
+  it("loads bounded cursor collections through the Site selector and Refine resources", () => {
     const shell = source("components/shell/app-shell.tsx");
     const sites = source("app/sites/page.tsx");
     const audit = source("app/audit/page.tsx");
+    const approvals = source("app/approvals/page.tsx");
+    const operators = source("app/operators/page.tsx");
+    const overview = source("app/page.tsx");
+    const provider = source("lib/refine/admin-data-provider.ts");
     expect(shell).toContain("collectCursorPages");
     expect(shell).toContain("maxItems: 1000");
     expect(shell).toContain("timeoutMs: 5_000");
     expect(shell).toContain("LatestRequest");
-    for (const page of [sites, audit]) {
-      expect(page).toContain("appendCursorPage");
-      expect(page).toContain("clearNextPageToken");
-      expect(page).toContain("resetCursorWindow");
-      expect(page).toContain("maxItems: 1000");
-      expect(page).toContain("maxPages: 20");
-      expect(page).toContain("nextPageToken");
-      expect(page).toContain("加载更多");
-      expect(page).toContain("pageToken");
-      expect(page).toContain("dataSource={[");
-      expect(page).toContain("LatestRequest");
+    expect(provider).toContain("max(1024)");
+    expect(provider).toContain("cursor: { next:");
+    expect(provider).toContain("pageToken");
+    expect(provider).toContain("adminInfiniteResult");
+    expect(provider).toContain("maxPages: 20");
+    expect(provider).toContain("maxItems: 1000");
+    for (const page of [overview, sites, approvals, audit, operators]) {
+      expect(page).toContain("useInfiniteList<");
+      expect(page).toContain('pageSize: 100');
+      expect(page).toContain("getNextPageParam: adminNextPageParam");
     }
+    for (const page of [sites, approvals, audit, operators]) {
+      expect(page).toContain("fetchNextPage");
+      expect(page).toContain("加载更多");
+      expect(page).toContain("adminInfiniteResult");
+      expect(page).not.toContain("pages.flatMap");
+      expect(page).not.toContain("appendCursorPage");
+      expect(page).not.toContain("LatestRequest");
+    }
+    expect(shell).toContain("adminSiteListSchema");
+    expect(shell).toContain("operatorSchema");
+    expect(shell).not.toContain("const currentOperatorSchema = z.object");
+    expect(shell).not.toContain("const siteListSchema = z.object");
   });
 });

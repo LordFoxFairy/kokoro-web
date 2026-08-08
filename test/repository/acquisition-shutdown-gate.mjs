@@ -38,7 +38,7 @@ const RETIRED_ADMIN_GENERIC_ROUTES = new Set([
 const ADMIN_CONTROL_ROUTES = new Map([
   ["apps/admin/app/api/control/approvals/route.ts", {
     methods: ["GET"],
-    imports: ["@/lib/control-plane/client", "@/lib/control-plane/http"],
+    imports: ["@/lib/control-plane/client", "@/lib/control-plane/http", "@/lib/control-plane/strict-query"],
   }],
   ["apps/admin/app/api/control/audit/route.ts", {
     methods: ["GET"],
@@ -126,7 +126,7 @@ const ADMIN_CONTROL_ROUTES = new Map([
   }],
   ["apps/admin/app/api/control/operators/route.ts", {
     methods: ["GET"],
-    imports: ["@/lib/control-plane/client", "@/lib/control-plane/http"],
+    imports: ["@/lib/control-plane/client", "@/lib/control-plane/http", "@/lib/control-plane/strict-query"],
   }],
   ["apps/admin/app/api/control/sites/[siteId]/route.ts", {
     methods: ["GET"],

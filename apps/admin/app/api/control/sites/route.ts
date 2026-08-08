@@ -19,7 +19,7 @@ const registerSiteInput = z.object({
 
 export async function GET(request: NextRequest | Request) {
   try {
-    const query = strictQuery(request, { pageToken: z.string().min(1).max(256).optional() });
+    const query = strictQuery(request, { pageToken: z.string().min(1).max(1024).optional() });
     return controlJson(await listSites(query.pageToken));
   } catch (error) { return controlError(error); }
 }

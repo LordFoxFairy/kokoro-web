@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Tag } from "antd";
 import { PageContainer, ProCard, StatisticCard } from "@ant-design/pro-components";
+import { useInfiniteList } from "@refinedev/core";
 import {
   UserOutlined,
   WalletOutlined,
@@ -13,8 +14,6 @@ import {
   FileTextOutlined,
   SafetyOutlined,
 } from "@ant-design/icons";
-import { z } from "zod";
-import { apiGet } from "@/lib/api";
 import {
   creditSummaryRequestKey,
   startCreditSummaryRequest,
@@ -23,6 +22,11 @@ import {
 import { formatCreditDecimal, type SiteCreditSummary } from "@/lib/credit-contract";
 import { useAdmin } from "@/components/shell/app-shell";
 import { adminNavigationAccess, canAccessAdminSurface } from "@/lib/admin-surface-permissions";
+import {
+  adminInfiniteResult,
+  adminNextPageParam,
+  type AdminApproval,
+} from "@/lib/refine/admin-data-provider";
 
 const ENTRIES = [
   { label: "用户", href: "/users", icon: <UserOutlined />, desc: "按站点查询用户身份", signedSurface: "users" },
@@ -34,30 +38,27 @@ const ENTRIES = [
   { label: "操作员", href: "/operators", icon: <SafetyOutlined />, desc: "角色 · 作用域" },
 ] as const;
 
-const pendingSchema = z.array(z.object({ status: z.string() }).passthrough());
 const NO_PERMISSIONS: readonly string[] = Object.freeze([]);
 
 export default function Page(): React.ReactElement {
   const { me, sites, siteId } = useAdmin();
-  const [pending, setPending] = useState<number | null>(null);
   const [settledCredit, setSettledCredit] = useState<SettledCreditSummary | null>(null);
+  const { query: pendingQuery } = useInfiniteList<AdminApproval>({
+    resource: "approvals",
+    pagination: { mode: "server", currentPage: 1, pageSize: 100 },
+    queryOptions: { getNextPageParam: adminNextPageParam },
+  });
+  const pendingList = adminInfiniteResult(pendingQuery.data);
+  const loadedPending = pendingList.records.length;
+  const pending = pendingQuery.error || pendingList.error || pendingQuery.isLoading
+    ? null
+    : pendingQuery.hasNextPage ? `${loadedPending}+` : loadedPending;
   const permissions = me?.permissions ?? NO_PERMISSIONS;
   const signedNavigation = adminNavigationAccess(permissions);
   const canReadCreditSummary = canAccessAdminSurface(permissions, "creditSummary");
   const creditSiteId = creditSummaryRequestKey({ siteId, permissions });
   const credit: SiteCreditSummary | null =
     creditSiteId !== null && settledCredit?.siteId === creditSiteId ? settledCredit.data : null;
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const rows = await apiGet("/api/control/approvals", pendingSchema);
-        setPending(rows.filter((r) => r.status === "pending").length);
-      } catch {
-        setPending(null);
-      }
-    })();
-  }, []);
 
   useEffect(
     () => startCreditSummaryRequest({ siteId, permissions }, setSettledCredit),
@@ -94,7 +95,7 @@ export default function Page(): React.ReactElement {
             statistic={{
               title: "待审批",
               value: pending ?? "—",
-              valueStyle: { color: (pending ?? 0) > 0 ? "#d48806" : undefined },
+              valueStyle: { color: loadedPending > 0 ? "#d48806" : undefined },
               description: <span style={{ color: "rgba(0,0,0,0.45)" }}>maker-checker 队列</span>,
             }}
           />

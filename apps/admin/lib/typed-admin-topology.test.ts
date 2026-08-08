@@ -67,8 +67,21 @@ describe("typed Admin topology", () => {
       expect(shell, route).not.toContain(route);
     }
     expect(shell).not.toContain("manifests");
-    expect(source("app/page.tsx")).toContain('apiGet("/api/control/approvals"');
+    expect(source("app/page.tsx")).toContain('resource: "approvals"');
+    expect(source("app/page.tsx")).not.toContain('apiGet("/api/control/approvals"');
     expect(source("lib/admin-surface-permissions.ts")).not.toContain("creditProgram");
+  });
+
+  it("registers every list surface in the closed Refine resource registry", () => {
+    const shell = source("components/shell/app-shell.tsx");
+    const provider = source("lib/refine/admin-data-provider.ts");
+    for (const resource of ["operators", "sites", "approvals", "audit"]) {
+      expect(shell).toContain(`{ name: "${resource}"`);
+      expect(provider).toContain(`${resource}:`);
+    }
+    expect(provider).not.toContain("admin_resource_page_incomplete");
+    expect(provider).toContain("admin_resource_pagination_not_supported");
+    expect(provider).toContain("Object.hasOwn(LIST_LOADERS, resource)");
   });
 
   it("does not ship a second component system beside Ant Design", () => {

@@ -5,6 +5,8 @@ Next.js security BFF with Refine, Ant Design 5, and stable Pro Components for au
 ## Runtime boundary
 
 - Operator login is Platform-owned OIDC through typed `AdminIdentityService`; magic-link and email authority are not supported.
+- Anonymous `/login` and `/auth/verify` renders make no current-operator or Site-catalog request; switching into
+  either route invalidates an older catalog generation without changing the Platform OIDC flow.
 - The BFF calls the dedicated Platform Admin listener over HTTP/2 mTLS. Browsers call only same-origin typed `/api/control/*` routes.
 - Platform session deliveries are fixed-profile signed-then-encrypted JOSE envelopes. The BFF verifies both layers, exact headers, issuer, audience, workload axes, transaction digest, epochs and attestation before creating its short-lived encrypted HttpOnly session.
 - The authority cookie carries the operator's active Site scopes for the configured environment and region. Each BFF request selects one `siteId`; Platform remains the final scope and permission authority.
@@ -13,6 +15,17 @@ Next.js security BFF with Refine, Ant Design 5, and stable Pro Components for au
 - Site registration uses an independently granted global scope; SiteRelease publication narrows the command context to the selected Site. The release form submits externally signed certification facts and proof, never a signing private key.
 - Unimplemented Commerce and card-code screens are absent. They return only with typed maker/checker, one-time delivery acknowledgement, and authoritative receipt recovery.
 - Refine is a browser resource/query framework only. Its provider is a closed exact-resource registry; it never receives a Platform URL, credential, database connection, or generic mutation authority.
+- Operators, Sites, pending Approvals, and scoped Audit are registered Refine resources. Their exact BFF schemas,
+  optional Site filter, identity mapping, and opaque cursor traversal live once in the provider; resource pages do
+  not issue parallel list requests. Site detail is the only registered resource detail read.
+- Cursor lists use Refine `useInfiniteList` with a fixed 100-row BFF page and explicit load-more controls. The
+  provider returns `cursor.next`, accepts the canonical 1024-character token, rejects offset/page-size requests,
+  disables numeric fallback on terminal pages, and normalizes BFF failures to Refine `HttpError`. Its shared
+  cumulative window fails closed on cursor cycles, repeated page params, duplicate IDs, more than 20 pages, more
+  than 1000 records, or continuation at either limit. The App shell
+  reuses the same exact Operator/Site schemas for its authority header and bounded Site selector. The overview
+  reads the same validated Approvals resource and
+  shows a lower bound when a continuation exists rather than claiming an unavailable global total.
 
 Copy `.env.example` to the deployment secret configuration. TLS keys and delivery key rings are loaded lazily from bounded private files; no secret is a build argument.
 

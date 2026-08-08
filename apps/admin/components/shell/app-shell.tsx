@@ -27,12 +27,11 @@ import {
   type Me,
   type Site,
 } from "@/lib/schemas";
-import { z } from "zod";
 import { antdTheme, proLayoutToken } from "@/lib/theme";
 import { LocaleProvider, useLocale, useT } from "@/lib/i18n/context";
 import type { MessageKey } from "@/lib/i18n/messages";
 import { adminNavigationAccess } from "@/lib/admin-surface-permissions";
-import { adminDataProvider } from "@/lib/refine/admin-data-provider";
+import { adminDataProvider, adminSiteListSchema, operatorSchema } from "@/lib/refine/admin-data-provider";
 
 interface AdminCtx {
   me: Me | null;
@@ -97,10 +96,11 @@ function AppShellInner({ children }: { children: React.ReactNode }): React.React
   const [siteCatalogError, setSiteCatalogError] = useState<string | null>(null);
   const siteCatalogRequests = useRef(new LatestRequest());
   const pathname = usePathname();
+  const isPublicRoute = pathname.startsWith("/login") || pathname.startsWith("/auth/verify");
 
   const reloadSites = useCallback(() => {
     const generation = siteCatalogRequests.current.begin();
-    apiGet("/api/control/operator", currentOperatorSchema)
+    apiGet("/api/control/operator", operatorSchema)
       .then((loaded) => {
         if (!siteCatalogRequests.current.isCurrent(generation)) return;
         setMe({ email: loaded.operatorRef, roleKey: loaded.state, permissions: loaded.effectivePermissions,
@@ -110,7 +110,7 @@ function AppShellInner({ children }: { children: React.ReactNode }): React.React
     collectCursorPages(
       (pageToken, signal) => apiGet(
         `/api/control/sites${pageToken ? `?pageToken=${encodeURIComponent(pageToken)}` : ""}`,
-        siteListSchema,
+        adminSiteListSchema,
         { signal },
       ),
       { identity: (site) => site.siteRef, maxItems: 1000, maxPages: 20, timeoutMs: 5_000 },
@@ -130,9 +130,13 @@ function AppShellInner({ children }: { children: React.ReactNode }): React.React
 
   useEffect(() => {
     const requestGate = siteCatalogRequests.current;
+    if (isPublicRoute) {
+      requestGate.invalidate();
+      return;
+    }
     reloadSites();
     return () => { requestGate.invalidate(); };
-  }, [reloadSites]);
+  }, [isPublicRoute, reloadSites]);
 
   const can = (permission: string | null): boolean =>
     permission === null || permits(me?.permissions ?? [], permission);
@@ -145,6 +149,9 @@ function AppShellInner({ children }: { children: React.ReactNode }): React.React
       routerProvider={routerProvider}
       resources={[
         { name: "operators", list: "/operators", meta: { label: "操作员" } },
+        { name: "sites", list: "/sites", meta: { label: "站点" } },
+        { name: "approvals", list: "/approvals", meta: { label: "审批" } },
+        { name: "audit", list: "/audit", meta: { label: "审计" } },
       ]}
       options={{ disableTelemetry: true, syncWithLocation: true, warnWhenUnsavedChanges: true }}
     >
@@ -153,7 +160,7 @@ function AppShellInner({ children }: { children: React.ReactNode }): React.React
   );
 
   // 登录/确认页只给主题、不套 ProLayout。
-  if (pathname.startsWith("/login") || pathname.startsWith("/auth/verify")) {
+  if (isPublicRoute) {
     return (
       <ConfigProvider locale={zhCN} theme={antdTheme}>
         <App>
@@ -248,15 +255,6 @@ function AppShellInner({ children }: { children: React.ReactNode }): React.React
     </ConfigProvider>
   );
 }
-
-const currentOperatorSchema = z.object({
-  operatorRef: z.string(), state: z.string(), effectivePermissions: z.array(z.string()),
-  effectiveSiteScopes: z.array(z.object({ siteId: z.string() })),
-});
-const siteListSchema = z.object({
-  items: z.array(z.object({ siteRef: z.string(), status: z.string(), securityEpoch: z.string() })),
-  nextPageToken: z.string().min(1).max(256).nullable(),
-});
 
 export function AppShell({ children }: { children: React.ReactNode }): React.ReactElement {
   return (
