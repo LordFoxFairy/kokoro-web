@@ -49,6 +49,7 @@ export const adminSiteSchema = z.object({
 }).strict();
 
 export const approvalSchema = z.object({
+  owner: z.enum(["generic_admin", "site_lifecycle"]),
   approvalRef: z.string().uuid(),
   operation: z.string().min(1).max(128),
   makerRef: z.string().min(1).max(128),
@@ -107,7 +108,7 @@ const LIST_LOADERS = Object.freeze({
     const siteId = optionalSiteId(filters);
     const page = await apiGet(resourcePath("/api/control/approvals", siteId, pageToken), approvalListSchema,
       { signal });
-    return { records: page.items.map((item) => ({ id: item.approvalRef, ...item })),
+    return { records: page.items.map((item) => ({ id: `${item.owner}:${item.approvalRef}`, ...item })),
       nextPageToken: page.nextPageToken };
   },
   audit: async (filters: ResourceFilters, pageToken: string | undefined, signal: AbortSignal | undefined) => {

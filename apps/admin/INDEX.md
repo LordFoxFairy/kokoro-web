@@ -42,6 +42,9 @@ return a stable 503 body without diagnostics.
 Admin effects use stable command IDs and generated canonical protobuf digests. Model mutations use a stateless prepare→execute protocol: prepare validates the full command and returns a bounded opaque reference containing its lowercase UUIDv4 identity and canonical digest without executing; the browser persists that reference before sending execute, but never persists the potentially 16 MiB command body. Execute decodes the same reference, reconstructs and reauthorizes the scope, recomputes the canonical digest, and rejects any body/identity mismatch before invoking Platform. The browser keeps at most one pending reference and blocks new Model writes. A lost execute response or page restart is recovered only through the authoritative receipt query. Only a successful committed receipt clears the reference; NotFound, timeout, invalid recovery, or operator confirmation cannot unlock a new effect. Card issuance never auto-replays an unknown delivery outcome.
 
 Resource lists use the opaque BFF `pageToken` contract instead of translating cursors into offset page numbers.
+Approval records use the owner-qualified public identity `(owner, approvalRef)` from the generated Admin Query
+contract. The BFF preserves `owner`, and Refine keys each row as `${owner}:${approvalRef}`; a UUID is never treated
+as globally unique across approval owners.
 The provider fixes `pageSize` at 100, returns `cursor.next` to Refine `useInfiniteList`, and accepts only the
 initial page or the opaque continuation token that Refine passes back at runtime. Resource pages retain loaded
 rows and expose explicit load-more controls without fabricating an offset or global total. Every infinite query

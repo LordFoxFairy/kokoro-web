@@ -15,7 +15,7 @@ import {
   AuthenticatedOperatorCommandContextSchema, AuthenticatedOperatorQueryContextSchema,
   GlobalScopeSchema, OperatorScopeSchema, SecurityEpochsSchema, SiteScopeSchema,
 } from "@/lib/generated/proto/kokoro/platform/admin/v2/admin_shared_pb";
-import { AdminQueryService, OperatorState } from
+import { AdminQueryService, OperatorState, PendingApprovalOwner } from
   "@/lib/generated/proto/kokoro/platform/admin/v2/admin_query_pb";
 import type { CommandReceiptV2 } from "@/lib/generated/proto/kokoro/common/v2/command_envelope_pb";
 import {
@@ -198,7 +198,8 @@ export async function listPendingApprovals(siteId?: string, pageToken?: string) 
   const { query, headers, context } = await queryCall();
   const response = await query.listPendingApprovals({ context, pageSize: 100,
     ...(siteId ? { siteId } : {}), ...(pageToken ? { pageToken } : {}) }, { headers });
-  return { items: response.approvals.map((item) => ({ approvalRef: item.approvalRef, operation: item.operation,
+  return { items: response.approvals.map((item) => ({
+    owner: enumLabel(PendingApprovalOwner, item.owner), approvalRef: item.approvalRef, operation: item.operation,
     makerRef: item.makerRef, targetSiteRef: item.targetSiteRef ?? null, environment: item.environment,
     region: item.region, operatorReason: item.operatorReason,
     admittedAt: requiredInstant(item.admittedAt), expiresAt: requiredInstant(item.expiresAt) })),

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { adminDataProvider, adminNextPageParam } from "./admin-data-provider";
+import { adminDataProvider, adminInfiniteResult, adminNextPageParam } from "./admin-data-provider";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -68,11 +68,12 @@ describe("Refine typed Admin data provider", () => {
       resource: "approvals",
       path: "/api/control/approvals?siteId=site-one",
       filters: [{ field: "siteId", operator: "eq" as const, value: "site-one" }],
-      item: { approvalRef: "00000000-0000-4000-8000-000000000001", operation: "site.publish", makerRef: "operator:one",
+      item: { owner: "site_lifecycle", approvalRef: "00000000-0000-4000-8000-000000000001",
+        operation: "site.publish", makerRef: "operator:one",
         targetSiteRef: "site-one", environment: "production", region: "us-east-1",
         operatorReason: "reviewed", admittedAt: "2026-08-06T00:00:00.000Z",
         expiresAt: "2026-08-07T00:00:00.000Z" },
-      id: "00000000-0000-4000-8000-000000000001",
+      id: "site_lifecycle:00000000-0000-4000-8000-000000000001",
     },
     {
       resource: "audit",
@@ -146,7 +147,8 @@ describe("Refine typed Admin data provider", () => {
 
   it("rejects an Approval response wider than the generated Admin Query contract", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ data: {
-      items: [{ approvalRef: "00000000-0000-4000-8000-000000000001", operation: "x".repeat(129),
+      items: [{ owner: "generic_admin", approvalRef: "00000000-0000-4000-8000-000000000001",
+        operation: "x".repeat(129),
         makerRef: "operator:one", targetSiteRef: null, environment: "production", region: "us-east-1",
         operatorReason: "reviewed", admittedAt: "2026-08-06T00:00:00.000Z",
         expiresAt: "2026-08-07T00:00:00.000Z" }],
@@ -156,6 +158,27 @@ describe("Refine typed Admin data provider", () => {
     await expect(adminDataProvider.getList({ resource: "approvals",
       pagination: { mode: "server", currentPage: 1, pageSize: 100 } }))
       .rejects.toMatchObject({ statusCode: 502, message: "admin_resource_response_invalid" });
+  });
+
+  it("keeps equal Approval UUIDs distinct across owner boundaries", async () => {
+    const approvalRef = "00000000-0000-4000-8000-000000000001";
+    const approval = { approvalRef, operation: "approval.review", makerRef: "operator:one",
+      targetSiteRef: null, environment: "production", region: "us-east-1", operatorReason: "reviewed",
+      admittedAt: "2026-08-06T00:00:00.000Z", expiresAt: "2026-08-07T00:00:00.000Z" };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ data: {
+      items: [{ owner: "generic_admin", ...approval }, { owner: "site_lifecycle", ...approval }],
+      nextPageToken: null,
+    } }), { status: 200, headers: { "content-type": "application/json" } })));
+
+    const page = await adminDataProvider.getList({ resource: "approvals",
+      pagination: { mode: "server", currentPage: 1, pageSize: 100 } });
+    const result = adminInfiniteResult({ pages: [page], pageParams: [1] });
+
+    expect(result.error).toBeNull();
+    expect(result.records.map((item) => item.id)).toEqual([
+      `generic_admin:${approvalRef}`,
+      `site_lifecycle:${approvalRef}`,
+    ]);
   });
 
   it("normalizes malformed uint64 response fields to a 502 schema failure", async () => {

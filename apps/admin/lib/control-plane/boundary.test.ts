@@ -101,4 +101,14 @@ describe("Admin typed control-plane boundary", () => {
     expect(shell).not.toContain("const currentOperatorSchema = z.object");
     expect(shell).not.toContain("const siteListSchema = z.object");
   });
+
+  it("uses the owner-qualified Approval identity at the Refine boundary", () => {
+    const client = source("lib/control-plane/client.ts");
+    const provider = source("lib/refine/admin-data-provider.ts");
+    const approvals = source("app/approvals/page.tsx");
+    expect(client).toContain("PendingApprovalOwner");
+    expect(provider).toContain("${item.owner}:${item.approvalRef}");
+    expect(approvals).toContain('rowKey="id"');
+    expect(approvals).not.toContain('rowKey="approvalRef"');
+  });
 });

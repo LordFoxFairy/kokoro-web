@@ -37,7 +37,7 @@ export default function ApprovalsPage(): React.ReactElement {
   return <PageContainer header={{ title: "待审批" }} content="只展示当前权限范围内仍有效的 maker-checker 请求。具体批准在对应资源页完成。">
     {listError && <Alert type="error" showIcon message="审批列表加载失败"
       description={listError.message} style={{ marginBottom: 16 }} />}
-    <ProTable<AdminApproval> rowKey="approvalRef" columns={columns} search={false} pagination={false}
+    <ProTable<AdminApproval> rowKey="id" columns={columns} search={false} pagination={false}
       dataSource={list.records} loading={query.isLoading || (query.isFetching && !query.isFetchingNextPage)}
       options={{ reload: () => { void query.refetch(); }, density: true }}
       toolBarRender={() => query.hasNextPage ? [<Button key="load-more" icon={<DownOutlined />}
