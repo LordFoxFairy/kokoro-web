@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { resolve } from "node:path";
+import { relative, resolve, sep } from "node:path";
 import test from "node:test";
 
 const webRoot = resolve(import.meta.dirname, "../..");
@@ -33,6 +33,13 @@ function sourceFiles(directory) {
     const path = resolve(directory, entry.name);
     if (entry.isDirectory()) return sourceFiles(path);
     return /\.(?:mjs|ts|tsx)$/u.test(entry.name) ? [path] : [];
+  });
+}
+
+function allFiles(directory) {
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const path = resolve(directory, entry.name);
+    return entry.isDirectory() ? allFiles(path) : [path];
   });
 }
 
@@ -90,4 +97,14 @@ test("generated provenance owns only files below canonical roots", () => {
         `${manifestPath} owns an output outside canonical roots: ${output.path}`);
     }
   }
+});
+
+test("the Admin generated root contains only provenance-owned outputs", () => {
+  const manifestPath = "apps/admin/lib/generated/provenance.json";
+  const manifest = JSON.parse(readFileSync(resolve(webRoot, manifestPath), "utf8"));
+  const expected = [manifestPath, ...manifest.outputs.map(({ path }) => path)].sort();
+  const actual = allFiles(resolve(webRoot, "apps/admin/lib/generated"))
+    .map((path) => relative(webRoot, path).split(sep).join("/"))
+    .sort();
+  assert.deepEqual(actual, expected);
 });

@@ -73,9 +73,272 @@ export type SafeText = string;
 export type Id = string;
 export type PresentationMessageId = string;
 export type ShortText = string;
-export type PositiveUint64 = string;
+export type PositiveUint64 = `${1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9}${string}`;
 export type CanonicalUtcMs = string;
 export type ActionDecision = "approve" | "reject" | "edit" | "respond";
+export type PlanDecision = "accept" | "reject";
+export type MediaCandidate =
+  | ({
+      candidateRef: Id;
+      ordinal: number;
+      ownerVersion: PositiveUint64;
+      state:
+        | "allocated"
+        | "producing"
+        | "output-received"
+        | "validating"
+        | "ready"
+        | "restricted"
+        | "failed"
+        | "unknown"
+        | "cancel-requested"
+        | "canceled";
+      artifactRef?: Id;
+      artifactVersionRef?: Id;
+      safeFailure?: MediaFailure;
+    } & {
+      state: "allocated";
+    } & {
+      artifactRef?: never;
+      artifactVersionRef?: never;
+    } & {
+      safeFailure?: never;
+    })
+  | ({
+      candidateRef: Id;
+      ordinal: number;
+      ownerVersion: PositiveUint64;
+      state:
+        | "allocated"
+        | "producing"
+        | "output-received"
+        | "validating"
+        | "ready"
+        | "restricted"
+        | "failed"
+        | "unknown"
+        | "cancel-requested"
+        | "canceled";
+      artifactRef?: Id;
+      artifactVersionRef?: Id;
+      safeFailure?: MediaFailure;
+    } & {
+      state: "producing";
+    } & {
+      artifactRef?: never;
+      artifactVersionRef?: never;
+    } & {
+      safeFailure?: never;
+    })
+  | ({
+      candidateRef: Id;
+      ordinal: number;
+      ownerVersion: PositiveUint64;
+      state:
+        | "allocated"
+        | "producing"
+        | "output-received"
+        | "validating"
+        | "ready"
+        | "restricted"
+        | "failed"
+        | "unknown"
+        | "cancel-requested"
+        | "canceled";
+      artifactRef?: Id;
+      artifactVersionRef?: Id;
+      safeFailure?: MediaFailure;
+    } & {
+      state: "output-received";
+    } & {
+      artifactRef?: never;
+      artifactVersionRef?: never;
+    } & {
+      safeFailure?: never;
+    })
+  | ({
+      candidateRef: Id;
+      ordinal: number;
+      ownerVersion: PositiveUint64;
+      state:
+        | "allocated"
+        | "producing"
+        | "output-received"
+        | "validating"
+        | "ready"
+        | "restricted"
+        | "failed"
+        | "unknown"
+        | "cancel-requested"
+        | "canceled";
+      artifactRef?: Id;
+      artifactVersionRef?: Id;
+      safeFailure?: MediaFailure;
+    } & {
+      state: "validating";
+    } & {
+      artifactRef?: never;
+      artifactVersionRef?: never;
+    } & {
+      safeFailure?: never;
+    })
+  | ({
+      candidateRef: Id;
+      ordinal: number;
+      ownerVersion: PositiveUint64;
+      state:
+        | "allocated"
+        | "producing"
+        | "output-received"
+        | "validating"
+        | "ready"
+        | "restricted"
+        | "failed"
+        | "unknown"
+        | "cancel-requested"
+        | "canceled";
+      artifactRef?: Id;
+      artifactVersionRef?: Id;
+      safeFailure?: MediaFailure;
+    } & {
+      state: "ready";
+    } & {
+      artifactRef: Id;
+      artifactVersionRef: Id;
+      safeFailure?: never;
+    } & {
+      safeFailure?: never;
+    })
+  | ({
+      candidateRef: Id;
+      ordinal: number;
+      ownerVersion: PositiveUint64;
+      state:
+        | "allocated"
+        | "producing"
+        | "output-received"
+        | "validating"
+        | "ready"
+        | "restricted"
+        | "failed"
+        | "unknown"
+        | "cancel-requested"
+        | "canceled";
+      artifactRef?: Id;
+      artifactVersionRef?: Id;
+      safeFailure?: MediaFailure;
+    } & {
+      state: "restricted";
+    } & {
+      artifactRef?: never;
+      artifactVersionRef?: never;
+    } & {
+      safeFailure: MediaFailure;
+    })
+  | ({
+      candidateRef: Id;
+      ordinal: number;
+      ownerVersion: PositiveUint64;
+      state:
+        | "allocated"
+        | "producing"
+        | "output-received"
+        | "validating"
+        | "ready"
+        | "restricted"
+        | "failed"
+        | "unknown"
+        | "cancel-requested"
+        | "canceled";
+      artifactRef?: Id;
+      artifactVersionRef?: Id;
+      safeFailure?: MediaFailure;
+    } & {
+      state: "failed";
+    } & {
+      artifactRef?: never;
+      artifactVersionRef?: never;
+    } & {
+      safeFailure: MediaFailure;
+    })
+  | ({
+      candidateRef: Id;
+      ordinal: number;
+      ownerVersion: PositiveUint64;
+      state:
+        | "allocated"
+        | "producing"
+        | "output-received"
+        | "validating"
+        | "ready"
+        | "restricted"
+        | "failed"
+        | "unknown"
+        | "cancel-requested"
+        | "canceled";
+      artifactRef?: Id;
+      artifactVersionRef?: Id;
+      safeFailure?: MediaFailure;
+    } & {
+      state: "unknown";
+    } & {
+      artifactRef?: never;
+      artifactVersionRef?: never;
+    } & {
+      safeFailure?: never;
+    })
+  | ({
+      candidateRef: Id;
+      ordinal: number;
+      ownerVersion: PositiveUint64;
+      state:
+        | "allocated"
+        | "producing"
+        | "output-received"
+        | "validating"
+        | "ready"
+        | "restricted"
+        | "failed"
+        | "unknown"
+        | "cancel-requested"
+        | "canceled";
+      artifactRef?: Id;
+      artifactVersionRef?: Id;
+      safeFailure?: MediaFailure;
+    } & {
+      state: "cancel-requested";
+    } & {
+      artifactRef?: never;
+      artifactVersionRef?: never;
+    } & {
+      safeFailure?: never;
+    })
+  | ({
+      candidateRef: Id;
+      ordinal: number;
+      ownerVersion: PositiveUint64;
+      state:
+        | "allocated"
+        | "producing"
+        | "output-received"
+        | "validating"
+        | "ready"
+        | "restricted"
+        | "failed"
+        | "unknown"
+        | "cancel-requested"
+        | "canceled";
+      artifactRef?: Id;
+      artifactVersionRef?: Id;
+      safeFailure?: MediaFailure;
+    } & {
+      state: "canceled";
+    } & {
+      artifactRef?: never;
+      artifactVersionRef?: never;
+    } & {
+      safeFailure?: never;
+    });
 export type ArtifactDisplay =
   | {
       kind: "image";
@@ -179,36 +442,166 @@ export interface RunReplacedData {
 }
 export interface ControlReplacedData {
   timestamp: Timestamp;
-  value: {
-    controlRef: Id;
-    ownerRef: Id;
-    decisionGroupRef: Id;
-    kind: "approval" | "interaction" | "plan" | "cancellation";
-    state: "pending" | "accepted" | "rejected" | "expired" | "canceled";
-    ownerVersion: PositiveUint64;
-    /**
-     * @maxItems 4
-     */
-    allowedActions:
-      | []
-      | ["approve" | "reject" | "edit" | "respond" | "accept"]
-      | [
-          "approve" | "reject" | "edit" | "respond" | "accept",
-          "approve" | "reject" | "edit" | "respond" | "accept",
-        ]
-      | [
-          "approve" | "reject" | "edit" | "respond" | "accept",
-          "approve" | "reject" | "edit" | "respond" | "accept",
-          "approve" | "reject" | "edit" | "respond" | "accept",
-        ]
-      | [
-          "approve" | "reject" | "edit" | "respond" | "accept",
-          "approve" | "reject" | "edit" | "respond" | "accept",
-          "approve" | "reject" | "edit" | "respond" | "accept",
-          "approve" | "reject" | "edit" | "respond" | "accept",
-        ];
-    updatedAt: CanonicalUtcMs;
-  };
+  value:
+    | ({
+        controlRef: Id;
+        ownerRef: Id;
+        decisionGroupRef: Id;
+        kind: "approval" | "interaction" | "plan" | "cancellation";
+        state: "pending" | "accepted" | "rejected" | "expired" | "canceled";
+        ownerVersion: PositiveUint64;
+        /**
+         * @maxItems 4
+         */
+        allowedActions:
+          | []
+          | ["approve" | "reject" | "edit" | "respond" | "accept"]
+          | [
+              "approve" | "reject" | "edit" | "respond" | "accept",
+              "approve" | "reject" | "edit" | "respond" | "accept",
+            ]
+          | [
+              "approve" | "reject" | "edit" | "respond" | "accept",
+              "approve" | "reject" | "edit" | "respond" | "accept",
+              "approve" | "reject" | "edit" | "respond" | "accept",
+            ]
+          | [
+              "approve" | "reject" | "edit" | "respond" | "accept",
+              "approve" | "reject" | "edit" | "respond" | "accept",
+              "approve" | "reject" | "edit" | "respond" | "accept",
+              "approve" | "reject" | "edit" | "respond" | "accept",
+            ];
+        updatedAt: CanonicalUtcMs;
+      } & {
+        kind: "approval";
+      } & {
+        /**
+         * @minItems 1
+         * @maxItems 4
+         */
+        allowedActions?:
+          | [ActionDecision]
+          | [ActionDecision, ActionDecision]
+          | [ActionDecision, ActionDecision, ActionDecision]
+          | [ActionDecision, ActionDecision, ActionDecision, ActionDecision];
+      })
+    | ({
+        controlRef: Id;
+        ownerRef: Id;
+        decisionGroupRef: Id;
+        kind: "approval" | "interaction" | "plan" | "cancellation";
+        state: "pending" | "accepted" | "rejected" | "expired" | "canceled";
+        ownerVersion: PositiveUint64;
+        /**
+         * @maxItems 4
+         */
+        allowedActions:
+          | []
+          | ["approve" | "reject" | "edit" | "respond" | "accept"]
+          | [
+              "approve" | "reject" | "edit" | "respond" | "accept",
+              "approve" | "reject" | "edit" | "respond" | "accept",
+            ]
+          | [
+              "approve" | "reject" | "edit" | "respond" | "accept",
+              "approve" | "reject" | "edit" | "respond" | "accept",
+              "approve" | "reject" | "edit" | "respond" | "accept",
+            ]
+          | [
+              "approve" | "reject" | "edit" | "respond" | "accept",
+              "approve" | "reject" | "edit" | "respond" | "accept",
+              "approve" | "reject" | "edit" | "respond" | "accept",
+              "approve" | "reject" | "edit" | "respond" | "accept",
+            ];
+        updatedAt: CanonicalUtcMs;
+      } & {
+        kind: "interaction";
+      } & {
+        /**
+         * @minItems 1
+         * @maxItems 4
+         */
+        allowedActions?:
+          | [ActionDecision]
+          | [ActionDecision, ActionDecision]
+          | [ActionDecision, ActionDecision, ActionDecision]
+          | [ActionDecision, ActionDecision, ActionDecision, ActionDecision];
+      })
+    | ({
+        controlRef: Id;
+        ownerRef: Id;
+        decisionGroupRef: Id;
+        kind: "approval" | "interaction" | "plan" | "cancellation";
+        state: "pending" | "accepted" | "rejected" | "expired" | "canceled";
+        ownerVersion: PositiveUint64;
+        /**
+         * @maxItems 4
+         */
+        allowedActions:
+          | []
+          | ["approve" | "reject" | "edit" | "respond" | "accept"]
+          | [
+              "approve" | "reject" | "edit" | "respond" | "accept",
+              "approve" | "reject" | "edit" | "respond" | "accept",
+            ]
+          | [
+              "approve" | "reject" | "edit" | "respond" | "accept",
+              "approve" | "reject" | "edit" | "respond" | "accept",
+              "approve" | "reject" | "edit" | "respond" | "accept",
+            ]
+          | [
+              "approve" | "reject" | "edit" | "respond" | "accept",
+              "approve" | "reject" | "edit" | "respond" | "accept",
+              "approve" | "reject" | "edit" | "respond" | "accept",
+              "approve" | "reject" | "edit" | "respond" | "accept",
+            ];
+        updatedAt: CanonicalUtcMs;
+      } & {
+        kind: "plan";
+      } & {
+        /**
+         * @minItems 1
+         * @maxItems 2
+         */
+        allowedActions?: [PlanDecision] | [PlanDecision, PlanDecision];
+      })
+    | ({
+        controlRef: Id;
+        ownerRef: Id;
+        decisionGroupRef: Id;
+        kind: "approval" | "interaction" | "plan" | "cancellation";
+        state: "pending" | "accepted" | "rejected" | "expired" | "canceled";
+        ownerVersion: PositiveUint64;
+        /**
+         * @maxItems 4
+         */
+        allowedActions:
+          | []
+          | ["approve" | "reject" | "edit" | "respond" | "accept"]
+          | [
+              "approve" | "reject" | "edit" | "respond" | "accept",
+              "approve" | "reject" | "edit" | "respond" | "accept",
+            ]
+          | [
+              "approve" | "reject" | "edit" | "respond" | "accept",
+              "approve" | "reject" | "edit" | "respond" | "accept",
+              "approve" | "reject" | "edit" | "respond" | "accept",
+            ]
+          | [
+              "approve" | "reject" | "edit" | "respond" | "accept",
+              "approve" | "reject" | "edit" | "respond" | "accept",
+              "approve" | "reject" | "edit" | "respond" | "accept",
+              "approve" | "reject" | "edit" | "respond" | "accept",
+            ];
+        updatedAt: CanonicalUtcMs;
+      } & {
+        kind: "cancellation";
+      } & {
+        /**
+         * @maxItems 0
+         */
+        allowedActions?: [];
+      });
 }
 export interface ReceiptReplacedData {
   timestamp: Timestamp;
@@ -329,58 +722,443 @@ export interface MediaOwnerData {
   messageId: PresentationMessageId;
   activityType: "kokoro.media.v1";
   replace: true;
-  content: {
-    mediaOperationRef: Id;
-    definitionRef: Id;
-    definitionRevisionRef: Id;
-    modelOptionRevisionRef?: Id;
-    ownerVersion: PositiveUint64;
-    state:
-      | "admission-pending"
-      | "authorized"
-      | "queued"
-      | "active"
-      | "finalizing"
-      | "cancel-requested"
-      | "reconciling"
-      | "completed"
-      | "partial"
-      | "failed"
-      | "canceled";
-    progressBps: number;
-    /**
-     * @maxItems 4
-     */
-    candidates:
-      | []
-      | [MediaCandidate]
-      | [MediaCandidate, MediaCandidate]
-      | [MediaCandidate, MediaCandidate, MediaCandidate]
-      | [MediaCandidate, MediaCandidate, MediaCandidate, MediaCandidate];
-    costProjection?: CostProjectionLink;
-    outcomeClass?: "canonical" | "irreconcilable";
-    safeFailure?: MediaFailure;
-    updatedAt: CanonicalUtcMs;
-  };
-}
-export interface MediaCandidate {
-  candidateRef: Id;
-  ordinal: number;
-  ownerVersion: PositiveUint64;
-  state:
-    | "allocated"
-    | "producing"
-    | "output-received"
-    | "validating"
-    | "ready"
-    | "restricted"
-    | "failed"
-    | "unknown"
-    | "cancel-requested"
-    | "canceled";
-  artifactRef?: Id;
-  artifactVersionRef?: Id;
-  safeFailure?: MediaFailure;
+  content:
+    | ({
+        mediaOperationRef: Id;
+        definitionRef: Id;
+        definitionRevisionRef: Id;
+        modelOptionRevisionRef?: Id;
+        ownerVersion: PositiveUint64;
+        state:
+          | "admission-pending"
+          | "authorized"
+          | "queued"
+          | "active"
+          | "finalizing"
+          | "cancel-requested"
+          | "reconciling"
+          | "completed"
+          | "partial"
+          | "failed"
+          | "canceled";
+        progressBps: number;
+        /**
+         * @maxItems 4
+         */
+        candidates:
+          | []
+          | [MediaCandidate]
+          | [MediaCandidate, MediaCandidate]
+          | [MediaCandidate, MediaCandidate, MediaCandidate]
+          | [MediaCandidate, MediaCandidate, MediaCandidate, MediaCandidate];
+        costProjection?: CostProjectionLink;
+        outcomeClass?: "canonical" | "irreconcilable";
+        safeFailure?: MediaFailure;
+        updatedAt: CanonicalUtcMs;
+      } & {
+        state: "admission-pending";
+      } & {
+        outcomeClass?: never;
+        safeFailure?: never;
+      } & {
+        safeFailure?: never;
+      })
+    | ({
+        mediaOperationRef: Id;
+        definitionRef: Id;
+        definitionRevisionRef: Id;
+        modelOptionRevisionRef?: Id;
+        ownerVersion: PositiveUint64;
+        state:
+          | "admission-pending"
+          | "authorized"
+          | "queued"
+          | "active"
+          | "finalizing"
+          | "cancel-requested"
+          | "reconciling"
+          | "completed"
+          | "partial"
+          | "failed"
+          | "canceled";
+        progressBps: number;
+        /**
+         * @maxItems 4
+         */
+        candidates:
+          | []
+          | [MediaCandidate]
+          | [MediaCandidate, MediaCandidate]
+          | [MediaCandidate, MediaCandidate, MediaCandidate]
+          | [MediaCandidate, MediaCandidate, MediaCandidate, MediaCandidate];
+        costProjection?: CostProjectionLink;
+        outcomeClass?: "canonical" | "irreconcilable";
+        safeFailure?: MediaFailure;
+        updatedAt: CanonicalUtcMs;
+      } & {
+        state: "authorized";
+      } & {
+        outcomeClass?: never;
+        safeFailure?: never;
+      } & {
+        safeFailure?: never;
+      })
+    | ({
+        mediaOperationRef: Id;
+        definitionRef: Id;
+        definitionRevisionRef: Id;
+        modelOptionRevisionRef?: Id;
+        ownerVersion: PositiveUint64;
+        state:
+          | "admission-pending"
+          | "authorized"
+          | "queued"
+          | "active"
+          | "finalizing"
+          | "cancel-requested"
+          | "reconciling"
+          | "completed"
+          | "partial"
+          | "failed"
+          | "canceled";
+        progressBps: number;
+        /**
+         * @maxItems 4
+         */
+        candidates:
+          | []
+          | [MediaCandidate]
+          | [MediaCandidate, MediaCandidate]
+          | [MediaCandidate, MediaCandidate, MediaCandidate]
+          | [MediaCandidate, MediaCandidate, MediaCandidate, MediaCandidate];
+        costProjection?: CostProjectionLink;
+        outcomeClass?: "canonical" | "irreconcilable";
+        safeFailure?: MediaFailure;
+        updatedAt: CanonicalUtcMs;
+      } & {
+        state: "queued";
+      } & {
+        outcomeClass?: never;
+        safeFailure?: never;
+      } & {
+        safeFailure?: never;
+      })
+    | ({
+        mediaOperationRef: Id;
+        definitionRef: Id;
+        definitionRevisionRef: Id;
+        modelOptionRevisionRef?: Id;
+        ownerVersion: PositiveUint64;
+        state:
+          | "admission-pending"
+          | "authorized"
+          | "queued"
+          | "active"
+          | "finalizing"
+          | "cancel-requested"
+          | "reconciling"
+          | "completed"
+          | "partial"
+          | "failed"
+          | "canceled";
+        progressBps: number;
+        /**
+         * @maxItems 4
+         */
+        candidates:
+          | []
+          | [MediaCandidate]
+          | [MediaCandidate, MediaCandidate]
+          | [MediaCandidate, MediaCandidate, MediaCandidate]
+          | [MediaCandidate, MediaCandidate, MediaCandidate, MediaCandidate];
+        costProjection?: CostProjectionLink;
+        outcomeClass?: "canonical" | "irreconcilable";
+        safeFailure?: MediaFailure;
+        updatedAt: CanonicalUtcMs;
+      } & {
+        state: "active";
+      } & {
+        outcomeClass?: never;
+        safeFailure?: never;
+      } & {
+        safeFailure?: never;
+      })
+    | ({
+        mediaOperationRef: Id;
+        definitionRef: Id;
+        definitionRevisionRef: Id;
+        modelOptionRevisionRef?: Id;
+        ownerVersion: PositiveUint64;
+        state:
+          | "admission-pending"
+          | "authorized"
+          | "queued"
+          | "active"
+          | "finalizing"
+          | "cancel-requested"
+          | "reconciling"
+          | "completed"
+          | "partial"
+          | "failed"
+          | "canceled";
+        progressBps: number;
+        /**
+         * @maxItems 4
+         */
+        candidates:
+          | []
+          | [MediaCandidate]
+          | [MediaCandidate, MediaCandidate]
+          | [MediaCandidate, MediaCandidate, MediaCandidate]
+          | [MediaCandidate, MediaCandidate, MediaCandidate, MediaCandidate];
+        costProjection?: CostProjectionLink;
+        outcomeClass?: "canonical" | "irreconcilable";
+        safeFailure?: MediaFailure;
+        updatedAt: CanonicalUtcMs;
+      } & {
+        state: "finalizing";
+      } & {
+        outcomeClass?: never;
+        safeFailure?: never;
+      } & {
+        safeFailure?: never;
+      })
+    | ({
+        mediaOperationRef: Id;
+        definitionRef: Id;
+        definitionRevisionRef: Id;
+        modelOptionRevisionRef?: Id;
+        ownerVersion: PositiveUint64;
+        state:
+          | "admission-pending"
+          | "authorized"
+          | "queued"
+          | "active"
+          | "finalizing"
+          | "cancel-requested"
+          | "reconciling"
+          | "completed"
+          | "partial"
+          | "failed"
+          | "canceled";
+        progressBps: number;
+        /**
+         * @maxItems 4
+         */
+        candidates:
+          | []
+          | [MediaCandidate]
+          | [MediaCandidate, MediaCandidate]
+          | [MediaCandidate, MediaCandidate, MediaCandidate]
+          | [MediaCandidate, MediaCandidate, MediaCandidate, MediaCandidate];
+        costProjection?: CostProjectionLink;
+        outcomeClass?: "canonical" | "irreconcilable";
+        safeFailure?: MediaFailure;
+        updatedAt: CanonicalUtcMs;
+      } & {
+        state: "cancel-requested";
+      } & {
+        outcomeClass?: never;
+        safeFailure?: never;
+      } & {
+        safeFailure?: never;
+      })
+    | ({
+        mediaOperationRef: Id;
+        definitionRef: Id;
+        definitionRevisionRef: Id;
+        modelOptionRevisionRef?: Id;
+        ownerVersion: PositiveUint64;
+        state:
+          | "admission-pending"
+          | "authorized"
+          | "queued"
+          | "active"
+          | "finalizing"
+          | "cancel-requested"
+          | "reconciling"
+          | "completed"
+          | "partial"
+          | "failed"
+          | "canceled";
+        progressBps: number;
+        /**
+         * @maxItems 4
+         */
+        candidates:
+          | []
+          | [MediaCandidate]
+          | [MediaCandidate, MediaCandidate]
+          | [MediaCandidate, MediaCandidate, MediaCandidate]
+          | [MediaCandidate, MediaCandidate, MediaCandidate, MediaCandidate];
+        costProjection?: CostProjectionLink;
+        outcomeClass?: "canonical" | "irreconcilable";
+        safeFailure?: MediaFailure;
+        updatedAt: CanonicalUtcMs;
+      } & {
+        state: "reconciling";
+      } & {
+        outcomeClass?: never;
+        safeFailure?: never;
+      } & {
+        safeFailure?: never;
+      })
+    | ({
+        mediaOperationRef: Id;
+        definitionRef: Id;
+        definitionRevisionRef: Id;
+        modelOptionRevisionRef?: Id;
+        ownerVersion: PositiveUint64;
+        state:
+          | "admission-pending"
+          | "authorized"
+          | "queued"
+          | "active"
+          | "finalizing"
+          | "cancel-requested"
+          | "reconciling"
+          | "completed"
+          | "partial"
+          | "failed"
+          | "canceled";
+        progressBps: number;
+        /**
+         * @maxItems 4
+         */
+        candidates:
+          | []
+          | [MediaCandidate]
+          | [MediaCandidate, MediaCandidate]
+          | [MediaCandidate, MediaCandidate, MediaCandidate]
+          | [MediaCandidate, MediaCandidate, MediaCandidate, MediaCandidate];
+        costProjection?: CostProjectionLink;
+        outcomeClass?: "canonical" | "irreconcilable";
+        safeFailure?: MediaFailure;
+        updatedAt: CanonicalUtcMs;
+      } & {
+        state: "completed";
+      } & {
+        outcomeClass: "canonical" | "irreconcilable";
+      } & {
+        safeFailure?: never;
+      })
+    | ({
+        mediaOperationRef: Id;
+        definitionRef: Id;
+        definitionRevisionRef: Id;
+        modelOptionRevisionRef?: Id;
+        ownerVersion: PositiveUint64;
+        state:
+          | "admission-pending"
+          | "authorized"
+          | "queued"
+          | "active"
+          | "finalizing"
+          | "cancel-requested"
+          | "reconciling"
+          | "completed"
+          | "partial"
+          | "failed"
+          | "canceled";
+        progressBps: number;
+        /**
+         * @maxItems 4
+         */
+        candidates:
+          | []
+          | [MediaCandidate]
+          | [MediaCandidate, MediaCandidate]
+          | [MediaCandidate, MediaCandidate, MediaCandidate]
+          | [MediaCandidate, MediaCandidate, MediaCandidate, MediaCandidate];
+        costProjection?: CostProjectionLink;
+        outcomeClass?: "canonical" | "irreconcilable";
+        safeFailure?: MediaFailure;
+        updatedAt: CanonicalUtcMs;
+      } & {
+        state: "partial";
+      } & {
+        outcomeClass: "canonical" | "irreconcilable";
+      } & {
+        safeFailure?: never;
+      })
+    | ({
+        mediaOperationRef: Id;
+        definitionRef: Id;
+        definitionRevisionRef: Id;
+        modelOptionRevisionRef?: Id;
+        ownerVersion: PositiveUint64;
+        state:
+          | "admission-pending"
+          | "authorized"
+          | "queued"
+          | "active"
+          | "finalizing"
+          | "cancel-requested"
+          | "reconciling"
+          | "completed"
+          | "partial"
+          | "failed"
+          | "canceled";
+        progressBps: number;
+        /**
+         * @maxItems 4
+         */
+        candidates:
+          | []
+          | [MediaCandidate]
+          | [MediaCandidate, MediaCandidate]
+          | [MediaCandidate, MediaCandidate, MediaCandidate]
+          | [MediaCandidate, MediaCandidate, MediaCandidate, MediaCandidate];
+        costProjection?: CostProjectionLink;
+        outcomeClass?: "canonical" | "irreconcilable";
+        safeFailure?: MediaFailure;
+        updatedAt: CanonicalUtcMs;
+      } & {
+        state: "failed";
+      } & {
+        outcomeClass: "canonical" | "irreconcilable";
+      } & {
+        safeFailure: MediaFailure;
+      })
+    | ({
+        mediaOperationRef: Id;
+        definitionRef: Id;
+        definitionRevisionRef: Id;
+        modelOptionRevisionRef?: Id;
+        ownerVersion: PositiveUint64;
+        state:
+          | "admission-pending"
+          | "authorized"
+          | "queued"
+          | "active"
+          | "finalizing"
+          | "cancel-requested"
+          | "reconciling"
+          | "completed"
+          | "partial"
+          | "failed"
+          | "canceled";
+        progressBps: number;
+        /**
+         * @maxItems 4
+         */
+        candidates:
+          | []
+          | [MediaCandidate]
+          | [MediaCandidate, MediaCandidate]
+          | [MediaCandidate, MediaCandidate, MediaCandidate]
+          | [MediaCandidate, MediaCandidate, MediaCandidate, MediaCandidate];
+        costProjection?: CostProjectionLink;
+        outcomeClass?: "canonical" | "irreconcilable";
+        safeFailure?: MediaFailure;
+        updatedAt: CanonicalUtcMs;
+      } & {
+        state: "canceled";
+      } & {
+        outcomeClass: "canonical" | "irreconcilable";
+      } & {
+        safeFailure?: never;
+      });
 }
 export interface MediaFailure {
   code:
@@ -403,37 +1181,513 @@ export interface ArtifactOwnerData {
   messageId: PresentationMessageId;
   activityType: "kokoro.artifact.v1";
   replace: true;
-  content: {
-    artifactRef: Id;
-    artifactVersionRef: Id;
-    ownerVersion: PositiveUint64;
-    availability: "processing" | "ready" | "restricted" | "unavailable" | "deleted";
-    mediaClass: "image" | "audio" | "video" | "document";
-    display?: ArtifactDisplay;
-    safeFailure?: MediaFailure;
-    title?: ShortText;
-    updatedAt: CanonicalUtcMs;
-  };
+  content:
+    | ({
+        artifactRef: Id;
+        artifactVersionRef: Id;
+        ownerVersion: PositiveUint64;
+        availability: "processing" | "ready" | "restricted" | "unavailable" | "deleted";
+        mediaClass: "image" | "audio" | "video" | "document";
+        display?: ArtifactDisplay;
+        safeFailure?: MediaFailure;
+        title?: ShortText;
+        updatedAt: CanonicalUtcMs;
+      } & {
+        availability: "processing";
+        mediaClass: "image";
+      } & {
+        display?: never;
+      } & {
+        safeFailure?: never;
+      })
+    | ({
+        artifactRef: Id;
+        artifactVersionRef: Id;
+        ownerVersion: PositiveUint64;
+        availability: "processing" | "ready" | "restricted" | "unavailable" | "deleted";
+        mediaClass: "image" | "audio" | "video" | "document";
+        display?: ArtifactDisplay;
+        safeFailure?: MediaFailure;
+        title?: ShortText;
+        updatedAt: CanonicalUtcMs;
+      } & {
+        availability: "processing";
+        mediaClass: "audio";
+      } & {
+        display?: never;
+      } & {
+        safeFailure?: never;
+      })
+    | ({
+        artifactRef: Id;
+        artifactVersionRef: Id;
+        ownerVersion: PositiveUint64;
+        availability: "processing" | "ready" | "restricted" | "unavailable" | "deleted";
+        mediaClass: "image" | "audio" | "video" | "document";
+        display?: ArtifactDisplay;
+        safeFailure?: MediaFailure;
+        title?: ShortText;
+        updatedAt: CanonicalUtcMs;
+      } & {
+        availability: "processing";
+        mediaClass: "video";
+      } & {
+        display?: never;
+      } & {
+        safeFailure?: never;
+      })
+    | ({
+        artifactRef: Id;
+        artifactVersionRef: Id;
+        ownerVersion: PositiveUint64;
+        availability: "processing" | "ready" | "restricted" | "unavailable" | "deleted";
+        mediaClass: "image" | "audio" | "video" | "document";
+        display?: ArtifactDisplay;
+        safeFailure?: MediaFailure;
+        title?: ShortText;
+        updatedAt: CanonicalUtcMs;
+      } & {
+        availability: "processing";
+        mediaClass: "document";
+      } & {
+        display?: never;
+      } & {
+        safeFailure?: never;
+      })
+    | ({
+        artifactRef: Id;
+        artifactVersionRef: Id;
+        ownerVersion: PositiveUint64;
+        availability: "processing" | "ready" | "restricted" | "unavailable" | "deleted";
+        mediaClass: "image" | "audio" | "video" | "document";
+        display?: ArtifactDisplay;
+        safeFailure?: MediaFailure;
+        title?: ShortText;
+        updatedAt: CanonicalUtcMs;
+      } & {
+        availability: "ready";
+        mediaClass: "image";
+      } & {
+        display: ArtifactDisplay;
+        safeFailure?: never;
+      } & {
+        safeFailure?: never;
+      } & {
+        display?: {
+          kind?: "image";
+        };
+      })
+    | ({
+        artifactRef: Id;
+        artifactVersionRef: Id;
+        ownerVersion: PositiveUint64;
+        availability: "processing" | "ready" | "restricted" | "unavailable" | "deleted";
+        mediaClass: "image" | "audio" | "video" | "document";
+        display?: ArtifactDisplay;
+        safeFailure?: MediaFailure;
+        title?: ShortText;
+        updatedAt: CanonicalUtcMs;
+      } & {
+        availability: "ready";
+        mediaClass: "audio";
+      } & {
+        display: ArtifactDisplay;
+        safeFailure?: never;
+      } & {
+        safeFailure?: never;
+      } & {
+        display?: {
+          kind?: "audio";
+        };
+      })
+    | ({
+        artifactRef: Id;
+        artifactVersionRef: Id;
+        ownerVersion: PositiveUint64;
+        availability: "processing" | "ready" | "restricted" | "unavailable" | "deleted";
+        mediaClass: "image" | "audio" | "video" | "document";
+        display?: ArtifactDisplay;
+        safeFailure?: MediaFailure;
+        title?: ShortText;
+        updatedAt: CanonicalUtcMs;
+      } & {
+        availability: "ready";
+        mediaClass: "video";
+      } & {
+        display: ArtifactDisplay;
+        safeFailure?: never;
+      } & {
+        safeFailure?: never;
+      } & {
+        display?: {
+          kind?: "video";
+        };
+      })
+    | ({
+        artifactRef: Id;
+        artifactVersionRef: Id;
+        ownerVersion: PositiveUint64;
+        availability: "processing" | "ready" | "restricted" | "unavailable" | "deleted";
+        mediaClass: "image" | "audio" | "video" | "document";
+        display?: ArtifactDisplay;
+        safeFailure?: MediaFailure;
+        title?: ShortText;
+        updatedAt: CanonicalUtcMs;
+      } & {
+        availability: "ready";
+        mediaClass: "document";
+      } & {
+        display: ArtifactDisplay;
+        safeFailure?: never;
+      } & {
+        safeFailure?: never;
+      } & {
+        display?: {
+          kind?: "document";
+        };
+      })
+    | ({
+        artifactRef: Id;
+        artifactVersionRef: Id;
+        ownerVersion: PositiveUint64;
+        availability: "processing" | "ready" | "restricted" | "unavailable" | "deleted";
+        mediaClass: "image" | "audio" | "video" | "document";
+        display?: ArtifactDisplay;
+        safeFailure?: MediaFailure;
+        title?: ShortText;
+        updatedAt: CanonicalUtcMs;
+      } & {
+        availability: "restricted";
+        mediaClass: "image";
+      } & {
+        display?: never;
+      } & {
+        safeFailure: MediaFailure;
+      })
+    | ({
+        artifactRef: Id;
+        artifactVersionRef: Id;
+        ownerVersion: PositiveUint64;
+        availability: "processing" | "ready" | "restricted" | "unavailable" | "deleted";
+        mediaClass: "image" | "audio" | "video" | "document";
+        display?: ArtifactDisplay;
+        safeFailure?: MediaFailure;
+        title?: ShortText;
+        updatedAt: CanonicalUtcMs;
+      } & {
+        availability: "restricted";
+        mediaClass: "audio";
+      } & {
+        display?: never;
+      } & {
+        safeFailure: MediaFailure;
+      })
+    | ({
+        artifactRef: Id;
+        artifactVersionRef: Id;
+        ownerVersion: PositiveUint64;
+        availability: "processing" | "ready" | "restricted" | "unavailable" | "deleted";
+        mediaClass: "image" | "audio" | "video" | "document";
+        display?: ArtifactDisplay;
+        safeFailure?: MediaFailure;
+        title?: ShortText;
+        updatedAt: CanonicalUtcMs;
+      } & {
+        availability: "restricted";
+        mediaClass: "video";
+      } & {
+        display?: never;
+      } & {
+        safeFailure: MediaFailure;
+      })
+    | ({
+        artifactRef: Id;
+        artifactVersionRef: Id;
+        ownerVersion: PositiveUint64;
+        availability: "processing" | "ready" | "restricted" | "unavailable" | "deleted";
+        mediaClass: "image" | "audio" | "video" | "document";
+        display?: ArtifactDisplay;
+        safeFailure?: MediaFailure;
+        title?: ShortText;
+        updatedAt: CanonicalUtcMs;
+      } & {
+        availability: "restricted";
+        mediaClass: "document";
+      } & {
+        display?: never;
+      } & {
+        safeFailure: MediaFailure;
+      })
+    | ({
+        artifactRef: Id;
+        artifactVersionRef: Id;
+        ownerVersion: PositiveUint64;
+        availability: "processing" | "ready" | "restricted" | "unavailable" | "deleted";
+        mediaClass: "image" | "audio" | "video" | "document";
+        display?: ArtifactDisplay;
+        safeFailure?: MediaFailure;
+        title?: ShortText;
+        updatedAt: CanonicalUtcMs;
+      } & {
+        availability: "unavailable";
+        mediaClass: "image";
+      } & {
+        display?: never;
+      } & {
+        safeFailure: MediaFailure;
+      })
+    | ({
+        artifactRef: Id;
+        artifactVersionRef: Id;
+        ownerVersion: PositiveUint64;
+        availability: "processing" | "ready" | "restricted" | "unavailable" | "deleted";
+        mediaClass: "image" | "audio" | "video" | "document";
+        display?: ArtifactDisplay;
+        safeFailure?: MediaFailure;
+        title?: ShortText;
+        updatedAt: CanonicalUtcMs;
+      } & {
+        availability: "unavailable";
+        mediaClass: "audio";
+      } & {
+        display?: never;
+      } & {
+        safeFailure: MediaFailure;
+      })
+    | ({
+        artifactRef: Id;
+        artifactVersionRef: Id;
+        ownerVersion: PositiveUint64;
+        availability: "processing" | "ready" | "restricted" | "unavailable" | "deleted";
+        mediaClass: "image" | "audio" | "video" | "document";
+        display?: ArtifactDisplay;
+        safeFailure?: MediaFailure;
+        title?: ShortText;
+        updatedAt: CanonicalUtcMs;
+      } & {
+        availability: "unavailable";
+        mediaClass: "video";
+      } & {
+        display?: never;
+      } & {
+        safeFailure: MediaFailure;
+      })
+    | ({
+        artifactRef: Id;
+        artifactVersionRef: Id;
+        ownerVersion: PositiveUint64;
+        availability: "processing" | "ready" | "restricted" | "unavailable" | "deleted";
+        mediaClass: "image" | "audio" | "video" | "document";
+        display?: ArtifactDisplay;
+        safeFailure?: MediaFailure;
+        title?: ShortText;
+        updatedAt: CanonicalUtcMs;
+      } & {
+        availability: "unavailable";
+        mediaClass: "document";
+      } & {
+        display?: never;
+      } & {
+        safeFailure: MediaFailure;
+      })
+    | ({
+        artifactRef: Id;
+        artifactVersionRef: Id;
+        ownerVersion: PositiveUint64;
+        availability: "processing" | "ready" | "restricted" | "unavailable" | "deleted";
+        mediaClass: "image" | "audio" | "video" | "document";
+        display?: ArtifactDisplay;
+        safeFailure?: MediaFailure;
+        title?: ShortText;
+        updatedAt: CanonicalUtcMs;
+      } & {
+        availability: "deleted";
+        mediaClass: "image";
+      } & {
+        display?: never;
+      } & {
+        safeFailure?: never;
+      })
+    | ({
+        artifactRef: Id;
+        artifactVersionRef: Id;
+        ownerVersion: PositiveUint64;
+        availability: "processing" | "ready" | "restricted" | "unavailable" | "deleted";
+        mediaClass: "image" | "audio" | "video" | "document";
+        display?: ArtifactDisplay;
+        safeFailure?: MediaFailure;
+        title?: ShortText;
+        updatedAt: CanonicalUtcMs;
+      } & {
+        availability: "deleted";
+        mediaClass: "audio";
+      } & {
+        display?: never;
+      } & {
+        safeFailure?: never;
+      })
+    | ({
+        artifactRef: Id;
+        artifactVersionRef: Id;
+        ownerVersion: PositiveUint64;
+        availability: "processing" | "ready" | "restricted" | "unavailable" | "deleted";
+        mediaClass: "image" | "audio" | "video" | "document";
+        display?: ArtifactDisplay;
+        safeFailure?: MediaFailure;
+        title?: ShortText;
+        updatedAt: CanonicalUtcMs;
+      } & {
+        availability: "deleted";
+        mediaClass: "video";
+      } & {
+        display?: never;
+      } & {
+        safeFailure?: never;
+      })
+    | ({
+        artifactRef: Id;
+        artifactVersionRef: Id;
+        ownerVersion: PositiveUint64;
+        availability: "processing" | "ready" | "restricted" | "unavailable" | "deleted";
+        mediaClass: "image" | "audio" | "video" | "document";
+        display?: ArtifactDisplay;
+        safeFailure?: MediaFailure;
+        title?: ShortText;
+        updatedAt: CanonicalUtcMs;
+      } & {
+        availability: "deleted";
+        mediaClass: "document";
+      } & {
+        display?: never;
+      } & {
+        safeFailure?: never;
+      });
 }
 export interface CostOwnerData {
   timestamp: Timestamp;
   messageId: PresentationMessageId;
   activityType: "kokoro.cost.v1";
   replace: true;
-  content: {
-    mediaOperationRef: Id;
-    costProjectionRef: Id;
-    ownerVersion: PositiveUint64;
-    state: "pending" | "estimated" | "final" | "corrected" | "unavailable";
-    freshness: "current" | "stale" | "rebuilding" | "unavailable";
-    amount?: {
-      creditUnit: Id;
-      amount: CreditDecimal;
-    };
-    correctsOwnerVersion?: PositiveUint64;
-    safeReason?: SafeText;
-    updatedAt: CanonicalUtcMs;
-  };
+  content:
+    | ({
+        mediaOperationRef: Id;
+        costProjectionRef: Id;
+        ownerVersion: PositiveUint64;
+        state: "pending" | "estimated" | "final" | "corrected" | "unavailable";
+        freshness: "current" | "stale" | "rebuilding" | "unavailable";
+        amount?: {
+          creditUnit: Id;
+          amount: CreditDecimal;
+        };
+        correctsOwnerVersion?: PositiveUint64;
+        safeReason?: SafeText;
+        updatedAt: CanonicalUtcMs;
+      } & {
+        state: "pending";
+      } & {
+        amount?: never;
+      } & {
+        correctsOwnerVersion?: never;
+      } & {
+        safeReason?: never;
+      })
+    | ({
+        mediaOperationRef: Id;
+        costProjectionRef: Id;
+        ownerVersion: PositiveUint64;
+        state: "pending" | "estimated" | "final" | "corrected" | "unavailable";
+        freshness: "current" | "stale" | "rebuilding" | "unavailable";
+        amount?: {
+          creditUnit: Id;
+          amount: CreditDecimal;
+        };
+        correctsOwnerVersion?: PositiveUint64;
+        safeReason?: SafeText;
+        updatedAt: CanonicalUtcMs;
+      } & {
+        state: "estimated";
+      } & {
+        amount: {
+          creditUnit: Id;
+          amount: CreditDecimal;
+        };
+      } & {
+        correctsOwnerVersion?: never;
+      } & {
+        safeReason?: never;
+      })
+    | ({
+        mediaOperationRef: Id;
+        costProjectionRef: Id;
+        ownerVersion: PositiveUint64;
+        state: "pending" | "estimated" | "final" | "corrected" | "unavailable";
+        freshness: "current" | "stale" | "rebuilding" | "unavailable";
+        amount?: {
+          creditUnit: Id;
+          amount: CreditDecimal;
+        };
+        correctsOwnerVersion?: PositiveUint64;
+        safeReason?: SafeText;
+        updatedAt: CanonicalUtcMs;
+      } & {
+        state: "final";
+      } & {
+        amount: {
+          creditUnit: Id;
+          amount: CreditDecimal;
+        };
+      } & {
+        correctsOwnerVersion?: never;
+      } & {
+        safeReason?: never;
+      })
+    | ({
+        mediaOperationRef: Id;
+        costProjectionRef: Id;
+        ownerVersion: PositiveUint64;
+        state: "pending" | "estimated" | "final" | "corrected" | "unavailable";
+        freshness: "current" | "stale" | "rebuilding" | "unavailable";
+        amount?: {
+          creditUnit: Id;
+          amount: CreditDecimal;
+        };
+        correctsOwnerVersion?: PositiveUint64;
+        safeReason?: SafeText;
+        updatedAt: CanonicalUtcMs;
+      } & {
+        state: "corrected";
+      } & {
+        amount: {
+          creditUnit: Id;
+          amount: CreditDecimal;
+        };
+      } & {
+        correctsOwnerVersion: PositiveUint64;
+      } & {
+        safeReason?: never;
+      })
+    | ({
+        mediaOperationRef: Id;
+        costProjectionRef: Id;
+        ownerVersion: PositiveUint64;
+        state: "pending" | "estimated" | "final" | "corrected" | "unavailable";
+        freshness: "current" | "stale" | "rebuilding" | "unavailable";
+        amount?: {
+          creditUnit: Id;
+          amount: CreditDecimal;
+        };
+        correctsOwnerVersion?: PositiveUint64;
+        safeReason?: SafeText;
+        updatedAt: CanonicalUtcMs;
+      } & {
+        state: "unavailable";
+      } & {
+        amount?: never;
+      } & {
+        correctsOwnerVersion?: never;
+      } & {
+        safeReason: SafeText;
+      });
 }
 export interface NoticeOwnerData {
   timestamp: Timestamp;

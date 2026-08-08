@@ -4,15 +4,15 @@ import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
-import { AdminIdentityService } from "./proto/kokoro/platform/identity/v1/admin_identity_pb";
-import { AdminQueryService } from "./proto/kokoro/platform/admin/v2/admin_query_pb";
-import { AdminCommerceService } from "./proto/kokoro/platform/commerce/v1/admin_commerce_pb";
-import { AdminCreditService } from "./proto/kokoro/platform/credit/v1/admin_credit_pb";
-import { SiteProvisioningService } from "./proto/kokoro/platform/site/v1/site_provisioning_pb";
-import { SitePublicationService } from "./proto/kokoro/platform/site/v1/site_publication_pb";
+import { AdminIdentityService } from "../generated/proto/kokoro/platform/identity/v1/admin_identity_pb";
+import { AdminQueryService } from "../generated/proto/kokoro/platform/admin/v2/admin_query_pb";
+import { AdminCommerceService } from "../generated/proto/kokoro/platform/commerce/v1/admin_commerce_pb";
+import { AdminCreditService } from "../generated/proto/kokoro/platform/credit/v1/admin_credit_pb";
+import { SiteProvisioningService } from "../generated/proto/kokoro/platform/site/v1/site_provisioning_pb";
+import { SitePublicationService } from "../generated/proto/kokoro/platform/site/v1/site_publication_pb";
 
-const generatedRoot = dirname(fileURLToPath(import.meta.url));
-const appRoot = resolve(generatedRoot, "../..");
+const controlPlaneRoot = dirname(fileURLToPath(import.meta.url));
+const appRoot = resolve(controlPlaneRoot, "../..");
 
 function files(directory: string): string[] {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
