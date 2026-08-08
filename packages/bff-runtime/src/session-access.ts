@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import {
+  runtimeEnvironmentSchema,
   validatedAuthSession,
   validatedSiteBootstrap,
   type AuthSession,
@@ -54,7 +55,7 @@ const grantBindingSchema = z.strictObject({
   siteRef: shortReference,
   siteReleaseRef: shortReference,
   webArtifactDigest: sha256,
-  runtimeEnvironment: z.enum(["development", "preview", "production"]),
+  runtimeEnvironment: runtimeEnvironmentSchema,
   region: shortReference,
   sessionContractRevision: shortReference,
   projectRef: reference,

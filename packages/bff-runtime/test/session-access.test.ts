@@ -124,6 +124,20 @@ function manager(adapter = authority()) {
 }
 
 describe("Session access grant boundary", () => {
+  it("accepts a grant bound to the staging runtime environment", async () => {
+    const stagingBootstrap = { ...bootstrap, runtimeEnvironment: "staging" as const };
+    const adapter = authority({ runtimeEnvironment: "staging" });
+    const access = new SessionAccessManager({
+      bootstrap: stagingBootstrap,
+      authSession,
+      authority: { issueSessionAccessGrant: adapter },
+      now: () => NOW,
+    });
+
+    await expect(access.acquire({ purpose: "read", resource: { kind: "project" } }))
+      .resolves.toMatchObject({ binding: { runtimeEnvironment: "staging" } });
+  });
+
   it("caches by the exact project/session/run resource", async () => {
     const { access, adapter } = manager();
     await access.acquire({ purpose: "read", resource: { kind: "project" } });

@@ -15,9 +15,13 @@ const generation = z.string().min(1).max(20)
   .regex(/^[1-9][0-9]{0,19}$/u)
   .refine((value) => value.length < 20 || value <= "18446744073709551615", "must fit a positive uint64");
 const instant = z.iso.datetime({ offset: true });
-const runtimeEnvironmentSchema = z.enum(["development", "preview", "production"]);
+export const runtimeEnvironmentSchema = z.enum(["development", "preview", "staging", "production"]);
 
 export type RuntimeEnvironment = z.infer<typeof runtimeEnvironmentSchema>;
+
+export function isRuntimeEnvironment(value: unknown): value is RuntimeEnvironment {
+  return runtimeEnvironmentSchema.safeParse(value).success;
+}
 
 export interface SiteDeploymentBindingInput {
   readonly runtimeEnvironment: RuntimeEnvironment;

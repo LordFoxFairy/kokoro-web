@@ -7,6 +7,7 @@ import {
   createOriginCsrfBrowserRequestVerifier,
   createSessionBrowserV3Proxy,
   createSessionBrowserV3Transport,
+  isRuntimeEnvironment,
   loadSiteDeploymentBinding,
   ProductContextManager,
   SessionAccessManager,
@@ -186,7 +187,7 @@ export function loadSiteBffDeployment(env: NodeJS.ProcessEnv = process.env): Rea
   publicOrigin: string
 }> {
   const runtimeEnvironment = required(env, "KOKORO_SITE_RUNTIME_ENVIRONMENT")
-  if (runtimeEnvironment !== "development" && runtimeEnvironment !== "preview" && runtimeEnvironment !== "production") {
+  if (!isRuntimeEnvironment(runtimeEnvironment)) {
     throw new SiteBffError("CONFIG_INVALID")
   }
   return Object.freeze({

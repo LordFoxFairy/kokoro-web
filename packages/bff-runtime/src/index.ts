@@ -4,6 +4,7 @@ export {
   assertProductionSafeBinding,
   bootstrapSiteRuntime,
   bootstrapSiteRuntimeFromOpaqueSession,
+  isRuntimeEnvironment,
   loadSiteDeploymentBinding,
   ProductContextManager,
   publicSiteBootstrap,

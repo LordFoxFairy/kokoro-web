@@ -109,6 +109,22 @@ function createProductContexts() {
 }
 
 describe("Product and Personal context composition", () => {
+  it("accepts a registered staging deployment binding", () => {
+    const staging = loadSiteDeploymentBinding({
+      runtimeEnvironment: "staging",
+      siteProjectBindingRef: binding.siteProjectBindingRef,
+      deploymentRef: binding.deploymentRef,
+      siteReleaseRef: binding.siteReleaseRef,
+      webArtifactDigest: binding.webArtifactDigest,
+      workloadCredential: binding.workloadCredential,
+      sessionContractRevision: binding.sessionContractRevision,
+      region: binding.region,
+      productAudience: binding.productAudience,
+    });
+
+    expect(staging.runtimeEnvironment).toBe("staging");
+  });
+
   it("forbids local unsafe production binding", () => {
     expect(() => loadSiteDeploymentBinding({
       runtimeEnvironment: binding.runtimeEnvironment,

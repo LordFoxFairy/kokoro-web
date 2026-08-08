@@ -16,7 +16,8 @@ authority material to a browser.
 
 ## Public boundary
 
-- `site-binding.ts`: explicit build/deployment binding, production unsafe-mode gate, `exchangeProductContext` command/cache,
+- `site-binding.ts`: the single `development | preview | staging | production` runtime-environment schema and public
+  `isRuntimeEnvironment` guard, explicit build/deployment binding, production unsafe-mode gate, `exchangeProductContext` command/cache,
   `getPersonalContext` subject read, strict local bootstrap composition, and browser-safe projection including only published
   per-surface model option catalogs (never provider/route/secret bindings).
 - `session-access.ts`: compact-JWS, five-minute maximum `session.read|write|control|stream` grants; exact frozen binding validation,
