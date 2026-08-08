@@ -12,7 +12,7 @@ Brand-neutral client over Root-generated Session HTTP/SSE schemas. Callers injec
 The Root-generated Session browser contract is live. The client exposes the complete browser command surface, including typed action/plan decisions and receipt reconciliation. One `/snapshot` response carries the complete projection, a snapshot revision watermark, and mandatory Session-owned `presentation_snapshot`; hydration is ready only after the strict AG-UI decoder validates that snapshot.
 Session creation requires an explicit immutable `standard|temporary` `context_policy`; both the create receipt
 and every owner snapshot carry the policy. The client does not infer a default or offer an update operation.
-The generated HTTP mirror under `src/generated/contracts/legacy/**` carries the full durable part union, including reasoning summaries, plan progress,
+The generated HTTP mirror under `src/generated/contracts/runtime/**` carries the full durable part union, including reasoning summaries, plan progress,
 subagent state, media operations, versioned artifacts, typed notices/errors, and the unsupported compatibility
 fallback. Generated control and HTTP sources remain Root-owned artifacts and are never hand-maintained here.
 Submit keeps renderable `parts` and Asset-owned `attachment_refs` separate. Its generated cross-field constraint

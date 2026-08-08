@@ -44,20 +44,18 @@ describe("typed Admin control-plane mirrors", () => {
     expect(Object.keys(AdminQueryService.method)).toContain("getCurrentOperator");
     expect(Object.keys(AdminQueryService.method)).toContain("listPendingApprovals");
     expect(Object.keys(AdminCommerceService.method)).toEqual(["publishCreditProgramRevision",
-      "listCreditProgramRevisions", "getCreditProgramRevision", "publishPlanRevision", "listPlanRevisions",
-      "getPlanRevision", "publishOfferRevision", "listOfferRevisions", "getOfferRevision",
-      "publishOfferPriceRevision", "listOfferPriceRevisions", "getOfferPriceRevision",
+      "listCreditProgramRevisions", "getCreditProgramRevision", "publishEntitlementTemplateRevision",
+      "listEntitlementTemplateRevisions", "getEntitlementTemplateRevision", "publishPlanRevision",
+      "listPlanRevisions", "getPlanRevision", "publishOfferRevision", "listOfferRevisions", "getOfferRevision",
       "publishFulfillmentProgramRevision", "listFulfillmentProgramRevisions", "getFulfillmentProgramRevision",
       "publishRedemptionProgramRevision", "listRedemptionProgramRevisions", "getRedemptionProgramRevision",
-      "requestSiteCommerceAssignmentPromotion", "decideSiteCommerceAssignmentPromotion",
-      "listSiteCommerceAssignments", "getSiteCommerceAssignment", "requestCodeBatchIssuance",
-      "decideCodeBatchIssuance", "requestCodeBatchTransition", "decideCodeBatchTransition",
+      "requestSiteCommerceAssignmentPromotion", "listSiteCommerceAssignments", "getSiteCommerceAssignment",
+      "requestCodeBatchIssuance", "requestCodeBatchTransition",
       "emergencySuspendCodeBatch", "beginCodeBatchDelivery", "readCodeDeliveryRange",
       "acknowledgeCodeDeliveryRange", "getCodeDeliverySession", "listCodeBatches", "getCodeBatch",
-      "requestSourceCorrection", "decideSourceCorrection", "listSourceCorrections", "getSourceCorrection",
-      "requestCommerceReconciliationResolution", "decideCommerceReconciliationResolution",
-      "listCommerceReconciliations", "getCommerceReconciliation", "getCommerceApproval",
-      "getCommerceExecution", "getGlobalCommerceCommandReceipt", "getSiteCommerceCommandReceipt"]);
+      "requestSourceCorrection", "listSourceCorrections", "getSourceCorrection",
+      "requestCommerceReconciliationResolution", "listCommerceReconciliations", "getCommerceReconciliation",
+      "getCommerceApprovalReview", "getGlobalCommerceCommandOutcome", "getSiteCommerceCommandOutcome"]);
     expect(Object.keys(AdminCreditService.method)).toEqual(["getSiteCreditSummary", "listCreditAccounts",
       "getCreditAccount", "listCreditGrants", "listCreditHolds", "listCreditHoldAllocations",
       "listCreditJournalTransactions", "listCreditJournalEntries", "listRatedUsage",
