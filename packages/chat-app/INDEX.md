@@ -1,3 +1,10 @@
+---
+architectureIndex: 1
+rootId: web.chat-app
+owners:
+  - "@LordFoxFairy"
+---
+
 # Chat App
 
 Brand-neutral, client-only Chat product composition shared by every generated Site project and the reference fixture.
@@ -87,3 +94,43 @@ exposing the Session. A directly authorized Temporary Chat can still hydrate and
 but the product only promises exclusion from ordinary history; the persistent badge states that Site
 retention, safety, and legal-hold rules still apply. Saved Memory and Admission suppression remain backend
 owner responsibilities and are not inferred or advertised by this package.
+
+## Responsibilities
+
+Compose the runnable, brand-neutral Chat browser product, including Session organization, projection, commands, recovery, accessibility, and responsive interaction.
+
+## Non-responsibilities
+
+This package does not call Agent, select provider routes, hold deployment credentials, own Session facts, or turn media and artifact handles into private backend access.
+
+## Public boundary
+
+`@kokoro/chat-app` exposes the client product composition from `src/index.ts`.
+
+## Callers and dependencies
+
+Generated Site projects and the reference fixture mount Chat. The package depends on `@kokoro/asset-client`, `@kokoro/chat-surface`, and `@kokoro/session-client`.
+
+## Data ownership and events
+
+Session owns messages, Runs, branches, receipts, and AG-UI presentation. The browser owns bounded drafts, viewport state, safe projections, and ephemeral upload recovery only.
+
+## Runtime and security
+
+All transport is same-origin through the Site BFF. Bootstrap, snapshot, cursor, binding, and projection repairs fail closed before mutation controls or streaming become active.
+
+## Idempotency, failure, and recovery
+
+Commands carry stable identities and reconcile receipts after ambiguity. Stream discontinuity closes stale authority, single-flights a fresh snapshot, and resumes only from the committed cursor.
+
+## Extension rules and forbidden dependencies
+
+Add product behavior through the projection/controller boundary and published package exports. Do not import server-only code, raw Agent events, provider payloads, or duplicate Session schemas.
+
+## Current gotchas
+
+Temporary Chat intentionally bypasses persistent draft, command, upload-recovery, and ordinary-history storage; changing that is a product-contract change.
+
+## Verification
+
+Run `pnpm --filter @kokoro/chat-app lint`, `pnpm --filter @kokoro/chat-app typecheck`, and `pnpm --filter @kokoro/chat-app test`.

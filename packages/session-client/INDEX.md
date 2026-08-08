@@ -1,7 +1,8 @@
 ---
 architectureIndex: 1
 rootId: web.session-client
-owners: ["@LordFoxFairy"]
+owners:
+  - "@LordFoxFairy"
 ---
 
 # Session client
@@ -101,3 +102,43 @@ stream. Web has no fallback that talks to Agent, opens a parallel `SessionEvent`
 or derives private topology.
 
 Verification: `pnpm --filter @kokoro/session-client lint && pnpm --filter @kokoro/session-client typecheck && pnpm --filter @kokoro/session-client test && pnpm --filter @kokoro/session-client build`.
+
+## Responsibilities
+
+Provide the generated, contract-bound Session HTTP/SSE client and closed AG-UI presentation admission state machine.
+
+## Non-responsibilities
+
+This package does not authenticate browser users, derive Site authority, own snapshots, contact Agent, render Chat, or invent recovery semantics outside the generated Session contract.
+
+## Public boundary
+
+`@kokoro/session-client`, `@kokoro/session-client/contracts`, and `@kokoro/session-client/agui-presentation` are the only supported import paths.
+
+## Callers and dependencies
+
+Site BFF, BFF runtime, Chat App, and Chat Surface consume this package. It has no dependency on another Kokoro workspace package.
+
+## Data ownership and events
+
+Session owns snapshots, cursors, durable presentation, and binding authority. The client retains only bounded committed decoder state and at most one prepared frame.
+
+## Runtime and security
+
+Generated schemas, exact binding echoes, strict UTF-8/JSON limits, bounded ledgers, and transactional prepare/commit admission protect the browser boundary.
+
+## Idempotency, failure, and recovery
+
+Only an exact last-frame retry is replayable. Older cursors, gaps, conflicts, or failed dispatch leave committed state unchanged and require authoritative snapshot repair.
+
+## Extension rules and forbidden dependencies
+
+Regenerate wire surfaces from Root contracts and extend the closed profile with corpus tests. Do not add raw SessionEvent fallback, Agent transport, stock browser client, or hand-written DTOs.
+
+## Current gotchas
+
+Decoder byte budgets cap retained wire and identity bytes, not total JavaScript heap overhead; independent cardinality limits remain mandatory.
+
+## Verification
+
+Run `pnpm --filter @kokoro/session-client lint`, `pnpm --filter @kokoro/session-client typecheck`, `pnpm --filter @kokoro/session-client test`, and `pnpm --filter @kokoro/session-client build`.

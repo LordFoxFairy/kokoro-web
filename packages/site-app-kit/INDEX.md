@@ -20,13 +20,13 @@ Defines the brand-neutral, immutable Site manifest and the environment-neutral c
 - `verifySiteContractFloor` compares the exact Platform Public contract floor, resolves the signing key from an injected trusted keyring, and delegates cryptography to an injected verification port.
 - `SiteWebSessionBridge` accepts only an already sealed server-created envelope; it never exposes Platform credentials to browser code.
 
-## Ownership and exclusions
+## Non-responsibilities
 
 This package owns types and pure admission logic. `enabledProductIds` describes physical product composition in one signed Site
 artifact; it does not replace Platform's runtime surface authority. The package does not resolve Host headers, select a Site at
 runtime, contact Platform, store accounts, implement cookies, or ship a trust root inside the artifact being verified.
 
-## Extension rules
+## Extension rules and forbidden dependencies
 
 Keep the package framework- and runtime-neutral. New trust algorithms belong behind `SiteContractFloorVerificationPort`; deployment/CI authority must inject trusted key material.
 
@@ -34,3 +34,23 @@ Keep the package framework- and runtime-neutral. New trust algorithms belong beh
 
 - `pnpm --filter @kokoro/site-app-kit typecheck`
 - `pnpm --filter @kokoro/site-app-kit build`
+
+## Callers and dependencies
+
+`@kokoro/site-scaffold` and the reference fixture consume this pure package. It has no dependency on another Kokoro workspace package.
+
+## Data ownership and events
+
+The package owns immutable manifest and contract-floor value types only. Platform owns SiteRelease and product authority; deployment tooling owns artifact publication.
+
+## Runtime and security
+
+Admission is pure and environment-neutral. Trusted key material and cryptographic verification are injected by deployment authority and never embedded as self-trust.
+
+## Idempotency, failure, and recovery
+
+Manifest definition and contract-floor verification are deterministic and effect-free; invalid identity, product sets, signatures, or floors fail before publication.
+
+## Current gotchas
+
+`enabledProductIds` controls physical artifact composition and does not replace Platform runtime surface admission.

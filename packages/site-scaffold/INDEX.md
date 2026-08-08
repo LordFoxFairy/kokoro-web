@@ -12,7 +12,7 @@ owners:
 Creates one product-named, independently versioned/deployed project per Site from the immutable `site-app-kit`, generated clients,
 brandless BFF kernel, and Node deployment-adapter package closure.
 
-## Supply-chain boundary
+## Runtime and security
 
 - Any existing target, including an empty directory or symlink, is rejected.
 - Each tgz must match the caller-provided SHA-256 and its internal `package/package.json` name/version; copied bytes are hashed again before publication to close source-path TOCTOU.
@@ -23,7 +23,7 @@ brandless BFF kernel, and Node deployment-adapter package closure.
   `Origin` and same-origin fetch marker after the runtime configuration gate succeeds. Auth.js `trustHost` is enabled
   only under this strict ingress and exact `AUTH_URL`/`KOKORO_SITE_PUBLIC_ORIGIN` deployment contract.
 
-## Qualification boundary
+## Current gotchas
 
 `scripts/certify-external-sites.mjs` proves only local Phase A packaging/isolation/build mechanics. Its ephemeral self-signed key is a test fixture and is not Task 18, live Platform, live auth, deploy or rollback qualification.
 The generated project is now a complete app composition: Auth.js password/TOTP ceremony, opaque credential rotation,
@@ -40,3 +40,27 @@ exact package closure.
 
 - `pnpm --filter @kokoro/site-scaffold typecheck`
 - `pnpm --filter @kokoro/site-scaffold build`
+
+## Non-responsibilities
+
+The scaffold does not host production Sites, activate releases, own runtime Site policy, trust artifact-supplied keys, or qualify live authentication, deploy, and rollback.
+
+## Public boundary
+
+`@kokoro/site-scaffold` exposes the project generator from the built `dist/scaffold.js` package export.
+
+## Callers and dependencies
+
+Root tooling and Site delivery CI call the generator. The package depends only on `@kokoro/site-app-kit` among Kokoro workspace packages.
+
+## Data ownership and events
+
+The generator owns candidate project files and build evidence. Platform owns SiteRelease and activation facts; each generated repository owns its artifact and deployment history.
+
+## Idempotency, failure, and recovery
+
+Generation rejects every pre-existing target and publishes only after complete validation. A failed attempt leaves no accepted target; recovery uses a new empty destination.
+
+## Extension rules and forbidden dependencies
+
+Add reusable Site composition through pinned package closure and qualification checks. Do not add shared production hosting, Host switching, embedded trust roots, direct sibling source imports, or runtime-only optional branches.

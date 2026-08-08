@@ -1,3 +1,10 @@
+---
+architectureIndex: 1
+rootId: web.site-bff
+owners:
+  - "@LordFoxFairy"
+---
+
 # Site BFF
 
 The single server-only composition root for an independently deployed Site. It combines the generated
@@ -33,3 +40,43 @@ effects use authenticated receipts, with redemption confirmation using its dedic
 `site-legal-documents` parses the deployment's single typed legal-document registry. Registration derives
 authoritative term references from that registry, while browser props and redemption previews receive only
 the exact matched `{ label, href }` projection. Missing, duplicate, or unsafe entries fail closed.
+
+## Responsibilities
+
+Compose one independent Site's server-only authentication, Platform Public, Session Browser, Media, Artifact, Memory, account, and Code-redemption boundaries.
+
+## Non-responsibilities
+
+This package does not select a Site from Host, expose a generic Platform proxy, own Platform or Session data, render browser products, or store provider and capability secrets in client state.
+
+## Public boundary
+
+`@kokoro/site-bff` exposes the server composition root; `@kokoro/site-bff/site-legal-documents` exposes the strict legal-document registry parser.
+
+## Callers and dependencies
+
+Generated Site projects instantiate this package. It depends on `@kokoro/bff-runtime`, `@kokoro/session-client`, `@kokoro/site-client`, and `@kokoro/site-runtime-node`.
+
+## Data ownership and events
+
+Platform owns Site, identity, commercial, Media, Artifact, and receipt facts; Session owns conversation and presentation facts. The BFF owns only Site-local cookies and bounded sealed recovery state.
+
+## Runtime and security
+
+Exact deployment binding, same-origin proof, CSRF, generated validation, one monotonic deadline, and server-only transport credentials guard every route.
+
+## Idempotency, failure, and recovery
+
+Ordinary, secret, and authenticated effects retain their appropriate command or capability identity and reconcile through the typed owner recovery route after ambiguity.
+
+## Extension rules and forbidden dependencies
+
+Expose only an exact product facade backed by generated contracts. Do not add generic proxying, Host-derived routing, raw backend URLs, sibling source imports, or browser-visible authority.
+
+## Current gotchas
+
+Raw Codes and one-time secrets must remain one-hop inputs; sealed command state may carry only bounded non-secret recovery identity.
+
+## Verification
+
+Run `pnpm --filter @kokoro/site-bff lint`, `pnpm --filter @kokoro/site-bff typecheck`, `pnpm --filter @kokoro/site-bff test`, and `pnpm --filter @kokoro/site-bff build`.

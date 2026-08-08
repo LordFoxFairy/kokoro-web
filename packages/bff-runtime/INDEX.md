@@ -7,14 +7,14 @@ owners:
 
 # BFF runtime
 
-## Responsibility
+## Responsibilities
 
 Brandless, server-only trust kernel shared by independently deployed Site BFFs. It loads one explicit deployment-bound
 `SiteProjectBinding`, exchanges and caches a user-free ProductContext, separately reads a UserSession-bound PersonalContext, composes
 the browser-safe bootstrap, acquires purpose-specific Session grants, and proxies generated Session operations without exposing
 authority material to a browser.
 
-## Public API
+## Public boundary
 
 - `site-binding.ts`: explicit build/deployment binding, production unsafe-mode gate, `exchangeProductContext` command/cache,
   `getPersonalContext` subject read, strict local bootstrap composition, and browser-safe projection including only published
@@ -28,7 +28,7 @@ authority material to a browser.
   authenticated transport binding returned out-of-band.
 - `index.ts`: the sole package export and a `server-only` guard. Site browser bundles must never import this package.
 
-## Dependency direction
+## Callers and dependencies
 
 Root owns `exchangeProductContext`, `getPersonalContext`, and `issueSessionAccessGrant`. Consumers inject narrow adapters for those
 generated operations; adapters must not introduce hand-written URLs, headers, or duplicate wire DTOs. ProductContext transport retries
@@ -36,7 +36,7 @@ reuse one command identity, while each cache refresh creates a new command/idemp
 propagate the caller AbortSignal/deadline and do not join an unscoped single-flight request. `SessionProxyTransportPort` adapts the
 Root-generated Session browser v3 client by operation id; browser-provided arbitrary paths are structurally impossible.
 
-## Security and runtime rules
+## Runtime and security
 
 - Binding identity comes only from explicit server/build configuration. Host, query, caller headers, defaults and local aliases are
   not inputs.
@@ -65,3 +65,23 @@ Root-generated Session browser v3 client by operation id; browser-provided arbit
 - `pnpm --filter @kokoro/bff-runtime typecheck`
 - `pnpm --filter @kokoro/bff-runtime build`
 - `pnpm --filter @kokoro/bff-runtime test`
+
+## Non-responsibilities
+
+The trust kernel does not resolve Host to Site, authenticate users, own Platform or Session facts, render product UI, or provide a generic reverse proxy.
+
+## Data ownership and events
+
+It owns only bounded in-process binding, context-cache, grant-cache, and proxy state. Platform owns Site and authorization facts; Session owns conversations, receipts, snapshots, and SSE.
+
+## Idempotency, failure, and recovery
+
+ProductContext retries preserve one command identity, request-scoped reads propagate one deadline, and ambiguous Session effects reconcile through generated receipts rather than blind replay.
+
+## Extension rules and forbidden dependencies
+
+Add only generated operation adapters and narrow injected ports. Do not add hand-written paths, browser-selected authority, raw backend URLs, sibling-repository source imports, or fallback transports.
+
+## Current gotchas
+
+Authenticated Session binding is returned out of band by the registered transport; response headers are never tenancy evidence.

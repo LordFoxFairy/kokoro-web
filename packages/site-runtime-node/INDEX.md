@@ -1,7 +1,8 @@
 ---
 architectureIndex: 1
 rootId: web.site-runtime-node
-owners: ["@LordFoxFairy"]
+owners:
+  - "@LordFoxFairy"
 ---
 
 # Node Site runtime adapter
@@ -13,3 +14,43 @@ Business components receive only `PlatformPublicTransport`, `ArtifactDeliveryTra
 `installNodeSiteRuntimeProviderFromEnv()` is called from Node instrumentation once per deployment process. Required values are server-only and certificate/key/CA values are loaded from bounded absolute files. Browser CSRF tokens are short-lived HMAC capabilities; Platform CSRF remains a distinct workload credential.
 
 Verification: `pnpm --filter @kokoro/site-runtime-node lint && pnpm --filter @kokoro/site-runtime-node typecheck && pnpm --filter @kokoro/site-runtime-node test && pnpm --filter @kokoro/site-runtime-node build`.
+
+## Responsibilities
+
+Implement the registered Node transport provider for one Site deployment's Platform, Artifact, and Session connections.
+
+## Non-responsibilities
+
+This adapter does not resolve Sites, own product policy, authenticate browser users, define wire contracts, or accept caller-selected origins and credentials.
+
+## Public boundary
+
+`@kokoro/site-runtime-node` exposes the server-only provider installation and transport adapters from `src/index.ts`.
+
+## Callers and dependencies
+
+Generated Site instrumentation and `@kokoro/site-bff` consume the adapter. It depends on `@kokoro/bff-runtime` and `@kokoro/site-client`.
+
+## Data ownership and events
+
+The adapter owns process-local pools, deadlines, trust material handles, and browser-CSRF capability verification; it owns no business records or durable events.
+
+## Runtime and security
+
+TLS 1.3 mTLS, separate trust roots and pools, bounded files, registered origins, no redirects, total deadlines, cancellation, and streaming backpressure are mandatory.
+
+## Idempotency, failure, and recovery
+
+Transport preserves caller command identity and abort/deadline state. Pool or stream failure returns ambiguity to the owner workflow and never invents success.
+
+## Extension rules and forbidden dependencies
+
+Add transports only behind generated client ports. Do not merge trust roots, read browser-selected endpoints, trust response headers for tenancy, or buffer artifact bodies.
+
+## Current gotchas
+
+The Site client certificate may be shared across Platform and Session, but their CA roots and connection pools must remain separate.
+
+## Verification
+
+Run `pnpm --filter @kokoro/site-runtime-node lint`, `pnpm --filter @kokoro/site-runtime-node typecheck`, `pnpm --filter @kokoro/site-runtime-node test`, and `pnpm --filter @kokoro/site-runtime-node build`.

@@ -1,7 +1,8 @@
 ---
 architectureIndex: 1
 rootId: web.memory-app
-owners: ["@LordFoxFairy"]
+owners:
+  - "@LordFoxFairy"
 ---
 
 # Site Memory app
@@ -36,3 +37,43 @@ or invent browser-only fields. A successor Root contract must define the protect
 receipt lifecycle and safe rejection projection before Web can expose that flow.
 
 Verification: `pnpm --filter @kokoro/memory-app lint && pnpm --filter @kokoro/memory-app typecheck && pnpm --filter @kokoro/memory-app test && pnpm --filter @kokoro/memory-app build`.
+
+## Responsibilities
+
+Provide brand-neutral saved-memory controls for the explicitly published Product Memory operation set.
+
+## Non-responsibilities
+
+This package does not classify content, learn automatically, search past chats, select runtime context, own memory records, or activate a dormant Platform surface.
+
+## Public boundary
+
+`@kokoro/memory-app` exposes the client-only Memory product composition from `src/index.ts`.
+
+## Callers and dependencies
+
+Only generated Sites that physically include Memory may mount it. The package depends on `@kokoro/asset-client` and `@kokoro/site-client`.
+
+## Data ownership and events
+
+Platform owns memory settings, records, history, restore, priority, import/export, and recovery facts. The browser owns bounded form and list projection state.
+
+## Runtime and security
+
+Every call is same-origin through the exact Site BFF Memory facade; Site, subject, project, space, namespace, and workload authority are server-derived.
+
+## Idempotency, failure, and recovery
+
+Mutations preserve command identity and expose only the same-origin recovery route after transport ambiguity. Reads replace local projection from authoritative results.
+
+## Extension rules and forbidden dependencies
+
+Keep behavior inside the frozen explicit operation set. Do not add past-chat, automatic-learning, ContextUse, Temporary Chat, direct Platform transport, or hidden runtime activation.
+
+## Current gotchas
+
+Physical inclusion in a Site artifact is necessary but not sufficient; the resolved Platform bootstrap must also publish the Memory surface.
+
+## Verification
+
+Run `pnpm --filter @kokoro/memory-app lint`, `pnpm --filter @kokoro/memory-app typecheck`, and `pnpm --filter @kokoro/memory-app test`.

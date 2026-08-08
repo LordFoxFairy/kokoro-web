@@ -1,7 +1,8 @@
 ---
 architectureIndex: 1
 rootId: web.chat-surface
-owners: ["@LordFoxFairy"]
+owners:
+  - "@LordFoxFairy"
 ---
 
 # Chat surface
@@ -57,3 +58,43 @@ Snapshot hydration validates active branch existence, exact active root-to-leaf 
 The separate `@kokoro/chat-surface/agui-compatibility-consumer` subpath remains release-evidence infrastructure, not a product Controller. It feeds provider fixtures through the same public adapter and compares final committed Web authority with the independently validated Session final snapshot.
 
 Verification: `pnpm --filter @kokoro/chat-surface lint && pnpm --filter @kokoro/chat-surface typecheck && pnpm --filter @kokoro/chat-surface test && pnpm --filter @kokoro/chat-surface build`.
+
+## Responsibilities
+
+Reduce the admitted Session presentation stream into a brand-neutral Chat projection and adapt that projection to the supported UI runtime.
+
+## Non-responsibilities
+
+This package does not open Agent transports, own Session snapshots, execute commands, infer private bindings, or admit unregistered AG-UI payloads.
+
+## Public boundary
+
+`@kokoro/chat-surface` exports the projection surface; `@kokoro/chat-surface/agui-presentation` and `@kokoro/chat-surface/agui-compatibility-consumer` are the two explicit subpath contracts.
+
+## Callers and dependencies
+
+`@kokoro/chat-app` and `@kokoro/media-app` consume the projection. The package depends only on `@kokoro/session-client` among Kokoro workspace packages.
+
+## Data ownership and events
+
+Session owns durable presentation and sequence authority. This package owns only the bounded, replaceable browser projection derived from admitted frames.
+
+## Runtime and security
+
+Closed event kinds, immutable identities, bounded content, and lifecycle transitions are checked before rendering. Unknown or unsafe payloads fail closed instead of entering generic UI props.
+
+## Idempotency, failure, and recovery
+
+Applying the same admitted durable fact is stable. Gaps, version conflicts, or authority drift require a fresh Session snapshot before projection continues.
+
+## Extension rules and forbidden dependencies
+
+Extend the closed projection model and its tests together. Do not add direct HTTP, Agent SDK, provider payload, server credential, or untyped custom-event dependencies.
+
+## Current gotchas
+
+AG-UI compatibility proves the narrowed Kokoro presentation profile, not permission to enable stock browser transports or arbitrary upstream event kinds.
+
+## Verification
+
+Run `pnpm --filter @kokoro/chat-surface lint`, `pnpm --filter @kokoro/chat-surface typecheck`, and `pnpm --filter @kokoro/chat-surface test`.
