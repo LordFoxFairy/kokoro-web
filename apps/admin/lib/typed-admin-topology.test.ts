@@ -40,12 +40,18 @@ const RETIRED_PATHS = [
 const LIVE_MESSAGE_KEYS = [
   "nav.approvals",
   "nav.audit",
+  "nav.codeBatches",
   "nav.credit",
+  "nav.creditPrograms",
+  "nav.entitlementTemplates",
   "nav.group.business",
+  "nav.group.commerce",
   "nav.group.ops",
   "nav.models",
+  "nav.offers",
   "nav.operators",
   "nav.overview",
+  "nav.redemptionPrograms",
   "nav.sites",
   "nav.users",
   "ui.language",
@@ -55,7 +61,7 @@ const LIVE_MESSAGE_KEYS = [
 ] as const;
 
 describe("typed Admin topology", () => {
-  it("physically removes generic and unimplemented Admin surfaces", () => {
+  it("physically removes generic and pre-hard-cut Admin surfaces", () => {
     for (const path of RETIRED_PATHS) {
       expect(existsSync(resolve(appRoot, path)), path).toBe(false);
     }
@@ -63,21 +69,25 @@ describe("typed Admin topology", () => {
 
   it("keeps navigation and the overview on typed control routes only", () => {
     const shell = source("components/shell/app-shell.tsx");
-    for (const route of ["/teams", "/hub", "/offers", "/code-batches", "/credit-programs"]) {
+    for (const route of ["/teams", "/hub"]) {
       expect(shell, route).not.toContain(route);
+    }
+    for (const route of ["/commerce/offers", "/commerce/code-batches", "/commerce/credit-programs"]) {
+      expect(shell, route).toContain(route);
     }
     expect(shell).not.toContain("manifests");
     expect(source("app/page.tsx")).toContain('resource: "approvals"');
     expect(source("app/page.tsx")).not.toContain('apiGet("/api/control/approvals"');
-    expect(source("lib/admin-surface-permissions.ts")).not.toContain("creditProgram");
+    expect(source("lib/admin-surface-permissions.ts")).toContain("commerceCreditProgramsRead");
   });
 
   it("registers every list surface in the closed Refine resource registry", () => {
     const shell = source("components/shell/app-shell.tsx");
     const provider = source("lib/refine/admin-data-provider.ts");
-    for (const resource of ["operators", "sites", "approvals", "audit"]) {
+    for (const resource of ["operators", "sites", "approvals", "audit", "credit-programs",
+      "entitlement-templates", "offers", "redemption-programs", "code-batches"]) {
       expect(shell).toContain(`{ name: "${resource}"`);
-      expect(provider).toContain(`${resource}:`);
+      expect(provider).toMatch(new RegExp(`(?:"${resource}"|${resource}):`, "u"));
     }
     expect(provider).not.toContain("admin_resource_page_incomplete");
     expect(provider).toContain("admin_resource_pagination_not_supported");

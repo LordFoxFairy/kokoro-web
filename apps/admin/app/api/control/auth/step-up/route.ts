@@ -6,7 +6,11 @@ import { setStepUpTransaction } from "@/lib/control-plane/authority-session";
 export const runtime = "nodejs";
 const operation = z.enum(["site.register", "site.release.publish", "model.inventory.import",
   "model.inventory.activate", "model.option.materialize", "model.site-policy.change",
-  "model.site-release-catalog.publish"]);
+  "model.site-release-catalog.publish", "commerce.credit-program.publish",
+  "commerce.entitlement-template.publish", "commerce.offer.publish",
+  "commerce.redemption-program.publish", "commerce.code-batch.issue",
+  "commerce.code-batch.approve", "commerce.code-batch.activate", "commerce.code-batch.abandon",
+  "commerce.code-batch.suspend", "commerce.code-batch.revoke"]);
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   try {

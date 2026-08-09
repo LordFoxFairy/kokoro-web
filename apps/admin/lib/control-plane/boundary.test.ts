@@ -55,14 +55,17 @@ describe("Admin typed control-plane boundary", () => {
     expect(client).not.toContain("SiteLocalePolicySchema");
   });
 
-  it("contains no retired Commerce client entry points", () => {
+  it("hard-cuts Commerce to its dedicated generated client and exact same-origin routes", () => {
     const client = source("lib/control-plane/client.ts");
-    for (const name of ["listOffers", "publishOffer", "listRedemptionPrograms",
-      "publishRedemptionProgram", "issueCodeBatch", "listCodeBatches", "codeBatchAction"]) {
-      expect(client).not.toContain(`export async function ${name}`);
-    }
+    const commerce = source("lib/control-plane/commerce-client.ts");
     expect(client).not.toContain("AdminCommerceService");
-    expect(client).not.toContain("commerceHardCut");
+    expect(commerce).toContain("AdminCommerceService");
+    expect(commerce).toContain("issueCodeBatch");
+    expect(commerce).toContain("approveCodeBatch");
+    expect(commerce).not.toContain("commerceHardCut");
+    expect(source("app/api/control/commerce/offers/route.ts")).toContain("publishOffer");
+    expect(source("app/api/control/commerce/code-batches/[batchRef]/suspend/route.ts"))
+      .toContain("suspendCodeBatch");
   });
 
   it("loads bounded cursor collections through the Site selector and Refine resources", () => {

@@ -38,24 +38,18 @@ function resolveImport(importer: string, specifier: string): string | null {
 }
 
 describe("typed Admin control-plane mirrors", () => {
-  it("exposes the complete Identity, Query, Commerce, Credit and Site provisioning RPC surfaces", () => {
+  it("exposes the canonical Identity, Query, 20-RPC Commerce, Credit and Site surfaces", () => {
     expect(Object.keys(AdminIdentityService.method)).toEqual(["beginOperatorLogin", "exchangeOidcSession",
       "getOperatorSessionDelivery", "beginStepUp", "completeStepUp", "signOut"]);
     expect(Object.keys(AdminQueryService.method)).toContain("getCurrentOperator");
     expect(Object.keys(AdminQueryService.method)).toContain("listPendingApprovals");
     expect(Object.keys(AdminCommerceService.method)).toEqual(["publishCreditProgramRevision",
       "listCreditProgramRevisions", "getCreditProgramRevision", "publishEntitlementTemplateRevision",
-      "listEntitlementTemplateRevisions", "getEntitlementTemplateRevision", "publishPlanRevision",
-      "listPlanRevisions", "getPlanRevision", "publishOfferRevision", "listOfferRevisions", "getOfferRevision",
-      "publishFulfillmentProgramRevision", "listFulfillmentProgramRevisions", "getFulfillmentProgramRevision",
+      "listEntitlementTemplateRevisions", "getEntitlementTemplateRevision",
+      "publishOfferRevision", "listOfferRevisions", "getOfferRevision",
       "publishRedemptionProgramRevision", "listRedemptionProgramRevisions", "getRedemptionProgramRevision",
-      "requestSiteCommerceAssignmentPromotion", "listSiteCommerceAssignments", "getSiteCommerceAssignment",
-      "requestCodeBatchIssuance", "requestCodeBatchTransition",
-      "emergencySuspendCodeBatch", "beginCodeBatchDelivery", "readCodeDeliveryRange",
-      "acknowledgeCodeDeliveryRange", "getCodeDeliverySession", "listCodeBatches", "getCodeBatch",
-      "requestSourceCorrection", "listSourceCorrections", "getSourceCorrection",
-      "requestCommerceReconciliationResolution", "listCommerceReconciliations", "getCommerceReconciliation",
-      "getCommerceApprovalReview", "getGlobalCommerceCommandOutcome", "getSiteCommerceCommandOutcome"]);
+      "issueCodeBatch", "approveCodeBatch", "activateCodeBatch", "abandonCodeBatch", "suspendCodeBatch",
+      "revokeCodeBatch", "listCodeBatches", "getCodeBatch"]);
     expect(Object.keys(AdminCreditService.method)).toEqual(["getSiteCreditSummary", "listCreditAccounts",
       "getCreditAccount", "listCreditGrants", "listCreditHolds", "listCreditHoldAllocations",
       "listCreditJournalTransactions", "listCreditJournalEntries", "listRatedUsage",
@@ -70,10 +64,14 @@ describe("typed Admin control-plane mirrors", () => {
   it("uses only the server-only HTTP/2 mTLS client boundary", () => {
     const transport = readFileSync(resolve(appRoot, "lib/control-plane/transport.ts"), "utf8");
     const client = readFileSync(resolve(appRoot, "lib/control-plane/client.ts"), "utf8");
+    const commerce = readFileSync(resolve(appRoot, "lib/control-plane/commerce-client.ts"), "utf8");
     expect(transport).toContain('import "server-only"');
     expect(transport).toContain('httpVersion: "2"');
     expect(transport).toContain("rejectUnauthorized: true");
     expect(client).not.toContain("AdminCommerceService");
+    expect(commerce).toContain('import "server-only"');
+    expect(commerce).toContain("AdminCommerceService");
+    expect(commerce).not.toContain("fetch(");
     expect(client).toContain("SiteProvisioningService");
     expect(readFileSync(resolve(appRoot, "lib/control-plane/credit-client.ts"), "utf8")).toContain("AdminCreditService");
     expect(client).not.toContain("/api/action");

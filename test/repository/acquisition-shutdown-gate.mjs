@@ -141,6 +141,34 @@ const ADMIN_CONTROL_ROUTES = new Map([
     imports: ["@/lib/control-plane/client", "@/lib/control-plane/http", "@/lib/control-plane/strict-query"],
   }],
 ]);
+
+for (const resource of ["credit-programs", "entitlement-templates", "offers", "redemption-programs",
+  "code-batches"]) {
+  ADMIN_CONTROL_ROUTES.set(`apps/admin/app/api/control/commerce/${resource}/route.ts`, {
+    methods: ["GET", "POST"],
+    imports: ["@/lib/commerce-contract", "@/lib/control-plane/commerce-client",
+      "@/lib/control-plane/commerce-http", "@/lib/control-plane/http"],
+  });
+}
+for (const [resource, parameter] of [["credit-programs", "revisionRef"],
+  ["entitlement-templates", "revisionRef"], ["offers", "revisionRef"],
+  ["redemption-programs", "revisionRef"], ["code-batches", "batchRef"]]) {
+  ADMIN_CONTROL_ROUTES.set(`apps/admin/app/api/control/commerce/${resource}/[${parameter}]/route.ts`, {
+    methods: ["GET"],
+    imports: ["@/lib/control-plane/commerce-client", "@/lib/control-plane/commerce-http",
+      "@/lib/control-plane/http"],
+  });
+}
+for (const action of ["approve", "activate", "abandon", "suspend", "revoke"]) {
+  ADMIN_CONTROL_ROUTES.set(
+    `apps/admin/app/api/control/commerce/code-batches/[batchRef]/${action}/route.ts`,
+    {
+      methods: ["POST"],
+      imports: ["@/lib/commerce-contract", "@/lib/control-plane/commerce-client",
+        "@/lib/control-plane/commerce-http", "@/lib/control-plane/http"],
+    },
+  );
+}
 const ADMIN_API_ROUTES = new Set([
   ...ADMIN_CONTROL_ROUTES.keys(),
 ]);

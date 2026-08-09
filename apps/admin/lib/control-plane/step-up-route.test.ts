@@ -12,8 +12,18 @@ beforeEach(() => {
   calls.setStepUpTransaction.mockResolvedValue(undefined);
 });
 
-describe("Model control step-up admission", () => {
+describe("typed Admin effect step-up admission", () => {
   it.each([
+    "commerce.credit-program.publish",
+    "commerce.entitlement-template.publish",
+    "commerce.offer.publish",
+    "commerce.redemption-program.publish",
+    "commerce.code-batch.issue",
+    "commerce.code-batch.approve",
+    "commerce.code-batch.activate",
+    "commerce.code-batch.abandon",
+    "commerce.code-batch.suspend",
+    "commerce.code-batch.revoke",
     "model.inventory.import",
     "model.inventory.activate",
     "model.option.materialize",
@@ -23,7 +33,7 @@ describe("Model control step-up admission", () => {
     const { NextRequest } = await import("next/server");
     const route = await import("../../app/api/control/auth/step-up/route");
     const response = await route.GET(new NextRequest(
-      `https://admin.example/api/control/auth/step-up?operation=${operation}&resource=resource-one&return=/models`,
+      `https://admin.example/api/control/auth/step-up?operation=${operation}&resource=resource-one&return=/commerce/code-batches`,
     ));
 
     expect(response.status).toBe(307);
@@ -33,20 +43,13 @@ describe("Model control step-up admission", () => {
       transactionRef: "step-up:one",
       operation,
       resourceRefs: ["resource-one"],
-      returnPath: "/models",
+      returnPath: "/commerce/code-batches",
       expiresAt: "2026-07-30T03:00:00.000Z",
     });
   });
 
-  it.each([
-    "commerce.offer.publish",
-    "commerce.code-batch.issue",
-    "commerce.code-batch.approve",
-    "commerce.redemption-program.publish",
-    "commerce.code-batch.activate",
-    "commerce.code-batch.suspend",
-    "commerce.code-batch.revoke",
-  ])("rejects retired Commerce operation %s before starting step-up", async (operation) => {
+  it.each(["commerce.generic.write", "commerce.code-batch.resume"])(
+    "rejects undeclared Commerce operation %s before starting step-up", async (operation) => {
     const { NextRequest } = await import("next/server");
     const route = await import("../../app/api/control/auth/step-up/route");
     const response = await route.GET(new NextRequest(
@@ -56,5 +59,6 @@ describe("Model control step-up admission", () => {
     expect(response.status).toBe(400);
     expect(calls.beginAdminStepUp).not.toHaveBeenCalled();
     expect(calls.setStepUpTransaction).not.toHaveBeenCalled();
-  });
+    },
+  );
 });

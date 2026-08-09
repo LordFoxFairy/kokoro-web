@@ -13,9 +13,13 @@ import {
   CheckCircleOutlined,
   DashboardOutlined,
   FileTextOutlined,
+  GiftOutlined,
   GlobalOutlined,
+  KeyOutlined,
   LogoutOutlined,
+  ProfileOutlined,
   SafetyOutlined,
+  TagsOutlined,
   UserOutlined,
   WalletOutlined,
 } from "@ant-design/icons";
@@ -68,6 +72,21 @@ const NAV: { groupKey: MessageKey | null; items: NavItem[] }[] = [
       { labelKey: "nav.credit", href: "/credit", icon: <WalletOutlined />, perm: null, signedSurface: "credit" },
       { labelKey: "nav.sites", href: "/sites", icon: <GlobalOutlined />, perm: "site.read" },
       { labelKey: "nav.models", href: "/models", icon: <ApiOutlined />, perm: "model.read" },
+    ],
+  },
+  {
+    groupKey: "nav.group.commerce",
+    items: [
+      { labelKey: "nav.creditPrograms", href: "/commerce/credit-programs", icon: <GiftOutlined />,
+        perm: "commerce.credit-program.read" },
+      { labelKey: "nav.entitlementTemplates", href: "/commerce/entitlement-templates", icon: <ProfileOutlined />,
+        perm: "commerce.entitlement-template.read" },
+      { labelKey: "nav.offers", href: "/commerce/offers", icon: <TagsOutlined />,
+        perm: "commerce.offer.read" },
+      { labelKey: "nav.redemptionPrograms", href: "/commerce/redemption-programs", icon: <SafetyOutlined />,
+        perm: "commerce.redemption-program.read" },
+      { labelKey: "nav.codeBatches", href: "/commerce/code-batches", icon: <KeyOutlined />,
+        perm: "commerce.code-batch.read" },
     ],
   },
   {
@@ -152,6 +171,16 @@ function AppShellInner({ children }: { children: React.ReactNode }): React.React
         { name: "sites", list: "/sites", meta: { label: "站点" } },
         { name: "approvals", list: "/approvals", meta: { label: "审批" } },
         { name: "audit", list: "/audit", meta: { label: "审计" } },
+        { name: "credit-programs", list: "/commerce/credit-programs",
+          show: "/commerce/credit-programs/:id", meta: { label: "Credit Programs" } },
+        { name: "entitlement-templates", list: "/commerce/entitlement-templates",
+          show: "/commerce/entitlement-templates/:id", meta: { label: "Entitlement Templates" } },
+        { name: "offers", list: "/commerce/offers",
+          show: "/commerce/offers/:id", meta: { label: "Offers" } },
+        { name: "redemption-programs", list: "/commerce/redemption-programs",
+          show: "/commerce/redemption-programs/:id", meta: { label: "Redemption Programs" } },
+        { name: "code-batches", list: "/commerce/code-batches",
+          show: "/commerce/code-batches/:id", meta: { label: "Code Batches" } },
       ]}
       options={{ disableTelemetry: true, syncWithLocation: true, warnWhenUnsavedChanges: true }}
     >

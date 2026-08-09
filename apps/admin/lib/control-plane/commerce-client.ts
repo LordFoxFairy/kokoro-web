@@ -2,7 +2,6 @@ import "server-only";
 
 import { create } from "@bufbuild/protobuf";
 import { timestampFromDate } from "@bufbuild/protobuf/wkt";
-import type { Client } from "@connectrpc/connect";
 import { Code, ConnectError, createClient } from "@connectrpc/connect";
 
 import type { AdminSurface } from "../admin-surface-permissions";
@@ -92,7 +91,6 @@ import {
   type CodeBatchView,
 } from "@/lib/generated/proto/kokoro/platform/commerce/v1/commerce_control_pb";
 
-type CommerceRpc = Client<typeof AdminCommerceService>;
 type PageInput = Readonly<{ siteId: string; pageToken?: string }>;
 type CommerceList<Item> = Readonly<{
   items: readonly Item[];
