@@ -8,6 +8,7 @@ import { PageContainer, ProTable, type ProColumns } from "@ant-design/pro-compon
 import { useInfiniteList, type BaseRecord } from "@refinedev/core";
 
 import { useAdmin } from "@/components/shell/app-shell";
+import { commerceQueryCanRender } from "@/lib/commerce-query-boundary";
 import { adminInfiniteResult, adminNextPageParam } from "@/lib/refine/admin-data-provider";
 
 export interface CommerceResourceListProps<RecordType extends BaseRecord> {
@@ -29,7 +30,7 @@ export function CommerceResourceList<RecordType extends BaseRecord>({
   columns,
   extra,
 }: CommerceResourceListProps<RecordType>): React.ReactElement {
-  const { siteId, can } = useAdmin();
+  const { siteId, authorityFingerprint, can } = useAdmin();
   const canRead = can(readPermission);
   const filters = useMemo(() => siteId
     ? [{ field: "siteId", operator: "eq" as const, value: siteId }]
@@ -38,10 +39,15 @@ export function CommerceResourceList<RecordType extends BaseRecord>({
     resource,
     pagination: { mode: "server", currentPage: 1, pageSize: 100 },
     filters,
+    meta: { authorityFingerprint },
     queryOptions: { enabled: canRead && siteId.length > 0, getNextPageParam: adminNextPageParam },
   });
   const list = adminInfiniteResult(query.data);
   const listError = query.error ?? list.error;
+  const canRender = commerceQueryCanRender({ canRead, siteId, error: listError,
+    isFetching: query.isFetching, isFetchingNextPage: query.isFetchingNextPage,
+    isPlaceholderData: query.isPlaceholderData });
+  const visibleRecords = canRender ? list.records : [];
   const tableColumns: ProColumns<RecordType>[] = [
     ...columns,
     { title: "操作", valueType: "option", width: 84, render: (_, row) => (
@@ -61,7 +67,7 @@ export function CommerceResourceList<RecordType extends BaseRecord>({
         columns={tableColumns}
         search={false}
         pagination={false}
-        dataSource={list.records}
+        dataSource={visibleRecords}
         loading={query.isLoading || (query.isFetching && !query.isFetchingNextPage)}
         options={{ reload: () => { void query.refetch(); }, density: true }}
         toolBarRender={() => query.hasNextPage ? [

@@ -24,12 +24,14 @@ import {
   type AdminCodeBatch,
 } from "@/lib/commerce-contract";
 import { codeBatchActionAccess, commerceAccessPlan } from "@/lib/commerce-permissions";
+import { commerceQueryCanRender } from "@/lib/commerce-query-boundary";
 import { adminInfiniteResult, adminNextPageParam } from "@/lib/refine/admin-data-provider";
 import { downloadSensitiveCodes } from "@/lib/sensitive-code-export";
 
 interface SensitiveCodeExport {
   readonly batchRef: string;
   readonly rawCodes: readonly string[];
+  readonly expiresAt: number;
 }
 
 type ReasonAction = "abandon" | "suspend" | "revoke";
@@ -43,8 +45,10 @@ const BATCH_STEP_UP_OPERATION = Object.freeze({
   revoke: "commerce.code-batch.revoke",
 } as const satisfies Record<BatchStepUpAction, string>);
 
+const SENSITIVE_EXPORT_TTL_MS = 45_000;
+
 export function CodeBatchConsole(): React.ReactElement {
-  const { siteId, me } = useAdmin();
+  const { siteId, authorityFingerprint, me } = useAdmin();
   const permissions = me?.permissions ?? [];
   const access = commerceAccessPlan(permissions).codeBatches;
   const canRead = access.read;
@@ -61,17 +65,37 @@ export function CodeBatchConsole(): React.ReactElement {
     resource: "code-batches",
     pagination: { mode: "server", currentPage: 1, pageSize: 100 },
     filters,
+    meta: { authorityFingerprint },
     queryOptions: { enabled: canRead && siteId.length > 0, getNextPageParam: adminNextPageParam },
   });
   const list = adminInfiniteResult(query.data);
   const listError = query.error ?? list.error;
-  const clearSensitiveExport = useCallback(() => { setSensitiveExport(null); }, []);
+  const canRender = commerceQueryCanRender({ canRead, siteId, error: listError,
+    isFetching: query.isFetching, isFetchingNextPage: query.isFetchingNextPage,
+    isPlaceholderData: query.isPlaceholderData });
+  const visibleRecords = canRender ? list.records : [];
+  const clearSensitiveExport = useCallback(() => { setSensitiveExport(null); }, [setSensitiveExport]);
+  const clearSensitiveExportIfExpired = useCallback(() => {
+    setSensitiveExport((current) => current !== null && Date.now() >= current.expiresAt ? null : current);
+  }, [setSensitiveExport]);
 
   useEffect(() => {
     if (sensitiveExport === null) return;
-    const timeout = window.setTimeout(clearSensitiveExport, 45_000);
-    return () => { window.clearTimeout(timeout); };
-  }, [clearSensitiveExport, sensitiveExport]);
+    const remaining = sensitiveExport.expiresAt - Date.now();
+    const timeout = window.setTimeout(clearSensitiveExport, Math.max(0, remaining));
+    const onPageHide = () => clearSensitiveExport();
+    const onPageShow = () => clearSensitiveExportIfExpired();
+    const onVisibilityChange = () => clearSensitiveExport();
+    window.addEventListener("pagehide", onPageHide);
+    window.addEventListener("pageshow", onPageShow);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      window.clearTimeout(timeout);
+      window.removeEventListener("pagehide", onPageHide);
+      window.removeEventListener("pageshow", onPageShow);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [clearSensitiveExport, clearSensitiveExportIfExpired, sensitiveExport]);
 
   const refresh = () => { void query.refetch(); };
   const columns: ProColumns<AdminCodeBatch>[] = [
@@ -141,7 +165,7 @@ export function CodeBatchConsole(): React.ReactElement {
       <Alert type="warning" showIcon message="暂停后不可恢复，只能撤销"
         description="Suspend 是 terminal-like 状态；不存在 resume 操作。" style={{ marginBottom: 16 }} />
       <ProTable<AdminCodeBatch> rowKey="batchRef" columns={columns} search={false} pagination={false}
-        dataSource={list.records}
+        dataSource={visibleRecords}
         loading={query.isLoading || (query.isFetching && !query.isFetchingNextPage)}
         options={{ reload: refresh, density: true }}
         toolBarRender={() => query.hasNextPage ? [<Button key="load-more" icon={<DownOutlined />}
@@ -162,6 +186,10 @@ export function CodeBatchConsole(): React.ReactElement {
           <Button key="discard" danger onClick={clearSensitiveExport}>放弃并清空</Button>,
           <Button key="download" type="primary" icon={<DownloadOutlined />} onClick={() => {
             if (sensitiveExport === null) return;
+            if (Date.now() >= sensitiveExport.expiresAt) {
+              setSensitiveExport(null);
+              return;
+            }
             try { downloadSensitiveCodes(sensitiveExport.rawCodes, sensitiveExport.batchRef); }
             finally { setSensitiveExport(null); }
           }}>下载 Blob 并清空</Button>,
@@ -197,7 +225,8 @@ function IssueCodeBatchForm({ siteId, enabled, onSensitiveExport, onReplay, onIs
             ...optionalText("endsAt", values.endsAt) });
           const result = await apiPost("/api/control/commerce/code-batches", input, issueCodeBatchResultSchema);
           if (result.delivery.kind === "secret_export") {
-            onSensitiveExport({ batchRef: result.batchRef, rawCodes: result.delivery.rawCodes });
+            onSensitiveExport({ batchRef: result.batchRef, rawCodes: result.delivery.rawCodes,
+              expiresAt: Date.now() + SENSITIVE_EXPORT_TTL_MS });
           } else if (result.delivery.requiredAction === "abandon_and_reissue") {
             onReplay(result.batchRef);
           }

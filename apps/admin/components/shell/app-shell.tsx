@@ -35,12 +35,14 @@ import { antdTheme, proLayoutToken } from "@/lib/theme";
 import { LocaleProvider, useLocale, useT } from "@/lib/i18n/context";
 import type { MessageKey } from "@/lib/i18n/messages";
 import { adminNavigationAccess } from "@/lib/admin-surface-permissions";
+import { adminAuthorityFingerprint, authoritySites } from "@/lib/admin-authority";
 import { adminDataProvider, adminSiteListSchema, operatorSchema } from "@/lib/refine/admin-data-provider";
 
 interface AdminCtx {
   me: Me | null;
   sites: Site[];
   siteId: string;
+  authorityFingerprint: string;
   setSiteId: (id: string) => void;
   can: (permission: string | null) => boolean;
   reloadSites: () => void;
@@ -112,6 +114,7 @@ function AppShellInner({ children }: { children: React.ReactNode }): React.React
   const [me, setMe] = useState<Me | null>(null);
   const [sites, setSites] = useState<Site[]>([]);
   const [siteId, setSiteId] = useState("");
+  const [authorityFingerprint, setAuthorityFingerprint] = useState("");
   const [siteCatalogError, setSiteCatalogError] = useState<string | null>(null);
   const siteCatalogRequests = useRef(new LatestRequest());
   const pathname = usePathname();
@@ -119,30 +122,44 @@ function AppShellInner({ children }: { children: React.ReactNode }): React.React
 
   const reloadSites = useCallback(() => {
     const generation = siteCatalogRequests.current.begin();
-    apiGet("/api/control/operator", operatorSchema)
-      .then((loaded) => {
-        if (!siteCatalogRequests.current.isCurrent(generation)) return;
-        setMe({ email: loaded.operatorRef, roleKey: loaded.state, permissions: loaded.effectivePermissions,
-          scopeSites: loaded.effectiveSiteScopes.map((site) => site.siteId) });
-      })
-      .catch(() => {});
-    collectCursorPages(
+    const catalog = collectCursorPages(
       (pageToken, signal) => apiGet(
         `/api/control/sites${pageToken ? `?pageToken=${encodeURIComponent(pageToken)}` : ""}`,
         adminSiteListSchema,
         { signal },
       ),
       { identity: (site) => site.siteRef, maxItems: 1000, maxPages: 20, timeoutMs: 5_000 },
-    )
+    ).then((loaded) => ({ loaded, error: null as Error | null }))
+      .catch((error: unknown) => ({ loaded: [],
+        error: error instanceof Error ? error : new Error("admin_site_catalog_incomplete") }));
+    void apiGet("/api/control/operator", operatorSchema)
       .then((loaded) => {
         if (!siteCatalogRequests.current.isCurrent(generation)) return;
-        const available = loaded.map((site) => ({ id: site.siteRef, name: site.siteRef, key: site.siteRef }));
         setSiteCatalogError(null);
-        setSites(available);
-        setSiteId((previous) => available.some((site) => site.id === previous) ? previous : available[0]?.id ?? "");
+        setMe({ email: loaded.operatorRef, roleKey: loaded.state, permissions: loaded.effectivePermissions,
+          scopeSites: loaded.effectiveSiteScopes.map((site) => site.siteId) });
+        setAuthorityFingerprint(adminAuthorityFingerprint(loaded));
+        const scoped = authoritySites(loaded.effectiveSiteScopes);
+        setSites(scoped);
+        setSiteId((previous) => scoped.some((site) => site.id === previous) ? previous : scoped[0]?.id ?? "");
+        return catalog.then(({ loaded: catalogSites, error }) => {
+          if (!siteCatalogRequests.current.isCurrent(generation)) return;
+          if (error !== null) {
+            setSiteCatalogError(error.message);
+            return;
+          }
+          const labelled = authoritySites(loaded.effectiveSiteScopes, catalogSites);
+          setSiteCatalogError(null);
+          setSites(labelled);
+          setSiteId((previous) => labelled.some((site) => site.id === previous) ? previous : labelled[0]?.id ?? "");
+        });
       })
       .catch((error: unknown) => {
         if (!siteCatalogRequests.current.isCurrent(generation)) return;
+        setMe(null);
+        setSites([]);
+        setSiteId("");
+        setAuthorityFingerprint("");
         setSiteCatalogError(error instanceof Error ? error.message : "admin_site_catalog_incomplete");
       });
   }, []);
@@ -161,9 +178,10 @@ function AppShellInner({ children }: { children: React.ReactNode }): React.React
     permission === null || permits(me?.permissions ?? [], permission);
   const signedNavigation = adminNavigationAccess(me?.permissions ?? []);
 
-  const ctx: AdminCtx = { me, sites, siteId, setSiteId, can, reloadSites };
+  const ctx: AdminCtx = { me, sites, siteId, authorityFingerprint, setSiteId, can, reloadSites };
   const framework = (
     <Refine
+      key={authorityFingerprint}
       dataProvider={adminDataProvider}
       routerProvider={routerProvider}
       resources={[

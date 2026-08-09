@@ -32,7 +32,22 @@ describe("Refine AdminCommerce product surface", () => {
       expect(file).toContain("canRead");
     }
     expect(list).toContain('field: "siteId"');
-    expect(detail).toContain("meta: { siteId }");
+    expect(detail).toContain("meta: { siteId, authorityFingerprint }");
+  });
+
+  it("fail-closes every Commerce renderer across permission, Site, placeholder and query errors", () => {
+    const list = source("components/commerce/commerce-resource-list.tsx");
+    const detail = source("components/commerce/commerce-resource-detail.tsx");
+    const batches = source("components/commerce/code-batch-console.tsx");
+    for (const file of [list, detail, batches]) {
+      expect(file).toContain("authorityFingerprint");
+      expect(file).toContain("commerceQueryCanRender");
+      expect(file).toContain("isPlaceholderData");
+    }
+    expect(list).toContain("dataSource={visibleRecords}");
+    expect(batches).toContain("dataSource={visibleRecords}");
+    expect(detail).toContain("canRender && result");
+    expect(source("components/shell/app-shell.tsx")).toContain("key={authorityFingerprint}");
   });
 
   it("uses Pro Components for resource tables, details and explicit publish forms", () => {
@@ -51,6 +66,10 @@ describe("Refine AdminCommerce product surface", () => {
     expect(consoleSource).toContain("maskClosable={false}");
     expect(consoleSource).toContain("keyboard={false}");
     expect(consoleSource).toContain("45_000");
+    expect(consoleSource).toContain("expiresAt");
+    expect(consoleSource).toContain('"pagehide"');
+    expect(consoleSource).toContain('"pageshow"');
+    expect(consoleSource).toContain('"visibilitychange"');
     expect(consoleSource).toContain("setSensitiveExport(null)");
     expect(consoleSource).toContain("downloadSensitiveCodes");
     expect(consoleSource).toContain("abandon_and_reissue");
