@@ -26,6 +26,7 @@
     "@kokoro/session-client": "workspace:*",
     "@kokoro/site-client": "workspace:*",
     "@kokoro/site-scaffold": "workspace:*",
+    "playwright": "1.62.0",
     "rolldown": "1.1.4"
   }
 }

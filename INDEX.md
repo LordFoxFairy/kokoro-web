@@ -75,9 +75,13 @@ Admin runtime 只依赖本仓 generated mirror，不允许 sibling repository so
 `test/fixtures/web-chat-credit-runtime.mjs` 是 Root 兼容性场景唯一的 Web-owned child entry。它通过
 `@kokoro/site-scaffold` 公开 export 构建独立 Site candidate，以 `setup -> serve -> exercise -> observe`
 闭合生成 CA、standalone + strict-Host HTTPS、NextAuth cookie jar、Account before/after、Session client/SSE terminal
-和 logical replay。Auth、Platform/Session upstream 或 mTLS 材料不完整时保持 fail-closed；最终 observation
+和 logical replay，并由固定版本真实 Chromium 在生成 Site `/account` 完成卡密 preview、一次 confirm 和同 flow 的
+UI recover，随后验证 Credit/Product readback。Chromium 只信任生成 leaf 的 SPKI pin，使用一次性 profile；raw Code
+只从精确 `0600` 私有文件进入瞬时表单与唯一 preview 请求，不进入 state、URL、日志、浏览器 storage/profile 或
+evidence。`exercise` 只落 journey evidence，`serve` 完全退出并写 lifecycle evidence 后 `observe` 才组合最终结果。
+Auth、Platform/Session upstream 或 mTLS 材料不完整时保持 fail-closed；最终 observation
 只含固定 owner-safe 计数/布尔值，不返回内容、金额、credential 或 Usage/Gateway 内部引用。该入口不导入或
-启动 `apps/reference-site`。
+启动 `apps/reference-site`，也不增加 route、RPC、protocol、worker 或运维面。
 
 ## Idempotency, failure, and recovery
 

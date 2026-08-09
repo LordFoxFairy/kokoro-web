@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { X509Certificate } from "node:crypto";
 import { createServer } from "node:http";
 import { request as httpsRequest } from "node:https";
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -16,10 +16,31 @@ import {
   runWebChatCreditRuntimeFixture,
   setupWebChatCreditRuntime,
 } from "../fixtures/web-chat-credit-runtime.mjs";
-import { createBrowserHttpClient } from "../fixtures/web-chat-credit-runtime-network.mjs";
+import {
+  availableLoopbackPort,
+  createBrowserHttpClient,
+} from "../fixtures/web-chat-credit-runtime-network.mjs";
 import { createSessionTransport } from "../fixtures/web-chat-credit-runtime-journey.mjs";
+import {
+  createBrowserAudit,
+  redeemAccountInChromium,
+} from "../fixtures/web-chat-credit-runtime-browser.mjs";
 
 const WEB_ROOT = new URL("../../", import.meta.url);
+
+async function waitForPathRemoval(path, timeoutMs = 2_000) {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    try {
+      await stat(path);
+    } catch (error) {
+      if (error?.code === "ENOENT") return;
+      throw error;
+    }
+    if (Date.now() >= deadline) assert.fail(`path was not removed within ${timeoutMs}ms`);
+    await new Promise((resolvePromise) => setTimeout(resolvePromise, 5));
+  }
+}
 
 function fixtureEnvironment(privateDirectory) {
   return {
@@ -52,6 +73,9 @@ function runtimeMaterial(requirement) {
       password: "runtime-fixture-password-at-least-32-characters",
     })}\n`;
   }
+  if (requirement === "KOKORO_WEB_FIXTURE_REDEMPTION_CODE_FILE") {
+    return "KC1-ABCDEFGH-0123456789-0123456789ABCDEFGHJKMNPQRSTVWXYZ-ABCDEFGH";
+  }
   if (requirement.endsWith("_CERT_FILE") || requirement.endsWith("_CA_FILE")) {
     return "-----BEGIN CERTIFICATE-----\nZml4dHVyZQ==\n-----END CERTIFICATE-----\n";
   }
@@ -60,6 +84,547 @@ function runtimeMaterial(requirement) {
   }
   return "runtime-fixture-private-material-at-least-32-characters";
 }
+
+function redemptionEvidence() {
+  return {
+    accountRedemptionPage: true,
+    redemptionPreviewed: true,
+    redemptionConfirmed: true,
+    redemptionBalanceIncreased: true,
+    redemptionProductVisible: true,
+    redemptionSameFlowReplay: true,
+    redemptionRecoveryContinuedViaUi: true,
+    redemptionSecretLeakFree: true,
+    browserMutationAuthorityEnforced: true,
+    browserTlsAuthorityPinned: true,
+    browserProfileRemoved: true,
+    redemptionDashboardReadCount: 3,
+    redemptionExecuteRequestCount: 2,
+    redemptionRecoveryRequestCount: 1,
+    browserConsoleCount: 0,
+    browserPageErrorCount: 0,
+  };
+}
+
+function runtimeLifecycleEvidence() {
+  return {
+    serverLogLeakFree: true,
+    webRuntimeClosed: true,
+  };
+}
+
+test("browser redemption replaces private browser failures with one stable code and removes its profile", async (t) => {
+  const privateDirectory = await mkdtemp(join(tmpdir(), "kokoro-web-browser-failure-test-"));
+  t.after(() => rm(privateDirectory, { recursive: true, force: true }));
+  const setup = await setupWebChatCreditRuntime(
+    fixtureEnvironment(privateDirectory),
+    { buildCandidate: false },
+  );
+  const rawCode = "KC1-01234567-0123456789-0123456789ABCDEFGHJKMNPQRSTVWXYZ-01234567";
+  let profileDirectory;
+  await assert.rejects(redeemAccountInChromium({
+    publicOrigin: setup.publicOrigin,
+    candidateHost: setup.candidateHost,
+    publicCertificateAuthorityFile: setup.publicCertificateAuthorityFile,
+    publicTlsCertificateFile: JSON.parse(await readFile(setup.runtimeStateFile, "utf8"))
+      .publicTlsCertificateFile,
+    auth: {
+      schemaVersion: 1,
+      email: "runtime-fixture@example.com",
+      password: "runtime-fixture-password-at-least-32-characters",
+    },
+    rawCode,
+  }, {
+    browserType: {
+      async launchPersistentContext(path) {
+        profileDirectory = path;
+        throw new Error(`private browser failure ${rawCode}`);
+      },
+    },
+  }), (error) => {
+    assert.equal(error.message, "WEB_FIXTURE_BROWSER_REDEMPTION_FAILED");
+    assert.equal(error.message.includes(rawCode), false);
+    return true;
+  });
+  assert.equal(typeof profileDirectory, "string");
+  await assert.rejects(stat(profileDirectory), { code: "ENOENT" });
+});
+
+test("browser redemption blocks service workers and clears the Chromium cache around the journey", async (t) => {
+  const privateDirectory = await mkdtemp(join(tmpdir(), "kokoro-web-browser-cache-fence-test-"));
+  t.after(() => rm(privateDirectory, { recursive: true, force: true }));
+  const setup = await setupWebChatCreditRuntime(
+    fixtureEnvironment(privateDirectory),
+    { buildCandidate: false },
+  );
+  const state = JSON.parse(await readFile(setup.runtimeStateFile, "utf8"));
+  const commands = [];
+  let launchOptions;
+  let detached = 0;
+  let contextClosed = 0;
+  const page = {
+    setDefaultTimeout() {},
+    setDefaultNavigationTimeout() {},
+    on() {},
+    async goto() {
+      commands.push(["PAGE.goto", undefined]);
+      throw new Error("fixture journey stopped after cache fence");
+    },
+  };
+
+  await assert.rejects(redeemAccountInChromium({
+    publicOrigin: setup.publicOrigin,
+    candidateHost: setup.candidateHost,
+    publicCertificateAuthorityFile: setup.publicCertificateAuthorityFile,
+    publicTlsCertificateFile: state.publicTlsCertificateFile,
+    auth: {
+      schemaVersion: 1,
+      email: "runtime-fixture@example.com",
+      password: "runtime-fixture-password-at-least-32-characters",
+    },
+    rawCode: runtimeMaterial("KOKORO_WEB_FIXTURE_REDEMPTION_CODE_FILE"),
+  }, {
+    browserType: {
+      async launchPersistentContext(_path, options) {
+        launchOptions = options;
+        return {
+          pages() { return [page]; },
+          async close() { contextClosed += 1; },
+          async newCDPSession(candidate) {
+            assert.equal(candidate, page);
+            return {
+              async send(command, parameters) { commands.push([command, parameters]); },
+              async detach() { detached += 1; },
+            };
+          },
+        };
+      },
+    },
+  }), /WEB_FIXTURE_BROWSER_REDEMPTION_FAILED/u);
+
+  assert.equal(launchOptions.serviceWorkers, "block");
+  assert.deepEqual(commands, [
+    ["Network.enable", undefined],
+    ["Network.setCacheDisabled", { cacheDisabled: true }],
+    ["Network.clearBrowserCache", undefined],
+    ["PAGE.goto", undefined],
+    ["Network.clearBrowserCache", undefined],
+    ["Network.disable", undefined],
+  ]);
+  assert.equal(detached, 1);
+  assert.equal(contextClosed, 1);
+});
+
+test("browser audit counts only same-origin successful non-service-worker dashboard responses", async () => {
+  const origin = new URL("https://web-chat-credit.fixture.local:4343");
+  const rawCode = runtimeMaterial("KOKORO_WEB_FIXTURE_REDEMPTION_CODE_FILE");
+  const cases = [
+    { url: "https://cross-origin.fixture.local:4343/api/account/dashboard", status: 200, fromServiceWorker: false, count: 0 },
+    { url: `${origin.origin}/api/account/dashboard`, status: 500, fromServiceWorker: false, count: 0 },
+    { url: `${origin.origin}/api/account/dashboard`, status: 200, fromServiceWorker: true, count: 0 },
+    { url: `${origin.origin}/api/account/dashboard`, status: 200, fromServiceWorker: false, count: 1 },
+  ];
+
+  for (const fixture of cases) {
+    const handlers = new Map();
+    const audit = createBrowserAudit(origin, rawCode);
+    audit.attach({
+      on(event, handler) { handlers.set(event, handler); },
+    });
+    const request = {
+      method() { return "GET"; },
+      url() { return fixture.url; },
+    };
+    handlers.get("response")({
+      fromServiceWorker() { return fixture.fromServiceWorker; },
+      request() { return request; },
+      status() { return fixture.status; },
+    });
+
+    const evidence = await audit.finalize();
+    assert.equal(evidence.redemptionDashboardReadCount, fixture.count);
+    assert.equal(evidence.browserMutationAuthorityEnforced, false);
+  }
+
+  const handlers = new Map();
+  const audit = createBrowserAudit(origin, rawCode);
+  audit.attach({ on(event, handler) { handlers.set(event, handler); } });
+  const respond = (suffix, method) => {
+    const request = {
+      method() { return method; },
+      url() { return `${origin.origin}/api/account/${suffix}`; },
+    };
+    handlers.get("response")({
+      fromServiceWorker() { return false; },
+      request() { return request; },
+      status() { return 200; },
+    });
+  };
+  for (let count = 0; count < 3; count += 1) respond("dashboard", "GET");
+  for (let count = 0; count < 2; count += 1) respond("execute", "POST");
+  respond("recover", "POST");
+  const counts = await audit.finalize();
+  assert.deepEqual({
+    dashboard: counts.redemptionDashboardReadCount,
+    execute: counts.redemptionExecuteRequestCount,
+    recover: counts.redemptionRecoveryRequestCount,
+  }, { dashboard: 3, execute: 2, recover: 1 });
+});
+
+test("browser redemption bounds a never-resolving persistent Chromium launch", async (t) => {
+  const privateDirectory = await mkdtemp(join(tmpdir(), "kokoro-web-browser-timeout-test-"));
+  t.after(() => rm(privateDirectory, { recursive: true, force: true }));
+  const setup = await setupWebChatCreditRuntime(
+    fixtureEnvironment(privateDirectory),
+    { buildCandidate: false },
+  );
+  const state = JSON.parse(await readFile(setup.runtimeStateFile, "utf8"));
+  let profileDirectory;
+  const startedAt = Date.now();
+
+  await assert.rejects(redeemAccountInChromium({
+    publicOrigin: setup.publicOrigin,
+    candidateHost: setup.candidateHost,
+    publicCertificateAuthorityFile: setup.publicCertificateAuthorityFile,
+    publicTlsCertificateFile: state.publicTlsCertificateFile,
+    auth: {
+      schemaVersion: 1,
+      email: "runtime-fixture@example.com",
+      password: "runtime-fixture-password-at-least-32-characters",
+    },
+    rawCode: runtimeMaterial("KOKORO_WEB_FIXTURE_REDEMPTION_CODE_FILE"),
+  }, {
+    browserType: {
+      async launchPersistentContext(path) {
+        profileDirectory = path;
+        return new Promise(() => {});
+      },
+    },
+    totalTimeoutMs: 25,
+    cleanupTimeoutMs: 25,
+  }), /WEB_FIXTURE_BROWSER_REDEMPTION_FAILED/u);
+
+  assert.ok(Date.now() - startedAt < 2_000);
+  assert.equal(typeof profileDirectory, "string");
+  await assert.rejects(stat(profileDirectory), { code: "ENOENT" });
+});
+
+test("browser redemption closes a context that resolves after its deadline and removes the recreated profile", async (t) => {
+  const privateDirectory = await mkdtemp(join(tmpdir(), "kokoro-web-browser-late-launch-test-"));
+  t.after(() => rm(privateDirectory, { recursive: true, force: true }));
+  const setup = await setupWebChatCreditRuntime(
+    fixtureEnvironment(privateDirectory),
+    { buildCandidate: false },
+  );
+  const state = JSON.parse(await readFile(setup.runtimeStateFile, "utf8"));
+  const rawCode = runtimeMaterial("KOKORO_WEB_FIXTURE_REDEMPTION_CODE_FILE");
+  let finishLaunch;
+  const launchGate = new Promise((resolvePromise) => { finishLaunch = resolvePromise; });
+  let observeLateContext;
+  const lateContextObserved = new Promise((resolvePromise) => { observeLateContext = resolvePromise; });
+  let profileDirectory;
+  let closeCalls = 0;
+  let pagesCalls = 0;
+
+  const redemption = redeemAccountInChromium({
+    publicOrigin: setup.publicOrigin,
+    candidateHost: setup.candidateHost,
+    publicCertificateAuthorityFile: setup.publicCertificateAuthorityFile,
+    publicTlsCertificateFile: state.publicTlsCertificateFile,
+    auth: {
+      schemaVersion: 1,
+      email: "runtime-fixture@example.com",
+      password: "runtime-fixture-password-at-least-32-characters",
+    },
+    rawCode,
+  }, {
+    browserType: {
+      async launchPersistentContext(path) {
+        profileDirectory = path;
+        await launchGate;
+        await mkdir(path, { recursive: true });
+        await writeFile(join(path, "late-launch-secret"), rawCode, { mode: 0o600 });
+        return {
+          pages() {
+            pagesCalls += 1;
+            observeLateContext();
+            return [];
+          },
+          async newPage() { throw new Error("late journey must not start"); },
+          async close() {
+            closeCalls += 1;
+            observeLateContext();
+          },
+        };
+      },
+    },
+    totalTimeoutMs: 25,
+    cleanupTimeoutMs: 60,
+  });
+
+  await assert.rejects(redemption, /WEB_FIXTURE_BROWSER_REDEMPTION_FAILED/u);
+  assert.equal(typeof profileDirectory, "string");
+  await assert.rejects(stat(profileDirectory), { code: "ENOENT" });
+
+  finishLaunch();
+  await lateContextObserved;
+  await waitForPathRemoval(profileDirectory);
+
+  assert.equal(closeCalls, 1);
+  assert.equal(pagesCalls, 0);
+  await assert.rejects(stat(profileDirectory), { code: "ENOENT" });
+});
+
+test("browser redemption bounds a never-resolving Chromium close and still removes its profile", async (t) => {
+  const privateDirectory = await mkdtemp(join(tmpdir(), "kokoro-web-browser-close-timeout-test-"));
+  t.after(() => rm(privateDirectory, { recursive: true, force: true }));
+  const setup = await setupWebChatCreditRuntime(
+    fixtureEnvironment(privateDirectory),
+    { buildCandidate: false },
+  );
+  const state = JSON.parse(await readFile(setup.runtimeStateFile, "utf8"));
+  let profileDirectory;
+  const startedAt = Date.now();
+
+  await assert.rejects(redeemAccountInChromium({
+    publicOrigin: setup.publicOrigin,
+    candidateHost: setup.candidateHost,
+    publicCertificateAuthorityFile: setup.publicCertificateAuthorityFile,
+    publicTlsCertificateFile: state.publicTlsCertificateFile,
+    auth: {
+      schemaVersion: 1,
+      email: "runtime-fixture@example.com",
+      password: "runtime-fixture-password-at-least-32-characters",
+    },
+    rawCode: runtimeMaterial("KOKORO_WEB_FIXTURE_REDEMPTION_CODE_FILE"),
+  }, {
+    browserType: {
+      async launchPersistentContext(path) {
+        profileDirectory = path;
+        return {
+          pages() { throw new Error("private journey failure"); },
+          async close() { return new Promise(() => {}); },
+        };
+      },
+    },
+    totalTimeoutMs: 100,
+    cleanupTimeoutMs: 30,
+  }), /WEB_FIXTURE_BROWSER_REDEMPTION_FAILED/u);
+
+  assert.ok(Date.now() - startedAt < 2_000);
+  assert.equal(typeof profileDirectory, "string");
+  await assert.rejects(stat(profileDirectory), { code: "ENOENT" });
+});
+
+function accountBrowserPage() {
+  return `<!doctype html><html><body>
+<h1>Account</h1><p id="status" role="status"></p>
+<section id="redemption"><h2>Redeem a code</h2>
+  <form id="preview-form"><label>Code<input autocomplete="off" name="code" required></label><button type="submit">Preview</button></form>
+  <div id="preview" hidden><h3 id="product-label"></h3><button id="confirm" type="button">Confirm redemption</button><button id="continue" hidden type="button">Continue confirmation result</button></div>
+</section>
+<section id="products"><h2>Products &amp; entitlements</h2><ul></ul></section>
+<section id="credits"><h2>Credits</h2><p>grant: <strong>100</strong> available</p></section>
+<script>
+const csrf = "fixture-browser-csrf-token-at-least-32-characters";
+const headers = { "content-type": "application/json", "x-kokoro-browser-csrf": csrf };
+const previewFlow = "launch-preview-flow";
+const confirmFlow = "launch-confirm-flow";
+const previewForm = document.querySelector("#preview-form");
+const preview = document.querySelector("#preview");
+const confirm = document.querySelector("#confirm");
+const continuation = document.querySelector("#continue");
+const status = document.querySelector("#status");
+const invoke = (action, body) => fetch("/api/account/" + action, {
+  method: "POST", credentials: "same-origin", headers, body: JSON.stringify(body),
+});
+async function loadDashboard() {
+  const response = await fetch("/api/account/dashboard", { credentials: "same-origin", cache: "no-store" });
+  const dashboard = await response.json();
+  document.querySelector("#credits strong").textContent = dashboard.available;
+  document.querySelector("#products ul").innerHTML = dashboard.product === null ? "" : "<li>" + dashboard.product + "</li>";
+}
+previewForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const code = String(new FormData(previewForm).get("code") || "");
+  document.documentElement.setAttribute("data-retained-code", code);
+  await invoke("prepare", { operation: "redemption.preview", flowRef: previewFlow });
+  const response = await invoke("execute", { operation: "redemption.preview", flowRef: previewFlow, code });
+  const result = await response.json();
+  await loadDashboard();
+  previewForm.reset();
+  document.querySelector("#product-label").textContent = result.product;
+  preview.hidden = false;
+});
+confirm.addEventListener("click", async () => {
+  confirm.disabled = true;
+  try {
+    await invoke("prepare", { operation: "redemption.confirm", flowRef: confirmFlow });
+    const response = await invoke("execute", {
+      operation: "redemption.confirm", flowRef: confirmFlow,
+      previewFlowRef: previewFlow, legalAccepted: true,
+    });
+    await response.json();
+  } catch {
+    confirm.hidden = true;
+    continuation.hidden = false;
+  } finally {
+    confirm.disabled = false;
+  }
+});
+continuation.addEventListener("click", async () => {
+  continuation.disabled = true;
+  const response = await invoke("recover", { operation: "redemption.confirm", flowRef: confirmFlow });
+  const result = await response.json();
+  if (result.state === "succeeded" && result.productState === "fulfilled") {
+    await loadDashboard();
+    status.textContent = "Code redeemed. Your account has been refreshed.";
+    preview.hidden = true;
+    previewForm.hidden = false;
+  }
+});
+void loadDashboard();
+</script></body></html>`;
+}
+
+test("real Chromium recovers through the Account Continue UI and rejects a retained DOM attribute", async (t) => {
+  const privateDirectory = await mkdtemp(join(tmpdir(), "kokoro-web-browser-ui-recovery-test-"));
+  t.after(() => rm(privateDirectory, { recursive: true, force: true }));
+  const environment = fixtureEnvironment(privateDirectory);
+  const publicPort = await availableLoopbackPort();
+  environment.KOKORO_WEB_FIXTURE_PUBLIC_ORIGIN =
+    `https://${environment.KOKORO_WEB_FIXTURE_CANDIDATE_HOST}:${publicPort}`;
+  const setup = await setupWebChatCreditRuntime(environment, { buildCandidate: false });
+  const state = JSON.parse(await readFile(setup.runtimeStateFile, "utf8"));
+  const rawCode = runtimeMaterial("KOKORO_WEB_FIXTURE_REDEMPTION_CODE_FILE");
+  const serverFacts = { dashboard: 0, execute: 0, recover: 0, violation: false, redeemed: false };
+  const upstream = createServer(async (request, response) => {
+    const chunks = [];
+    for await (const chunk of request) chunks.push(chunk);
+    const body = Buffer.concat(chunks).toString("utf8");
+    const json = () => {
+      try { return JSON.parse(body); } catch { serverFacts.violation = true; return {}; }
+    };
+    const reply = (status, value, extraHeaders = {}) => {
+      const serialized = value === undefined ? "" : JSON.stringify(value);
+      response.writeHead(status, {
+        "cache-control": "no-store",
+        "content-length": String(Buffer.byteLength(serialized)),
+        ...(serialized === "" ? {} : { "content-type": "application/json" }),
+        ...extraHeaders,
+      });
+      response.end(serialized);
+    };
+    if (request.url === "/account" && !request.headers.cookie?.includes("fixture-session=1")) {
+      const html = `<!doctype html><html><body><label>Email<input aria-label="Email"></label>
+<label>Password<input aria-label="Password" type="password"></label><button>Continue</button>
+<script>document.querySelector("button").addEventListener("click", async () => {
+  await fetch("/fixture-login", { method: "POST" }); window.location.href = "/";
+});</script></body></html>`;
+      response.writeHead(200, {
+        "cache-control": "no-store",
+        "content-type": "text/html; charset=utf-8",
+        "content-length": String(Buffer.byteLength(html)),
+      });
+      response.end(html);
+      return;
+    }
+    if (request.url === "/account" && request.method === "GET") {
+      const html = accountBrowserPage();
+      response.writeHead(200, {
+        "cache-control": "no-store",
+        "content-type": "text/html; charset=utf-8",
+        "content-length": String(Buffer.byteLength(html)),
+      });
+      response.end(html);
+      return;
+    }
+    if (request.url === "/fixture-login" && request.method === "POST") {
+      reply(204, undefined, { "set-cookie": "fixture-session=1; Secure; HttpOnly; SameSite=Strict; Path=/" });
+      return;
+    }
+    if (request.url === "/" && request.method === "GET") {
+      const html = "<!doctype html><h1>Workspace</h1>";
+      response.writeHead(200, { "content-type": "text/html", "content-length": String(Buffer.byteLength(html)) });
+      response.end(html);
+      return;
+    }
+    if (request.url === "/api/account/dashboard" && request.method === "GET") {
+      serverFacts.dashboard += 1;
+      reply(200, {
+        available: serverFacts.redeemed ? "125" : "100",
+        product: serverFacts.redeemed ? "Permanent credits" : null,
+      });
+      return;
+    }
+    if (request.url === "/api/account/prepare" && request.method === "POST") {
+      const value = json();
+      serverFacts.violation ||= !["redemption.preview", "redemption.confirm"].includes(value.operation);
+      reply(204);
+      return;
+    }
+    if (request.url === "/api/account/execute" && request.method === "POST") {
+      const value = json();
+      serverFacts.execute += 1;
+      if (value.operation === "redemption.preview") {
+        serverFacts.violation ||= value.code !== rawCode;
+        reply(200, { state: "ready", product: "Permanent credits" });
+        return;
+      }
+      serverFacts.violation ||= value.operation !== "redemption.confirm" || value.code !== undefined;
+      serverFacts.redeemed = true;
+      reply(200, { state: "succeeded", productState: "fulfilled" });
+      return;
+    }
+    if (request.url === "/api/account/recover" && request.method === "POST") {
+      const value = json();
+      serverFacts.recover += 1;
+      serverFacts.violation ||= value.operation !== "redemption.confirm" || value.flowRef !== "launch-confirm-flow";
+      reply(200, { state: "succeeded", productState: "fulfilled" });
+      return;
+    }
+    if (request.url === "/account" && request.method === "GET") return;
+    if (request.url === "/account" || request.url === "/login") return;
+    reply(404);
+  });
+  await new Promise((resolvePromise, rejectPromise) => {
+    upstream.once("error", rejectPromise);
+    upstream.listen(0, "127.0.0.1", resolvePromise);
+  });
+  t.after(() => new Promise((resolvePromise) => upstream.close(() => resolvePromise())));
+  const address = upstream.address();
+  assert.notEqual(address, null);
+  assert.equal(typeof address, "object");
+  const proxy = await runtimeFixture.startStrictPublicProxy({
+    candidateHost: setup.candidateHost,
+    publicOrigin: setup.publicOrigin,
+    certificateFile: state.publicTlsCertificateFile,
+    privateKeyFile: state.publicTlsKeyFile,
+    upstreamPort: address.port,
+  });
+  t.after(() => proxy.close());
+
+  await assert.rejects(redeemAccountInChromium({
+    publicOrigin: setup.publicOrigin,
+    candidateHost: setup.candidateHost,
+    publicCertificateAuthorityFile: setup.publicCertificateAuthorityFile,
+    publicTlsCertificateFile: state.publicTlsCertificateFile,
+    auth: {
+      schemaVersion: 1,
+      email: "runtime-fixture@example.com",
+      password: "runtime-fixture-password-at-least-32-characters",
+    },
+    rawCode,
+  }), /WEB_FIXTURE_BROWSER_REDEMPTION_FAILED/u);
+
+  assert.deepEqual(serverFacts, {
+    dashboard: 3,
+    execute: 2,
+    recover: 1,
+    violation: false,
+    redeemed: true,
+  });
+});
 
 test("setup generates and builds one independent Site candidate without the reference fixture", async (t) => {
   const privateDirectory = await mkdtemp(join(tmpdir(), "kokoro-web-runtime-test-"));
@@ -196,6 +761,12 @@ test("setup generates and builds one independent Site candidate without the refe
     readiness: "ready",
   });
   await runtime.close();
+  assert.deepEqual(JSON.parse(await readFile(state.lifecycleEvidenceFile, "utf8")), {
+    schemaVersion: 1,
+    kind: "web-chat-credit-runtime-lifecycle-evidence",
+    serverLogLeakFree: true,
+    webRuntimeClosed: true,
+  });
 });
 
 test("setup reports the exact missing runtime material set without weakening the build", async (t) => {
@@ -242,9 +813,52 @@ test("setup records only private file paths when every runtime material is prese
     "publicTlsCertificateFile",
     "publicTlsKeyFile",
     "observationFile",
+    "lifecycleEvidenceFile",
   ]);
   assert.deepEqual(Object.keys(state.runtimeMaterialFiles), REQUIRED_RUNTIME_MATERIALS);
   assert.equal(JSON.stringify(result).includes("fixture\n"), false);
+  assert.equal(JSON.stringify(state).includes("KC1-"), false);
+});
+
+test("serve closes the Web runtime and detects a redemption code split across child log chunks", async (t) => {
+  const privateDirectory = await mkdtemp(join(tmpdir(), "kokoro-web-runtime-lifecycle-test-"));
+  t.after(() => rm(privateDirectory, { recursive: true, force: true }));
+  const environment = fixtureEnvironment(privateDirectory);
+  const publicPort = await availableLoopbackPort();
+  environment.KOKORO_WEB_FIXTURE_PUBLIC_ORIGIN =
+    `https://${environment.KOKORO_WEB_FIXTURE_CANDIDATE_HOST}:${publicPort}`;
+  for (const requirement of REQUIRED_RUNTIME_MATERIALS) {
+    const path = join(privateDirectory, `${requirement.toLowerCase()}.fixture`);
+    await writeFile(path, runtimeMaterial(requirement), { mode: 0o600 });
+    environment[requirement] = path;
+  }
+  const setup = await setupWebChatCreditRuntime(environment, { buildCandidate: false });
+  const state = JSON.parse(await readFile(setup.runtimeStateFile, "utf8"));
+  await mkdir(join(state.candidateDirectory, ".next", "standalone"), { recursive: true });
+  await mkdir(join(state.candidateDirectory, ".next", "static"), { recursive: true });
+  await writeFile(join(state.candidateDirectory, ".next", "standalone", "server.js"), `
+const { createServer } = require("node:http");
+const code = "${runtimeMaterial("KOKORO_WEB_FIXTURE_REDEMPTION_CODE_FILE")}";
+const server = createServer((_request, response) => {
+  response.writeHead(204);
+  response.end();
+});
+server.listen(Number(process.env.PORT), process.env.HOSTNAME, () => {
+  process.stdout.write(code.slice(0, 19));
+  setTimeout(() => process.stdout.write(code.slice(19)), 5);
+});
+process.on("SIGTERM", () => server.close(() => process.exit(0)));
+`, { mode: 0o600 });
+
+  const runtime = await runtimeFixture.serveWebChatCreditRuntime(environment);
+  await runtime.close();
+
+  assert.deepEqual(JSON.parse(await readFile(state.lifecycleEvidenceFile, "utf8")), {
+    schemaVersion: 1,
+    kind: "web-chat-credit-runtime-lifecycle-evidence",
+    serverLogLeakFree: false,
+    webRuntimeClosed: true,
+  });
 });
 
 test("setup rejects malformed private runtime material before reporting start readiness", async (t) => {
@@ -264,6 +878,41 @@ test("setup rejects malformed private runtime material before reporting start re
   await assert.rejects(
     setupWebChatCreditRuntime(environment, { buildCandidate: false }),
     /WEB_FIXTURE_UPSTREAM_ENDPOINTS_INVALID/u,
+  );
+});
+
+test("setup admits only a canonical 0600 redemption code file", async (t) => {
+  const privateDirectory = await mkdtemp(join(tmpdir(), "kokoro-web-runtime-redemption-code-test-"));
+  t.after(() => rm(privateDirectory, { recursive: true, force: true }));
+  const environment = fixtureEnvironment(privateDirectory);
+  for (const requirement of REQUIRED_RUNTIME_MATERIALS) {
+    const path = join(privateDirectory, `${requirement.toLowerCase()}.fixture`);
+    await writeFile(path, runtimeMaterial(requirement), { mode: 0o600 });
+    environment[requirement] = path;
+  }
+  const redemptionCodeFile = join(privateDirectory, "redemption-code.fixture");
+  await writeFile(redemptionCodeFile, runtimeMaterial("KOKORO_WEB_FIXTURE_REDEMPTION_CODE_FILE"), {
+    mode: 0o600,
+  });
+  environment.KOKORO_WEB_FIXTURE_REDEMPTION_CODE_FILE = redemptionCodeFile;
+  await chmod(environment.KOKORO_WEB_FIXTURE_REDEMPTION_CODE_FILE, 0o644);
+
+  await assert.rejects(
+    setupWebChatCreditRuntime(environment, { buildCandidate: false }),
+    /WEB_FIXTURE_REDEMPTION_CODE_FILE_INVALID/u,
+  );
+
+  await chmod(environment.KOKORO_WEB_FIXTURE_REDEMPTION_CODE_FILE, 0o400);
+  await assert.rejects(
+    setupWebChatCreditRuntime(environment, { buildCandidate: false }),
+    /WEB_FIXTURE_REDEMPTION_CODE_FILE_INVALID/u,
+  );
+
+  await chmod(environment.KOKORO_WEB_FIXTURE_REDEMPTION_CODE_FILE, 0o600);
+  await writeFile(environment.KOKORO_WEB_FIXTURE_REDEMPTION_CODE_FILE, "KC1-invalid", "utf8");
+  await assert.rejects(
+    setupWebChatCreditRuntime(environment, { buildCandidate: false }),
+    /WEB_FIXTURE_REDEMPTION_CODE_INVALID/u,
   );
 });
 
@@ -294,6 +943,8 @@ test("observe admits only a bounded owner-safe Web result", () => {
     consumedIncreased: true,
     availableConsumedDeltaEqual: true,
     internalReferenceLeakFree: true,
+    ...redemptionEvidence(),
+    ...runtimeLifecycleEvidence(),
   };
   const observation = createWebRuntimeObservation(input);
 
@@ -309,6 +960,8 @@ test("observe admits only a bounded owner-safe Web result", () => {
     consumedIncreased: true,
     availableConsumedDeltaEqual: true,
     internalReferenceLeakFree: true,
+    ...redemptionEvidence(),
+    ...runtimeLifecycleEvidence(),
   });
   assert.throws(() => createWebRuntimeObservation({
     ...input,
@@ -569,8 +1222,31 @@ test("observe reads only the durable owner-safe result written by exercise", asy
     consumedIncreased: true,
     availableConsumedDeltaEqual: true,
     internalReferenceLeakFree: true,
+    ...redemptionEvidence(),
+    ...runtimeLifecycleEvidence(),
   });
-  await writeFile(state.observationFile, `${JSON.stringify(expected)}\n`, { mode: 0o600 });
+  const {
+    schemaVersion: _schemaVersion,
+    kind: _kind,
+    serverLogLeakFree: _serverLogLeakFree,
+    webRuntimeClosed: _webRuntimeClosed,
+    ...journey
+  } = expected;
+  await writeFile(state.observationFile, `${JSON.stringify({
+    schemaVersion: 1,
+    kind: "web-chat-credit-runtime-journey-evidence",
+    ...journey,
+  })}\n`, { mode: 0o600 });
+
+  await assert.rejects(
+    runWebChatCreditRuntimeFixture(["observe"], environment),
+    /WEB_FIXTURE_OBSERVATION_UNAVAILABLE/u,
+  );
+  await writeFile(state.lifecycleEvidenceFile, `${JSON.stringify({
+    schemaVersion: 1,
+    kind: "web-chat-credit-runtime-lifecycle-evidence",
+    ...runtimeLifecycleEvidence(),
+  })}\n`, { mode: 0o600 });
 
   assert.deepEqual(await runWebChatCreditRuntimeFixture(["observe"], environment), expected);
   assert.equal(JSON.stringify(expected).includes("credit_micros"), false);
@@ -609,6 +1285,59 @@ async function readyFixture(t, prefix) {
   await setupWebChatCreditRuntime(environment, { buildCandidate: false });
   return environment;
 }
+
+function successfulExerciseRuntime() {
+  let finishTerminal;
+  let dashboardReads = 0;
+  const receipt = { command: "submit", status: "applied" };
+  return {
+    browser: {
+      async authenticate() { return { generatedSiteHostResolved: true }; },
+      async readDashboard() {
+        dashboardReads += 1;
+        return dashboardReads === 1 ? dashboard(100, 0) : dashboard(90, 10);
+      },
+    },
+    session: {
+      async create() {
+        return { sessionId: "session-runtime", branchId: "branch-runtime", sessionVersion: 1 };
+      },
+      open() {
+        const terminal = new Promise((resolvePromise) => { finishTerminal = resolvePromise; });
+        return { ready: Promise.resolve(), terminal, close() {} };
+      },
+      async submit() {
+        finishTerminal({ outcome: "completed" });
+        return { logicalRequest: { commandId: "same-command" }, receipt };
+      },
+      async replay() { return receipt; },
+      async waitForTerminalSnapshot() {
+        return { userMessageCount: 1, assistantTerminalCount: 1, costSettled: true };
+      },
+    },
+  };
+}
+
+test("exercise reopens the redemption code without following a post-setup symlink", async (t) => {
+  const environment = await readyFixture(t, "kokoro-web-redemption-code-race-test-");
+  const original = environment.KOKORO_WEB_FIXTURE_REDEMPTION_CODE_FILE;
+  const replacement = join(environment.KOKORO_WEB_FIXTURE_PRIVATE_DIR, "replacement-code.fixture");
+  await writeFile(replacement, runtimeMaterial("KOKORO_WEB_FIXTURE_REDEMPTION_CODE_FILE"), { mode: 0o600 });
+  await rm(original);
+  await symlink(replacement, original);
+  let browserInvoked = false;
+
+  await assert.rejects(runtimeFixture.exerciseWebChatCreditRuntime(environment, {
+    runtime: successfulExerciseRuntime(),
+    redemptionBrowser: {
+      async redeem() {
+        browserInvoked = true;
+        return redemptionEvidence();
+      },
+    },
+  }), /WEB_FIXTURE_REDEMPTION_CODE_FILE_INVALID/u);
+  assert.equal(browserInvoked, false);
+});
 
 test("exercise closes login, dashboard, Session SSE terminal, replay, and Credit readback in order", async (t) => {
   assert.equal(typeof runtimeFixture.exerciseWebChatCreditRuntime, "function");
@@ -667,10 +1396,33 @@ test("exercise closes login, dashboard, Session SSE terminal, replay, and Credit
       },
     },
   };
+  const redemptionBrowser = {
+    async redeem(input) {
+      calls.push("redeem-browser");
+      assert.deepEqual(Object.keys(input), [
+        "publicOrigin",
+        "candidateHost",
+        "publicCertificateAuthorityFile",
+        "publicTlsCertificateFile",
+        "auth",
+        "rawCode",
+      ]);
+      assert.equal(input.publicOrigin, environment.KOKORO_WEB_FIXTURE_PUBLIC_ORIGIN);
+      assert.equal(input.candidateHost, environment.KOKORO_WEB_FIXTURE_CANDIDATE_HOST);
+      assert.match(input.publicCertificateAuthorityFile, /authority\.pem$/u);
+      assert.match(input.publicTlsCertificateFile, /server\.pem$/u);
+      assert.equal(input.auth.email, "runtime-fixture@example.com");
+      assert.match(input.rawCode, /^KC1-/u);
+      return redemptionEvidence();
+    },
+  };
 
-  const result = await runtimeFixture.exerciseWebChatCreditRuntime(environment, { runtime });
+  const result = await runtimeFixture.exerciseWebChatCreditRuntime(environment, {
+    runtime,
+    redemptionBrowser,
+  });
 
-  assert.deepEqual(result, createWebRuntimeObservation({
+  const expected = createWebRuntimeObservation({
     generatedSiteHostResolved: true,
     browserSessionTurn: true,
     userMessageCount: 1,
@@ -680,12 +1432,35 @@ test("exercise closes login, dashboard, Session SSE terminal, replay, and Credit
     consumedIncreased: true,
     availableConsumedDeltaEqual: true,
     internalReferenceLeakFree: true,
-  }));
+    ...redemptionEvidence(),
+    ...runtimeLifecycleEvidence(),
+  });
+  assert.deepEqual(result, {
+    schemaVersion: 1,
+    kind: "web-chat-credit-runtime-exercised",
+    browserJourneyClosed: true,
+  });
   assert.deepEqual(calls, [
     "authenticate", "dashboard", "create", "open", "stream-ready", "submit",
-    "stream-terminal", "stream-close", "replay", "snapshot", "dashboard",
+    "stream-terminal", "stream-close", "replay", "snapshot", "dashboard", "redeem-browser",
   ]);
-  assert.deepEqual(await runWebChatCreditRuntimeFixture(["observe"], environment), result);
+  const state = JSON.parse(await readFile(join(
+    environment.KOKORO_WEB_FIXTURE_PRIVATE_DIR,
+    "runtime-state.json",
+  ), "utf8"));
+  const journey = JSON.parse(await readFile(state.observationFile, "utf8"));
+  assert.equal(journey.kind, "web-chat-credit-runtime-journey-evidence");
+  assert.equal(JSON.stringify(journey).includes("KC1-"), false);
+  await assert.rejects(
+    runWebChatCreditRuntimeFixture(["observe"], environment),
+    /WEB_FIXTURE_OBSERVATION_UNAVAILABLE/u,
+  );
+  await writeFile(state.lifecycleEvidenceFile, `${JSON.stringify({
+    schemaVersion: 1,
+    kind: "web-chat-credit-runtime-lifecycle-evidence",
+    ...runtimeLifecycleEvidence(),
+  })}\n`, { mode: 0o600 });
+  assert.deepEqual(await runWebChatCreditRuntimeFixture(["observe"], environment), expected);
 });
 
 test("exercise fails closed when any Account authority is unavailable", async (t) => {
@@ -981,9 +1756,16 @@ test("production browser authentication carries the NextAuth credentials ceremon
     },
   };
 
-  const result = await runtimeFixture.exerciseWebChatCreditRuntime(environment, { session });
+  const result = await runtimeFixture.exerciseWebChatCreditRuntime(environment, {
+    session,
+    redemptionBrowser: { async redeem() { return redemptionEvidence(); } },
+  });
 
-  assert.equal(result.browserSessionTurn, true);
+  assert.deepEqual(result, {
+    schemaVersion: 1,
+    kind: "web-chat-credit-runtime-exercised",
+    browserJourneyClosed: true,
+  });
   assert.deepEqual(authCalls, ["delivery", "csrf", "callback", "session"]);
   assert.equal(dashboardReads, 2);
 });
@@ -1082,12 +1864,31 @@ test("the fixture boundary imports the scaffold package export and never a produ
     entry,
     new URL("../fixtures/web-chat-credit-runtime-network.mjs", import.meta.url),
     new URL("../fixtures/web-chat-credit-runtime-journey.mjs", import.meta.url),
+    new URL("../fixtures/web-chat-credit-runtime-browser.mjs", import.meta.url),
   ].map((path) => readFile(path, "utf8")));
   const source = sources.join("\n");
 
   assert.match(source, /import\("@kokoro\/site-scaffold"\)/u);
   assert.match(source, /from "@kokoro\/session-client"/u);
+  assert.match(source, /from "playwright"/u);
+  assert.match(source, /launchPersistentContext\(profileDirectory/u);
+  assert.match(source, /--ignore-certificate-errors-spki-list=/u);
+  assert.match(source, /Fetch\.fulfillRequest/u);
+  assert.match(source, /document\.documentElement\.outerHTML/u);
+  assert.match(source, /Continue confirmation result/u);
+  assert.match(source, /WEB_FIXTURE_BROWSER_CODE_RETENTION_INVALID/u);
+  assert.match(source, /O_NOFOLLOW/u);
+  assert.match(
+    source,
+    /const \[originalRequest\] = await Promise\.all\(\[\s*page\.waitForRequest\([\s\S]*?getByRole\("button", \{ name: "Confirm redemption", exact: true \}\)\.click\(\),\s*confirmationFault\.completion,\s*\]\)/u,
+  );
+  assert.doesNotMatch(source, /const originalRequestPromise = page\.waitForRequest/u);
+  assert.doesNotMatch(source, /\]\);\s*await confirmationFault\.completion/u);
   assert.doesNotMatch(source, /packages\/site-scaffold\/src|apps\/reference-site/u);
   assert.doesNotMatch(source, /kokoro-(?:platform|session|agent)\//u);
+  assert.doesNotMatch(source, /ignoreHTTPSErrors|browserType\.launch\(/u);
+  assert.doesNotMatch(source, /page\.evaluate\([\s\S]{0,4000}?fetch\(/u);
+  assert.doesNotMatch(source, /process\.stderr\.write\(chunk\)/u);
+  assert.doesNotMatch(source, /(?:localStorage|sessionStorage)\.setItem/u);
   assert.equal(entry.pathname.startsWith(WEB_ROOT.pathname), true);
 });
