@@ -34,7 +34,7 @@ export function PublishCreditProgramForm({ siteId, enabled }: FormProps): React.
         trigger={<Button type="primary" disabled={!enabled || !siteId}>发布 revision</Button>}
         width={760}
         modalProps={{ destroyOnHidden: true }}
-        onFinish={async (values) => submitPublication(message, "/api/control/commerce/credit-programs",
+        onFinish={async (values) => submitPublication(message, "/api/control/commerce/credit-programs", () =>
           publishCreditProgramInputSchema.parse({
             siteId,
             creditProgramRevisionRef: text(values.creditProgramRevisionRef),
@@ -90,7 +90,7 @@ export function PublishEntitlementTemplateForm({ siteId, enabled }: FormProps): 
         trigger={<Button type="primary" disabled={!enabled || !siteId}>发布 revision</Button>}
         modalProps={{ destroyOnHidden: true }}
         onFinish={async (values) => submitPublication(message,
-          "/api/control/commerce/entitlement-templates", publishEntitlementTemplateInputSchema.parse({
+          "/api/control/commerce/entitlement-templates", () => publishEntitlementTemplateInputSchema.parse({
             siteId,
             entitlementTemplateRevisionRef: text(values.entitlementTemplateRevisionRef),
             templateRef: text(values.templateRef),
@@ -121,7 +121,7 @@ export function PublishOfferForm({ siteId, enabled }: FormProps): React.ReactEle
         trigger={<Button type="primary" disabled={!enabled || !siteId}>发布 Offer</Button>}
         width={820}
         modalProps={{ destroyOnHidden: true }}
-        onFinish={async (values) => submitPublication(message, "/api/control/commerce/offers",
+        onFinish={async (values) => submitPublication(message, "/api/control/commerce/offers", () =>
           publishOfferInputSchema.parse({
             siteId,
             productRef: text(values.productRef),
@@ -168,7 +168,7 @@ export function PublishRedemptionProgramForm({ siteId, enabled }: FormProps): Re
         trigger={<Button type="primary" disabled={!enabled || !siteId}>发布 revision</Button>}
         modalProps={{ destroyOnHidden: true }}
         onFinish={async (values) => submitPublication(message,
-          "/api/control/commerce/redemption-programs", publishRedemptionProgramInputSchema.parse({
+          "/api/control/commerce/redemption-programs", () => publishRedemptionProgramInputSchema.parse({
             siteId,
             redemptionProgramRevisionRef: text(values.redemptionProgramRevisionRef),
             programRef: text(values.programRef),
@@ -209,14 +209,15 @@ function OperationButtons({ operation, siteId, returnPath, enabled, children }: 
 async function submitPublication(
   message: ReturnType<typeof App.useApp>["message"],
   path: string,
-  input: unknown,
+  buildInput: () => unknown,
 ): Promise<boolean> {
   try {
+    const input = buildInput();
     await apiPost(path, input, publicationResultSchema);
     message.success("不可变 revision 已发布");
     return true;
-  } catch (error) {
-    message.error(error instanceof Error ? error.message : "发布失败");
+  } catch {
+    message.error("发布失败，请检查输入格式或操作认证");
     return false;
   }
 }

@@ -14,14 +14,7 @@ const mocks = vi.hoisted(() => ({
   refetch: vi.fn(async () => undefined),
   messageSuccess: vi.fn(),
   messageError: vi.fn(),
-}));
-
-vi.mock("@/lib/api", () => ({ apiPost: mocks.apiPost }));
-vi.mock("@/lib/sensitive-code-export", () => ({
-  downloadSensitiveCodes: mocks.downloadSensitiveCodes,
-}));
-vi.mock("@/components/shell/app-shell", () => ({
-  useAdmin: () => ({
+  admin: {
     siteId: "site-one",
     authorityFingerprint: "authority-epoch-1",
     me: {
@@ -30,7 +23,15 @@ vi.mock("@/components/shell/app-shell", () => ({
       permissions: ["commerce.code-batch.read", "commerce.code-batch.issue"],
       scopeSites: ["site-one"],
     },
-  }),
+  },
+}));
+
+vi.mock("@/lib/api", () => ({ apiPost: mocks.apiPost }));
+vi.mock("@/lib/sensitive-code-export", () => ({
+  downloadSensitiveCodes: mocks.downloadSensitiveCodes,
+}));
+vi.mock("@/components/shell/app-shell", () => ({
+  useAdmin: () => mocks.admin,
 }));
 vi.mock("@refinedev/core", () => ({
   useInfiniteList: () => ({
@@ -155,6 +156,10 @@ async function issue(view: ReturnType<typeof mountedConsole>): Promise<void> {
   expect(view.hasButton("下载 Blob 并清空")).toBe(true);
 }
 
+function setAxes(siteId: string, authorityFingerprint: string): void {
+  mocks.admin = { ...mocks.admin, siteId, authorityFingerprint };
+}
+
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 beforeEach(() => {
@@ -166,6 +171,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers();
   vi.clearAllMocks();
+  setAxes("site-one", "authority-epoch-1");
   document.body.replaceChildren();
 });
 
@@ -207,6 +213,23 @@ describe("one-time code lifecycle", () => {
       await issue(view);
       vi.setSystemTime(new Date("2026-08-09T00:01:00.000Z"));
       await act(async () => { window.dispatchEvent(new Event("pageshow")); });
+      expect(view.hasButton("下载 Blob 并清空")).toBe(false);
+      expect(mocks.downloadSensitiveCodes).not.toHaveBeenCalled();
+    } finally {
+      await view.unmount();
+    }
+  });
+
+  it.each([
+    { label: "Site", siteId: "site-two", authorityFingerprint: "authority-epoch-1" },
+    { label: "authority", siteId: "site-one", authorityFingerprint: "authority-epoch-2" },
+  ])("clears an issued export when its $label axis changes", async ({ siteId, authorityFingerprint }) => {
+    const view = mountedConsole();
+    try {
+      await issue(view);
+      setAxes(siteId, authorityFingerprint);
+      await view.render();
+
       expect(view.hasButton("下载 Blob 并清空")).toBe(false);
       expect(mocks.downloadSensitiveCodes).not.toHaveBeenCalled();
     } finally {

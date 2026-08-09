@@ -32,6 +32,8 @@ interface SensitiveCodeExport {
   readonly batchRef: string;
   readonly rawCodes: readonly string[];
   readonly expiresAt: number;
+  readonly siteId: string;
+  readonly authorityFingerprint: string;
 }
 
 type ReasonAction = "abandon" | "suspend" | "revoke";
@@ -78,10 +80,18 @@ export function CodeBatchConsole(): React.ReactElement {
   const clearSensitiveExportIfExpired = useCallback(() => {
     setSensitiveExport((current) => current !== null && Date.now() >= current.expiresAt ? null : current);
   }, [setSensitiveExport]);
+  const sensitiveExportMatchesAxes = sensitiveExport !== null && sensitiveExport.siteId === siteId &&
+    sensitiveExport.authorityFingerprint === authorityFingerprint;
+  const activeSensitiveExport = sensitiveExportMatchesAxes ? sensitiveExport : null;
 
   useEffect(() => {
-    if (sensitiveExport === null) return;
-    const remaining = sensitiveExport.expiresAt - Date.now();
+    if (sensitiveExport === null || sensitiveExportMatchesAxes) return;
+    queueMicrotask(clearSensitiveExport);
+  }, [clearSensitiveExport, sensitiveExport, sensitiveExportMatchesAxes]);
+
+  useEffect(() => {
+    if (activeSensitiveExport === null) return;
+    const remaining = activeSensitiveExport.expiresAt - Date.now();
     const timeout = window.setTimeout(clearSensitiveExport, Math.max(0, remaining));
     const onPageHide = () => clearSensitiveExport();
     const onPageShow = () => clearSensitiveExportIfExpired();
@@ -95,7 +105,7 @@ export function CodeBatchConsole(): React.ReactElement {
       window.removeEventListener("pageshow", onPageShow);
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
-  }, [clearSensitiveExport, clearSensitiveExportIfExpired, sensitiveExport]);
+  }, [activeSensitiveExport, clearSensitiveExport, clearSensitiveExportIfExpired]);
 
   const refresh = () => { void query.refetch(); };
   const columns: ProColumns<AdminCodeBatch>[] = [
@@ -152,6 +162,7 @@ export function CodeBatchConsole(): React.ReactElement {
     <PageContainer header={{ title: "Code Batches" }}
       content={`卡密只在首次签发响应中交付一次。${siteId ? ` 当前 Site：${siteId}` : ""}`}
       extra={<IssueCodeBatchForm siteId={siteId} enabled={access.issue}
+        authorityFingerprint={authorityFingerprint}
         onSensitiveExport={setSensitiveExport} onReplay={setReplayBatchRef} onIssued={refresh} />}>
       {!siteId && <Alert type="warning" showIcon message="请先选择 Site" style={{ marginBottom: 16 }} />}
       {!canRead && <Alert type="error" showIcon message="当前操作员没有卡密批次读取权限"
@@ -176,7 +187,7 @@ export function CodeBatchConsole(): React.ReactElement {
 
       <Modal
         title="一次性敏感卡密导出"
-        open={sensitiveExport !== null}
+        open={activeSensitiveExport !== null}
         closable={false}
         maskClosable={false}
         keyboard={false}
@@ -185,8 +196,9 @@ export function CodeBatchConsole(): React.ReactElement {
         footer={[
           <Button key="discard" danger onClick={clearSensitiveExport}>放弃并清空</Button>,
           <Button key="download" type="primary" icon={<DownloadOutlined />} onClick={() => {
-            if (sensitiveExport === null) return;
-            if (Date.now() >= sensitiveExport.expiresAt) {
+            if (sensitiveExport === null || sensitiveExport.siteId !== siteId ||
+              sensitiveExport.authorityFingerprint !== authorityFingerprint ||
+              Date.now() >= sensitiveExport.expiresAt) {
               setSensitiveExport(null);
               return;
             }
@@ -196,14 +208,16 @@ export function CodeBatchConsole(): React.ReactElement {
         ]}
       >
         <Alert type="error" showIcon message="此窗口不会再次出现"
-          description={`共 ${sensitiveExport?.rawCodes.length ?? 0} 条。内容不进入列表缓存、通知、URL、浏览器存储或剪贴板；45 秒后自动清空。`} />
+          description={`共 ${activeSensitiveExport?.rawCodes.length ?? 0} 条。内容不进入列表缓存、通知、URL、浏览器存储或剪贴板；45 秒后自动清空。`} />
       </Modal>
     </PageContainer>
   );
 }
 
-function IssueCodeBatchForm({ siteId, enabled, onSensitiveExport, onReplay, onIssued }: Readonly<{
+function IssueCodeBatchForm({ siteId, authorityFingerprint, enabled, onSensitiveExport, onReplay,
+  onIssued }: Readonly<{
   siteId: string;
+  authorityFingerprint: string;
   enabled: boolean;
   onSensitiveExport: (value: SensitiveCodeExport) => void;
   onReplay: (batchRef: string) => void;
@@ -226,7 +240,7 @@ function IssueCodeBatchForm({ siteId, enabled, onSensitiveExport, onReplay, onIs
           const result = await apiPost("/api/control/commerce/code-batches", input, issueCodeBatchResultSchema);
           if (result.delivery.kind === "secret_export") {
             onSensitiveExport({ batchRef: result.batchRef, rawCodes: result.delivery.rawCodes,
-              expiresAt: Date.now() + SENSITIVE_EXPORT_TTL_MS });
+              expiresAt: Date.now() + SENSITIVE_EXPORT_TTL_MS, siteId, authorityFingerprint });
           } else if (result.delivery.requiredAction === "abandon_and_reissue") {
             onReplay(result.batchRef);
           }
