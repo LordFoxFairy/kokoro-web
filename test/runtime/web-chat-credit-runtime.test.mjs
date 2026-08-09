@@ -1273,6 +1273,168 @@ function dashboard(available, consumed) {
   };
 }
 
+function sessionCommandIdentity() {
+  return {
+    command_id: "command-runtime-12345678",
+    idempotency_key: "web:command-runtime-12345678",
+    digest_algorithm: "SHA256_CANONICAL_JSON_V2",
+    request_digest: "b".repeat(64),
+  };
+}
+
+function logicalSubmitRequest() {
+  return {
+    sessionId: "session-runtime",
+    body: { command: sessionCommandIdentity() },
+  };
+}
+
+function sessionCommandResponse(status = "applied", updatedAt = "2026-08-09T12:00:01.000Z") {
+  return {
+    command_receipt: {
+      operation: "submit_message",
+      ...sessionCommandIdentity(),
+      updated_at: updatedAt,
+      status,
+      payload: {
+        kind: "run-launch-created",
+        payload: {
+          session_id: "session-runtime",
+          branch_id: "branch-runtime",
+          trigger_message_id: "message-user-runtime",
+          assistant_message_id: "message-assistant-runtime",
+          launch_id: "launch-runtime",
+          proposed_run_id: "run-runtime",
+          session_version: 2,
+          branch_version: 2,
+        },
+      },
+    },
+  };
+}
+
+test("logical replay admits accepted to applied and stable applied receipts", () => {
+  assert.equal(typeof runtimeFixture.validateLogicalReplay, "function");
+  assert.doesNotThrow(() => runtimeFixture.validateLogicalReplay(
+    logicalSubmitRequest(),
+    sessionCommandResponse("accepted", "2026-08-09T12:00:00.000Z"),
+    sessionCommandResponse("applied", "2026-08-09T12:00:01.000Z"),
+  ));
+  assert.doesNotThrow(() => runtimeFixture.validateLogicalReplay(
+    logicalSubmitRequest(),
+    sessionCommandResponse("applied", "2026-08-09T12:00:01.000Z"),
+    sessionCommandResponse("applied", "2026-08-09T12:00:01.000Z"),
+  ));
+});
+
+test("logical replay rejects every immutable identity or payload drift", () => {
+  assert.equal(typeof runtimeFixture.validateLogicalReplay, "function");
+  const initial = sessionCommandResponse("accepted", "2026-08-09T12:00:00.000Z");
+  const mutations = [
+    ["operation", (receipt) => { receipt.operation = "edit_message"; }],
+    ["command_id", (receipt) => { receipt.command_id = "command-runtime-drifted"; }],
+    ["idempotency_key", (receipt) => { receipt.idempotency_key = "web:command-runtime-drifted"; }],
+    ["digest_algorithm", (receipt) => { receipt.digest_algorithm = "SHA256_CANONICAL_JSON_V1"; }],
+    ["request_digest", (receipt) => { receipt.request_digest = "c".repeat(64); }],
+    ["payload", (receipt) => { receipt.payload.payload.session_version += 1; }],
+  ];
+
+  for (const [field, mutate] of mutations) {
+    const replay = structuredClone(sessionCommandResponse("applied", "2026-08-09T12:00:01.000Z"));
+    mutate(replay.command_receipt);
+    assert.throws(
+      () => runtimeFixture.validateLogicalReplay(logicalSubmitRequest(), initial, replay),
+      /WEB_FIXTURE_LOGICAL_REPLAY_INVALID/u,
+      field,
+    );
+
+    const driftedInitial = structuredClone(initial);
+    mutate(driftedInitial.command_receipt);
+    assert.throws(
+      () => runtimeFixture.validateLogicalReplay(
+        logicalSubmitRequest(),
+        driftedInitial,
+        sessionCommandResponse("applied", "2026-08-09T12:00:01.000Z"),
+      ),
+      /WEB_FIXTURE_LOGICAL_REPLAY_INVALID/u,
+      `initial receipt mismatch: ${field}`,
+    );
+  }
+
+  for (const [field, mutate] of mutations.slice(0, 5)) {
+    const driftedInitial = structuredClone(initial);
+    const driftedReplay = structuredClone(sessionCommandResponse("applied", "2026-08-09T12:00:01.000Z"));
+    mutate(driftedInitial.command_receipt);
+    mutate(driftedReplay.command_receipt);
+    assert.throws(
+      () => runtimeFixture.validateLogicalReplay(logicalSubmitRequest(), driftedInitial, driftedReplay),
+      /WEB_FIXTURE_LOGICAL_REPLAY_INVALID/u,
+      `logical request mismatch: ${field}`,
+    );
+  }
+});
+
+test("logical replay rejects status regressions, illegal statuses, and invalid time movement", () => {
+  assert.equal(typeof runtimeFixture.validateLogicalReplay, "function");
+  const rejectedStatusPairs = [
+    ["accepted", "accepted"],
+    ["applied", "accepted"],
+    ["denied", "applied"],
+    ["pending", "applied"],
+    ["outcome_unknown", "applied"],
+    ["accepted", "denied"],
+    ["accepted", "pending"],
+    ["accepted", "outcome_unknown"],
+  ];
+
+  for (const [initialStatus, replayStatus] of rejectedStatusPairs) {
+    assert.throws(
+      () => runtimeFixture.validateLogicalReplay(
+        logicalSubmitRequest(),
+        sessionCommandResponse(initialStatus, "2026-08-09T12:00:00.000Z"),
+        sessionCommandResponse(replayStatus, "2026-08-09T12:00:01.000Z"),
+      ),
+      /WEB_FIXTURE_LOGICAL_REPLAY_INVALID/u,
+      `${initialStatus} -> ${replayStatus}`,
+    );
+  }
+  assert.throws(() => runtimeFixture.validateLogicalReplay(
+    logicalSubmitRequest(),
+    sessionCommandResponse("accepted", "2026-08-09T12:00:01.000Z"),
+    sessionCommandResponse("applied", "2026-08-09T12:00:00.999Z"),
+  ), /WEB_FIXTURE_LOGICAL_REPLAY_INVALID/u);
+  assert.throws(() => runtimeFixture.validateLogicalReplay(
+    logicalSubmitRequest(),
+    sessionCommandResponse("accepted", "2026-08-09T12:00:00.0009Z"),
+    sessionCommandResponse("applied", "2026-08-09T12:00:00.0001Z"),
+  ), /WEB_FIXTURE_LOGICAL_REPLAY_INVALID/u);
+  assert.throws(() => runtimeFixture.validateLogicalReplay(
+    logicalSubmitRequest(),
+    sessionCommandResponse("applied", "2026-08-09T12:00:00.000Z"),
+    sessionCommandResponse("applied", "2026-08-09T12:00:00.001Z"),
+  ), /WEB_FIXTURE_LOGICAL_REPLAY_INVALID/u);
+  for (const equivalentInstant of [
+    "2026-08-09T08:00:00.000-04:00",
+    "2026-08-09T12:00:00.0000Z",
+  ]) {
+    assert.throws(() => runtimeFixture.validateLogicalReplay(
+      logicalSubmitRequest(),
+      sessionCommandResponse("applied", "2026-08-09T12:00:00.000Z"),
+      sessionCommandResponse("applied", equivalentInstant),
+    ), /WEB_FIXTURE_LOGICAL_REPLAY_INVALID/u, equivalentInstant);
+  }
+  assert.throws(() => runtimeFixture.validateLogicalReplay(
+    logicalSubmitRequest(),
+    sessionCommandResponse("accepted", "2026-08-09T12:00:00.000Z"),
+    sessionCommandResponse("applied", "2026-08-09 12:00:01Z"),
+  ), /WEB_FIXTURE_LOGICAL_REPLAY_INVALID/u);
+  assert.throws(() => runtimeFixture.validateLogicalReplay(
+    logicalSubmitRequest(),
+    sessionCommandResponse("accepted", "2026-02-30T12:00:00.000Z"),
+    sessionCommandResponse("applied", "2026-08-09T12:00:01.000Z"),
+  ), /WEB_FIXTURE_LOGICAL_REPLAY_INVALID/u);
+});
+
 async function readyFixture(t, prefix) {
   const privateDirectory = await mkdtemp(join(tmpdir(), prefix));
   t.after(() => rm(privateDirectory, { recursive: true, force: true }));
@@ -1289,7 +1451,7 @@ async function readyFixture(t, prefix) {
 function successfulExerciseRuntime() {
   let finishTerminal;
   let dashboardReads = 0;
-  const receipt = { command: "submit", status: "applied" };
+  const receipt = sessionCommandResponse();
   return {
     browser: {
       async authenticate() { return { generatedSiteHostResolved: true }; },
@@ -1308,7 +1470,7 @@ function successfulExerciseRuntime() {
       },
       async submit() {
         finishTerminal({ outcome: "completed" });
-        return { logicalRequest: { commandId: "same-command" }, receipt };
+        return { logicalRequest: logicalSubmitRequest(), receipt };
       },
       async replay() { return receipt; },
       async waitForTerminalSnapshot() {
@@ -1343,7 +1505,8 @@ test("exercise closes login, dashboard, Session SSE terminal, replay, and Credit
   assert.equal(typeof runtimeFixture.exerciseWebChatCreditRuntime, "function");
   const environment = await readyFixture(t, "kokoro-web-exercise-test-");
   const calls = [];
-  const firstReceipt = { command: "submit", status: "applied" };
+  const firstReceipt = sessionCommandResponse("accepted", "2026-08-09T12:00:00.000Z");
+  const replayReceipt = sessionCommandResponse("applied", "2026-08-09T12:00:01.000Z");
   let finishTerminal;
   const runtime = {
     browser: {
@@ -1382,12 +1545,12 @@ test("exercise closes login, dashboard, Session SSE terminal, replay, and Credit
         calls.push("submit");
         assert.equal(input.modelOptionRevisionRef, `model-option:sha256:${"a".repeat(64)}`);
         finishTerminal({ outcome: "completed" });
-        return { logicalRequest: { commandId: "same-command" }, receipt: firstReceipt };
+        return { logicalRequest: logicalSubmitRequest(), receipt: firstReceipt };
       },
       async replay(logicalRequest) {
         calls.push("replay");
-        assert.deepEqual(logicalRequest, { commandId: "same-command" });
-        return firstReceipt;
+        assert.deepEqual(logicalRequest, logicalSubmitRequest());
+        return replayReceipt;
       },
       async waitForTerminalSnapshot(sessionId) {
         calls.push("snapshot");
@@ -1742,13 +1905,13 @@ test("production browser authentication carries the NextAuth credentials ceremon
   t.after(() => proxy.close());
   let finishTerminal;
   const terminal = new Promise((resolvePromise) => { finishTerminal = resolvePromise; });
-  const receipt = { command: "submit", status: "applied" };
+  const receipt = sessionCommandResponse();
   const session = {
     async create() { return { sessionId: "session-runtime", branchId: "branch-runtime", sessionVersion: 1 }; },
     open() { return { ready: Promise.resolve(), terminal, close() {} }; },
     async submit() {
       finishTerminal({ outcome: "completed" });
-      return { logicalRequest: { commandId: "same-command" }, receipt };
+      return { logicalRequest: logicalSubmitRequest(), receipt };
     },
     async replay() { return receipt; },
     async waitForTerminalSnapshot() {

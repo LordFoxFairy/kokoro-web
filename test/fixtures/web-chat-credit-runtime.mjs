@@ -38,6 +38,15 @@ const HOSTNAME = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]
 const REDEMPTION_CODE =
   /KC1-[0-9A-HJKMNP-TV-Z]{8}-[0-9A-HJKMNP-TV-Z]{10}-[0-9A-HJKMNP-TV-Z]{32}-[0-9A-HJKMNP-TV-Z]{8}/u;
 const REDEMPTION_CODE_LENGTH = 65;
+const LOGICAL_REPLAY_IDENTITY_FIELDS = Object.freeze([
+  "operation",
+  "command_id",
+  "idempotency_key",
+  "digest_algorithm",
+  "request_digest",
+]);
+const OWNER_TIMESTAMP =
+  /^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])T([01]\d|2[0-3]):([0-5]\d):([0-5]\d)\.\d{3}Z$/u;
 
 const SITE_PACKAGES = Object.freeze([
   "@kokoro/site-app-kit",
@@ -130,6 +139,45 @@ async function privateDirectory(environment) {
 function exactObject(value, keys) {
   return value !== null && typeof value === "object" && !Array.isArray(value) &&
     Object.keys(value).length === keys.length && keys.every((key) => Object.hasOwn(value, key));
+}
+
+function ownerTimestamp(value) {
+  if (typeof value !== "string") return null;
+  const match = OWNER_TIMESTAMP.exec(value);
+  if (match === null) return null;
+  const [, year, month, day, hour, minute, second] = match;
+  const calendar = new Date(0);
+  calendar.setUTCFullYear(Number(year), Number(month) - 1, Number(day));
+  calendar.setUTCHours(Number(hour), Number(minute), Number(second), 0);
+  if (
+    calendar.getUTCFullYear() !== Number(year) || calendar.getUTCMonth() !== Number(month) - 1 ||
+    calendar.getUTCDate() !== Number(day) || calendar.getUTCHours() !== Number(hour) ||
+    calendar.getUTCMinutes() !== Number(minute) || calendar.getUTCSeconds() !== Number(second)
+  ) return null;
+  const instant = Date.parse(value);
+  return Number.isFinite(instant) ? instant : null;
+}
+
+export function validateLogicalReplay(logicalRequest, initialResponse, replayResponse) {
+  const submittedCommand = logicalRequest?.body?.command;
+  const initial = initialResponse?.command_receipt;
+  const replay = replayResponse?.command_receipt;
+  const initialUpdatedAt = ownerTimestamp(initial?.updated_at);
+  const replayUpdatedAt = ownerTimestamp(replay?.updated_at);
+  const submittedIdentity = submittedCommand !== null && typeof submittedCommand === "object" &&
+      !Array.isArray(submittedCommand)
+    ? { ...submittedCommand, operation: "submit_message" }
+    : null;
+  const matchesSubmittedIdentity = (receipt) => submittedIdentity !== null &&
+    LOGICAL_REPLAY_IDENTITY_FIELDS.every((field) => isDeepStrictEqual(receipt?.[field], submittedIdentity[field]));
+  if (
+    initial === null || typeof initial !== "object" || replay === null || typeof replay !== "object" ||
+    !matchesSubmittedIdentity(initial) || !matchesSubmittedIdentity(replay) ||
+    !isDeepStrictEqual(initial.payload, replay.payload) ||
+    (initial.status !== "accepted" && initial.status !== "applied") || replay.status !== "applied" ||
+    initialUpdatedAt === null || replayUpdatedAt === null ||
+    (initial.status === "accepted" ? replayUpdatedAt < initialUpdatedAt : replay.updated_at !== initial.updated_at)
+  ) throw new Error("WEB_FIXTURE_LOGICAL_REPLAY_INVALID");
 }
 
 function httpsOrigin(value) {
@@ -742,7 +790,7 @@ export async function exerciseWebChatCreditRuntime(environment, options = {}) {
     "WEB_FIXTURE_SESSION_REPLAY_FAILED",
     () => selectedRuntime.session.replay(submitted.logicalRequest),
   );
-  if (!isDeepStrictEqual(replay, submitted.receipt)) throw new Error("WEB_FIXTURE_LOGICAL_REPLAY_INVALID");
+  validateLogicalReplay(submitted.logicalRequest, submitted.receipt, replay);
   const terminalSnapshot = await fixturePhase(
     "WEB_FIXTURE_SESSION_SNAPSHOT_FAILED",
     () => selectedRuntime.session.waitForTerminalSnapshot(session.sessionId),
