@@ -17,6 +17,11 @@ owners:
 - Admin Web imports only this repository-local mirror. Imports from Root, Platform, Session, or another sibling source tree are forbidden.
 - Per-boundary descriptor copies and compatibility re-export shims are forbidden. All descriptors resolve through `../generated/proto/**`; helpers resolve through their exact `../generated/contracts/<boundary>@<version>/**` owner.
 - Generated descriptors and `@connectrpc/connect-node` stay behind `lib/control-plane/**`; client components must not import them.
+- `commerce-client.ts` is the sole AdminCommerce consumer. It selects one exact Site, checks the operation-specific
+  server-session permission before transport, uses generated canonical digests for all ten writes, positively
+  projects all ten reads, and never retries Code Batch Issue after an ambiguous delivery.
 - Protobuf descriptors define transport types. Browser routes expose only positively selected JSON fields and never protobuf messages.
 - Command digests use the generated command-envelope helpers. Web must not recreate the algorithm with JSON or local field ordering.
 - Root generation emits ESM `.js` import specifiers with checked-in TypeScript sources. Admin Next dev/build therefore use webpack plus the `.js` extension alias in `next.config.ts`; keep that compatibility path until Turbopack resolves this generated form.
+- AdminCommerce page tokens are opaque HMAC cursors. This layer puts an optional token directly into
+  `CommercePageRequest`; it never parses or reconstructs cursor fields.

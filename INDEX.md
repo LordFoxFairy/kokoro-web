@@ -94,7 +94,11 @@ Put app-specific behavior in its app and truly shared Web code in `packages/*`. 
 
 ## Current gotchas
 
-- **Acquisition shutdown**：User Web 保留固定 Site 的只读套餐/credit/account 展示与 Platform Public 合同绑定的卡密 preview→confirm→recover；checkout/mock-pay/refund BFF、购买 CTA、provider secret/SDK 仍禁止。卡密只走 server-only generated client，raw Code 不落状态/日志/响应。仓库门禁对两 app 的完整 API route inventory、Admin rewrite 清单、proxy egress 和 plans GET-only export 采用闭合 allowlist。Admin 的 generic manifests/resource/action/OpenAPI、billing overview、User360、未实现 Commerce 页面与 routes 已物理删除；payment module/metrics/orders/action 对浏览器恒不可达。
+- **Acquisition shutdown**：User Web 保留固定 Site 的只读套餐/credit/account 展示与 Platform Public 合同绑定的卡密 preview→confirm→recover；checkout/mock-pay/refund BFF、购买 CTA、provider secret/SDK 仍禁止。User 兑换卡密只走 server-only generated client，raw Code 不落持久状态或日志。仓库门禁对两 app 的完整 API route inventory、Admin rewrite 清单、proxy egress 和 plans GET-only export 采用闭合 allowlist。Admin 的 generic manifests/resource/action/OpenAPI、billing overview、User360 与 payment module/metrics/orders/action 对浏览器恒不可达；下面的 typed AdminCommerce 管理面不是 User acquisition/payment 入口。
+- **AdminCommerce hard cut**：Admin 现有五个 Site-scoped Refine 资源与 canonical 20-RPC generated
+  `AdminCommerceService` 对齐。BFF 只有逐资源 list/get/publish/issue 与逐状态 transition route，禁止通用
+  view/action proxy。首次 Issue raw codes 只存在于组件局部的一次性 Blob 导出流程；replay 只引导 abandon
+  并用新 batch/new command reissue。此管理面不恢复 User checkout/payment acquisition。
 - **每 Site 一个独立 Web 项目**：Site factory 输出独立产品名、repository、artifact、release、cookie/account
   边界与 rollback 权；仓内不存在共享用户站 runtime，reference fixture 也不可作为生产部署入口。
 - **`.npmrc` 使用 `node-linker=isolated`**（非 hoisted），防止 app/private package 依赖被根级幽灵依赖掩盖。切换

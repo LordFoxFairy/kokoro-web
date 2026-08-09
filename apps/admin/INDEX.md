@@ -15,15 +15,21 @@ Admin Web does not own Platform tables, migrations, business transactions, publi
 
 ## Public boundary
 Next.js routes/components are browser-facing; `lib/control-plane/**` is the only privileged Platform boundary.
-`lib/refine/admin-data-provider.ts` is the browser-side resource boundary: its closed registry exposes only
-`operators`, `sites`, `approvals`, and `audit`, maps them to exact same-origin BFF routes, and validates every
-response before Refine receives it. `sites` additionally supports the exact resource detail read.
+`lib/refine/admin-data-provider.ts` is the browser-side resource boundary. Its closed registry exposes the
+four operational resources (`operators`, `sites`, `approvals`, `audit`) and five Site-scoped Commerce resources
+(`credit-programs`, `entitlement-templates`, `offers`, `redemption-programs`, `code-batches`). Every resource maps
+to exact same-origin BFF routes and validates every response before Refine receives it. Sites and all five Commerce
+resources support exact detail reads; Commerce detail reads require the selected Site in provider metadata.
 
 ## Callers and dependencies
 Operators use the app. Refine owns resource lifecycle/query integration, Ant Design 5 and stable Pro Components own the UI primitives, and server code calls Platform Admin Connect through generated clients. Next.js remains the same-origin security BFF.
 
 ## Data ownership and events
 The app owns only short-lived encrypted Web session state and UI caches. Platform owns identity, authority, offers, card inventory and receipts.
+Raw card codes are the sole exception to normal UI data flow: the first committed Issue response is held only in
+the mounted Code Batch component's local state. It never enters Refine/React Query, notifications, URL state,
+browser storage, logs or the clipboard. The blocking export dialog offers an explicit Blob download, revokes the
+object URL immediately, and clears the local value on download, close, unmount or a 45-second timeout.
 
 ## Runtime and security
 Workload credentials are lazy bounded private files, never browser/build-time data. The BFF uses HTTP/2 mTLS plus the opaque Platform session credential. Platform deliveries require exact RSA-OAEP-256/A256GCM and ES256 profiles, complete session epochs and signed scope-selection grants. The session retains bounded Site scopes and an independently granted global scope; every effect selects its required scope and Platform re-authorizes it. No deployment-fixed Site is trusted.
@@ -42,6 +48,9 @@ return a stable 503 body without diagnostics.
 Admin effects use stable command IDs and generated canonical protobuf digests. Model mutations use a stateless prepare→execute protocol: prepare validates the full command and returns a bounded opaque reference containing its lowercase UUIDv4 identity and canonical digest without executing; the browser persists that reference before sending execute, but never persists the potentially 16 MiB command body. Execute decodes the same reference, reconstructs and reauthorizes the scope, recomputes the canonical digest, and rejects any body/identity mismatch before invoking Platform. The browser keeps at most one pending reference and blocks new Model writes. A lost execute response or page restart is recovered only through the authoritative receipt query. Only a successful committed receipt clears the reference; NotFound, timeout, invalid recovery, or operator confirmation cannot unlock a new effect. Card issuance never auto-replays an unknown delivery outcome.
 
 Resource lists use the opaque BFF `pageToken` contract instead of translating cursors into offset page numbers.
+Admin Query tokens are bounded at 1024 characters; AdminCommerce HMAC tokens are bounded at 2048 characters.
+The provider and BFF validate only the token envelope length and pass the token byte-for-byte without decoding,
+constructing, or modifying its family/Site/scope/watermark payload.
 Approval records use the owner-qualified public identity `(owner, approvalRef)` from the generated Admin Query
 contract. The BFF preserves `owner`, and Refine keys each row as `${owner}:${approvalRef}`; a UUID is never treated
 as globally unique across approval owners.
@@ -61,8 +70,19 @@ reusing the provider's exact Operator and Site list schemas.
 ## Extension rules and forbidden dependencies
 Add exact resources to the closed Refine provider registry and domain workflows behind generated service methods. Never restore Prisma, `DATABASE_URL_ADMIN`, arbitrary URL data providers, manifest-driven forms, or generic resource/action proxies.
 
+AdminCommerce writes have one exact BFF route per resource or batch transition. A dynamic `[action]` dispatcher is
+forbidden. Read permission, write permission, selected Site, state transition eligibility and the independent
+Code Batch checker rule remain explicit in `lib/commerce-permissions.ts`; Platform rechecks all authority.
+
 ## Current gotchas
-The typed P0 surface covers current operator, operator listing, one-User-within-Site identity lookup, pending approvals, Site registration/publication/query, scoped audit, the read-only Site Credit fact plane, and Model Control. Operators, Sites, Approvals, and Audit are real Refine resources backed only by exact typed BFF routes; the overview pending count consumes the same validated Approvals resource instead of maintaining a second response schema. Generic manifest/resource/action/OpenAPI routes, Teams/Hub generic screens, and unimplemented Commerce/CreditProgram pages and routes are physically absent. SiteRelease certification accepts externally produced proof bytes and key references, never signing private keys. Commerce navigation returns only when its approved maker/checker provider and Commerce-owned Program catalog exist. The step-up allowlist follows the same closed runtime inventory; retired Commerce actions are not admitted before their typed workflows are mounted.
+The typed surface covers current operator, operator listing, one-User-within-Site identity lookup, pending approvals,
+Site registration/publication/query, scoped audit, the read-only Site Credit fact plane, Model Control, and the
+canonical 20-RPC Site-scoped AdminCommerce owner. Commerce publishes immutable Credit Program, Entitlement
+Template, Offer and Redemption Program revisions and manages Code Batch issue/approve/activate/abandon/suspend/
+revoke transitions. Issue replays never redeliver secrets: the operator must abandon the old batch and use a new
+batch plus a new command. Suspension cannot be resumed and can only move to revoked. Generic manifest/resource/
+action/OpenAPI routes, dynamic action dispatch, Teams/Hub generic screens, the retired 39-RPC descriptor inventory,
+and delivery-session compatibility entry points are physically absent.
 
 ## Verification
 Run Admin tests, lint, typecheck, standalone build, the Admin production-release repository gate, and

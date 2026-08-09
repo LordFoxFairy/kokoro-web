@@ -13,13 +13,20 @@ Next.js security BFF with Refine, Ant Design 5, and stable Pro Components for au
 - Credit is read only through generated AdminCredit routes. Generic manifest/resource/action/OpenAPI routes, billing overview aggregation, and User360 fan-out are physically absent. The User page uses the typed one-User-within-Site AdminQuery read.
 - Credit/User navigation and requests derive from the Platform-aligned surface matrix: `credit.summary.read`, `credit.account.read`, `credit.grant.read`, `credit.hold.read`, `credit.journal.read`, `credit.rated-usage.read`, and `admin.user.read`. The BFF enforces the same matrix from the verified authority session before RPC; the browser cannot grant itself a surface.
 - Site registration uses an independently granted global scope; SiteRelease publication narrows the command context to the selected Site. The release form submits externally signed certification facts and proof, never a signing private key.
-- Unimplemented Commerce and card-code screens are absent. They return only with typed maker/checker, one-time delivery acknowledgement, and authoritative receipt recovery.
+- AdminCommerce exposes five Site-scoped Refine resources through exact typed BFF routes: Credit Programs,
+  Entitlement Templates, Offers, Redemption Programs, and Code Batches. The four catalogs publish immutable
+  revisions; Code Batches use explicit issue/approve/activate/abandon/suspend/revoke routes. A maker cannot approve
+  their own batch, activation requires approval, and suspension is irreversible except for final revocation.
+- Fresh Code Batch Issue raw codes live only in component-local state behind a blocking one-time export dialog.
+  Explicit download creates a Blob, revokes its object URL immediately, then clears the state. Close, unmount and
+  a short timeout also clear it. Replay contains no codes and directs abandon plus a new batch/new command reissue.
 - Refine is a browser resource/query framework only. Its provider is a closed exact-resource registry; it never receives a Platform URL, credential, database connection, or generic mutation authority.
-- Operators, Sites, pending Approvals, and scoped Audit are registered Refine resources. Their exact BFF schemas,
+- Operators, Sites, pending Approvals, scoped Audit, and the five Commerce resources are registered Refine resources. Their exact BFF schemas,
   optional Site filter, identity mapping, and opaque cursor traversal live once in the provider; resource pages do
-  not issue parallel list requests. Site detail is the only registered resource detail read.
+  not issue parallel list requests. Site and Commerce resources have exact registered detail reads.
 - Cursor lists use Refine `useInfiniteList` with a fixed 100-row BFF page and explicit load-more controls. The
-  provider returns `cursor.next`, accepts the canonical 1024-character token, rejects offset/page-size requests,
+  provider returns `cursor.next`, accepts the canonical 1024-character Admin Query token or 2048-character
+  opaque AdminCommerce HMAC token, rejects offset/page-size requests,
   disables numeric fallback on terminal pages, and normalizes BFF failures to Refine `HttpError`. Its shared
   cumulative window fails closed on cursor cycles, repeated page params, duplicate IDs, more than 20 pages, more
   than 1000 records, or continuation at either limit. The App shell
