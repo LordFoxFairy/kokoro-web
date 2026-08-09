@@ -8,14 +8,18 @@ const MAXIMUM_BODY_BYTES = 2_097_152;
 const MUTATIONS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 function problem(status, code, action, retryClass, message, failurePhase) {
     const requestId = randomUUID();
-    const headers = { "cache-control": "no-store" };
+    const headers = {
+        "cache-control": "no-store",
+        "content-type": "application/problem+json; charset=utf-8",
+    };
     if (failurePhase !== undefined)
         headers[SESSION_FAILURE_PHASE_HEADER] = failurePhase;
-    return Response.json(errorEnvelopeSchema.parse({
+    const envelope = errorEnvelopeSchema.parse({
         error: { code, message, retry_class: retryClass, action },
         request_id: requestId,
         correlation_id: requestId,
-    }), { status, headers });
+    });
+    return new Response(JSON.stringify(envelope), { status, headers });
 }
 async function boundedJson(request) {
     const mediaType = request.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase();

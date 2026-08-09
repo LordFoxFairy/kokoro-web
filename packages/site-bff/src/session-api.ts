@@ -32,13 +32,17 @@ function problem(
   failurePhase?: SessionFailurePhase,
 ): Response {
   const requestId = randomUUID()
-  const headers: Record<string, string> = { "cache-control": "no-store" }
+  const headers: Record<string, string> = {
+    "cache-control": "no-store",
+    "content-type": "application/problem+json; charset=utf-8",
+  }
   if (failurePhase !== undefined) headers[SESSION_FAILURE_PHASE_HEADER] = failurePhase
-  return Response.json(errorEnvelopeSchema.parse({
+  const envelope = errorEnvelopeSchema.parse({
     error: { code, message, retry_class: retryClass, action },
     request_id: requestId,
     correlation_id: requestId,
-  }), { status, headers })
+  })
+  return new Response(JSON.stringify(envelope), { status, headers })
 }
 
 async function boundedJson(request: Request): Promise<unknown> {

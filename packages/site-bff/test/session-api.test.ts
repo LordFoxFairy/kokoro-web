@@ -30,6 +30,19 @@ function mutationRequest(): Request {
   })
 }
 
+function streamRequest(): Request {
+  return new Request(
+    "https://site.example/v1/sessions/session-12345678/events?after=opaque-cursor-12345678",
+    {
+      headers: {
+        accept: "text/event-stream",
+        "last-event-id": "opaque-cursor-12345678",
+        "sec-fetch-site": "same-origin",
+      },
+    },
+  )
+}
+
 function runtime(execute: SiteSessionApiRuntime["assemble"] extends (...args: readonly unknown[]) => Promise<infer Result>
   ? Result["proxy"]["execute"]
   : never): SiteSessionApiRuntime {
@@ -200,5 +213,80 @@ describe("Site Session API", () => {
 
     expect(assemblyFailure.headers.get("x-kokoro-session-failure-phase")).toBe("runtime_assembly")
     expect(upstreamFailure.headers.has("x-kokoro-session-failure-phase")).toBe(false)
+  })
+
+  it("uses the generated problem media type for every local failure class", async () => {
+    const missingAuth = await createSiteSessionApi({
+      runtime: runtime(vi.fn()),
+      readAuthSession: () => null,
+    }).handle(request(), ["v1", "sessions", "session-12345678", "snapshot"])
+    const forbidden = await createSiteSessionApi({
+      runtime: runtime(vi.fn()),
+      readAuthSession: () => auth,
+    }).handle(
+      new Request("https://site.example/v1/sessions/session-12345678/snapshot"),
+      ["v1", "sessions", "session-12345678", "snapshot"],
+    )
+    const invalidBody = await createSiteSessionApi({
+      runtime: runtime(vi.fn()),
+      readAuthSession: () => auth,
+    }).handle(new Request("https://site.example/v1/sessions", {
+      method: "POST",
+      headers: {
+        "content-type": "text/plain",
+        origin: "https://site.example",
+        "sec-fetch-site": "same-origin",
+      },
+      body: "{}",
+    }), ["v1", "sessions"])
+    const oversized = await createSiteSessionApi({
+      runtime: runtime(vi.fn()),
+      readAuthSession: () => auth,
+    }).handle(new Request("https://site.example/v1/sessions", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        origin: "https://site.example",
+        "sec-fetch-site": "same-origin",
+      },
+      body: new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new Uint8Array(2_097_153).fill(0x78))
+          controller.close()
+        },
+      }),
+      duplex: "half",
+    } as RequestInit & { duplex: "half" }), ["v1", "sessions"])
+    const upstreamProtocol = await createSiteSessionApi({
+      runtime: runtime(vi.fn(async () => { throw new SessionProxyError("UPSTREAM_PROTOCOL_ERROR") })),
+      readAuthSession: () => auth,
+    }).handle(request(), ["v1", "sessions", "session-12345678", "snapshot"])
+    const streamUnavailable = await createSiteSessionApi({
+      runtime: {
+        publicOrigin: "https://site.example",
+        assemble: vi.fn(async () => { throw new Error("private assembly detail") }),
+      },
+      readAuthSession: () => auth,
+    }).handle(streamRequest(), ["v1", "sessions", "session-12345678", "events"])
+
+    const responses = [
+      missingAuth,
+      forbidden,
+      invalidBody,
+      oversized,
+      upstreamProtocol,
+      streamUnavailable,
+    ]
+    expect(responses.map(({ status }) => status)).toEqual([401, 403, 400, 413, 502, 503])
+    for (const response of responses) {
+      expect(response.headers.get("content-type")).toBe("application/problem+json; charset=utf-8")
+      errorEnvelopeSchema.parse(await response.clone().json())
+    }
+    const streamProblem = errorEnvelopeSchema.parse(await streamUnavailable.json())
+    expect(streamProblem.error).toMatchObject({
+      code: "INTERNAL_UNAVAILABLE",
+      action: "retry_same_cursor",
+      retry_class: "after_delay",
+    })
   })
 })
