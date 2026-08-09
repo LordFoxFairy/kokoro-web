@@ -12,7 +12,7 @@ import {
   type RedemptionCommandResult,
   type RedemptionPendingResult,
   type RedemptionTerminalResult,
-} from "./redemption-recovery.js"
+} from "./redemption-recovery"
 export type LegalDocument = Readonly<{ label: string; href: string }>
 
 type Features = Readonly<{ security: boolean; redemption: boolean; products: boolean; credits: boolean }>
