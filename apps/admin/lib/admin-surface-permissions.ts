@@ -3,6 +3,21 @@ import { permits } from "./schemas";
 
 // Keep this one-to-one with Platform AdminCreditService/AdminQueryService operation checks.
 export const ADMIN_SURFACE_PERMISSION = Object.freeze({
+  commerceCreditProgramsRead: "commerce.credit-program.read",
+  commerceCreditProgramsPublish: "commerce.credit-program.publish",
+  commerceEntitlementTemplatesRead: "commerce.entitlement-template.read",
+  commerceEntitlementTemplatesPublish: "commerce.entitlement-template.publish",
+  commerceOffersRead: "commerce.offer.read",
+  commerceOffersPublish: "commerce.offer.publish",
+  commerceRedemptionProgramsRead: "commerce.redemption-program.read",
+  commerceRedemptionProgramsPublish: "commerce.redemption-program.publish",
+  commerceCodeBatchesRead: "commerce.code-batch.read",
+  commerceCodeBatchesIssue: "commerce.code-batch.issue",
+  commerceCodeBatchesApprove: "commerce.code-batch.approve",
+  commerceCodeBatchesActivate: "commerce.code-batch.activate",
+  commerceCodeBatchesAbandon: "commerce.code-batch.abandon",
+  commerceCodeBatchesSuspend: "commerce.code-batch.suspend",
+  commerceCodeBatchesRevoke: "commerce.code-batch.revoke",
   creditSummary: "credit.summary.read",
   creditAccounts: "credit.account.read",
   creditAccountDetail: "credit.account.read",
@@ -17,7 +32,8 @@ export const ADMIN_SURFACE_PERMISSION = Object.freeze({
 } as const);
 
 export type AdminSurface = keyof typeof ADMIN_SURFACE_PERMISSION;
-export type CreditSurface = Exclude<AdminSurface, "users">;
+type CommerceSurface = Extract<AdminSurface, `commerce${string}`>;
+export type CreditSurface = Exclude<AdminSurface, "users" | CommerceSurface>;
 
 export interface CreditAccessPlan {
   readonly summary: boolean;

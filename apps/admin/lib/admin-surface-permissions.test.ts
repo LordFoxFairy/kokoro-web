@@ -13,6 +13,21 @@ import {
 describe("signed Admin surface permission matrix", () => {
   it("matches the Platform operation contract exactly", () => {
     expect(ADMIN_SURFACE_PERMISSION).toEqual({
+      commerceCreditProgramsRead: "commerce.credit-program.read",
+      commerceCreditProgramsPublish: "commerce.credit-program.publish",
+      commerceEntitlementTemplatesRead: "commerce.entitlement-template.read",
+      commerceEntitlementTemplatesPublish: "commerce.entitlement-template.publish",
+      commerceOffersRead: "commerce.offer.read",
+      commerceOffersPublish: "commerce.offer.publish",
+      commerceRedemptionProgramsRead: "commerce.redemption-program.read",
+      commerceRedemptionProgramsPublish: "commerce.redemption-program.publish",
+      commerceCodeBatchesRead: "commerce.code-batch.read",
+      commerceCodeBatchesIssue: "commerce.code-batch.issue",
+      commerceCodeBatchesApprove: "commerce.code-batch.approve",
+      commerceCodeBatchesActivate: "commerce.code-batch.activate",
+      commerceCodeBatchesAbandon: "commerce.code-batch.abandon",
+      commerceCodeBatchesSuspend: "commerce.code-batch.suspend",
+      commerceCodeBatchesRevoke: "commerce.code-batch.revoke",
       creditSummary: "credit.summary.read",
       creditAccounts: "credit.account.read",
       creditAccountDetail: "credit.account.read",
@@ -25,6 +40,36 @@ describe("signed Admin surface permission matrix", () => {
       creditRatedUsageSourceAllocations: "credit.rated-usage.read",
       users: "admin.user.read",
     });
+  });
+
+  it("keeps the Commerce maker/checker and terminal batch action matrix explicit", async () => {
+    const { codeBatchActionAccess, commerceAccessPlan } = await import("./commerce-permissions");
+    const permissions = [
+      "commerce.credit-program.read",
+      "commerce.offer.publish",
+      "commerce.code-batch.*",
+    ];
+
+    expect(commerceAccessPlan(permissions)).toMatchObject({
+      creditPrograms: { read: true, publish: false },
+      offers: { read: false, publish: true },
+      codeBatches: { read: true, issue: true, approve: true, activate: true },
+    });
+    expect(codeBatchActionAccess({
+      permissions,
+      operatorRef: "operator:maker",
+      batch: { state: "draft", approvalState: "pending", createdByOperatorRef: "operator:maker" },
+    })).toEqual({ approve: false, activate: false, abandon: true, suspend: false, revoke: false });
+    expect(codeBatchActionAccess({
+      permissions,
+      operatorRef: "operator:checker",
+      batch: { state: "draft", approvalState: "pending", createdByOperatorRef: "operator:maker" },
+    })).toEqual({ approve: true, activate: false, abandon: true, suspend: false, revoke: false });
+    expect(codeBatchActionAccess({
+      permissions,
+      operatorRef: "operator:checker",
+      batch: { state: "suspended", approvalState: "approved", createdByOperatorRef: "operator:maker" },
+    })).toEqual({ approve: false, activate: false, abandon: false, suspend: false, revoke: true });
   });
 
   it("gives account-only operators only the account list and detail", () => {

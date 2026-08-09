@@ -12,12 +12,31 @@ import type {
 import { z } from "zod";
 
 import { ApiError, apiGet } from "@/lib/api";
+import {
+  codeBatchListSchema,
+  codeBatchSchema,
+  commerceCursorSchema,
+  creditProgramListSchema,
+  creditProgramSchema,
+  entitlementTemplateListSchema,
+  entitlementTemplateSchema,
+  offerListSchema,
+  offerSchema,
+  redemptionProgramListSchema,
+  redemptionProgramSchema,
+  type AdminCodeBatch,
+  type AdminCreditProgram,
+  type AdminEntitlementTemplate,
+  type AdminOffer,
+  type AdminRedemptionProgram,
+} from "@/lib/commerce-contract";
 
 const ADMIN_PAGE_SIZE = 100;
 const UINT64_MAXIMUM = 18_446_744_073_709_551_615n;
 const UINT64_PATTERN = /^(?:0|[1-9][0-9]{0,19})$/u;
-const pageTokenSchema = z.string().min(1).max(1024);
-const cursorTokenSchema = pageTokenSchema.nullable();
+const adminQueryPageTokenSchema = z.string().min(1).max(1024);
+const pageTokenSchema = commerceCursorSchema;
+const cursorTokenSchema = adminQueryPageTokenSchema.nullable();
 const uint64Schema = z.string().refine((value) =>
   UINT64_PATTERN.test(value) && BigInt(value) <= UINT64_MAXIMUM);
 const positiveUint64Schema = uint64Schema.refine((value) => value !== "0");
@@ -77,7 +96,8 @@ export const adminSiteListSchema = cursorListSchema(adminSiteSchema);
 const approvalListSchema = cursorListSchema(approvalSchema);
 const auditListSchema = cursorListSchema(auditSchema);
 
-type AdminRecord = AdminOperator | AdminSite | AdminApproval | AdminAudit;
+type AdminRecord = AdminOperator | AdminSite | AdminApproval | AdminAudit | AdminCreditProgram |
+  AdminEntitlementTemplate | AdminOffer | AdminRedemptionProgram | AdminCodeBatch;
 type ResourceFilters = GetListParams["filters"];
 interface ResourcePage {
   readonly records: AdminRecord[];
@@ -117,7 +137,68 @@ const LIST_LOADERS = Object.freeze({
     return { records: page.items.map((item) => ({ id: item.auditRef, ...item })),
       nextPageToken: page.nextPageToken };
   },
+  "credit-programs": async (filters: ResourceFilters, pageToken: string | undefined,
+    signal: AbortSignal | undefined) => {
+    const siteId = requiredSiteId(filters);
+    const page = await apiGet(resourcePath("/api/control/commerce/credit-programs", siteId, pageToken),
+      creditProgramListSchema, { signal });
+    return { records: page.items, nextPageToken: page.nextPageToken };
+  },
+  "entitlement-templates": async (filters: ResourceFilters, pageToken: string | undefined,
+    signal: AbortSignal | undefined) => {
+    const siteId = requiredSiteId(filters);
+    const page = await apiGet(resourcePath("/api/control/commerce/entitlement-templates", siteId, pageToken),
+      entitlementTemplateListSchema, { signal });
+    return { records: page.items, nextPageToken: page.nextPageToken };
+  },
+  offers: async (filters: ResourceFilters, pageToken: string | undefined, signal: AbortSignal | undefined) => {
+    const siteId = requiredSiteId(filters);
+    const page = await apiGet(resourcePath("/api/control/commerce/offers", siteId, pageToken), offerListSchema,
+      { signal });
+    return { records: page.items, nextPageToken: page.nextPageToken };
+  },
+  "redemption-programs": async (filters: ResourceFilters, pageToken: string | undefined,
+    signal: AbortSignal | undefined) => {
+    const siteId = requiredSiteId(filters);
+    const page = await apiGet(resourcePath("/api/control/commerce/redemption-programs", siteId, pageToken),
+      redemptionProgramListSchema, { signal });
+    return { records: page.items, nextPageToken: page.nextPageToken };
+  },
+  "code-batches": async (filters: ResourceFilters, pageToken: string | undefined,
+    signal: AbortSignal | undefined) => {
+    const siteId = requiredSiteId(filters);
+    const page = await apiGet(resourcePath("/api/control/commerce/code-batches", siteId, pageToken),
+      codeBatchListSchema, { signal });
+    return { records: page.items, nextPageToken: page.nextPageToken };
+  },
 }) satisfies Readonly<Record<string, ListLoader>>;
+
+type CommerceDetailRecord = BaseRecord & Readonly<{ id: string; siteId: string }>;
+type CommerceDetailLoader = (id: string, siteId: string) => Promise<CommerceDetailRecord>;
+
+function detailPath(base: string, id: string, siteId: string): string {
+  return resourcePath(`${base}/${encodeURIComponent(id)}`, siteId, undefined);
+}
+
+const COMMERCE_DETAIL_LOADERS = Object.freeze({
+  "credit-programs": ((id, siteId) => apiGet(
+    detailPath("/api/control/commerce/credit-programs", id, siteId), creditProgramSchema,
+  )) satisfies CommerceDetailLoader,
+  "entitlement-templates": ((id, siteId) => apiGet(
+    detailPath("/api/control/commerce/entitlement-templates", id, siteId), entitlementTemplateSchema,
+  )) satisfies CommerceDetailLoader,
+  offers: ((id, siteId) => apiGet(
+    detailPath("/api/control/commerce/offers", id, siteId), offerSchema,
+  )) satisfies CommerceDetailLoader,
+  "redemption-programs": ((id, siteId) => apiGet(
+    detailPath("/api/control/commerce/redemption-programs", id, siteId), redemptionProgramSchema,
+  )) satisfies CommerceDetailLoader,
+  "code-batches": ((id, siteId) => apiGet(
+    detailPath("/api/control/commerce/code-batches", id, siteId), codeBatchSchema,
+  )) satisfies CommerceDetailLoader,
+});
+
+const COMMERCE_RESOURCES = new Set(Object.keys(COMMERCE_DETAIL_LOADERS));
 
 function cursorListSchema<ItemSchema extends z.ZodTypeAny>(itemSchema: ItemSchema) {
   return z.object({ items: z.array(itemSchema).max(ADMIN_PAGE_SIZE), nextPageToken: cursorTokenSchema }).strict();
@@ -223,14 +304,21 @@ function optionalSiteId(filters: ResourceFilters): string | undefined {
   return result.data;
 }
 
+function requiredSiteId(filters: ResourceFilters): string {
+  const selected = optionalSiteId(filters);
+  if (selected === undefined) throw providerError("admin_resource_site_filter_required", 400);
+  return selected;
+}
+
 /** Refine 5 passes cursor.next back through currentPage at runtime despite its numeric public type. */
-function pageTokenFromPagination(pagination: GetListParams["pagination"]): string | undefined {
+function pageTokenFromPagination(pagination: GetListParams["pagination"], resource: string): string | undefined {
   if (pagination?.mode !== "server" || pagination.pageSize !== ADMIN_PAGE_SIZE) {
     throw providerError("admin_resource_pagination_not_supported", 400);
   }
   const currentPage: unknown = pagination.currentPage;
   if (currentPage === 1) return undefined;
-  const parsed = pageTokenSchema.safeParse(currentPage);
+  const parsed = (COMMERCE_RESOURCES.has(resource) ? commerceCursorSchema : adminQueryPageTokenSchema)
+    .safeParse(currentPage);
   if (!parsed.success) throw providerError("admin_resource_pagination_not_supported", 400);
   return parsed.data;
 }
@@ -267,7 +355,7 @@ async function getList<TData extends BaseRecord = BaseRecord>(
   if (!Object.hasOwn(LIST_LOADERS, resource)) throw providerError("admin_resource_not_registered", 404);
   if ((sorters?.length ?? 0) !== 0) throw providerError("admin_resource_sort_not_supported", 400);
   const loader = LIST_LOADERS[resource as keyof typeof LIST_LOADERS];
-  const pageToken = pageTokenFromPagination(pagination);
+  const pageToken = pageTokenFromPagination(pagination, resource);
   try {
     const page = await loader(filters, pageToken, signalFromMeta(meta));
     if (page.nextPageToken !== null && page.nextPageToken === pageToken) {
@@ -284,18 +372,35 @@ async function getList<TData extends BaseRecord = BaseRecord>(
 }
 
 async function getOne<TData extends BaseRecord = BaseRecord>(
-  { resource, id }: GetOneParams,
+  { resource, id, meta }: GetOneParams,
 ): Promise<GetOneResponse<TData>> {
   if (!Object.hasOwn(LIST_LOADERS, resource)) throw providerError("admin_resource_not_registered", 404);
-  if (resource !== "sites") throw providerError("admin_resource_operation_not_supported", 405);
-  const parsedId = z.string().min(1).max(128).safeParse(String(id));
+  const commerce = Object.hasOwn(COMMERCE_DETAIL_LOADERS, resource);
+  if (resource !== "sites" && !commerce) throw providerError("admin_resource_operation_not_supported", 405);
+  const parsedId = z.string().min(1).max(commerce ? 256 : 128).safeParse(String(id));
   if (!parsedId.success) throw providerError("admin_resource_id_invalid", 400);
   try {
+    if (commerce) {
+      const siteId = metaSiteId(meta);
+      const loader = COMMERCE_DETAIL_LOADERS[resource as keyof typeof COMMERCE_DETAIL_LOADERS];
+      const record = await loader(parsedId.data, siteId);
+      if (record.id !== parsedId.data || record.siteId !== siteId) {
+        throw providerError("admin_resource_response_invalid", 502);
+      }
+      return { data: record as unknown as TData };
+    }
     const site = await apiGet(`/api/control/sites/${encodeURIComponent(parsedId.data)}`, adminSiteSchema);
     return { data: { id: site.siteRef, ...site } as unknown as TData };
   } catch (error) {
     normalizedProviderError(error);
   }
+}
+
+function metaSiteId(meta: GetOneParams["meta"]): string {
+  const value: unknown = meta?.siteId;
+  const parsed = z.string().min(1).max(128).safeParse(value);
+  if (!parsed.success) throw providerError("admin_resource_site_meta_required", 400);
+  return parsed.data;
 }
 
 export const adminDataProvider: DataProvider = {
