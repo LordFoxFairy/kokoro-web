@@ -4,6 +4,14 @@ import { type FormEvent, useCallback, useEffect, useRef, useState } from "react"
 import QRCode from "qrcode"
 
 import styles from "./account-product.module.css"
+import {
+  isRedemptionPending,
+  parseRedemptionCommandResult,
+  pollRedemptionCommand,
+  type RedemptionCommandResult,
+  type RedemptionPendingResult,
+  type RedemptionTerminalResult,
+} from "./redemption-recovery.js"
 export type LegalDocument = Readonly<{ label: string; href: string }>
 
 type Features = Readonly<{ security: boolean; redemption: boolean; products: boolean; credits: boolean }>
@@ -72,6 +80,17 @@ async function execute(prefix: string, csrfToken: string, operation: string, flo
   } catch { response = await reconcile() }
   if (!response.ok) throw new Error("The result is unavailable. Continue to reconcile the same action.")
   return await response.json() as Record<string, unknown>
+}
+
+async function recoverRedemption(prefix: string, csrfToken: string, flow: string): Promise<unknown> {
+  const response = await fetch(`${prefix}/recover`, {
+    method: "POST",
+    credentials: "same-origin",
+    headers: headers(csrfToken),
+    body: JSON.stringify({ operation: "redemption.confirm", flowRef: flow }),
+  })
+  if (!response.ok) throw new Error("redemption_recovery_unavailable")
+  return response.json()
 }
 
 function SecuritySettings(props: Readonly<{
@@ -306,12 +325,18 @@ export function AccountProduct(props: Readonly<{ brandName: string; csrfToken: s
   const [previewFlow, setPreviewFlow] = useState<string | null>(null)
   const [preview, setPreview] = useState<RedemptionPreview | null>(null)
   const [redemptionAccepted, setRedemptionAccepted] = useState(false)
-  const load = useCallback(async () => {
+  const [confirmation, setConfirmation] = useState<
+    | Readonly<{ kind: "idle" }>
+    | Readonly<{ kind: "working"; flowRef: string }>
+    | Readonly<{ kind: "recoverable"; flowRef: string; pending?: RedemptionPendingResult }>
+    | Readonly<{ kind: "terminal" }>
+  >({ kind: "idle" })
+  const load = useCallback(async (): Promise<boolean> => {
     try {
       const response = await fetch(`${prefix}/dashboard`, { credentials: "same-origin", cache: "no-store" })
       if (!response.ok) throw new Error()
-      setDashboard(await response.json() as Dashboard); setStatus("")
-    } catch { setStatus("Account information is temporarily unavailable.") }
+      setDashboard(await response.json() as Dashboard); setStatus(""); return true
+    } catch { setStatus("Account information is temporarily unavailable."); return false }
   }, [prefix])
   useEffect(() => { void load() }, [load])
 
@@ -323,12 +348,85 @@ export function AccountProduct(props: Readonly<{ brandName: string; csrfToken: s
 
   async function redeem(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    const code = String(new FormData(event.currentTarget).get("code") ?? "")
+    const form = event.currentTarget
+    const code = String(new FormData(form).get("code") ?? "")
     const output = await effect("redemption.preview", { code })
     if (output !== null && output.result.state === "ready") {
       setPreviewFlow(output.flow); setPreview(output.result as RedemptionPreview); setRedemptionAccepted(false)
+      setConfirmation({ kind: "idle" })
     }
-    event.currentTarget.reset()
+    form.reset()
+  }
+
+  async function applyRedemptionTerminal(result: RedemptionTerminalResult) {
+    if (result.state === "succeeded") {
+      setPreview(null); setPreviewFlow(null); setRedemptionAccepted(false); setConfirmation({ kind: "idle" })
+      const refreshed = await load()
+      setStatus(refreshed
+        ? "Code redeemed. Your account has been refreshed."
+        : "Code redeemed. Account information could not be refreshed yet.")
+      return
+    }
+    if (result.state === "rejected") {
+      setConfirmation({ kind: "terminal" })
+      setStatus("This code redemption was rejected.")
+      return
+    }
+    setConfirmation({ kind: "terminal" })
+    setStatus("This code redemption requires review. No further confirmation is needed.")
+  }
+
+  async function reconcileRedemption(flow: string, result: RedemptionCommandResult) {
+    if (!isRedemptionPending(result)) {
+      await applyRedemptionTerminal(result)
+      return
+    }
+    const outcome = await pollRedemptionCommand({
+      initial: result,
+      recover: () => recoverRedemption(prefix, props.csrfToken, flow),
+    })
+    if (outcome.kind === "terminal") {
+      await applyRedemptionTerminal(outcome.result)
+      return
+    }
+    setConfirmation({ kind: "recoverable", flowRef: flow, pending: outcome.pending })
+    setStatus("The confirmation result is temporarily unavailable. Continue checking the same confirmation.")
+  }
+
+  async function confirmRedemption() {
+    if (preview === null || previewFlow === null || confirmation.kind !== "idle") return
+    const flow = flowRef()
+    setConfirmation({ kind: "working", flowRef: flow }); setStatus("Confirming redemption…")
+    try {
+      await prepare(prefix, props.csrfToken, "redemption.confirm", flow)
+      const response = await execute(prefix, props.csrfToken, "redemption.confirm", flow, {
+        previewFlowRef: previewFlow,
+        legalAccepted: !preview.legalAcceptanceRequired || redemptionAccepted,
+      })
+      await reconcileRedemption(flow, parseRedemptionCommandResult(response))
+    } catch {
+      setConfirmation({ kind: "recoverable", flowRef: flow })
+      setStatus("The confirmation result is temporarily unavailable. Continue checking the same confirmation.")
+    }
+  }
+
+  async function continueRedemptionRecovery() {
+    if (confirmation.kind !== "recoverable") return
+    const retained = confirmation
+    setConfirmation({ kind: "working", flowRef: retained.flowRef }); setStatus("Checking the confirmation result…")
+    try {
+      const result = retained.pending ?? parseRedemptionCommandResult(
+        await recoverRedemption(prefix, props.csrfToken, retained.flowRef),
+      )
+      await reconcileRedemption(retained.flowRef, result)
+    } catch {
+      setConfirmation(retained)
+      setStatus("The confirmation result is temporarily unavailable. Continue checking the same confirmation.")
+    }
+  }
+
+  function clearRedemptionPreview() {
+    setPreview(null); setPreviewFlow(null); setRedemptionAccepted(false); setConfirmation({ kind: "idle" }); setStatus("")
   }
 
   return <main className={styles.shell}>
@@ -343,10 +441,13 @@ export function AccountProduct(props: Readonly<{ brandName: string; csrfToken: s
             {preview.entitlements.length > 0 ? <><h4>Entitlements</h4><ul>{preview.entitlements.map((item, index) => <li key={`${item.safeLabel}-${index}`}>{item.safeLabel}{item.expiresAt ? ` · expires ${item.expiresAt}` : ""}</li>)}</ul></> : null}
             {preview.credits.length > 0 ? <><h4>Credits</h4><ul>{preview.credits.map((item, index) => <li key={`${item.unit}-${item.bucketClass}-${index}`}>{item.amount} {item.unit} · {item.bucketClass}{item.expiresAt ? ` · expires ${item.expiresAt}` : ""}</li>)}</ul></> : null}
             {preview.legalAcceptanceRequired ? <label className={styles.legalAcceptance}><input checked={redemptionAccepted} onChange={(event) => setRedemptionAccepted(event.currentTarget.checked)} type="checkbox" /><span>I agree to {preview.legalDocuments.map((document, index) => <span key={document.href}>{index > 0 ? index === preview.legalDocuments.length - 1 ? " and " : ", " : ""}<a href={document.href} rel="noreferrer noopener" target="_blank">{document.label}</a></span>)} for this redemption.</span></label> : null}
-            <button className={styles.button} disabled={preview.legalAcceptanceRequired && !redemptionAccepted} onClick={() => { if (previewFlow) void effect("redemption.confirm", { previewFlowRef: previewFlow, legalAccepted: !preview.legalAcceptanceRequired || redemptionAccepted }) }} type="button">Confirm redemption</button>
+            {confirmation.kind === "idle" ? <button className={styles.button} disabled={preview.legalAcceptanceRequired && !redemptionAccepted} onClick={() => void confirmRedemption()} type="button">Confirm redemption</button> : null}
+            {confirmation.kind === "working" ? <button className={styles.button} disabled type="button">Checking confirmation…</button> : null}
+            {confirmation.kind === "recoverable" ? <button className={styles.button} onClick={() => void continueRedemptionRecovery()} type="button">继续确认结果</button> : null}
+            {confirmation.kind === "terminal" ? <button className={styles.buttonSecondary} onClick={clearRedemptionPreview} type="button">Use another code</button> : null}
           </div>}
       </section> : null}
-      {dashboard.features.security ? <section className={styles.card}><h2>Security</h2>{dashboard.availability.security === "unavailable" ? <p className={styles.quiet}>Account security is temporarily unavailable.</p> : <><h3>Signed-in sessions</h3><ul className={styles.list}>{dashboard.sessions.map((session, index) => <li className={styles.row} key={`${session.createdAt}-${index}`}><strong>{session.deviceLabel}</strong> {session.current ? "(current)" : ""}<br/><span className={styles.quiet}>Last active {session.lastSeenAt}</span></li>)}</ul><button className={styles.buttonSecondary} onClick={() => void effect("identity.revoke-sessions", { target: "others" })} type="button">Sign out other sessions</button><SecuritySettings csrfToken={props.csrfToken} onCompleted={load} prefix={prefix} /></>}</section> : null}
+      {dashboard.features.security ? <section className={styles.card}><h2>Security</h2>{dashboard.availability.security === "unavailable" ? <p className={styles.quiet}>Account security is temporarily unavailable.</p> : <><h3>Signed-in sessions</h3><ul className={styles.list}>{dashboard.sessions.map((session, index) => <li className={styles.row} key={`${session.createdAt}-${index}`}><strong>{session.deviceLabel}</strong> {session.current ? "(current)" : ""}<br/><span className={styles.quiet}>Last active {session.lastSeenAt}</span></li>)}</ul><button className={styles.buttonSecondary} onClick={() => void effect("identity.revoke-sessions", { target: "others" })} type="button">Sign out other sessions</button><SecuritySettings csrfToken={props.csrfToken} onCompleted={async () => { await load() }} prefix={prefix} /></>}</section> : null}
       {dashboard.features.products ? <section className={styles.card}><h2>Products & entitlements</h2>{dashboard.availability.products === "unavailable" ? <p className={styles.quiet}>Products are temporarily unavailable.</p> : <ul className={styles.list}>{dashboard.products.map((product, index) => <li className={styles.row} key={`${product.safeLabel}-${index}`}><strong>{product.safeLabel}</strong><br/><span className={styles.quiet}>{product.state} · {product.kind}</span>{product.entitlements.map((item, itemIndex) => <div key={`${item.safeLabel}-${itemIndex}`}>{item.safeLabel}</div>)}</li>)}</ul>}</section> : null}
       {dashboard.features.credits ? <section className={styles.card}><h2>Credits</h2>{dashboard.availability.credits === "unavailable" ? <p className={styles.quiet}>Credits are temporarily unavailable.</p> : dashboard.credits.map((unit) => <div key={unit.unit}><h3>{unit.unit}</h3>{unit.buckets.map((bucket) => <p key={bucket.bucketClass}>{bucket.bucketClass}: <strong>{bucket.available}</strong> available</p>)}</div>)}</section> : null}
     </div> : null}

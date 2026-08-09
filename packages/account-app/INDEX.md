@@ -45,6 +45,10 @@ Verification secrets remain in the URL fragment until cleared, raw Codes are one
 ## Idempotency, failure, and recovery
 
 Effect requests retain their command identity across ambiguous transport results and reconcile through the Site BFF receipt or capability-recovery path.
+Redemption confirmation keeps its one `flowRef` only in mounted component state, follows the owner `retryAfter`
+through a bounded `/api/account/recover` poll, and refreshes Account facts only after `succeeded`. A timeout or
+network interruption keeps that flow available for explicit continuation; `rejected` and `review_required` are
+terminal and never trigger a balance refresh. No browser persistence or second recovery protocol is used.
 
 ## Extension rules and forbidden dependencies
 
