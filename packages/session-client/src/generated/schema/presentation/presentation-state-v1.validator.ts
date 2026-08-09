@@ -2,7 +2,7 @@
 // Source digest: sha256:3e09ce2f71d8a04e6075ed473b3c2559b1610da196fa44fba03559cdf90c9b7a
 import { Ajv2020, type ValidateFunction } from "ajv/dist/2020.js";
 
-import type { PresentationBinding, PresentationBindingUpdate, PresentationOwnerState, PresentationSnapshot, PresentationStreamRecord } from "./presentation-state-v1.types.js";
+import type { PresentationState, PresentationBinding, PresentationBindingUpdate, PresentationOwnerState, PresentationSnapshot, PresentationStreamRecord } from "./presentation-state-v1.types.js";
 import schema0 from "./binding-update-v1.schema.json" with { type: "json" };
 import schema1 from "./binding-v1.schema.json" with { type: "json" };
 import schema2 from "./domain-event-v1.schema.json" with { type: "json" };
@@ -26,6 +26,26 @@ export const validatePresentationBindingUpdate: ValidateFunction<PresentationBin
 export const validatePresentationOwnerState: ValidateFunction<PresentationOwnerState> = requireValidator<PresentationOwnerState>("https://contracts.kokoro.invalid/presentation/owner-state-v1.schema.json");
 export const validatePresentationSnapshot: ValidateFunction<PresentationSnapshot> = requireValidator<PresentationSnapshot>("https://contracts.kokoro.invalid/presentation/snapshot-v1.schema.json");
 export const validatePresentationStreamRecord: ValidateFunction<PresentationStreamRecord> = requireValidator<PresentationStreamRecord>("https://contracts.kokoro.invalid/presentation/stream-record-v1.schema.json");
+
+export const validatePresentationState: ValidateFunction<PresentationState> = ajv.compile<PresentationState>({
+  "oneOf": [
+    {
+      "$ref": "https://contracts.kokoro.invalid/presentation/binding-v1.schema.json"
+    },
+    {
+      "$ref": "https://contracts.kokoro.invalid/presentation/binding-update-v1.schema.json"
+    },
+    {
+      "$ref": "https://contracts.kokoro.invalid/presentation/owner-state-v1.schema.json"
+    },
+    {
+      "$ref": "https://contracts.kokoro.invalid/presentation/snapshot-v1.schema.json"
+    },
+    {
+      "$ref": "https://contracts.kokoro.invalid/presentation/stream-record-v1.schema.json"
+    }
+  ]
+});
 
 function requireValidator<T>(schemaId: string): ValidateFunction<T> {
   const validator = ajv.getSchema<T>(schemaId);

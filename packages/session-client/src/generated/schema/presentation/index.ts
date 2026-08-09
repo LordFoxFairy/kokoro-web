@@ -2,6 +2,7 @@
 export type { PresentationEvent } from "./domain-event-v1.types.js";
 export { validatePresentationEvent } from "./domain-event-v1.validator.js";
 export type {
+  PresentationState,
   PresentationBinding,
   PresentationRunBinding,
   PresentationMessageBinding,
@@ -12,6 +13,7 @@ export type {
   PresentationStreamRecord,
 } from "./presentation-state-v1.types.js";
 export {
+  validatePresentationState,
   validatePresentationBinding,
   validatePresentationBindingUpdate,
   validatePresentationOwnerState,
@@ -20,3 +22,38 @@ export {
 } from "./presentation-state-v1.validator.js";
 export type { AgUiFrame } from "./ag-ui-frame-v1.types.js";
 export { validateAgUiFrame } from "./ag-ui-frame-v1.validator.js";
+export type {
+  PresentationStream,
+  PresentationReplayPage,
+  PresentationAuthorizedFrame,
+  PresentationDrainingEvent,
+  PresentationDrainingData,
+} from "./stream-v1.types.js";
+export {
+  validatePresentationStream,
+  validatePresentationReplayPage,
+  validatePresentationAuthorizedFrame,
+  validatePresentationDrainingEvent,
+  validatePresentationDrainingData,
+} from "./stream-v1.validator.js";
+export type {
+  PresentationAgUiFrameDigestPayload,
+  PresentationAgUiFrameEncoding,
+  ValidatedPresentationAuthorizedFrame,
+  PresentationSha256Port,
+  PresentationStreamRecordDigestPayload,
+  PresentationStreamRecordIntegrity,
+  PresentationWireLimits,
+} from "./presentation-runtime-v1.js";
+export {
+  PRESENTATION_WIRE_LIMITS,
+  assertPresentationDrainingResumeCursor,
+  assertPresentationStreamRecordIntegrity,
+  assertPresentationWireLimits,
+  buildPresentationAgUiFrame,
+  computePresentationEventDigest,
+  computePresentationStreamRecordIntegrity,
+  encodeCanonicalPresentationJson,
+  parseAndValidatePresentationAuthorizedFrame,
+  parseCanonicalPresentationJson,
+} from "./presentation-runtime-v1.js";

@@ -20,6 +20,7 @@ for (const schema of [schema0, schema1, schema2]) ajv.addSchema(schema);
 
 export const validateAgUiFrame: ValidateFunction<AgUiFrame> = requireValidator<AgUiFrame>("https://contracts.kokoro.invalid/presentation/ag-ui-frame-v1.schema.json");
 
+
 function requireValidator<T>(schemaId: string): ValidateFunction<T> {
   const validator = ajv.getSchema<T>(schemaId);
   if (validator === undefined) throw new Error("presentation_schema_registration_failed");
