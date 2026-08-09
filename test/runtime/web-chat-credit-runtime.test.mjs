@@ -1480,6 +1480,125 @@ function successfulExerciseRuntime() {
   };
 }
 
+test("exercise honors an injected Session terminal timeout budget", async (t) => {
+  const environment = await readyFixture(t, "kokoro-web-terminal-timeout-seam-test-");
+  const runtime = successfulExerciseRuntime();
+  runtime.session.open = () => ({
+    ready: Promise.resolve(),
+    terminal: new Promise(() => undefined),
+    close() {},
+  });
+  runtime.session.submit = async () => ({
+    logicalRequest: logicalSubmitRequest(),
+    receipt: sessionCommandResponse(),
+  });
+  let watchdog;
+  try {
+    await assert.rejects(Promise.race([
+      runtimeFixture.exerciseWebChatCreditRuntime(environment, {
+        runtime,
+        terminalTimeoutMs: 20,
+      }),
+      new Promise((_resolve, reject) => {
+        watchdog = setTimeout(
+          () => reject(new Error("WEB_FIXTURE_TERMINAL_TIMEOUT_SEAM_IGNORED")),
+          100,
+        );
+      }),
+    ]), /WEB_FIXTURE_SESSION_TERMINAL_TIMEOUT/u);
+  } finally {
+    clearTimeout(watchdog);
+  }
+});
+
+test("exercise starts the Session terminal budget after ready and accepted submit", async (t) => {
+  const environment = await readyFixture(t, "kokoro-web-terminal-timeout-start-test-");
+  const runtime = successfulExerciseRuntime();
+  let finishTerminal;
+  runtime.session.open = () => ({
+    ready: new Promise((resolvePromise) => setTimeout(resolvePromise, 60)),
+    terminal: new Promise((resolvePromise) => { finishTerminal = resolvePromise; }),
+    close() {},
+  });
+  runtime.session.submit = async () => {
+    await new Promise((resolvePromise) => setTimeout(resolvePromise, 60));
+    setTimeout(() => finishTerminal({ outcome: "completed" }), 100);
+    return {
+      logicalRequest: logicalSubmitRequest(),
+      receipt: sessionCommandResponse(),
+    };
+  };
+
+  const result = await runtimeFixture.exerciseWebChatCreditRuntime(environment, {
+    runtime,
+    terminalTimeoutMs: 180,
+    redemptionBrowser: { async redeem() { return redemptionEvidence(); } },
+  });
+
+  assert.equal(result.kind, "web-chat-credit-runtime-exercised");
+});
+
+test("exercise observes a terminal rejection during submit without leaking it", async (t) => {
+  const environment = await readyFixture(t, "kokoro-web-terminal-rejection-test-");
+  const runtime = successfulExerciseRuntime();
+  let rejectTerminal;
+  runtime.session.open = () => ({
+    ready: Promise.resolve(),
+    terminal: new Promise((_resolve, reject) => { rejectTerminal = reject; }),
+    close() {},
+  });
+  runtime.session.submit = async () => {
+    rejectTerminal(new Error("private terminal failure"));
+    await new Promise((resolvePromise) => setImmediate(resolvePromise));
+    return {
+      logicalRequest: logicalSubmitRequest(),
+      receipt: sessionCommandResponse(),
+    };
+  };
+  const unhandled = [];
+  const captureUnhandled = (reason) => unhandled.push(reason);
+  process.on("unhandledRejection", captureUnhandled);
+  try {
+    await assert.rejects(
+      runtimeFixture.exerciseWebChatCreditRuntime(environment, { runtime }),
+      { message: "WEB_FIXTURE_SESSION_TERMINAL_FAILED" },
+    );
+    await new Promise((resolvePromise) => setImmediate(resolvePromise));
+    assert.deepEqual(unhandled, []);
+  } finally {
+    process.off("unhandledRejection", captureUnhandled);
+  }
+});
+
+test("exercise preserves submit failure when terminal also rejects without leaking it", async (t) => {
+  const environment = await readyFixture(t, "kokoro-web-submit-terminal-rejection-test-");
+  const runtime = successfulExerciseRuntime();
+  let rejectTerminal;
+  runtime.session.open = () => ({
+    ready: Promise.resolve(),
+    terminal: new Promise((_resolve, reject) => { rejectTerminal = reject; }),
+    close() {},
+  });
+  runtime.session.submit = async () => {
+    rejectTerminal(new Error("private terminal failure"));
+    await new Promise((resolvePromise) => setImmediate(resolvePromise));
+    throw new Error("private submit failure");
+  };
+  const unhandled = [];
+  const captureUnhandled = (reason) => unhandled.push(reason);
+  process.on("unhandledRejection", captureUnhandled);
+  try {
+    await assert.rejects(
+      runtimeFixture.exerciseWebChatCreditRuntime(environment, { runtime }),
+      { message: "WEB_FIXTURE_SESSION_SUBMIT_FAILED" },
+    );
+    await new Promise((resolvePromise) => setImmediate(resolvePromise));
+    assert.deepEqual(unhandled, []);
+  } finally {
+    process.off("unhandledRejection", captureUnhandled);
+  }
+});
+
 test("exercise reopens the redemption code without following a post-setup symlink", async (t) => {
   const environment = await readyFixture(t, "kokoro-web-redemption-code-race-test-");
   const original = environment.KOKORO_WEB_FIXTURE_REDEMPTION_CODE_FILE;

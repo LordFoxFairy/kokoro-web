@@ -33,6 +33,7 @@ const WEB_ROOT = fileURLToPath(new URL("../../", import.meta.url));
 const PNPM = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 const MAXIMUM_CHILD_OUTPUT_BYTES = 16 * 1024 * 1024;
 const MAXIMUM_TEXT_LENGTH = 4_096;
+const SESSION_TERMINAL_TIMEOUT_MS = 120_000;
 const SHA256 = /^[0-9a-f]{64}$/u;
 const HOSTNAME = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/u;
 const REDEMPTION_CODE =
@@ -719,6 +720,11 @@ function fixturePhaseSync(fallbackCode, operation) {
 }
 
 export async function exerciseWebChatCreditRuntime(environment, options = {}) {
+  const terminalTimeoutMs = options.terminalTimeoutMs ?? SESSION_TERMINAL_TIMEOUT_MS;
+  if (
+    !Number.isSafeInteger(terminalTimeoutMs) ||
+    terminalTimeoutMs < 1 || terminalTimeoutMs > SESSION_TERMINAL_TIMEOUT_MS
+  ) throw new Error("WEB_FIXTURE_SESSION_TERMINAL_TIMEOUT_INVALID");
   const state = await readRuntimeState(environment);
   if (Object.keys(state.runtimeMaterialFiles).length !== REQUIRED_RUNTIME_MATERIALS.length) {
     throw new Error("WEB_FIXTURE_RUNTIME_MATERIAL_REQUIRED");
@@ -759,10 +765,11 @@ export async function exerciseWebChatCreditRuntime(environment, options = {}) {
     "WEB_FIXTURE_SESSION_OPEN_FAILED",
     () => selectedRuntime.session.open(session.sessionId),
   );
+  const terminalPromise = stream.terminal;
+  void terminalPromise.catch(() => undefined);
   let submitted;
   let terminalWait;
   try {
-    terminalWait = withTimeout(stream.terminal, 120_000, "WEB_FIXTURE_SESSION_TERMINAL_TIMEOUT");
     await fixturePhase(
       "WEB_FIXTURE_SESSION_STREAM_FAILED",
       () => withTimeout(stream.ready, 30_000, "WEB_FIXTURE_SESSION_STREAM_TIMEOUT"),
@@ -775,6 +782,7 @@ export async function exerciseWebChatCreditRuntime(environment, options = {}) {
         modelOptionRevisionRef: state.modelOptionRevisionRef,
       }),
     );
+    terminalWait = withTimeout(terminalPromise, terminalTimeoutMs, "WEB_FIXTURE_SESSION_TERMINAL_TIMEOUT");
     const terminal = await fixturePhase(
       "WEB_FIXTURE_SESSION_TERMINAL_FAILED",
       () => terminalWait,
