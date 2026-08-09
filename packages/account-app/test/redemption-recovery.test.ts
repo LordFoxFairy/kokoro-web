@@ -105,6 +105,51 @@ describe("redemption confirmation recovery", () => {
     })).resolves.toEqual({ kind: "interrupted", reason: "network", pending: latest })
   })
 
+  it("bounds a recovery request that never settles", async () => {
+    const startedAt = Date.now()
+    const latest = pending("outcome_unknown", new Date(startedAt).toISOString())
+    let recoverySignal: AbortSignal | undefined
+    let watchdog: ReturnType<typeof setTimeout> | undefined
+
+    const outcome = await Promise.race([
+      pollRedemptionCommand({
+        initial: latest,
+        recover: async (signal) => {
+          recoverySignal = signal
+          return new Promise<never>(() => undefined)
+        },
+        maximumElapsedMs: 20,
+      }),
+      new Promise<"hung">((resolve) => { watchdog = setTimeout(() => resolve("hung"), 200) }),
+    ])
+    if (watchdog !== undefined) clearTimeout(watchdog)
+
+    expect(outcome).not.toBe("hung")
+    if (outcome !== "hung") {
+      expect(outcome).toEqual({ kind: "interrupted", reason: "timeout", pending: latest })
+    }
+    expect(recoverySignal?.aborted).toBe(true)
+  })
+
+  it("recovers immediately when retryAfter has already expired", async () => {
+    const now = Date.parse("2026-08-09T12:00:00.000Z")
+    const sleep = vi.fn(async () => undefined)
+    const recover = vi.fn(async () => ({
+      state: "succeeded",
+      productState: "fulfilled",
+      redeemedAt: "2026-08-09T12:00:00.000Z",
+    }))
+
+    await expect(pollRedemptionCommand({
+      initial: pending("executing", "2026-08-09T11:59:59.000Z"),
+      recover,
+      now: () => now,
+      sleep,
+    })).resolves.toMatchObject({ kind: "terminal" })
+    expect(sleep).toHaveBeenCalledExactlyOnceWith(0)
+    expect(recover).toHaveBeenCalledOnce()
+  })
+
   it("rejects response shapes outside the existing Account recovery protocol", () => {
     for (const invalid of [
       null,

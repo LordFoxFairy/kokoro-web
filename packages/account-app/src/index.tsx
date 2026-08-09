@@ -8,6 +8,7 @@ import {
   isRedemptionPending,
   parseRedemptionCommandResult,
   pollRedemptionCommand,
+  REDEMPTION_RECOVERY_WINDOW_MS,
   type RedemptionCommandResult,
   type RedemptionPendingResult,
   type RedemptionTerminalResult,
@@ -35,6 +36,15 @@ type RedemptionPreview = Readonly<{
   legalAcceptanceRequired: boolean
   legalDocuments: readonly LegalDocument[]
 }>
+type RedemptionConfirmationOperation = Readonly<{
+  prefix: string
+  csrfToken: string
+  flowRef: string
+  lifecycleEpoch: number
+  deadline: number
+  controller: AbortController
+  timeout: ReturnType<typeof setTimeout>
+}>
 
 type SecurityOperation = "identity.enroll-totp" | "identity.disable-totp" | "identity.regenerate-recovery-codes"
 type SecurityCeremonyState = Readonly<{
@@ -57,19 +67,28 @@ function headers(csrfToken: string): HeadersInit {
   return { "content-type": "application/json", "x-kokoro-browser-csrf": csrfToken }
 }
 
-async function prepare(prefix: string, csrfToken: string, operation: string, flow: string): Promise<void> {
-  const response = await fetch(`${prefix}/prepare`, {
+function request(input: string, init: RequestInit, signal?: AbortSignal): Promise<Response> {
+  if (signal?.aborted) return Promise.reject(new Error("request_aborted"))
+  return fetch(input, signal === undefined ? init : { ...init, signal })
+}
+
+async function responseJson(response: Response): Promise<Record<string, unknown>> {
+  return response.json() as Promise<Record<string, unknown>>
+}
+
+async function prepare(prefix: string, csrfToken: string, operation: string, flow: string, signal?: AbortSignal): Promise<void> {
+  const response = await request(`${prefix}/prepare`, {
     method: "POST", credentials: "same-origin", headers: headers(csrfToken),
     body: JSON.stringify({ operation, flowRef: flow }),
-  })
+  }, signal)
   if (!response.ok) throw new Error("This action is temporarily unavailable.")
 }
 
-async function execute(prefix: string, csrfToken: string, operation: string, flow: string, payload: Record<string, unknown>): Promise<Record<string, unknown>> {
-  const invoke = (action: "execute" | "recover") => fetch(`${prefix}/${action}`, {
+async function execute(prefix: string, csrfToken: string, operation: string, flow: string, payload: Record<string, unknown>, signal?: AbortSignal): Promise<Record<string, unknown>> {
+  const invoke = (action: "execute" | "recover") => request(`${prefix}/${action}`, {
     method: "POST", credentials: "same-origin", headers: headers(csrfToken),
     body: JSON.stringify(action === "execute" ? { operation, flowRef: flow, ...payload } : { operation, flowRef: flow }),
-  })
+  }, signal)
   const reconcile = () => ["identity.verify-email", "identity.revoke-sessions", "redemption.confirm"].includes(operation)
     ? invoke("recover")
     : invoke("execute")
@@ -77,20 +96,23 @@ async function execute(prefix: string, csrfToken: string, operation: string, flo
   try {
     response = await invoke("execute")
     if ([502, 503, 504].includes(response.status)) response = await reconcile()
-  } catch { response = await reconcile() }
+  } catch (error) {
+    if (signal?.aborted) throw error
+    response = await reconcile()
+  }
   if (!response.ok) throw new Error("The result is unavailable. Continue to reconcile the same action.")
-  return await response.json() as Record<string, unknown>
+  return responseJson(response)
 }
 
-async function recoverRedemption(prefix: string, csrfToken: string, flow: string): Promise<unknown> {
-  const response = await fetch(`${prefix}/recover`, {
+async function recoverRedemption(prefix: string, csrfToken: string, flow: string, signal: AbortSignal): Promise<unknown> {
+  const response = await request(`${prefix}/recover`, {
     method: "POST",
     credentials: "same-origin",
     headers: headers(csrfToken),
     body: JSON.stringify({ operation: "redemption.confirm", flowRef: flow }),
-  })
+  }, signal)
   if (!response.ok) throw new Error("redemption_recovery_unavailable")
-  return response.json()
+  return responseJson(response)
 }
 
 function SecuritySettings(props: Readonly<{
@@ -331,19 +353,76 @@ export function AccountProduct(props: Readonly<{ brandName: string; csrfToken: s
     | Readonly<{ kind: "recoverable"; flowRef: string; pending?: RedemptionPendingResult }>
     | Readonly<{ kind: "terminal" }>
   >({ kind: "idle" })
-  const load = useCallback(async (): Promise<boolean> => {
+  const authorityRef = useRef({ prefix, csrfToken: props.csrfToken })
+  const lifecycleEpochRef = useRef(0)
+  const activeConfirmationRef = useRef<RedemptionConfirmationOperation | null>(null)
+
+  const abortActiveConfirmation = useCallback(() => {
+    const active = activeConfirmationRef.current
+    if (active === null) return
+    activeConfirmationRef.current = null
+    clearTimeout(active.timeout)
+    active.controller.abort("redemption_authority_changed")
+  }, [])
+
+  const load = useCallback(async (guard?: Readonly<{
+    signal?: AbortSignal
+    current?(): boolean
+  }>): Promise<boolean> => {
+    const expected = { prefix, csrfToken: props.csrfToken, lifecycleEpoch: lifecycleEpochRef.current }
+    const current = () =>
+      lifecycleEpochRef.current === expected.lifecycleEpoch &&
+      authorityRef.current.prefix === expected.prefix &&
+      authorityRef.current.csrfToken === expected.csrfToken &&
+      (guard?.current?.() ?? true)
     try {
-      const response = await fetch(`${prefix}/dashboard`, { credentials: "same-origin", cache: "no-store" })
+      const response = await request(`${prefix}/dashboard`, { credentials: "same-origin", cache: "no-store" }, guard?.signal)
       if (!response.ok) throw new Error()
-      setDashboard(await response.json() as Dashboard); setStatus(""); return true
-    } catch { setStatus("Account information is temporarily unavailable."); return false }
-  }, [prefix])
-  useEffect(() => { void load() }, [load])
+      const next = await response.json() as Dashboard
+      if (!current() || guard?.signal?.aborted) return false
+      setDashboard(next); setStatus(""); return true
+    } catch {
+      if (!current() || guard?.signal?.aborted) return false
+      setStatus("Account information is temporarily unavailable."); return false
+    }
+  }, [prefix, props.csrfToken])
+
+  useEffect(() => {
+    const authorityChanged =
+      authorityRef.current.prefix !== prefix || authorityRef.current.csrfToken !== props.csrfToken
+    authorityRef.current = { prefix, csrfToken: props.csrfToken }
+    abortActiveConfirmation()
+    if (authorityChanged) {
+      setDashboard(null); setPreview(null); setPreviewFlow(null); setRedemptionAccepted(false)
+      setConfirmation({ kind: "idle" }); setStatus("Loading account…")
+    }
+    const controller = new AbortController()
+    void load({ signal: controller.signal })
+    return () => {
+      controller.abort("account_product_unmounted")
+      lifecycleEpochRef.current += 1
+      abortActiveConfirmation()
+    }
+  }, [abortActiveConfirmation, load, prefix, props.csrfToken])
+
+  function authorityIsCurrent(expected: Readonly<{ prefix: string; csrfToken: string; lifecycleEpoch: number }>): boolean {
+    return lifecycleEpochRef.current === expected.lifecycleEpoch &&
+      authorityRef.current.prefix === expected.prefix && authorityRef.current.csrfToken === expected.csrfToken
+  }
 
   async function effect(operation: string, payload: Record<string, unknown>) {
+    const expected = { prefix, csrfToken: props.csrfToken, lifecycleEpoch: lifecycleEpochRef.current }
     const flow = flowRef(); setStatus("Working…")
-    try { await prepare(prefix, props.csrfToken, operation, flow); const result = await execute(prefix, props.csrfToken, operation, flow, payload); setStatus(`Result: ${String(result.state ?? "updated")}`); await load(); return { flow, result } }
-    catch (error) { setStatus(error instanceof Error ? error.message : "Unavailable"); return null }
+    try {
+      await prepare(prefix, props.csrfToken, operation, flow)
+      const result = await execute(prefix, props.csrfToken, operation, flow, payload)
+      if (!authorityIsCurrent(expected)) return null
+      setStatus(`Result: ${String(result.state ?? "updated")}`); await load()
+      return authorityIsCurrent(expected) ? { flow, result } : null
+    } catch (error) {
+      if (authorityIsCurrent(expected)) setStatus(error instanceof Error ? error.message : "Unavailable")
+      return null
+    }
   }
 
   async function redeem(event: FormEvent<HTMLFormElement>) {
@@ -358,74 +437,141 @@ export function AccountProduct(props: Readonly<{ brandName: string; csrfToken: s
     form.reset()
   }
 
-  async function applyRedemptionTerminal(result: RedemptionTerminalResult) {
-    if (result.state === "succeeded") {
+  function startConfirmation(flow: string) {
+    if (activeConfirmationRef.current !== null) return null
+    const controller = new AbortController()
+    const deadline = Date.now() + REDEMPTION_RECOVERY_WINDOW_MS
+    const timeout = setTimeout(() => controller.abort("redemption_confirmation_timeout"), REDEMPTION_RECOVERY_WINDOW_MS)
+    const operation = {
+      prefix,
+      csrfToken: props.csrfToken,
+      flowRef: flow,
+      lifecycleEpoch: lifecycleEpochRef.current,
+      deadline,
+      controller,
+      timeout,
+    }
+    activeConfirmationRef.current = operation
+    return operation
+  }
+
+  function confirmationIsCurrent(operation: RedemptionConfirmationOperation): boolean {
+    return activeConfirmationRef.current === operation && authorityIsCurrent(operation)
+  }
+
+  function finishConfirmation(operation: RedemptionConfirmationOperation) {
+    if (activeConfirmationRef.current !== operation) return
+    clearTimeout(operation.timeout)
+    activeConfirmationRef.current = null
+  }
+
+  function retainConfirmation(
+    operation: RedemptionConfirmationOperation,
+    pending?: RedemptionPendingResult,
+  ) {
+    if (!confirmationIsCurrent(operation)) return
+    setConfirmation({ kind: "recoverable", flowRef: operation.flowRef, ...(pending === undefined ? {} : { pending }) })
+    setStatus("The confirmation result is temporarily unavailable. Continue checking the same confirmation.")
+    finishConfirmation(operation)
+  }
+
+  async function applyRedemptionTerminal(
+    operation: RedemptionConfirmationOperation,
+    result: RedemptionTerminalResult,
+  ) {
+    if (!confirmationIsCurrent(operation)) return
+    if (result.state === "succeeded" && result.productState === "fulfilled") {
       setPreview(null); setPreviewFlow(null); setRedemptionAccepted(false); setConfirmation({ kind: "idle" })
-      const refreshed = await load()
+      const refreshed = await load({
+        signal: operation.controller.signal,
+        current: () => confirmationIsCurrent(operation),
+      })
+      if (!confirmationIsCurrent(operation)) return
       setStatus(refreshed
         ? "Code redeemed. Your account has been refreshed."
         : "Code redeemed. Account information could not be refreshed yet.")
+      finishConfirmation(operation)
+      return
+    }
+    if (result.state === "succeeded") {
+      setConfirmation({ kind: "terminal" })
+      setStatus(result.productState === "reversed"
+        ? "This redemption was reversed and did not add account benefits."
+        : "This redemption needs reconciliation before account benefits can be confirmed.")
+      finishConfirmation(operation)
       return
     }
     if (result.state === "rejected") {
       setConfirmation({ kind: "terminal" })
       setStatus("This code redemption was rejected.")
+      finishConfirmation(operation)
       return
     }
     setConfirmation({ kind: "terminal" })
     setStatus("This code redemption requires review. No further confirmation is needed.")
+    finishConfirmation(operation)
   }
 
-  async function reconcileRedemption(flow: string, result: RedemptionCommandResult) {
+  async function reconcileRedemption(
+    operation: RedemptionConfirmationOperation,
+    result: RedemptionCommandResult,
+  ) {
     if (!isRedemptionPending(result)) {
-      await applyRedemptionTerminal(result)
+      await applyRedemptionTerminal(operation, result)
       return
     }
     const outcome = await pollRedemptionCommand({
       initial: result,
-      recover: () => recoverRedemption(prefix, props.csrfToken, flow),
+      recover: (signal) => recoverRedemption(operation.prefix, operation.csrfToken, operation.flowRef, signal),
+      deadline: operation.deadline,
+      signal: operation.controller.signal,
     })
+    if (!confirmationIsCurrent(operation)) return
     if (outcome.kind === "terminal") {
-      await applyRedemptionTerminal(outcome.result)
+      await applyRedemptionTerminal(operation, outcome.result)
       return
     }
-    setConfirmation({ kind: "recoverable", flowRef: flow, pending: outcome.pending })
-    setStatus("The confirmation result is temporarily unavailable. Continue checking the same confirmation.")
+    retainConfirmation(operation, outcome.pending)
   }
 
   async function confirmRedemption() {
-    if (preview === null || previewFlow === null || confirmation.kind !== "idle") return
+    if (preview === null || previewFlow === null || confirmation.kind !== "idle" || activeConfirmationRef.current !== null) return
     const flow = flowRef()
+    const operation = startConfirmation(flow)
+    if (operation === null) return
     setConfirmation({ kind: "working", flowRef: flow }); setStatus("Confirming redemption…")
     try {
-      await prepare(prefix, props.csrfToken, "redemption.confirm", flow)
-      const response = await execute(prefix, props.csrfToken, "redemption.confirm", flow, {
+      await prepare(operation.prefix, operation.csrfToken, "redemption.confirm", operation.flowRef, operation.controller.signal)
+      const response = await execute(operation.prefix, operation.csrfToken, "redemption.confirm", operation.flowRef, {
         previewFlowRef: previewFlow,
         legalAccepted: !preview.legalAcceptanceRequired || redemptionAccepted,
-      })
-      await reconcileRedemption(flow, parseRedemptionCommandResult(response))
+      }, operation.controller.signal)
+      if (!confirmationIsCurrent(operation)) return
+      await reconcileRedemption(operation, parseRedemptionCommandResult(response))
     } catch {
-      setConfirmation({ kind: "recoverable", flowRef: flow })
-      setStatus("The confirmation result is temporarily unavailable. Continue checking the same confirmation.")
+      retainConfirmation(operation)
     }
   }
 
   async function continueRedemptionRecovery() {
-    if (confirmation.kind !== "recoverable") return
+    if (confirmation.kind !== "recoverable" || activeConfirmationRef.current !== null) return
     const retained = confirmation
-    setConfirmation({ kind: "working", flowRef: retained.flowRef }); setStatus("Checking the confirmation result…")
+    const operation = startConfirmation(retained.flowRef)
+    if (operation === null) return
+    setConfirmation({ kind: "working", flowRef: operation.flowRef }); setStatus("Checking the confirmation result…")
     try {
       const result = retained.pending ?? parseRedemptionCommandResult(
-        await recoverRedemption(prefix, props.csrfToken, retained.flowRef),
+        await recoverRedemption(operation.prefix, operation.csrfToken, operation.flowRef, operation.controller.signal),
       )
-      await reconcileRedemption(retained.flowRef, result)
+      if (!confirmationIsCurrent(operation)) return
+      await reconcileRedemption(operation, result)
     } catch {
-      setConfirmation(retained)
-      setStatus("The confirmation result is temporarily unavailable. Continue checking the same confirmation.")
+      retainConfirmation(operation, retained.pending)
     }
   }
 
   function clearRedemptionPreview() {
+    abortActiveConfirmation()
     setPreview(null); setPreviewFlow(null); setRedemptionAccepted(false); setConfirmation({ kind: "idle" }); setStatus("")
   }
 
@@ -443,7 +589,7 @@ export function AccountProduct(props: Readonly<{ brandName: string; csrfToken: s
             {preview.legalAcceptanceRequired ? <label className={styles.legalAcceptance}><input checked={redemptionAccepted} onChange={(event) => setRedemptionAccepted(event.currentTarget.checked)} type="checkbox" /><span>I agree to {preview.legalDocuments.map((document, index) => <span key={document.href}>{index > 0 ? index === preview.legalDocuments.length - 1 ? " and " : ", " : ""}<a href={document.href} rel="noreferrer noopener" target="_blank">{document.label}</a></span>)} for this redemption.</span></label> : null}
             {confirmation.kind === "idle" ? <button className={styles.button} disabled={preview.legalAcceptanceRequired && !redemptionAccepted} onClick={() => void confirmRedemption()} type="button">Confirm redemption</button> : null}
             {confirmation.kind === "working" ? <button className={styles.button} disabled type="button">Checking confirmation…</button> : null}
-            {confirmation.kind === "recoverable" ? <button className={styles.button} onClick={() => void continueRedemptionRecovery()} type="button">继续确认结果</button> : null}
+            {confirmation.kind === "recoverable" ? <button className={styles.button} onClick={() => void continueRedemptionRecovery()} type="button">Continue confirmation result</button> : null}
             {confirmation.kind === "terminal" ? <button className={styles.buttonSecondary} onClick={clearRedemptionPreview} type="button">Use another code</button> : null}
           </div>}
       </section> : null}

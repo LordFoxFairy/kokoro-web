@@ -21,7 +21,13 @@ const PRODUCT_STATES = new Set(["fulfilled", "reversed", "reconciliation_require
 const RETRY_CLASSES = new Set(["never", "after_delay", "after_user_action"])
 const UTC_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$/u
 const MAXIMUM_RECOVERY_ATTEMPTS = 6
-const MAXIMUM_RECOVERY_ELAPSED_MS = 30_000
+export const REDEMPTION_RECOVERY_WINDOW_MS = 30_000
+
+class RecoveryBoundaryError extends Error {
+  constructor(readonly reason: "timeout" | "cancelled") {
+    super(`redemption_recovery_${reason}`)
+  }
+}
 
 export function isRedemptionPending(result: RedemptionCommandResult): result is RedemptionPendingResult {
   return result.state === "accepted" || result.state === "executing" || result.state === "outcome_unknown"
@@ -81,22 +87,72 @@ export function parseRedemptionCommandResult(value: unknown): RedemptionCommandR
   throw new Error("redemption_response_invalid")
 }
 
-function defaultSleep(delayMs: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, delayMs))
+function defaultSleep(delayMs: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(finish, delayMs)
+    function finish() {
+      signal.removeEventListener("abort", abort)
+      resolve()
+    }
+    function abort() {
+      clearTimeout(timer)
+      reject(new RecoveryBoundaryError("cancelled"))
+    }
+    if (signal.aborted) abort()
+    else signal.addEventListener("abort", abort, { once: true })
+  })
+}
+
+async function runBeforeDeadline<T>(input: Readonly<{
+  deadline: number
+  now(): number
+  signal?: AbortSignal
+  task(signal: AbortSignal): Promise<T>
+}>): Promise<T> {
+  const remainingMs = input.deadline - input.now()
+  if (remainingMs <= 0) throw new RecoveryBoundaryError("timeout")
+  if (input.signal?.aborted) throw new RecoveryBoundaryError("cancelled")
+
+  const controller = new AbortController()
+  let boundary: "timeout" | "cancelled" | null = null
+  const abort = (reason: "timeout" | "cancelled") => {
+    if (boundary !== null) return
+    boundary = reason
+    controller.abort(reason)
+  }
+  const cancel = () => abort("cancelled")
+  input.signal?.addEventListener("abort", cancel, { once: true })
+  const timer = setTimeout(() => abort("timeout"), remainingMs)
+  const interrupted = new Promise<never>((_resolve, reject) => {
+    controller.signal.addEventListener("abort", () => {
+      reject(new RecoveryBoundaryError(boundary ?? "cancelled"))
+    }, { once: true })
+  })
+
+  try {
+    return await Promise.race([input.task(controller.signal), interrupted])
+  } catch (error) {
+    if (boundary !== null) throw new RecoveryBoundaryError(boundary)
+    throw error
+  } finally {
+    clearTimeout(timer)
+    input.signal?.removeEventListener("abort", cancel)
+  }
 }
 
 export async function pollRedemptionCommand(input: Readonly<{
   initial: RedemptionPendingResult
-  recover(): Promise<unknown>
+  recover(signal: AbortSignal): Promise<unknown>
   now?: () => number
   sleep?: (delayMs: number) => Promise<void>
   maximumAttempts?: number
   maximumElapsedMs?: number
+  deadline?: number
+  signal?: AbortSignal
 }>): Promise<RedemptionPollOutcome> {
   const now = input.now ?? Date.now
-  const sleep = input.sleep ?? defaultSleep
   const maximumAttempts = input.maximumAttempts ?? MAXIMUM_RECOVERY_ATTEMPTS
-  const deadline = now() + (input.maximumElapsedMs ?? MAXIMUM_RECOVERY_ELAPSED_MS)
+  const deadline = input.deadline ?? now() + (input.maximumElapsedMs ?? REDEMPTION_RECOVERY_WINDOW_MS)
   let pending = input.initial
 
   for (let attempt = 0; attempt < maximumAttempts; attempt += 1) {
@@ -105,19 +161,43 @@ export async function pollRedemptionCommand(input: Readonly<{
     if (!Number.isFinite(retryAt)) return { kind: "interrupted", reason: "protocol", pending }
     if (delayMs > deadline - now()) return { kind: "interrupted", reason: "timeout", pending }
     try {
-      await sleep(delayMs)
-    } catch {
+      await runBeforeDeadline({
+        deadline,
+        now,
+        signal: input.signal,
+        task: (signal) => input.sleep === undefined
+          ? defaultSleep(delayMs, signal)
+          : input.sleep(delayMs),
+      })
+    } catch (error) {
+      if (error instanceof RecoveryBoundaryError && (error.reason === "timeout" || now() >= deadline)) {
+        return { kind: "interrupted", reason: "timeout", pending }
+      }
       return { kind: "interrupted", reason: "network", pending }
     }
-    if (now() > deadline) return { kind: "interrupted", reason: "timeout", pending }
+    if (now() >= deadline) return { kind: "interrupted", reason: "timeout", pending }
 
+    let recoveredValue: unknown
+    try {
+      recoveredValue = await runBeforeDeadline({
+        deadline,
+        now,
+        signal: input.signal,
+        task: input.recover,
+      })
+    } catch (error) {
+      if (error instanceof RecoveryBoundaryError && (error.reason === "timeout" || now() >= deadline)) {
+        return { kind: "interrupted", reason: "timeout", pending }
+      }
+      return { kind: "interrupted", reason: "network", pending }
+    }
     let recovered: RedemptionCommandResult
     try {
-      recovered = parseRedemptionCommandResult(await input.recover())
-    } catch (error) {
+      recovered = parseRedemptionCommandResult(recoveredValue)
+    } catch {
       return {
         kind: "interrupted",
-        reason: error instanceof Error && error.message === "redemption_response_invalid" ? "protocol" : "network",
+        reason: "protocol",
         pending,
       }
     }
