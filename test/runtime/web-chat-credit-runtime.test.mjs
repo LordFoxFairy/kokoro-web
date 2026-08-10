@@ -20,7 +20,10 @@ import {
   availableLoopbackPort,
   createBrowserHttpClient,
 } from "../fixtures/web-chat-credit-runtime-network.mjs";
-import { createSessionTransport } from "../fixtures/web-chat-credit-runtime-journey.mjs";
+import {
+  createProductionJourneyRuntime,
+  createSessionTransport,
+} from "../fixtures/web-chat-credit-runtime-journey.mjs";
 import {
   createBrowserAudit,
   redeemAccountInChromium,
@@ -1505,10 +1508,31 @@ test("exercise honors an injected Session terminal timeout budget", async (t) =>
           100,
         );
       }),
-    ]), /WEB_FIXTURE_SESSION_TERMINAL_TIMEOUT/u);
+    ]), { message: "WEB_FIXTURE_SESSION_TERMINAL_TIMEOUT" });
   } finally {
     clearTimeout(watchdog);
   }
+});
+
+test("production journey distinguishes a settled snapshot timeout from the live terminal timeout", async (t) => {
+  const environment = await readyFixture(t, "kokoro-web-snapshot-timeout-code-test-");
+  const state = JSON.parse(await readFile(join(
+    environment.KOKORO_WEB_FIXTURE_PRIVATE_DIR,
+    "runtime-state.json",
+  ), "utf8"));
+  const runtime = await createProductionJourneyRuntime({
+    state,
+    async readExactMaterial() {
+      return runtimeMaterial("KOKORO_WEB_FIXTURE_BROWSER_CSRF_SECRET_FILE");
+    },
+  });
+  let nowCallCount = 0;
+  t.mock.method(Date, "now", () => nowCallCount++ === 0 ? 0 : 60_000);
+
+  await assert.rejects(
+    runtime.session.waitForTerminalSnapshot("session-runtime"),
+    { message: "WEB_FIXTURE_SESSION_SNAPSHOT_TIMEOUT" },
+  );
 });
 
 test("exercise starts the Session terminal budget after ready and accepted submit", async (t) => {

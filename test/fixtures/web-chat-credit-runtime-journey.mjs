@@ -278,7 +278,7 @@ export async function createProductionJourneyRuntime(input) {
           }
           await new Promise((resolvePromise) => setTimeout(resolvePromise, 100));
         }
-        throw new Error("WEB_FIXTURE_SESSION_TERMINAL_TIMEOUT");
+        throw new Error("WEB_FIXTURE_SESSION_SNAPSHOT_TIMEOUT");
       },
     }),
   });

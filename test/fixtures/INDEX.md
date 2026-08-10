@@ -26,7 +26,9 @@ Account redemption journey. The main entry owns setup state, lifecycle and final
   without forwarding it, and writes lifecycle evidence only after proxy and child closure.
 - `exercise` performs the NextAuth credentials ceremony in one cookie jar, requires all three Account dashboard
   authorities, creates and submits through the same-origin Session BFF, decodes SSE through the production AG-UI
-  client, waits for terminal settlement, then replays the exact logical command. Replay validation preserves the
+  client, waits for terminal settlement, then replays the exact logical command. A live SSE terminal deadline reports
+  `WEB_FIXTURE_SESSION_TERMINAL_TIMEOUT`; a later snapshot/cost-settlement deadline reports the distinct
+  `WEB_FIXTURE_SESSION_SNAPSHOT_TIMEOUT`. Replay validation preserves the
   operation/command/idempotency/digest identity against the submitted command and preserves the immutable effect
   payload, while allowing only `accepted -> applied` with a non-regressing canonical UTC-millisecond owner timestamp
   or an exactly immutable `applied -> applied` replay. It then drives the generated `/account`
