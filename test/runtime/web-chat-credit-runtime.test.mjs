@@ -2186,8 +2186,9 @@ test("the fixture boundary imports the scaffold package export and never a produ
   assert.match(source, /O_NOFOLLOW/u);
   assert.match(
     source,
-    /const \[originalRequest\] = await Promise\.all\(\[\s*page\.waitForRequest\([\s\S]*?getByRole\("button", \{ name: "Confirm redemption", exact: true \}\)\.click\(\),\s*confirmationFault\.completion,\s*\]\)/u,
+    /const \[originalRequest\] = await settleConfirmationResponseFault\(\s*page\.waitForRequest\([\s\S]*?getByRole\("button", \{ name: "Confirm redemption", exact: true \}\)\.click\(\),\s*confirmationFault,\s*\)/u,
   );
+  assert.match(source, /if \(!primaryFailed\) throw error;[\s\S]*if \(primaryFailed\) throw primaryFailure;/u);
   assert.doesNotMatch(source, /const originalRequestPromise = page\.waitForRequest/u);
   assert.doesNotMatch(source, /\]\);\s*await confirmationFault\.completion/u);
   assert.doesNotMatch(source, /packages\/site-scaffold\/src|apps\/reference-site/u);

@@ -427,7 +427,22 @@ function requestHasOperation(request, suffix, operation) {
   }
 }
 
-async function createConfirmationResponseFault(context, page, origin) {
+export async function createConfirmationResponseFault(context, page, origin, options = {}) {
+  const optionsAreRecord = options !== null && typeof options === "object" && !Array.isArray(options);
+  const optionsHaveExactPrototype = optionsAreRecord && [Object.prototype, null].includes(
+    Object.getPrototypeOf(options),
+  );
+  const hasTimeoutMs = optionsAreRecord && Object.hasOwn(options, "timeoutMs");
+  const optionKeys = hasTimeoutMs
+    ? ["timeoutMs"]
+    : [];
+  if (!optionsHaveExactPrototype || !exactObject(options, optionKeys)) {
+    throw new Error("WEB_FIXTURE_BROWSER_CONFIRMATION_FAULT_INPUT_INVALID");
+  }
+  const timeoutMs = hasTimeoutMs ? options.timeoutMs : ACTION_TIMEOUT_MS;
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > ACTION_TIMEOUT_MS) {
+    throw new Error("WEB_FIXTURE_BROWSER_CONFIRMATION_FAULT_INPUT_INVALID");
+  }
   const session = await context.newCDPSession(page);
   let applied = false;
   let settled = false;
@@ -439,18 +454,27 @@ async function createConfirmationResponseFault(context, page, origin) {
     rejectCompletion = rejectPromise;
   });
   session.on("Fetch.requestPaused", (event) => {
+    let continuationAttempted = false;
+    const continueResponse = async () => {
+      continuationAttempted = true;
+      await session.send("Fetch.continueResponse", { requestId: event.requestId });
+    };
     void (async () => {
       const url = new URL(event.request.url);
       if (
         settled || url.origin !== origin.origin || url.pathname !== "/api/account/execute" ||
-        event.request.method !== "POST" || !Number.isSafeInteger(event.responseStatusCode) ||
-        event.responseStatusCode < 200 || event.responseStatusCode >= 300
+        event.request.method !== "POST" || !Number.isSafeInteger(event.responseStatusCode)
       ) {
-        await session.send("Fetch.continueResponse", { requestId: event.requestId });
+        await continueResponse();
         return;
       }
       settled = true;
-      applied = true;
+      if (event.responseStatusCode < 200 || event.responseStatusCode >= 300) {
+        await continueResponse();
+        completionFinished = true;
+        rejectCompletion(new Error("WEB_FIXTURE_BROWSER_CONFIRMATION_RESPONSE_REJECTED"));
+        return;
+      }
       await session.send("Fetch.fulfillRequest", {
         requestId: event.requestId,
         responseCode: event.responseStatusCode,
@@ -460,18 +484,22 @@ async function createConfirmationResponseFault(context, page, origin) {
         ],
         body: Buffer.from("{", "utf8").toString("base64"),
       });
+      applied = true;
       completionFinished = true;
       resolveCompletion();
-    })().catch(async (error) => {
+    })().catch(async () => {
       if (!completionFinished) {
         completionFinished = true;
         settled = true;
-        try {
-          await session.send("Fetch.continueResponse", { requestId: event.requestId });
-        } catch {
-          // The context cleanup below remains authoritative if the paused request already ended.
+        applied = false;
+        if (!continuationAttempted) {
+          try {
+            await continueResponse();
+          } catch {
+            // The bounded context cleanup below remains authoritative if the paused request already ended.
+          }
         }
-        rejectCompletion(error);
+        rejectCompletion(new Error("WEB_FIXTURE_BROWSER_CONFIRMATION_RESPONSE_FAULT_FAILED"));
       }
     });
   });
@@ -479,13 +507,57 @@ async function createConfirmationResponseFault(context, page, origin) {
     patterns: [{ urlPattern: "*://*/api/account/execute", requestStage: "Response" }],
   });
   return Object.freeze({
-    completion,
+    completion: withTimeout(
+      completion,
+      timeoutMs,
+      "WEB_FIXTURE_BROWSER_CONFIRMATION_RESPONSE_TIMEOUT",
+    ),
     applied: () => applied,
     async close() {
-      await session.send("Fetch.disable");
-      await session.detach();
+      const startedAt = Date.now();
+      let failure;
+      const close = async (operation) => {
+        const remainingMs = Math.max(1, timeoutMs - (Date.now() - startedAt));
+        try {
+          await withTimeout(
+            operation(),
+            remainingMs,
+            "WEB_FIXTURE_BROWSER_CONFIRMATION_CDP_CLOSE_TIMEOUT",
+          );
+        } catch (error) {
+          failure ??= error;
+        }
+      };
+      await close(() => session.send("Fetch.disable"));
+      await close(() => session.detach());
+      if (failure !== undefined) {
+        if (
+          failure instanceof Error &&
+          failure.message === "WEB_FIXTURE_BROWSER_CONFIRMATION_CDP_CLOSE_TIMEOUT"
+        ) throw failure;
+        throw new Error("WEB_FIXTURE_BROWSER_CONFIRMATION_CDP_CLOSE_FAILED");
+      }
     },
   });
+}
+
+export async function settleConfirmationResponseFault(request, click, fault) {
+  let result;
+  let primaryFailure;
+  let primaryFailed = false;
+  try {
+    result = await Promise.all([request, click, fault.completion]);
+  } catch (error) {
+    primaryFailed = true;
+    primaryFailure = error;
+  }
+  try {
+    await fault.close();
+  } catch (error) {
+    if (!primaryFailed) throw error;
+  }
+  if (primaryFailed) throw primaryFailure;
+  return result;
 }
 
 async function createBrowserCacheFence(context, page) {
@@ -559,11 +631,11 @@ async function performRedemptionJourney(page, context, input, origin, authority,
   if (await legalAcceptance.count() === 1) await legalAcceptance.check();
 
   const confirmationFault = await createConfirmationResponseFault(context, page, origin);
-  const [originalRequest] = await Promise.all([
+  const [originalRequest] = await settleConfirmationResponseFault(
     page.waitForRequest((request) => requestHasOperation(request, "execute", "redemption.confirm")),
     redemption.getByRole("button", { name: "Confirm redemption", exact: true }).click(),
-    confirmationFault.completion,
-  ]).finally(() => confirmationFault.close());
+    confirmationFault,
+  );
   const confirmation = confirmationRequest(originalRequest, input.rawCode);
   const continuation = redemption.getByRole("button", { name: "Continue confirmation result", exact: true });
   await continuation.waitFor({ state: "visible" });

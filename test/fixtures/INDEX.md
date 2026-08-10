@@ -33,8 +33,11 @@ Account redemption journey. The main entry owns setup state, lifecycle and final
   payload, while allowing only `accepted -> applied` with a non-regressing canonical UTC-millisecond owner timestamp
   or an exactly immutable `applied -> applied` replay. It then drives the generated `/account`
   page through preview, one committed confirmation whose response is transport-faulted, and the real
-  `Continue confirmation result` UI using the same flow. It writes journey evidence and returns only a bounded
-  exercised receipt.
+  `Continue confirmation result` UI using the same flow. Only a successful confirmation response is replaced by
+  the intentional malformed response. A non-success confirmation response is continued exactly once and rejects
+  with a fixed non-sensitive fixture code; a missing confirmation response and confirmation CDP teardown are each
+  bounded by the Chromium action deadline. A primary confirmation failure remains authoritative if CDP teardown
+  also fails. It writes journey evidence and returns only a bounded exercised receipt.
 - `observe` remains unavailable until both journey and lifecycle evidence exist, then returns only bounded booleans
   and counts for Host resolution, the browser Session turn, terminal assistant output, Chat and three redemption
   Account reads, two execute requests, one UI recovery request, Credit/Product readback, replay stability, pinned
@@ -58,4 +61,5 @@ worker, task system, or operational surface.
 
 Install the browser required by the pinned package with `pnpm exec playwright install chromium` before a local
 real compatibility run; CI performs this explicitly because dependency installation does not install Chromium.
-Run `pnpm exec node --test test/runtime/web-chat-credit-runtime.test.mjs` with Node 24.
+Run `pnpm exec node --test test/runtime/web-chat-credit-runtime-browser-fault.test.mjs` for the pure CDP lifecycle
+regressions and `pnpm exec node --test test/runtime/web-chat-credit-runtime.test.mjs` for the full fixture with Node 24.
