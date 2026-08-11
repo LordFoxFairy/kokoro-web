@@ -3,7 +3,7 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { closeSync, constants, fsyncSync, openSync } from "node:fs";
-import { link, lstat, mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { link, lstat, mkdir, mkdtemp, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
