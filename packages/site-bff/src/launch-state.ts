@@ -22,7 +22,7 @@ export type LaunchOperation =
   | "redemption.preview"
   | "redemption.confirm"
 
-const OPERATIONS = new Set<LaunchOperation>([
+export const SITE_LAUNCH_OPERATIONS = Object.freeze([
   "identity.register",
   "identity.verify-email",
   "identity.resend-verification",
@@ -32,7 +32,9 @@ const OPERATIONS = new Set<LaunchOperation>([
   "identity.regenerate-recovery-codes",
   "redemption.preview",
   "redemption.confirm",
-])
+] as const satisfies readonly LaunchOperation[])
+
+const OPERATIONS = new Set<LaunchOperation>(SITE_LAUNCH_OPERATIONS)
 
 export type SecurityLaunchState =
   | Readonly<{ phase: "reauthenticate_password"; supersedePriorCommandId?: string }>

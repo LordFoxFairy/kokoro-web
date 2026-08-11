@@ -1,5 +1,5 @@
 import "server-only";
-import { createLaunchStateVault } from "./launch-state.js";
+import { createLaunchStateVault, SITE_LAUNCH_OPERATIONS, } from "./launch-state.js";
 export const SITE_LAUNCH_STATE_COOKIE = "__Host-kokoro.launch-state";
 const STATE_TTL_MS = 15 * 60 * 1_000;
 const MAXIMUM_BODY_BYTES = 16_384;
@@ -180,6 +180,11 @@ function publicReceipt(response) {
 }
 export function createSiteLaunchApi(input) {
     const now = input.now ?? Date.now;
+    const configuredOperations = input.allowedOperations ?? SITE_LAUNCH_OPERATIONS;
+    const allowedOperations = new Set(configuredOperations);
+    if (allowedOperations.size !== configuredOperations.length ||
+        configuredOperations.some((candidate) => !SITE_LAUNCH_OPERATIONS.includes(candidate)))
+        throw new TypeError("allowed Site launch operations must be a unique closed set");
     const vault = createLaunchStateVault({
         secret: input.stateSecret,
         binding: {
@@ -246,6 +251,8 @@ export function createSiteLaunchApi(input) {
             const flowRef = flow(body.flowRef);
             if (requestedOperation === null || flowRef === null)
                 return unavailable(400);
+            if (!allowedOperations.has(requestedOperation))
+                return unavailable(404);
             if (authRequired(requestedOperation) && auth === null)
                 return unavailable(401);
             const capabilities = await input.runtime.publicCapabilities();

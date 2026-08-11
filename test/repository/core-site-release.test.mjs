@@ -15,7 +15,7 @@ const execFileAsync = promisify(execFile);
 const signature = "a".repeat(86);
 const packageArtifacts = ["site-app-kit", "site-client", "session-client", "bff-runtime", "site-runtime-node", "chat-surface", "asset-client", "chat-app", "site-bff", "account-app", "media-app"].map((name, index) => ({ name: `@kokoro/${name}`, version: "1.0.0", sha256: "abcdef"[index % 6].repeat(64) }));
 const definition = () => ({ schemaVersion: 1, site: { siteId: "site:core", siteKey: "core-site", packageName: "@kokoro/core-site", displayName: "Kokoro" }, release: { releaseId: "core.2026.08.11.001", profileRevision: "core.v1" }, domain: { hostname: "kokoro.example", environment: "production" }, deployment: { provider: "container-registry", projectRef: "kokoro/core", region: "us-east" }, contractFloor: { contract: "platform-public-v1", version: "1", schemaSha256: "a".repeat(64), signature, signingKeyId: "release-key-1" } });
-const exactRoutes = ["/", "/_global-error", "/_not-found", "/account", "/api/account/[action]", "/api/auth/[...nextauth]", "/api/auth/delivery-state", "/api/health/live", "/api/health/ready", "/api/release/metadata", "/api/session/[...path]", "/login", "/register", "/verify-email"];
+const exactRoutes = ["/", "/_global-error", "/_not-found", "/account", "/api/account/[action]", "/api/auth/[...nextauth]", "/api/auth/delivery-state", "/api/health/live", "/api/health/ready", "/api/release/metadata", "/api/session/[...path]", "/login"];
 const allowedManifests = () => ({ appPaths: Object.fromEntries(exactRoutes.map((route) => [`${route === "/" ? "" : route}/page`.replace("//", "/"), "app.js"])), appPathRoutes: Object.fromEntries(exactRoutes.map((route) => [`${route === "/" ? "/page" : `${route}/page`}`, route])), middleware: { version: 3, middleware: {}, functions: {}, sortedMiddleware: [] } });
 
 async function createSignedContractFixture(directory) {
@@ -123,6 +123,7 @@ test("default core assembly is isolated: a clean archive supplies real scaffold,
     const assembled = await release.assembleCoreSite({ definition: parsed, directory: join(temporary, "site"), contractKeyringPath: signed.keyringPath });
     assert.equal(assembled.packageArtifacts.length, 11); assert.deepEqual(assembled.builtPackageNames, [...packageArtifacts.map(({ name }) => name), "@kokoro/site-scaffold"].sort()); assert.deepEqual(assembled.routes, exactRoutes); assert.match(assembled.finalSourceClosureSha256, /^[0-9a-f]{64}$/u);
     assert.match(await readFile(join(assembled.directory, "src/app/page.tsx"), "utf8"), /attachmentsEnabled=\{false\}/u);
+    assert.doesNotMatch(await readFile(join(assembled.directory, "src/app/login/page.tsx"), "utf8"), /Create an account|href="\/register"/u);
     const metadataPath = join(assembled.directory, "src/app/api/release/metadata/route.ts");
     const metadata = await readFile(metadataPath, "utf8"); assert.doesNotMatch(metadata, /platform|session|credential/iu);
     const oldDigest = process.env.KOKORO_WEB_ARTIFACT_DIGEST; const oldDeployment = process.env.KOKORO_SITE_DEPLOYMENT_REF;
@@ -137,7 +138,7 @@ test("default core assembly is isolated: a clean archive supplies real scaffold,
       if (oldDigest === undefined) delete process.env.KOKORO_WEB_ARTIFACT_DIGEST; else process.env.KOKORO_WEB_ARTIFACT_DIGEST = oldDigest;
       if (oldDeployment === undefined) delete process.env.KOKORO_SITE_DEPLOYMENT_REF; else process.env.KOKORO_SITE_DEPLOYMENT_REF = oldDeployment;
     }
-    for (const relative of ["src/app/studio/page.tsx", "src/app/library/page.tsx", "src/app/api/media/[[...path]]/route.ts", "src/app/api/assets/[[...path]]/route.ts", "src/app/api/memory/[[...path]]/route.ts"]) await assert.rejects(readFile(join(assembled.directory, relative)));
+    for (const relative of ["src/app/register/page.tsx", "src/app/verify-email/page.tsx", "src/app/studio/page.tsx", "src/app/library/page.tsx", "src/app/api/media/[[...path]]/route.ts", "src/app/api/assets/[[...path]]/route.ts", "src/app/api/memory/[[...path]]/route.ts"]) await assert.rejects(readFile(join(assembled.directory, relative)));
     for (const manifest of [".next/server/app-paths-manifest.json", ".next/app-path-routes-manifest.json", ".next/server/middleware-manifest.json"]) await stat(join(assembled.directory, manifest));
   } finally { await rm(temporary, { recursive: true, force: true }); }
 });

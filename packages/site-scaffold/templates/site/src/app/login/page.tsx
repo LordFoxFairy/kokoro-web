@@ -13,7 +13,7 @@ export default async function LoginPage() {
       <p className="eyebrow">{site.displayName}</p>
       <h1>{transactionRef ? "Verify sign-in" : "Sign in"}</h1>
       <LoginForm transactionRef={transactionRef} />
-      {transactionRef === undefined ? <p><a href="/register">Create an account</a></p> : null}
+      __CREATE_ACCOUNT_LINK_FRAGMENT__
     </main>
   );
 }

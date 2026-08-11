@@ -3,7 +3,12 @@ import "server-only"
 import type { OpaqueAuthSession } from "@kokoro/bff-runtime"
 
 import type { SiteBffRuntime, SiteOneTimeCommand, SiteReauthenticationTarget } from "./index.js"
-import { createLaunchStateVault, type LaunchCommandState, type LaunchOperation } from "./launch-state.js"
+import {
+  createLaunchStateVault,
+  SITE_LAUNCH_OPERATIONS,
+  type LaunchCommandState,
+  type LaunchOperation,
+} from "./launch-state.js"
 import type { SiteLegalDocument } from "./site-legal-documents.js"
 
 export const SITE_LAUNCH_STATE_COOKIE = "__Host-kokoro.launch-state"
@@ -192,11 +197,18 @@ export function createSiteLaunchApi(input: Readonly<{
   runtime: SiteBffRuntime
   stateSecret: string
   readAuthSession(request: Request): Promise<OpaqueAuthSession | null> | OpaqueAuthSession | null
+  allowedOperations?: readonly LaunchOperation[]
   legalDocuments?: readonly SiteLegalDocument[]
   now?: () => number
   nonce?: () => Buffer
 }>) {
   const now = input.now ?? Date.now
+  const configuredOperations = input.allowedOperations ?? SITE_LAUNCH_OPERATIONS
+  const allowedOperations = new Set<LaunchOperation>(configuredOperations)
+  if (
+    allowedOperations.size !== configuredOperations.length ||
+    configuredOperations.some((candidate) => !SITE_LAUNCH_OPERATIONS.includes(candidate))
+  ) throw new TypeError("allowed Site launch operations must be a unique closed set")
   const vault = createLaunchStateVault({
     secret: input.stateSecret,
     binding: {
@@ -265,6 +277,7 @@ export function createSiteLaunchApi(input: Readonly<{
       const requestedOperation = operation(body.operation)
       const flowRef = flow(body.flowRef)
       if (requestedOperation === null || flowRef === null) return unavailable(400)
+      if (!allowedOperations.has(requestedOperation)) return unavailable(404)
       if (authRequired(requestedOperation) && auth === null) return unavailable(401)
       const capabilities = await input.runtime.publicCapabilities()
       const enabled = new Set(capabilities.enabledSurfaceIds)

@@ -10,6 +10,15 @@ const auth: OpaqueAuthSession = {
   expiresAt: "2026-07-30T00:00:00.000Z",
 }
 
+const coreAllowedOperations = [
+  "identity.revoke-sessions",
+  "identity.enroll-totp",
+  "identity.disable-totp",
+  "identity.regenerate-recovery-codes",
+  "redemption.preview",
+  "redemption.confirm",
+] as const
+
 function responseCookie(response: Response): string {
   return response.headers.getSetCookie().map((value) => value.split(";", 1)[0]).join("; ")
 }
@@ -41,6 +50,131 @@ describe("Site launch HTTP boundary", () => {
     expect(response.status).toBe(401)
   })
 
+  it("rejects Site-disabled acquisition operations before Platform transport", async () => {
+    const api = createSiteLaunchApi({
+      runtime: {
+        publicOrigin: "https://site.example",
+        deploymentIdentity: {
+          deploymentRef: "deployment-12345678",
+          webArtifactDigest: "a".repeat(64),
+        },
+        bindingIdentity: {
+          siteProjectBindingRef: "binding-12345678",
+          siteReleaseRef: "release-12345678",
+        },
+        verifyBrowserMutation: () => true,
+        publicCapabilities: async () => {
+          throw new Error("Platform transport must not be reached for a disabled operation")
+        },
+      } as never,
+      stateSecret: "k".repeat(64),
+      readAuthSession: async () => null,
+      allowedOperations: coreAllowedOperations,
+    })
+    const headers = {
+      origin: "https://site.example",
+      "sec-fetch-site": "same-origin",
+      "x-kokoro-browser-csrf": "csrf-ok",
+      "content-type": "application/json",
+    }
+    const attempts = [
+      ["prepare", "identity.register"],
+      ["execute", "identity.verify-email"],
+      ["recover", "identity.resend-verification"],
+    ] as const
+
+    for (const [action, operation] of attempts) {
+      const response = await api.handle(new Request(`https://site.example/api/account/${action}`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ operation, flowRef: `disabled-${operation.replaceAll(".", "-")}-flow` }),
+      }), action)
+      expect(response.status).toBe(404)
+    }
+  })
+
+  it("keeps the complete nine-operation launch set when no release allowlist is supplied", async () => {
+    const api = createSiteLaunchApi({
+      runtime: {
+        publicOrigin: "https://site.example",
+        deploymentIdentity: {
+          deploymentRef: "deployment-12345678",
+          webArtifactDigest: "a".repeat(64),
+        },
+        bindingIdentity: {
+          siteProjectBindingRef: "binding-12345678",
+          siteReleaseRef: "release-12345678",
+        },
+        verifyBrowserMutation: () => true,
+        publicCapabilities: async () => ({
+          enabledSurfaceIds: ["account", "identity", "security", "redemption"],
+          featurePolicyRevision: "policy-1",
+        }),
+        createCommand: () => ({ commandId: "1".repeat(32), idempotencyKey: "2".repeat(48) }),
+        createOneTimeCommand: () => ({
+          commandId: "3".repeat(32),
+          idempotencyKey: "4".repeat(48),
+          receiptRecoveryCapability: "5".repeat(64),
+        }),
+      } as never,
+      stateSecret: "k".repeat(64),
+      readAuthSession: async () => auth,
+    })
+    const headers = {
+      origin: "https://site.example",
+      "sec-fetch-site": "same-origin",
+      "x-kokoro-browser-csrf": "csrf-ok",
+      "content-type": "application/json",
+    }
+    const operations = [
+      "identity.register",
+      "identity.verify-email",
+      "identity.resend-verification",
+      "identity.revoke-sessions",
+      "identity.enroll-totp",
+      "identity.disable-totp",
+      "identity.regenerate-recovery-codes",
+      "redemption.preview",
+      "redemption.confirm",
+    ] as const
+
+    for (const [index, operation] of operations.entries()) {
+      const response = await api.handle(new Request("https://site.example/api/account/prepare", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ operation, flowRef: `default-launch-operation-${index}` }),
+      }), "prepare")
+      expect(response.status).toBe(204)
+    }
+  })
+
+  it("rejects duplicate or unknown release operation configuration", () => {
+    const input = {
+      runtime: {
+        publicOrigin: "https://site.example",
+        deploymentIdentity: {
+          deploymentRef: "deployment-12345678",
+          webArtifactDigest: "a".repeat(64),
+        },
+        bindingIdentity: {
+          siteProjectBindingRef: "binding-12345678",
+          siteReleaseRef: "release-12345678",
+        },
+      } as never,
+      stateSecret: "k".repeat(64),
+      readAuthSession: async () => null,
+    }
+
+    expect(() => createSiteLaunchApi({
+      ...input,
+      allowedOperations: ["redemption.preview", "redemption.preview"],
+    })).toThrow("unique closed set")
+    expect(() => createSiteLaunchApi({
+      ...input,
+      allowedOperations: ["identity.unknown" as never],
+    })).toThrow("unique closed set")
+  })
+
   it("persists a command before redemption RPC and never returns Code or authority", async () => {
     const calls: string[] = []
     const runtime = {
@@ -60,6 +194,7 @@ describe("Site launch HTTP boundary", () => {
       runtime: runtime as never,
       stateSecret: "k".repeat(64),
       readAuthSession: async () => auth,
+      allowedOperations: coreAllowedOperations,
       legalDocuments: [{ termRef: "terms-2026", label: "Terms", href: "https://site.example/terms" }],
       now: () => 1_000,
       nonce: () => Buffer.alloc(12, 7),

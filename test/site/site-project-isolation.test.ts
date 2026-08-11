@@ -100,6 +100,28 @@ describe("independent Site project scaffold", () => {
       enabledProductIds: [],
       packages: basePackages,
     });
+    const core = await createSiteProject({
+      directory: join(root, "core"),
+      packageName: "@independent/site-core",
+      siteKey: "site-core",
+      displayName: "Core Site",
+      releaseId: "core.2026.08.11.001",
+      artifactSha256: "d".repeat(64),
+      profileRevision: "core.v1",
+      domains: [{ hostname: "core.external.invalid", environment: "production" }],
+      deployment: { provider: "external", projectRef: "external/core", region: "us-east" },
+      contractFloor: floor,
+      enabledProductIds: [],
+      allowedLaunchOperations: [
+        "identity.revoke-sessions",
+        "identity.enroll-totp",
+        "identity.disable-totp",
+        "identity.regenerate-recovery-codes",
+        "redemption.preview",
+        "redemption.confirm",
+      ],
+      packages: basePackages,
+    });
 
     expect(alpha.directory).not.toBe(beta.directory);
     expect(alpha.packageName).not.toBe(beta.packageName);
@@ -129,6 +151,19 @@ describe("independent Site project scaffold", () => {
     expect(beta.generatedFiles).not.toContain("src/app/memory/page.tsx");
     expect(beta.generatedFiles).not.toContain("src/app/api/memory/[[...path]]/route.ts");
     expect(beta.generatedFiles).toContain("deploy/artifact-manifest.json");
+    expect(beta.generatedFiles).toContain("src/app/register/page.tsx");
+    expect(beta.generatedFiles).toContain("src/app/verify-email/page.tsx");
+    expect(await readFile(join(beta.directory, "src/app/login/page.tsx"), "utf8")).toContain("Create an account");
+    expect(core.generatedFiles).not.toContain("src/app/register/page.tsx");
+    expect(core.generatedFiles).not.toContain("src/app/verify-email/page.tsx");
+    await expect(readFile(join(core.directory, "src/app/register/page.tsx"))).rejects.toThrow();
+    await expect(readFile(join(core.directory, "src/app/verify-email/page.tsx"))).rejects.toThrow();
+    expect(await readFile(join(core.directory, "src/app/login/page.tsx"), "utf8")).not.toContain("Create an account");
+    const coreLaunchApi = await readFile(join(core.directory, "src/launch-api.ts"), "utf8");
+    expect(coreLaunchApi).toContain("allowedOperations");
+    expect(coreLaunchApi).not.toContain("identity.register");
+    expect(coreLaunchApi).not.toContain("identity.verify-email");
+    expect(coreLaunchApi).not.toContain("identity.resend-verification");
 
     const alphaManifest = JSON.parse(await readFile(join(alpha.directory, "deploy/artifact-manifest.json"), "utf8"));
     const betaManifest = JSON.parse(await readFile(join(beta.directory, "deploy/artifact-manifest.json"), "utf8"));

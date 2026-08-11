@@ -1,6 +1,7 @@
 import "server-only";
 import type { PublicCommandContext, SecretPublicCommandContext } from "@kokoro/site-client/server";
 export type LaunchOperation = "identity.register" | "identity.verify-email" | "identity.resend-verification" | "identity.revoke-sessions" | "identity.enroll-totp" | "identity.disable-totp" | "identity.regenerate-recovery-codes" | "redemption.preview" | "redemption.confirm";
+export declare const SITE_LAUNCH_OPERATIONS: readonly ["identity.register", "identity.verify-email", "identity.resend-verification", "identity.revoke-sessions", "identity.enroll-totp", "identity.disable-totp", "identity.regenerate-recovery-codes", "redemption.preview", "redemption.confirm"];
 export type SecurityLaunchState = Readonly<{
     phase: "reauthenticate_password";
     supersedePriorCommandId?: string;

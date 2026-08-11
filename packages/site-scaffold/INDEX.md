@@ -36,6 +36,11 @@ of those bytes or operations. Even an included page/BFF remains unavailable unle
 the `memory` surface. `scripts/certify-external-sites.mjs` builds one enabled and one disabled independent artifact and records each
 exact package closure.
 
+`allowedLaunchOperations` is an optional release-compiled closed set. Its default is the complete generic Site launch set, so
+ordinary scaffold callers retain registration and verification. A profile that removes public identity acquisition physically
+omits the corresponding pages and registration navigation while the generated launch composition passes the same allowlist to
+`createSiteLaunchApi`; a direct request therefore cannot recover a physically removed feature through the shared account route.
+
 ## Verification
 
 - `pnpm --filter @kokoro/site-scaffold typecheck`

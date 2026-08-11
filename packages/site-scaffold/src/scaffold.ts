@@ -11,6 +11,19 @@ const TEMPLATE_ROOT = fileURLToPath(new URL("../templates/site/", import.meta.ur
 const SHA256_PATTERN = /^[0-9a-f]{64}$/u;
 const PACKAGE_PATTERN = /^@[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._-]*$/u;
 const SITE_KEY_PATTERN = /^[a-z][a-z0-9-]{1,62}$/u;
+const SITE_LAUNCH_OPERATIONS = [
+  "identity.register",
+  "identity.verify-email",
+  "identity.resend-verification",
+  "identity.revoke-sessions",
+  "identity.enroll-totp",
+  "identity.disable-totp",
+  "identity.regenerate-recovery-codes",
+  "redemption.preview",
+  "redemption.confirm",
+] as const;
+
+export type SiteLaunchOperation = typeof SITE_LAUNCH_OPERATIONS[number];
 
 export interface ImmutablePackageArtifact {
   readonly name:
@@ -49,6 +62,7 @@ export interface CreateSiteProjectInput {
   readonly deployment: SiteDeploymentTarget;
   readonly contractFloor: SiteContractFloor;
   readonly enabledProductIds: readonly SiteProductId[];
+  readonly allowedLaunchOperations?: readonly SiteLaunchOperation[];
   readonly packages: readonly ImmutablePackageArtifact[];
 }
 
@@ -225,6 +239,14 @@ export async function createSiteProject(input: CreateSiteProjectInput): Promise<
     new Set(input.enabledProductIds).size !== input.enabledProductIds.length ||
     input.enabledProductIds.some((productId) => productId !== "memory")
   ) throw new TypeError("enabledProductIds must be a unique closed product set");
+  const allowedLaunchOperations = input.allowedLaunchOperations ?? SITE_LAUNCH_OPERATIONS;
+  if (
+    new Set(allowedLaunchOperations).size !== allowedLaunchOperations.length ||
+    allowedLaunchOperations.some((operation) => !SITE_LAUNCH_OPERATIONS.includes(operation))
+  ) throw new TypeError("allowedLaunchOperations must be a unique closed operation set");
+  const registrationEnabled = allowedLaunchOperations.includes("identity.register");
+  const verificationEnabled = allowedLaunchOperations.includes("identity.verify-email") ||
+    allowedLaunchOperations.includes("identity.resend-verification");
   const memoryEnabled = input.enabledProductIds.includes("memory");
   const baseArtifacts = [
     "@kokoro/site-app-kit",
@@ -304,6 +326,7 @@ export async function createSiteProject(input: CreateSiteProjectInput): Promise<
       __MEDIA_APP_VERSION_JSON__: JSON.stringify(mediaApp.version),
       __MEDIA_APP_SHA256_JSON__: JSON.stringify(mediaApp.sha256),
       __ENABLED_PRODUCT_IDS_JSON__: JSON.stringify(input.enabledProductIds, null, 2),
+      __ALLOWED_LAUNCH_OPERATIONS_JSON__: JSON.stringify(allowedLaunchOperations, null, 2),
       __TRANSPILE_PACKAGES_JSON__: JSON.stringify(memoryEnabled
         ? ["@kokoro/account-app", "@kokoro/asset-client", "@kokoro/chat-app", "@kokoro/media-app", "@kokoro/memory-app"]
         : ["@kokoro/account-app", "@kokoro/asset-client", "@kokoro/chat-app", "@kokoro/media-app"]),
@@ -311,6 +334,9 @@ export async function createSiteProject(input: CreateSiteProjectInput): Promise<
       __MEMORY_OVERRIDE_FRAGMENT__: memoryApp === undefined ? "" : `\n  "@kokoro/memory-app": "file:vendor/memory-app.tgz"`,
       __MEMORY_ARTIFACT_FRAGMENT__: memoryApp === undefined ? "" : `,\n    "@kokoro/memory-app": {\n      "version": ${JSON.stringify(memoryApp.version)},\n      "sha256": ${JSON.stringify(memoryApp.sha256)}\n    }`,
       __MEMORY_NAV_FRAGMENT__: memoryEnabled ? `<nav aria-label="Site products" className="site-product-nav"><a href="/memory">Memory</a></nav>` : "",
+      __CREATE_ACCOUNT_LINK_FRAGMENT__: registrationEnabled
+        ? `{transactionRef === undefined ? <p><a href="/register">Create an account</a></p> : null}`
+        : "",
     } as const;
 
     const memoryOnlyFiles = new Set([
@@ -318,7 +344,9 @@ export async function createSiteProject(input: CreateSiteProjectInput): Promise<
       "src/app/api/memory/[[...path]]/route.ts",
     ]);
     const templateFiles = (await listTemplateFiles(TEMPLATE_ROOT))
-      .filter((relative) => memoryEnabled || !memoryOnlyFiles.has(relative));
+      .filter((relative) => memoryEnabled || !memoryOnlyFiles.has(relative))
+      .filter((relative) => registrationEnabled || relative !== "src/app/register/page.tsx")
+      .filter((relative) => verificationEnabled || relative !== "src/app/verify-email/page.tsx");
     for (const relative of templateFiles) {
       const destination = join(staging, relative);
       await mkdir(dirname(destination), { recursive: true });

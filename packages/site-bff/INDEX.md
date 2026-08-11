@@ -34,6 +34,9 @@ Launch identity/account/Code-redemption composition is also server-only. Ordinar
 deployment-bound 8-entry TTL/LRU cookie before the first RPC; secret verification uses the existing recovery-capability
 ceremony. Raw Codes are one-hop preview inputs and never enter state, response DTOs, RSC, logs, errors or analytics.
 Every Site launch mutation requires fixed-origin/Sec-Fetch proof plus the independent Browser CSRF capability.
+`createSiteLaunchApi` may receive a release-compiled closed operation allowlist. It validates that list once and rejects a
+parsed but disabled operation before capability resolution or any Platform transport. Omitting the list preserves the complete
+generic Site operation set; Platform-published surfaces remain the second runtime gate for operations that the artifact includes.
 Anonymous ordinary commands have no receipt authority: uncertain registration, resend and preview responses
 repeat the exact sealed command and payload. Secret one-time commands use capability recovery; authenticated
 effects use authenticated receipts, with redemption confirmation using its dedicated idempotency recovery route.

@@ -1,6 +1,6 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
-import { bootstrapSiteRuntimeFromOpaqueSession, createOriginCsrfBrowserRequestVerifier, createSessionBrowserV3Proxy, createSessionBrowserV3Transport, loadSiteDeploymentBinding, ProductContextManager, SessionAccessManager, publicSiteBootstrap, } from "@kokoro/bff-runtime";
+import { bootstrapSiteRuntimeFromOpaqueSession, createOriginCsrfBrowserRequestVerifier, createSessionBrowserV3Proxy, createSessionBrowserV3Transport, isRuntimeEnvironment, loadSiteDeploymentBinding, ProductContextManager, SessionAccessManager, publicSiteBootstrap, } from "@kokoro/bff-runtime";
 import { createPlatformPublicClient, } from "@kokoro/site-client/server";
 import { createSiteMediaAuthority } from "./media-authority.js";
 import { createSiteMemoryAuthority } from "./memory-api.js";
@@ -51,7 +51,7 @@ function fixedOrigin(value) {
 }
 export function loadSiteBffDeployment(env = process.env) {
     const runtimeEnvironment = required(env, "KOKORO_SITE_RUNTIME_ENVIRONMENT");
-    if (runtimeEnvironment !== "development" && runtimeEnvironment !== "preview" && runtimeEnvironment !== "production") {
+    if (!isRuntimeEnvironment(runtimeEnvironment)) {
         throw new SiteBffError("CONFIG_INVALID");
     }
     return Object.freeze({

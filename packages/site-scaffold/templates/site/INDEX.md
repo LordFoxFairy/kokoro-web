@@ -18,6 +18,9 @@ The shared Account app renders registration, email verification, security sessio
 only for Platform-enabled Site surfaces. Registration additionally requires server-owned
 `KOKORO_SITE_REGISTRATION_LEGAL_DOCUMENTS`; one strict typed SiteRelease projection derives server-only term refs and
 browser-safe labels/HTTPS or same-origin links. Browser input can accept the published set but cannot choose authority refs.
+The generated release also carries an exact Site launch operation allowlist. Generic releases include the complete set; a release
+that disables public identity acquisition omits its registration/verification pages and sign-up navigation and rejects the same
+operations in the shared account BFF before Platform capability or command transport.
 
 When Platform publishes the `image` surface and catalog, this independent Site also renders its own `/studio` creation work area and `/library` artifact browser through `@kokoro/media-app`. Both call only the Site's same-origin allowlisted media BFF. A Studio ready candidate deep-links by opaque Artifact ref; Library validates the ref and resolves it within the authenticated owner list before loading versions. Library emits a content URL only for `ready`; processing, restricted, unavailable, and deleted remain typed owner states. Content authorization is issued and redeemed server-side and streamed without revealing the capability or Platform endpoint.
 

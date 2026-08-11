@@ -6,7 +6,7 @@ const COMMAND_ID = /^[0-9a-f]{32}$/u;
 const IDEMPOTENCY_KEY = /^[0-9a-f]{48}$/u;
 const CAPABILITY = /^[0-9a-f]{64}$/u;
 const FLOW_REF = /^[A-Za-z0-9_-]{16,96}$/u;
-const OPERATIONS = new Set([
+export const SITE_LAUNCH_OPERATIONS = Object.freeze([
     "identity.register",
     "identity.verify-email",
     "identity.resend-verification",
@@ -17,6 +17,7 @@ const OPERATIONS = new Set([
     "redemption.preview",
     "redemption.confirm",
 ]);
+const OPERATIONS = new Set(SITE_LAUNCH_OPERATIONS);
 function context(binding) {
     return [
         "kokoro-site-launch-state-v1",
