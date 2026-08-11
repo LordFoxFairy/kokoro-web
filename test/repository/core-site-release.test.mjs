@@ -53,6 +53,9 @@ test("default core assembly is isolated: a clean archive supplies real scaffold,
     const assembled = await release.assembleCoreSite({ definition: parsed, directory: join(temporary, "site"), contractKeyringPath: signed.keyringPath });
     assert.equal(assembled.packageArtifacts.length, 11); assert.deepEqual(assembled.routes, exactRoutes); assert.equal(assembled.sourceClosureSha256, assembled.artifactSha256);
     assert.match(await readFile(join(assembled.directory, "src/app/page.tsx"), "utf8"), /attachmentsEnabled=\{false\}/u);
+    const metadata = await readFile(join(assembled.directory, "src/app/api/release/metadata/route.ts"), "utf8");
+    for (const field of ["schemaVersion", "siteId", "siteReleaseRef", "webArtifactDigest", "deploymentRef", "readiness", "observedAt"]) assert.match(metadata, new RegExp(field, "u"));
+    assert.doesNotMatch(metadata, /platform|session|credential/iu);
     for (const relative of ["src/app/studio/page.tsx", "src/app/library/page.tsx", "src/app/api/media/[[...path]]/route.ts", "src/app/api/assets/[[...path]]/route.ts", "src/app/api/memory/[[...path]]/route.ts"]) await assert.rejects(readFile(join(assembled.directory, relative)));
     for (const manifest of [".next/server/app-paths-manifest.json", ".next/app-path-routes-manifest.json", ".next/server/middleware-manifest.json"]) await stat(join(assembled.directory, manifest));
   } finally { await rm(temporary, { recursive: true, force: true }); }
