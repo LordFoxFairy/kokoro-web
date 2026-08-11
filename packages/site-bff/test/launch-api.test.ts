@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import type { OpaqueAuthSession } from "@kokoro/bff-runtime"
+import { PlatformPublicError } from "@kokoro/site-client/server"
 
 import { createSiteLaunchApi } from "../src/launch-api.js"
 
@@ -308,6 +309,414 @@ describe("Site launch HTTP boundary", () => {
     expect(confirmations).toEqual([{ previewCredential: "opaque-preview-credential-1234567890", legalAcceptanceRefs: ["terms-authoritative-2026"] }])
   })
 
+  it.each([
+    ["pending", {
+      receipt: { state: "accepted" },
+      reconciliation: { kind: "pending", retryAfterSeconds: 2 },
+    }, { state: "pending", retryAfterSeconds: 2 }],
+    ["failed", {
+      receipt: { state: "rejected" },
+      reconciliation: { kind: "terminal", outcome: "rejected" },
+    }, { state: "rejected" }],
+    ["outcome unknown", {
+      receipt: { state: "outcome_unknown" },
+      reconciliation: { kind: "pending", retryAfterSeconds: 3 },
+    }, { state: "pending", retryAfterSeconds: 3 }],
+  ] as const)("uses capability-only state-read recovery for a %s receipt",
+    async (_state, receipt, expected) => {
+      const receiptCalls: unknown[] = []
+      const runtime = {
+        publicOrigin: "https://site.example",
+        deploymentIdentity: {
+          deploymentRef: "deployment-12345678",
+          webArtifactDigest: "a".repeat(64),
+          publicOrigin: "https://site.example",
+        },
+        bindingIdentity: {
+          siteProjectBindingRef: "binding-12345678",
+          siteReleaseRef: "release-12345678",
+        },
+        createCommand: () => ({ commandId: "1".repeat(32), idempotencyKey: "2".repeat(48) }),
+        createOneTimeCommand: () => ({
+          commandId: "3".repeat(32),
+          idempotencyKey: "4".repeat(48),
+          receiptRecoveryCapability: "5".repeat(64),
+        }),
+        verifyBrowserMutation: () => true,
+        publicCapabilities: async () => ({
+          enabledSurfaceIds: ["identity"],
+          featurePolicyRevision: "policy-1",
+        }),
+        commandReceipt: async (...args: unknown[]) => {
+          receiptCalls.push(args)
+          return receipt
+        },
+      }
+      const api = createSiteLaunchApi({
+        runtime: runtime as never,
+        stateSecret: "k".repeat(64),
+        readAuthSession: () => auth,
+        now: () => 1_000,
+        nonce: () => Buffer.alloc(12, 5),
+      })
+      const headers = {
+        origin: "https://site.example",
+        "sec-fetch-site": "same-origin",
+        "x-kokoro-browser-csrf": "csrf-ok",
+        "content-type": "application/json",
+      }
+      const prepare = await api.handle(new Request("https://site.example/api/account/prepare", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          operation: "identity.verify-email",
+          flowRef: "verify-recovery-flow-12345678",
+        }),
+      }), "prepare")
+      const recovered = await api.handle(new Request("https://site.example/api/account/recover", {
+        method: "POST",
+        headers: { ...headers, cookie: responseCookie(prepare) },
+        body: JSON.stringify({
+          operation: "identity.verify-email",
+          flowRef: "verify-recovery-flow-12345678",
+        }),
+      }), "recover")
+
+      expect(recovered.status).toBe(200)
+      expect(await recovered.json()).toEqual(expected)
+      expect(receiptCalls).toEqual([[
+        null,
+        "3".repeat(32),
+        "5".repeat(64),
+      ]])
+    })
+
+  it("falls back to the sealed exact command when its release-bound receipt row is missing",
+    async () => {
+      let oneTimeCommands = 0
+      const exactRetries: unknown[] = []
+      const runtime = {
+        publicOrigin: "https://site.example",
+        deploymentIdentity: {
+          deploymentRef: "deployment-12345678",
+          webArtifactDigest: "a".repeat(64),
+          publicOrigin: "https://site.example",
+        },
+        bindingIdentity: {
+          siteProjectBindingRef: "binding-12345678",
+          siteReleaseRef: "release-12345678",
+        },
+        createCommand: () => ({ commandId: "1".repeat(32), idempotencyKey: "2".repeat(48) }),
+        createOneTimeCommand: () => {
+          oneTimeCommands += 1
+          return {
+            commandId: "3".repeat(32),
+            idempotencyKey: "4".repeat(48),
+            receiptRecoveryCapability: "5".repeat(64),
+          }
+        },
+        verifyBrowserMutation: () => true,
+        publicCapabilities: async () => ({
+          enabledSurfaceIds: ["identity"],
+          featurePolicyRevision: "policy-1",
+        }),
+        commandReceipt: async () => Promise.reject(missingPublicReceipt()),
+        completeEmailVerification: async (_input: unknown, delivery: unknown) => {
+          exactRetries.push(delivery)
+          return { receipt: {}, value: { accountRef: "account-12345678" } }
+        },
+      }
+      const api = createSiteLaunchApi({
+        runtime: runtime as never,
+        stateSecret: "k".repeat(64),
+        readAuthSession: () => auth,
+        now: () => 1_000,
+        nonce: () => Buffer.alloc(12, 4),
+      })
+      const headers = {
+        origin: "https://site.example",
+        "sec-fetch-site": "same-origin",
+        "x-kokoro-browser-csrf": "csrf-ok",
+        "content-type": "application/json",
+      }
+      const body = {
+        operation: "identity.verify-email",
+        flowRef: "missing-receipt-flow-12345678",
+      }
+      const prepared = await api.handle(new Request("https://site.example/api/account/prepare", {
+        method: "POST", headers, body: JSON.stringify(body),
+      }), "prepare")
+      const recovered = await api.handle(new Request("https://site.example/api/account/recover", {
+        method: "POST",
+        headers: { ...headers, cookie: responseCookie(prepared) },
+        body: JSON.stringify(body),
+      }), "recover")
+
+      expect(recovered.status).toBe(409)
+      expect(await recovered.json()).toEqual({ state: "exact_retry_required" })
+      expect(recovered.headers.has("set-cookie")).toBe(false)
+      expect(oneTimeCommands).toBe(1)
+
+      const exactRetry = await api.handle(new Request("https://site.example/api/account/execute", {
+        method: "POST",
+        headers: { ...headers, cookie: responseCookie(prepared) },
+        body: JSON.stringify({
+          ...body,
+          transactionRef: "verification-transaction-12345678",
+          transactionSecret: "verification-secret-12345678901234567890",
+        }),
+      }), "execute")
+      expect(exactRetry.status).toBe(200)
+      expect(await exactRetry.json()).toEqual({ state: "verified" })
+      expect(exactRetries).toEqual([{ command: {
+        commandId: "3".repeat(32),
+        idempotencyKey: "4".repeat(48),
+        receiptRecoveryCapability: "5".repeat(64),
+      } }])
+    })
+
+  it.each([
+    ["a non-NOT_FOUND code", platformPublicError(404, "AUTHENTICATION_FAILED")],
+    ["a non-404 status", platformPublicError(500, "NOT_FOUND")],
+  ] as const)("keeps %s from a receipt read as a generic upstream failure", async (_case, error) => {
+    const recovered = await recoverVerifyEmailWithReceiptError(error)
+
+    expect(recovered.status).toBe(503)
+    expect(recovered.headers.has("set-cookie")).toBe(false)
+  })
+
+  it("does not start a superseding command when nested receipt recovery is not found", async () => {
+    let oneTimeCommands = 0
+    let reauthenticationCalls = 0
+    let supersedingCalls = 0
+    const runtime = {
+      publicOrigin: "https://site.example",
+      deploymentIdentity: {
+        deploymentRef: "deployment-12345678",
+        webArtifactDigest: "a".repeat(64),
+        publicOrigin: "https://site.example",
+      },
+      bindingIdentity: {
+        siteProjectBindingRef: "binding-12345678",
+        siteReleaseRef: "release-12345678",
+      },
+      createCommand: () => ({ commandId: "1".repeat(32), idempotencyKey: "2".repeat(48) }),
+      createOneTimeCommand: () => {
+        oneTimeCommands += 1
+        return {
+          commandId: String(oneTimeCommands).padStart(32, "0"),
+          idempotencyKey: String(oneTimeCommands).padStart(48, "0"),
+          receiptRecoveryCapability: String(oneTimeCommands).padStart(64, "0"),
+        }
+      },
+      verifyBrowserMutation: () => true,
+      publicCapabilities: async () => ({
+        enabledSurfaceIds: ["security"],
+        featurePolicyRevision: "policy-1",
+      }),
+      reauthenticate: async () => {
+        reauthenticationCalls += 1
+        return {
+          kind: "delivery_unavailable",
+          commandId: "1".repeat(32),
+          requestDigest: "d".repeat(64),
+          receiptRef: "receipt-12345678",
+        }
+      },
+      commandReceipt: async () => Promise.reject(missingPublicReceipt()),
+      beginTotpEnrollment: async () => {
+        supersedingCalls += 1
+        throw new Error("superseding command must not start")
+      },
+    }
+    const api = createSiteLaunchApi({
+      runtime: runtime as never,
+      stateSecret: "k".repeat(64),
+      readAuthSession: () => auth,
+      now: () => 1_000,
+      nonce: () => Buffer.alloc(12, 3),
+    })
+    const headers = {
+      origin: "https://site.example",
+      "sec-fetch-site": "same-origin",
+      "x-kokoro-browser-csrf": "csrf-ok",
+      "content-type": "application/json",
+    }
+    const prepared = await api.handle(new Request("https://site.example/api/account/prepare", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        operation: "identity.enroll-totp",
+        flowRef: "nested-missing-receipt-12345678",
+      }),
+    }), "prepare")
+    const recovered = await api.handle(new Request("https://site.example/api/account/execute", {
+      method: "POST",
+      headers: { ...headers, cookie: responseCookie(prepared) },
+      body: JSON.stringify({
+        operation: "identity.enroll-totp",
+        flowRef: "nested-missing-receipt-12345678",
+        password: "correct horse battery staple",
+      }),
+    }), "execute")
+
+    expect(recovered.status).toBe(409)
+    expect(await recovered.json()).toEqual({ state: "exact_retry_required" })
+    expect(reauthenticationCalls).toBe(1)
+    expect(oneTimeCommands).toBe(1)
+    expect(supersedingCalls).toBe(0)
+  })
+
+  it("does not reinterpret an actual superseding command 404 as exact retry", async () => {
+    let oneTimeCommands = 0
+    let reauthenticationCalls = 0
+    let receiptReads = 0
+    const runtime = {
+      publicOrigin: "https://site.example",
+      deploymentIdentity: {
+        deploymentRef: "deployment-12345678",
+        webArtifactDigest: "a".repeat(64),
+        publicOrigin: "https://site.example",
+      },
+      bindingIdentity: {
+        siteProjectBindingRef: "binding-12345678",
+        siteReleaseRef: "release-12345678",
+      },
+      createCommand: () => ({ commandId: "1".repeat(32), idempotencyKey: "2".repeat(48) }),
+      createOneTimeCommand: () => {
+        oneTimeCommands += 1
+        return {
+          commandId: String(oneTimeCommands).padStart(32, "0"),
+          idempotencyKey: String(oneTimeCommands).padStart(48, "0"),
+          receiptRecoveryCapability: String(oneTimeCommands).padStart(64, "0"),
+        }
+      },
+      verifyBrowserMutation: () => true,
+      publicCapabilities: async () => ({
+        enabledSurfaceIds: ["security"],
+        featurePolicyRevision: "policy-1",
+      }),
+      reauthenticate: async () => {
+        reauthenticationCalls += 1
+        if (reauthenticationCalls === 1) {
+          return {
+            kind: "delivery_unavailable",
+            commandId: "1".repeat(32),
+            requestDigest: "d".repeat(64),
+            receiptRef: "receipt-12345678",
+          }
+        }
+        throw missingPublicReceipt()
+      },
+      commandReceipt: async () => {
+        receiptReads += 1
+        return {
+          receipt: {},
+          reconciliation: { kind: "superseding_ceremony_required", ceremony: {
+            operationId: "reauthenticateIdentitySession",
+            transactionRef: "reauth-recovery-12345678",
+            bindingDigest: "b".repeat(64),
+            expiresAt: "2026-07-29T00:05:00.000Z",
+            invalidatesPriorDelivery: true,
+          } },
+        }
+      },
+    }
+    const api = createSiteLaunchApi({
+      runtime: runtime as never,
+      stateSecret: "k".repeat(64),
+      readAuthSession: () => auth,
+      now: () => 1_000,
+      nonce: () => Buffer.alloc(12, 3),
+    })
+    const headers = {
+      origin: "https://site.example",
+      "sec-fetch-site": "same-origin",
+      "x-kokoro-browser-csrf": "csrf-ok",
+      "content-type": "application/json",
+    }
+    const body = {
+      operation: "identity.disable-totp",
+      flowRef: "supersede-404-flow-12345678",
+    }
+    const prepared = await api.handle(new Request("https://site.example/api/account/prepare", {
+      method: "POST", headers, body: JSON.stringify(body),
+    }), "prepare")
+    const response = await api.handle(new Request("https://site.example/api/account/execute", {
+      method: "POST",
+      headers: { ...headers, cookie: responseCookie(prepared) },
+      body: JSON.stringify({ ...body, password: "correct horse battery staple" }),
+    }), "execute")
+
+    expect(response.status).toBe(503)
+    expect(reauthenticationCalls).toBe(2)
+    expect(receiptReads).toBe(1)
+    expect(oneTimeCommands).toBe(2)
+  })
+
+  it.each([
+    "identity.disable-totp",
+    "identity.revoke-sessions",
+  ] as const)("routes %s recovery directly to exact command retry", async (operation) => {
+    let receiptReads = 0
+    const runtime = {
+      publicOrigin: "https://site.example",
+      deploymentIdentity: {
+        deploymentRef: "deployment-12345678",
+        webArtifactDigest: "a".repeat(64),
+        publicOrigin: "https://site.example",
+      },
+      bindingIdentity: {
+        siteProjectBindingRef: "binding-12345678",
+        siteReleaseRef: "release-12345678",
+      },
+      createCommand: () => ({ commandId: "1".repeat(32), idempotencyKey: "2".repeat(48) }),
+      createOneTimeCommand: () => ({
+        commandId: "3".repeat(32),
+        idempotencyKey: "4".repeat(48),
+        receiptRecoveryCapability: "5".repeat(64),
+      }),
+      verifyBrowserMutation: () => true,
+      publicCapabilities: async () => ({
+        enabledSurfaceIds: ["security"],
+        featurePolicyRevision: "policy-1",
+      }),
+      commandReceipt: async () => {
+        receiptReads += 1
+        return {
+          receipt: { state: "committed" },
+          reconciliation: { kind: "terminal", outcome: "committed" },
+        }
+      },
+    }
+    const api = createSiteLaunchApi({
+      runtime: runtime as never,
+      stateSecret: "k".repeat(64),
+      readAuthSession: () => auth,
+      now: () => 1_000,
+      nonce: () => Buffer.alloc(12, 2),
+    })
+    const headers = {
+      origin: "https://site.example",
+      "sec-fetch-site": "same-origin",
+      "x-kokoro-browser-csrf": "csrf-ok",
+      "content-type": "application/json",
+    }
+    const body = { operation, flowRef: `retry-${operation.replaceAll(".", "-")}-12345678` }
+    const prepared = await api.handle(new Request("https://site.example/api/account/prepare", {
+      method: "POST", headers, body: JSON.stringify(body),
+    }), "prepare")
+    const recovered = await api.handle(new Request("https://site.example/api/account/recover", {
+      method: "POST",
+      headers: { ...headers, cookie: responseCookie(prepared) },
+      body: JSON.stringify(body),
+    }), "recover")
+
+    expect(recovered.status).toBe(409)
+    expect(await recovered.json()).toEqual({ state: "exact_retry_required" })
+    expect(receiptReads).toBe(0)
+  })
+
   it("keeps reauthentication proof server-side through TOTP enrollment and returns recovery codes once", async () => {
     let command = 0
     const calls: unknown[] = []
@@ -356,6 +765,7 @@ describe("Site launch HTTP boundary", () => {
   it("supersedes a lost one-time reauthentication proof without exposing recovery authority", async () => {
     let sequence = 0
     const deliveries: unknown[] = []
+    const receiptReads: unknown[] = []
     const runtime = {
       publicOrigin: "https://site.example",
       deploymentIdentity: { deploymentRef: "deployment-12345678", webArtifactDigest: "a".repeat(64), publicOrigin: "https://site.example" },
@@ -374,13 +784,16 @@ describe("Site launch HTTP boundary", () => {
           sessionRef: "identity-session-12345678", sessionEpoch: "1", userSecurityEpoch: "1",
         } }
       },
-      commandReceipt: async () => ({
-        receipt: {},
-        reconciliation: { kind: "superseding_ceremony_required", ceremony: {
-          operationId: "reauthenticateIdentitySession", transactionRef: "reauth-recovery-12345678",
-          bindingDigest: "b".repeat(64), expiresAt: "2026-07-29T00:05:00.000Z", invalidatesPriorDelivery: true,
-        } },
-      }),
+      commandReceipt: async (...args: unknown[]) => {
+        receiptReads.push(args)
+        return {
+          receipt: {},
+          reconciliation: { kind: "superseding_ceremony_required", ceremony: {
+            operationId: "reauthenticateIdentitySession", transactionRef: "reauth-recovery-12345678",
+            bindingDigest: "b".repeat(64), expiresAt: "2026-07-29T00:05:00.000Z", invalidatesPriorDelivery: true,
+          } },
+        }
+      },
       disableTotp: async (_auth: OpaqueAuthSession, input: unknown) => {
         deliveries.push(input)
         return { receipt: {} }
@@ -399,6 +812,11 @@ describe("Site launch HTTP boundary", () => {
       priorCommandId: "1".padStart(32, "0"),
       command: expect.objectContaining({ receiptRecoveryCapability: "1".padStart(64, "0") }),
     }) }))
+    expect(receiptReads).toEqual([[
+      null,
+      "1".padStart(32, "0"),
+      "1".padStart(64, "0"),
+    ]])
     expect(recoveredBody).not.toContain("recovered-server-proof")
 
     const disabled = await call("execute", { operation: "identity.disable-totp", flowRef: "disable-flow-12345678", code: "123456" }, responseCookie(recovered))
@@ -406,3 +824,72 @@ describe("Site launch HTTP boundary", () => {
     expect(deliveries[2]).toEqual({ reauthenticationProof: "recovered-server-proof-12345678901234567890", code: "123456" })
   })
 })
+
+function missingPublicReceipt(): PlatformPublicError {
+  return platformPublicError(404, "NOT_FOUND")
+}
+
+function platformPublicError(
+  status: number,
+  code: "AUTHENTICATION_FAILED" | "NOT_FOUND",
+): PlatformPublicError {
+  return new PlatformPublicError(status, {
+    code,
+    retryClass: "never",
+    requestId: "request-12345678",
+    correlationId: "correlation-12345678",
+    safeMessage: "The requested resource was not found.",
+  })
+}
+
+async function recoverVerifyEmailWithReceiptError(error: PlatformPublicError): Promise<Response> {
+  const runtime = {
+    publicOrigin: "https://site.example",
+    deploymentIdentity: {
+      deploymentRef: "deployment-12345678",
+      webArtifactDigest: "a".repeat(64),
+      publicOrigin: "https://site.example",
+    },
+    bindingIdentity: {
+      siteProjectBindingRef: "binding-12345678",
+      siteReleaseRef: "release-12345678",
+    },
+    createCommand: () => ({ commandId: "1".repeat(32), idempotencyKey: "2".repeat(48) }),
+    createOneTimeCommand: () => ({
+      commandId: "3".repeat(32),
+      idempotencyKey: "4".repeat(48),
+      receiptRecoveryCapability: "5".repeat(64),
+    }),
+    verifyBrowserMutation: () => true,
+    publicCapabilities: async () => ({
+      enabledSurfaceIds: ["identity"],
+      featurePolicyRevision: "policy-1",
+    }),
+    commandReceipt: async () => Promise.reject(error),
+  }
+  const api = createSiteLaunchApi({
+    runtime: runtime as never,
+    stateSecret: "k".repeat(64),
+    readAuthSession: () => auth,
+    now: () => 1_000,
+    nonce: () => Buffer.alloc(12, 4),
+  })
+  const headers = {
+    origin: "https://site.example",
+    "sec-fetch-site": "same-origin",
+    "x-kokoro-browser-csrf": "csrf-ok",
+    "content-type": "application/json",
+  }
+  const body = {
+    operation: "identity.verify-email",
+    flowRef: "receipt-error-flow-12345678",
+  }
+  const prepared = await api.handle(new Request("https://site.example/api/account/prepare", {
+    method: "POST", headers, body: JSON.stringify(body),
+  }), "prepare")
+  return api.handle(new Request("https://site.example/api/account/recover", {
+    method: "POST",
+    headers: { ...headers, cookie: responseCookie(prepared) },
+    body: JSON.stringify(body),
+  }), "recover")
+}

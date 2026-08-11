@@ -1,6 +1,7 @@
 import "server-only"
 
 import type { OpaqueAuthSession } from "@kokoro/bff-runtime"
+import { PlatformPublicError } from "@kokoro/site-client/server"
 
 import type { SiteBffRuntime, SiteOneTimeCommand, SiteReauthenticationTarget } from "./index.js"
 import {
@@ -18,6 +19,7 @@ const COOKIE_CHUNK_BYTES = 3_500
 const MAXIMUM_COOKIE_CHUNKS = 4
 const FLOW_REF = /^[A-Za-z0-9_-]{16,96}$/u
 const POST_ACTIONS = new Set(["prepare", "execute", "recover"])
+const EXACT_RETRY_REQUIRED = Symbol("site-launch-exact-retry-required")
 
 type LaunchAction = "dashboard" | "prepare" | "execute" | "recover"
 
@@ -219,6 +221,22 @@ export function createSiteLaunchApi(input: Readonly<{
     now,
     nonce: input.nonce,
   })
+  const commandReceipt = async (
+    auth: OpaqueAuthSession | null,
+    commandId: string,
+    receiptRecoveryCapability?: string,
+  ) => {
+    try {
+      return await input.runtime.commandReceipt(auth, commandId, receiptRecoveryCapability)
+    } catch (error) {
+      if (
+        error instanceof PlatformPublicError &&
+        error.status === 404 &&
+        error.detail.code === "NOT_FOUND"
+      ) throw EXACT_RETRY_REQUIRED
+      throw error
+    }
+  }
 
   async function handle(request: Request, action: LaunchAction): Promise<Response> {
     const mutation = POST_ACTIONS.has(action)
@@ -310,8 +328,14 @@ export function createSiteLaunchApi(input: Readonly<{
       const state = vault.find(entries, requestedOperation, flowRef)
       if (state === undefined) return json({ state: "prepare_required" }, 409)
       if (action === "recover") {
-        if (["identity.register", "identity.resend-verification", "redemption.preview"].includes(requestedOperation)) {
-          // These commands intentionally have no receipt authority. The browser must repeat the
+        if ([
+          "identity.register",
+          "identity.resend-verification",
+          "identity.disable-totp",
+          "identity.revoke-sessions",
+          "redemption.preview",
+        ].includes(requestedOperation)) {
+          // These commands intentionally have no state-read receipt authority. The browser must repeat the
           // exact execute payload against the command already sealed in this flow.
           return json({ state: "exact_retry_required" }, 409)
         }
@@ -319,10 +343,13 @@ export function createSiteLaunchApi(input: Readonly<{
           const recovered = await input.runtime.recoverRedemption(auth as OpaqueAuthSession, state.command.idempotencyKey)
           return json(publicRedemption(recovered))
         }
-        const recovered = await input.runtime.commandReceipt(
-          auth,
+        const receiptRecoveryCapability = "receiptRecoveryCapability" in state.command
+          ? state.command.receiptRecoveryCapability
+          : undefined
+        const recovered = await commandReceipt(
+          receiptRecoveryCapability === undefined ? auth : null,
           state.command.commandId,
-          "receiptRecoveryCapability" in state.command ? state.command.receiptRecoveryCapability : undefined,
+          receiptRecoveryCapability,
         )
         return json(publicReceipt(recovered))
       }
@@ -372,7 +399,11 @@ export function createSiteLaunchApi(input: Readonly<{
             expectedOperationId: "reauthenticateIdentitySession" | "beginTotpEnrollment" | "regenerateRecoveryCodes",
             priorCommand: SiteOneTimeCommand,
           ) => {
-            const receipt = await input.runtime.commandReceipt(auth, priorCommand.commandId, priorCommand.receiptRecoveryCapability)
+            const receipt = await commandReceipt(
+              null,
+              priorCommand.commandId,
+              priorCommand.receiptRecoveryCapability,
+            )
             if (
               receipt.reconciliation.kind !== "superseding_ceremony_required" ||
               receipt.reconciliation.ceremony.operationId !== expectedOperationId
@@ -649,7 +680,10 @@ export function createSiteLaunchApi(input: Readonly<{
           return json(publicRedemption(response))
         }
       }
-    } catch {
+    } catch (error) {
+      if (error === EXACT_RETRY_REQUIRED) {
+        return json({ state: "exact_retry_required" }, 409)
+      }
       // Intentionally does not stringify the request, Code, credentials, command identity, or upstream error.
       return unavailable()
     }
