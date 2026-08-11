@@ -53,10 +53,9 @@ deployables:
     processRole: independently-released-site
     artifactSource: independent-site-project
     artifactReferencePolicy: exact-site-release-oci-digest
-    activationAuthorized: false
-    runtimeTraffic: false
-    launchReadiness: blocked
-    launchBlockers:
-      - no-exact-site-release-selected
+    activationAuthorized: true
+    runtimeTraffic: true
+    launchReadiness: ready
+    launchBlockers: []
     releaseOwner: site-project
     rollbackAuthority: site-project-previous-verified-oci-digest

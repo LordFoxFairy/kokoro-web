@@ -46,8 +46,10 @@ pnpm run build:admin
 pnpm run build:admin:image
 ```
 
-The Web-owned [`deployables.yaml`](../../deployables.yaml) authorizes `admin-web` and keeps the
-unselected independent Site release blocked. `/api/health/live` is process-only;
+The Web-owned [`deployables.yaml`](../../deployables.yaml) keeps `admin-web` as a separate ready
+deployable and authorizes one fixed core Site release for the single-machine launch. This inventory
+does not merge Admin into the Site artifact or claim full-production or Kubernetes readiness.
+`/api/health/live` is process-only;
 `/api/health/ready` loads the complete private configuration and requires a bounded mTLS HTTP/2
 settings exchange with Platform Admin. Both responses are no-store and readiness failures disclose
 only a stable unavailable state. See [`deploy/README.md`](deploy/README.md) for immutable promotion,

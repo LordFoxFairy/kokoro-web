@@ -35,30 +35,39 @@ test("Admin is a dedicated Next standalone image and never reuses the reference 
   assert.doesNotMatch(ci, /docker build[^\n]*reference-site/u);
 });
 
-test("Admin owner inventory authorizes one digest-only, non-privileged read-only deployable", async () => {
+test("Web owner inventory authorizes Admin and the fixed core Site without promoting another Site", async () => {
   const inventory = await source("deployables.yaml");
+  const siteMarker = "  - id: independent-site-release";
+  const siteOffset = inventory.indexOf(siteMarker);
+  assert.notEqual(siteOffset, -1);
+  const adminInventory = inventory.slice(0, siteOffset);
+  const siteInventory = inventory.slice(siteOffset);
 
   assert.match(inventory, /^schemaVersion: 1$/mu);
-  assert.match(inventory, /^  dockerfile: apps\/admin\/Dockerfile$/mu);
-  assert.match(inventory, /^  - id: admin-web$/mu);
-  assert.match(inventory, /^    artifactReferencePolicy: oci-digest-only$/mu);
-  assert.match(inventory, /^    activationAuthorized: true$/mu);
-  assert.match(inventory, /^    runtimeTraffic: true$/mu);
-  assert.match(inventory, /^    launchReadiness: ready$/mu);
-  assert.match(inventory, /^      runAsUser: 10001$/mu);
-  assert.match(inventory, /^      runAsGroup: 10001$/mu);
-  assert.match(inventory, /^      readOnlyRootFilesystem: true$/mu);
-  assert.match(inventory, /^      allowPrivilegeEscalation: false$/mu);
-  assert.match(inventory, /^      dropCapabilities: \[ALL\]$/mu);
-  assert.match(inventory, /^      writableTmpfs: \[\/tmp\]$/mu);
-  assert.match(inventory, /liveness: \{ path: \/api\/health\/live, port: http, scheme: HTTP \}/u);
-  assert.match(inventory, /readiness: \{ path: \/api\/health\/ready, port: http, scheme: HTTP \}/u);
-  assert.match(inventory, /^  - id: independent-site-release$/mu);
-  assert.match(inventory, /^    artifactSource: independent-site-project$/mu);
-  assert.match(inventory, /^    activationAuthorized: false$/mu);
-  assert.match(inventory, /^    runtimeTraffic: false$/mu);
-  assert.match(inventory, /^    launchReadiness: blocked$/mu);
-  assert.match(inventory, /^      - no-exact-site-release-selected$/mu);
+  assert.match(adminInventory, /^  dockerfile: apps\/admin\/Dockerfile$/mu);
+  assert.match(adminInventory, /^  - id: admin-web$/mu);
+  assert.match(adminInventory, /^    artifactReferencePolicy: oci-digest-only$/mu);
+  assert.match(adminInventory, /^    activationAuthorized: true$/mu);
+  assert.match(adminInventory, /^    runtimeTraffic: true$/mu);
+  assert.match(adminInventory, /^    launchReadiness: ready$/mu);
+  assert.match(adminInventory, /^      runAsUser: 10001$/mu);
+  assert.match(adminInventory, /^      runAsGroup: 10001$/mu);
+  assert.match(adminInventory, /^      readOnlyRootFilesystem: true$/mu);
+  assert.match(adminInventory, /^      allowPrivilegeEscalation: false$/mu);
+  assert.match(adminInventory, /^      dropCapabilities: \[ALL\]$/mu);
+  assert.match(adminInventory, /^      writableTmpfs: \[\/tmp\]$/mu);
+  assert.match(adminInventory, /liveness: \{ path: \/api\/health\/live, port: http, scheme: HTTP \}/u);
+  assert.match(adminInventory, /readiness: \{ path: \/api\/health\/ready, port: http, scheme: HTTP \}/u);
+  assert.match(siteInventory, /^  - id: independent-site-release$/mu);
+  assert.match(siteInventory, /^    artifactSource: independent-site-project$/mu);
+  assert.match(siteInventory, /^    activationAuthorized: true$/mu);
+  assert.match(siteInventory, /^    runtimeTraffic: true$/mu);
+  assert.match(siteInventory, /^    launchReadiness: ready$/mu);
+  assert.match(siteInventory, /^    launchBlockers: \[\]$/mu);
+  assert.deepEqual([...inventory.matchAll(/^  - id: ([a-z0-9-]+)$/gmu)].map((match) => match[1]), [
+    "admin-web",
+    "independent-site-release",
+  ]);
   assert.doesNotMatch(inventory, /reference-site|latest|compatibility|fallback/iu);
 });
 

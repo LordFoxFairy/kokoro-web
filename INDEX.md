@@ -33,9 +33,9 @@ packages/
 
 正式 Next.js surfaces 锁在 Next 16.2.12 / React 19.2.8。根仓不提供默认 `dev`/`start`；
 `build:site` 验证 Site factory、共享依赖与 reference fixture，`build:admin` 独立验证 Admin。
-仓根 `deployables.yaml` 是 Web-owned 发布库存：`admin-web` 绑定独立 standalone Dockerfile、
-digest-only 发布、非特权只读运行和依赖感知 readiness；未绑定精确 Site release 时
-`independent-site-release` 保持 blocked，reference fixture 永不替代生产 Site 制品。
+仓根 `deployables.yaml` 是 Web-owned 发布库存：`admin-web` 继续作为独立 standalone 管理面，绑定
+digest-only 发布、非特权只读运行和依赖感知 readiness；`independent-site-release` 只授权固定单机上的一个
+core Site release，reference fixture 永不替代该制品。两者仍是分离的 deployable。
 
 ### Fixed core Site release
 
@@ -60,8 +60,9 @@ source digest；运行时 `webArtifactDigest` 才是 Buildx 返回的 OCI manife
 allowlist，并以空 npm user/global config 隔离宿主配置；registry 只通过必填的绝对 `--docker-config`
 及其中配置的 credential helper 取凭据。
 
-该离线构建与推送不改变库存 readiness；在真实推送镜像和 latest-head E2E 资格证据完成前，
-`independent-site-release` 仍保持 `blocked`。
+`independent-site-release` 的 `ready` 只表示这条固定 Site 制品路径已获 Web owner 授权。它不表示整个系统已经完成
+latest-head E2E、全量 production 资格或 Kubernetes 交付，也不开放动态 Site fleet；系统上线仍由 Root 的精确镜像
+选择、启动与真实核心旅程验收决定。
 
 ## Non-responsibilities
 
