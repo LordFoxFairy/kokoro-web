@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { createHash, generateKeyPairSync, sign } from "node:crypto";
-import { mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
@@ -19,7 +19,7 @@ const exactRoutes = ["/", "/_global-error", "/_not-found", "/account", "/api/acc
 const allowedManifests = () => ({ appPaths: Object.fromEntries(exactRoutes.map((route) => [`${route === "/" ? "" : route}/page`.replace("//", "/"), "app.js"])), appPathRoutes: Object.fromEntries(exactRoutes.map((route) => [`${route === "/" ? "/page" : `${route}/page`}`, route])), middleware: { version: 3, middleware: {}, functions: {}, sortedMiddleware: [] } });
 
 async function createSignedContractFixture(directory) {
-  const metadata = (await import(pathToFileURL(resolve(webRoot, "packages/site-client/dist/generated/contracts/openapi/platform-public/contract-metadata.js")))).PLATFORM_PUBLIC_CONTRACT_METADATA;
+  const metadata = (await import(pathToFileURL(resolve(webRoot, "packages/site-client/src/generated/contracts/openapi/platform-public/contract-metadata.ts")))).PLATFORM_PUBLIC_CONTRACT_METADATA;
   const { privateKey, publicKey } = generateKeyPairSync("ed25519");
   const signingKeyId = "core-release-fixture-key";
   const floorSignature = sign(null, Buffer.from(`${metadata.schemaId}:${metadata.contractVersion}:${metadata.sourceDigestSha256}`), privateKey).toString("base64url");
@@ -121,7 +121,7 @@ test("default core assembly is isolated: a clean archive supplies real scaffold,
     const signed = await createSignedContractFixture(temporary);
     const parsed = release.parseCoreSiteDefinition(JSON.stringify({ ...definition(), contractFloor: signed.contractFloor }));
     const assembled = await release.assembleCoreSite({ definition: parsed, directory: join(temporary, "site"), contractKeyringPath: signed.keyringPath });
-    assert.equal(assembled.packageArtifacts.length, 11); assert.deepEqual(assembled.routes, exactRoutes); assert.match(assembled.finalSourceClosureSha256, /^[0-9a-f]{64}$/u);
+    assert.equal(assembled.packageArtifacts.length, 11); assert.deepEqual(assembled.builtPackageNames, [...packageArtifacts.map(({ name }) => name), "@kokoro/site-scaffold"].sort()); assert.deepEqual(assembled.routes, exactRoutes); assert.match(assembled.finalSourceClosureSha256, /^[0-9a-f]{64}$/u);
     assert.match(await readFile(join(assembled.directory, "src/app/page.tsx"), "utf8"), /attachmentsEnabled=\{false\}/u);
     const metadataPath = join(assembled.directory, "src/app/api/release/metadata/route.ts");
     const metadata = await readFile(metadataPath, "utf8"); assert.doesNotMatch(metadata, /platform|session|credential/iu);
@@ -145,11 +145,18 @@ test("default core assembly is isolated: a clean archive supplies real scaffold,
 test("Buildx publication races safely into one same-directory hard-linked report with complete digest-bound fields", async () => {
   const temporary = await mkdtemp(join(tmpdir(), "core-site-publish-")); const report = join(temporary, "report.json");
   const reportBody = { schemaVersion: 1, kind: "kokoro.core-site-release", platform: "linux/amd64", webCommit: "a".repeat(40), siteKey: "core-site", releaseId: "core.2026.08.11.001", finalSourceClosureSha256: "b".repeat(64), lockSha256: "c".repeat(64), packageArtifacts: Object.fromEntries(packageArtifacts.map(({ name, version, sha256 }) => [name, { version, sha256 }])), routes: exactRoutes };
-  const run = async (_command, args) => writeFile(args[args.indexOf("--metadata-file") + 1], JSON.stringify({ "containerimage.digest": `sha256:${"e".repeat(64)}` }));
+  const invocations = [];
+  const run = async (command, args, environment) => { invocations.push({ command, args, environment }); await writeFile(args[args.indexOf("--metadata-file") + 1], JSON.stringify({ "containerimage.digest": `sha256:${"e".repeat(64)}` })); };
   try {
     const settled = await Promise.allSettled([release.publishCoreSite({ directory: temporary, image: "registry.example/kokoro/core:build-1", platform: "linux/amd64", dockerConfig: "/controlled/docker", report, reportBody, run }), release.publishCoreSite({ directory: temporary, image: "registry.example/kokoro/core:build-1", platform: "linux/amd64", dockerConfig: "/controlled/docker", report, reportBody, run })]);
     assert.equal(settled.filter(({ status }) => status === "fulfilled").length, 1); assert.equal(settled.filter(({ status }) => status === "rejected").length, 1);
     const published = JSON.parse(await readFile(report, "utf8")); assert.equal(published.image, `registry.example/kokoro/core@sha256:${"e".repeat(64)}`); assert.equal(published.webArtifactDigest, "e".repeat(64)); assert.deepEqual(published.packageArtifacts, reportBody.packageArtifacts); assert.deepEqual(published.routes, exactRoutes); assert.equal((await stat(report)).mode & 0o777, 0o600); assert.deepEqual((await readdir(temporary)).filter((name) => name.startsWith(".report.json.")), []);
+    for (const invocation of invocations) {
+      assert.equal(invocation.command, "docker");
+      assert.deepEqual(invocation.args, ["buildx", "build", "--push", "--platform", "linux/amd64", "--metadata-file", invocation.args[6], "--tag", "registry.example/kokoro/core:build-1", temporary]);
+      assert.deepEqual(invocation.environment, release.coreReleaseChildEnvironment("docker", { dockerConfig: "/controlled/docker" }));
+      for (const key of ["TOKEN", "NPM_TOKEN", "AWS_SECRET_ACCESS_KEY", "GOOGLE_APPLICATION_CREDENTIALS", "AZURE_CLIENT_SECRET", "HOME"]) assert.equal(invocation.environment[key], undefined);
+    }
   } finally { await rm(temporary, { recursive: true, force: true }); }
 });
 
@@ -163,4 +170,18 @@ test("CLI keys are exact and Docker config is mandatory before publication", asy
   assert.throws(() => release.parseCoreReleaseArguments([...valid, "--unknown", "value"]), /unknown/u);
   assert.throws(() => release.parseCoreReleaseArguments(valid.filter((value, index) => value !== "--docker-config" && valid[index - 1] !== "--docker-config")), /docker-config/u);
   await assert.rejects(release.publishCoreSite({ directory: tmpdir(), image: "registry.example/core:tag", platform: "linux/amd64", report: join(tmpdir(), `missing-docker-${Date.now()}.json`), reportBody: {}, run: async () => assert.fail("Buildx must not run") }), /dockerConfig/u);
+});
+
+test("focused release suite passes from a clean tracked archive without ignored dist", { skip: process.env.KOKORO_CORE_CLEAN_ARCHIVE_TEST === "1", timeout: 240_000 }, async () => {
+  const temporary = await mkdtemp(join(tmpdir(), "core-clean-focused-")); const archive = join(temporary, "web.tar"); const cleanRoot = join(temporary, "web");
+  try {
+    const commit = (await git(webRoot, ["rev-parse", "HEAD"])).stdout.trim();
+    const { stdout } = await execFileAsync("git", ["archive", "--format=tar", commit], { cwd: webRoot, env: { PATH: process.env.PATH, GIT_NO_REPLACE_OBJECTS: "1" }, encoding: "buffer", maxBuffer: 64 * 1024 * 1024 });
+    await writeFile(archive, stdout); await mkdir(cleanRoot); await execFileAsync("tar", ["-xf", archive, "-C", cleanRoot]);
+    await initializeGitFixture(cleanRoot); await git(cleanRoot, ["add", "--all"]); await git(cleanRoot, ["commit", "--amend", "--no-edit"]);
+    await assert.rejects(stat(join(cleanRoot, "packages/site-client/dist")));
+    const environment = { ...process.env, PATH: `${resolve(process.execPath, "..")}:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin`, KOKORO_CORE_CLEAN_ARCHIVE_TEST: "1" };
+    await execFileAsync("corepack", ["pnpm", "install", "--offline", "--frozen-lockfile"], { cwd: cleanRoot, env: environment, maxBuffer: 64 * 1024 * 1024 });
+    await execFileAsync("corepack", ["pnpm", "exec", "node", "--test", "test/repository/core-site-release.test.mjs"], { cwd: cleanRoot, env: environment, maxBuffer: 64 * 1024 * 1024 });
+  } finally { await rm(temporary, { recursive: true, force: true }); }
 });
