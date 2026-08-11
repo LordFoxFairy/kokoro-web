@@ -43,7 +43,11 @@ digest-only 发布、非特权只读运行和依赖感知 readiness；未绑定�
 在 OS 临时目录中生成一个固定的单 Site 工件：只保留登录、Account/兑换、Chat、Session proxy 和 health
 路由；Media、Memory、Payment 与附件 UI 均为关闭状态。该命令只接受精确的 Buildx
 `containerimage.digest`，报告只保存 `registry/repository@sha256:<64-hex>`。生成 Site 的
-`KOKORO_WEB_ARTIFACT_DIGEST` 是最终 OCI manifest digest（不使用 mutable tag）。
+`KOKORO_WEB_ARTIFACT_DIGEST` 由部署环境设置为最终 OCI manifest digest（不使用 mutable tag）。定义包含稳定
+`siteId`，但不接受操作员提供的 package archive；builder 只从 HEAD 的 tracked-clean `git archive` 在临时目录
+offline/frozen 安装、构建 scaffold 并打包固定 11-package closure。核心 Site 另暴露静态
+`/api/release/metadata` 作为 fixed_http bootstrap identity，返回严格七字段 release metadata；它不替代
+`/api/health/ready` 的依赖就绪检查。
 
 该离线构建与推送不改变库存 readiness；在真实推送镜像和 latest-head E2E 资格证据完成前，
 `independent-site-release` 仍保持 `blocked`。

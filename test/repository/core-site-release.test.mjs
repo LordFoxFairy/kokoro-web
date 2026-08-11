@@ -10,9 +10,9 @@ const webRoot = resolve(import.meta.dirname, "../..");
 const release = await import(new URL("../../scripts/release-core-site.mjs", import.meta.url));
 const sha = (value) => createHash("sha256").update(value).digest("hex");
 const signature = "a".repeat(86);
-const packageArtifacts = [{ name: "@kokoro/chat-app", version: "1.0.0", sha256: "b".repeat(64) }, { name: "@kokoro/site-app-kit", version: "1.0.0", sha256: "c".repeat(64) }];
+const packageArtifacts = ["site-app-kit", "site-client", "session-client", "bff-runtime", "site-runtime-node", "chat-surface", "asset-client", "chat-app", "site-bff", "account-app", "media-app"].map((name, index) => ({ name: `@kokoro/${name}`, version: "1.0.0", sha256: "abcdef"[index % 6].repeat(64) }));
 const definition = () => ({ schemaVersion: 1, site: { siteId: "site:core", siteKey: "core-site", packageName: "@kokoro/core-site", displayName: "Kokoro" }, release: { releaseId: "core.2026.08.11.001", profileRevision: "core.v1" }, domain: { hostname: "kokoro.example", environment: "production" }, deployment: { provider: "container-registry", projectRef: "kokoro/core", region: "us-east" }, contractFloor: { contract: "platform-public-v1", version: "1", schemaSha256: "a".repeat(64), signature, signingKeyId: "release-key-1" } });
-const exactRoutes = ["/", "/_not-found", "/account", "/api/account/[action]", "/api/auth/[...nextauth]", "/api/auth/delivery-state", "/api/health/live", "/api/health/ready", "/api/release/metadata", "/api/session/[...path]", "/login", "/register", "/verify-email"];
+const exactRoutes = ["/", "/_global-error", "/_not-found", "/account", "/api/account/[action]", "/api/auth/[...nextauth]", "/api/auth/delivery-state", "/api/health/live", "/api/health/ready", "/api/release/metadata", "/api/session/[...path]", "/login", "/register", "/verify-email"];
 const allowedManifests = () => ({ appPaths: Object.fromEntries(exactRoutes.map((route) => [`${route === "/" ? "" : route}/page`.replace("//", "/"), "app.js"])), appPathRoutes: Object.fromEntries(exactRoutes.map((route) => [`${route === "/" ? "/page" : `${route}/page`}`, route])), middleware: { version: 3, middleware: {}, functions: {}, sortedMiddleware: [] } });
 
 async function createSignedContractFixture(directory) {

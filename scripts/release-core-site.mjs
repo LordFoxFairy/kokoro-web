@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
-import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
-import { constants, openSync, closeSync, fsyncSync } from "node:fs";
-import { lstat, mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { closeSync, constants, fsyncSync, openSync } from "node:fs";
+import { link, lstat, mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -16,252 +16,67 @@ const IMAGE = /^(?<repository>[a-z0-9][a-z0-9._/-]*[a-z0-9])(?::(?<tag>[A-Za-z0-
 const HOSTNAME = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/u;
 const PACKAGE = /^@[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._-]*$/u;
 const SITE_KEY = /^[a-z][a-z0-9-]{1,62}$/u;
+const SITE_ID = /^site:[A-Za-z0-9._-]{1,120}$/u;
 const RELEASE = /^[A-Za-z0-9][A-Za-z0-9._-]{2,127}$/u;
-const REQUIRED_ROUTES = new Set([
-  "/", "/account", "/login", "/api/account/[action]", "/api/auth/[...nextauth]", "/api/health/live", "/api/health/ready", "/api/session/[...path]",
-]);
-const FORBIDDEN_ROUTE_PREFIXES = ["/studio", "/library", "/memory", "/payment", "/api/media", "/api/assets", "/api/memory", "/api/payment"];
+const CORE_PACKAGE_NAMES = ["site-app-kit", "site-client", "session-client", "bff-runtime", "site-runtime-node", "chat-surface", "asset-client", "chat-app", "site-bff", "account-app", "media-app"];
+const CORE_ROUTES = ["/", "/_global-error", "/_not-found", "/account", "/api/account/[action]", "/api/auth/[...nextauth]", "/api/auth/delivery-state", "/api/health/live", "/api/health/ready", "/api/release/metadata", "/api/session/[...path]", "/login", "/register", "/verify-email"];
+const CORE_ROUTE_SET = new Set(CORE_ROUTES);
 
-function record(value, field = "value") {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) throw new TypeError(`${field} must be an object`);
-  return value;
-}
-function exactKeys(value, keys, field) {
-  const actual = Object.keys(record(value, field)).sort();
-  const expected = [...keys].sort();
-  if (actual.length !== expected.length || actual.some((key, index) => key !== expected[index])) throw new TypeError(`${field} has unknown or missing fields`);
-}
-function text(value, field, pattern = undefined) {
-  if (typeof value !== "string" || value.trim() === "" || value !== value.trim() || (pattern !== undefined && !pattern.test(value))) throw new TypeError(`${field} is invalid`);
-  return value;
-}
+function record(value, field = "value") { if (value === null || typeof value !== "object" || Array.isArray(value)) throw new TypeError(`${field} must be an object`); return value; }
+function exactKeys(value, keys, field) { const actual = Object.keys(record(value, field)).sort(); const expected = [...keys].sort(); if (actual.length !== expected.length || actual.some((key, index) => key !== expected[index])) throw new TypeError(`${field} has unknown or missing fields`); }
+function text(value, field, pattern = undefined) { if (typeof value !== "string" || value.trim() === "" || value !== value.trim() || (pattern !== undefined && !pattern.test(value))) throw new TypeError(`${field} is invalid`); return value; }
 function sha(value, field) { return text(value, field, SHA256); }
-function canonicalJson(value) {
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
-  if (value !== null && typeof value === "object") return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(",")}}`;
-  return JSON.stringify(value);
-}
 function digest(value) { return createHash("sha256").update(value).digest("hex"); }
-function ensureNoProfileFields(value) {
-  for (const key of ["provider", "media", "memory", "payment", "products", "enabledProductIds", "sites"]) {
-    if (Object.hasOwn(value, key)) throw new TypeError(`core definition forbids ${key}`);
-  }
-}
+function canonicalJson(value) { if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`; if (value !== null && typeof value === "object") return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(",")}}`; return JSON.stringify(value); }
+function ensureNoProfileFields(value) { for (const key of ["provider", "media", "memory", "payment", "products", "enabledProductIds", "sites", "packages"]) if (Object.hasOwn(value, key)) throw new TypeError(`core definition forbids ${key}`); }
+function pnpmCommand() { return process.platform === "win32" ? "pnpm.cmd" : "pnpm"; }
+function safePathEnvironment(env = {}) { return { ...process.env, ...env, PATH: `${dirname(process.execPath)}:${process.env.PATH ?? ""}`, CI: "1", NEXT_TELEMETRY_DISABLED: "1" }; }
 
-/** Parse the fixed, single-Site release definition. */
 export function parseCoreSiteDefinition(bytes) {
-  let raw;
-  try { raw = JSON.parse(Buffer.isBuffer(bytes) ? bytes.toString("utf8") : bytes); } catch { throw new TypeError("core definition must be JSON"); }
-  exactKeys(raw, ["schemaVersion", "site", "release", "domain", "deployment", "contractFloor", "packages"], "definition");
-  ensureNoProfileFields(raw);
+  let raw; try { raw = JSON.parse(Buffer.isBuffer(bytes) ? bytes.toString("utf8") : bytes); } catch { throw new TypeError("core definition must be JSON"); }
+  exactKeys(raw, ["schemaVersion", "site", "release", "domain", "deployment", "contractFloor"], "definition"); ensureNoProfileFields(raw);
   if (raw.schemaVersion !== 1) throw new TypeError("definition.schemaVersion must be 1");
-  exactKeys(raw.site, ["siteKey", "packageName", "displayName"], "site");
-  exactKeys(raw.release, ["releaseId", "profileRevision"], "release");
-  exactKeys(raw.domain, ["hostname", "environment"], "domain");
-  exactKeys(raw.deployment, ["provider", "projectRef", "region"], "deployment");
-  exactKeys(raw.contractFloor, ["contract", "version", "schemaSha256", "signature", "signingKeyId"], "contractFloor");
-  const site = Object.freeze({
-    siteKey: text(raw.site.siteKey, "site.siteKey", SITE_KEY),
-    packageName: text(raw.site.packageName, "site.packageName", PACKAGE),
-    displayName: text(raw.site.displayName, "site.displayName"),
-  });
-  const release = Object.freeze({ releaseId: text(raw.release.releaseId, "release.releaseId", RELEASE), profileRevision: text(raw.release.profileRevision, "release.profileRevision", RELEASE) });
-  const hostname = text(raw.domain.hostname, "domain.hostname").toLowerCase();
-  if (!HOSTNAME.test(hostname) || hostname === "localhost") throw new TypeError("domain.hostname must be a production DNS hostname");
-  if (raw.domain.environment !== "production") throw new TypeError("core domain must be production");
-  const deployment = Object.freeze({
-    provider: text(raw.deployment.provider, "deployment.provider", /^(?:container-registry|oci)$/u),
-    projectRef: text(raw.deployment.projectRef, "deployment.projectRef", /^[A-Za-z0-9][A-Za-z0-9._/-]{1,127}$/u),
-    region: text(raw.deployment.region, "deployment.region", /^[a-z][a-z0-9-]{1,62}$/u),
-  });
-  const contractFloor = Object.freeze({
-    contract: raw.contractFloor.contract === "platform-public-v1" ? raw.contractFloor.contract : (() => { throw new TypeError("contractFloor.contract is invalid"); })(),
-    version: raw.contractFloor.version === "1" ? raw.contractFloor.version : (() => { throw new TypeError("contractFloor.version is invalid"); })(),
-    schemaSha256: sha(raw.contractFloor.schemaSha256, "contractFloor.schemaSha256"),
-    signature: text(raw.contractFloor.signature, "contractFloor.signature", /^[A-Za-z0-9_-]{43,128}$/u),
-    signingKeyId: text(raw.contractFloor.signingKeyId, "contractFloor.signingKeyId", /^[A-Za-z0-9][A-Za-z0-9._-]{2,127}$/u),
-  });
-  if (!Array.isArray(raw.packages) || raw.packages.length === 0) throw new TypeError("packages must be a non-empty array");
-  const packageNames = new Set();
-  const packages = raw.packages.map((entry, index) => {
-    exactKeys(entry, ["name", "version", "archivePath", "sha256"], `packages[${index}]`);
-    const name = text(entry.name, `packages[${index}].name`, PACKAGE);
-    if (packageNames.has(name)) throw new TypeError(`duplicate package ${name}`);
-    packageNames.add(name);
-    return Object.freeze({ name, version: text(entry.version, `packages[${index}].version`), archivePath: text(entry.archivePath, `packages[${index}].archivePath`), sha256: sha(entry.sha256, `packages[${index}].sha256`) });
-  }).sort((left, right) => left.name.localeCompare(right.name));
-  return Object.freeze({ schemaVersion: 1, site, release, domain: Object.freeze({ hostname, environment: "production" }), deployment, contractFloor, packages: Object.freeze(packages) });
+  exactKeys(raw.site, ["siteId", "siteKey", "packageName", "displayName"], "site"); exactKeys(raw.release, ["releaseId", "profileRevision"], "release"); exactKeys(raw.domain, ["hostname", "environment"], "domain"); exactKeys(raw.deployment, ["provider", "projectRef", "region"], "deployment"); exactKeys(raw.contractFloor, ["contract", "version", "schemaSha256", "signature", "signingKeyId"], "contractFloor");
+  const hostname = text(raw.domain.hostname, "domain.hostname").toLowerCase(); if (!HOSTNAME.test(hostname) || hostname === "localhost") throw new TypeError("domain.hostname must be a production DNS hostname"); if (raw.domain.environment !== "production") throw new TypeError("core domain must be production");
+  return Object.freeze({ schemaVersion: 1, site: Object.freeze({ siteId: text(raw.site.siteId, "site.siteId", SITE_ID), siteKey: text(raw.site.siteKey, "site.siteKey", SITE_KEY), packageName: text(raw.site.packageName, "site.packageName", PACKAGE), displayName: text(raw.site.displayName, "site.displayName") }), release: Object.freeze({ releaseId: text(raw.release.releaseId, "release.releaseId", RELEASE), profileRevision: text(raw.release.profileRevision, "release.profileRevision", RELEASE) }), domain: Object.freeze({ hostname, environment: "production" }), deployment: Object.freeze({ provider: text(raw.deployment.provider, "deployment.provider", /^(?:container-registry|oci)$/u), projectRef: text(raw.deployment.projectRef, "deployment.projectRef", /^[A-Za-z0-9][A-Za-z0-9._/-]{1,127}$/u), region: text(raw.deployment.region, "deployment.region", /^[a-z][a-z0-9-]{1,62}$/u) }), contractFloor: Object.freeze({ contract: raw.contractFloor.contract === "platform-public-v1" ? raw.contractFloor.contract : (() => { throw new TypeError("contractFloor.contract is invalid"); })(), version: raw.contractFloor.version === "1" ? raw.contractFloor.version : (() => { throw new TypeError("contractFloor.version is invalid"); })(), schemaSha256: sha(raw.contractFloor.schemaSha256, "contractFloor.schemaSha256"), signature: text(raw.contractFloor.signature, "contractFloor.signature", /^[A-Za-z0-9_-]{43,128}$/u), signingKeyId: text(raw.contractFloor.signingKeyId, "contractFloor.signingKeyId", /^[A-Za-z0-9][A-Za-z0-9._-]{2,127}$/u) }) });
 }
 
-/** Return the canonical, archive-location-independent source closure and digest. */
 export function coreSiteSourceClosure(input) {
-  const definition = typeof input === "string" || Buffer.isBuffer(input) ? parseCoreSiteDefinition(input) : input;
-  const closure = {
-    schemaVersion: definition.schemaVersion,
-    site: definition.site,
-    release: definition.release,
-    domain: definition.domain,
-    deployment: definition.deployment,
-    contractFloor: definition.contractFloor,
-    packages: [...definition.packages].map(({ name, version, sha256: packageSha256 }) => ({ name, version, sha256: packageSha256 })).sort((left, right) => left.name.localeCompare(right.name)),
-  };
-  const canonical = canonicalJson(closure);
-  return Object.freeze({ canonical, sha256: digest(canonical) });
+  const definition = typeof input?.definition === "object" ? input.definition : parseCoreSiteDefinition(input);
+  const packages = input?.packages;
+  if (!Array.isArray(packages) || packages.length !== CORE_PACKAGE_NAMES.length) throw new TypeError("core closure requires the exact package closure");
+  const seen = new Set(); const canonicalPackages = packages.map((entry, index) => { exactKeys(entry, ["name", "version", "sha256"], `packages[${index}]`); const name = text(entry.name, `packages[${index}].name`, PACKAGE); if (seen.has(name)) throw new TypeError(`duplicate package ${name}`); seen.add(name); return { name, version: text(entry.version, `packages[${index}].version`), sha256: sha(entry.sha256, `packages[${index}].sha256`) }; }).sort((left, right) => left.name.localeCompare(right.name));
+  if (canonicalPackages.map(({ name }) => name).join(",") !== CORE_PACKAGE_NAMES.map((name) => `@kokoro/${name}`).sort().join(",")) throw new TypeError("core closure package set is not exact");
+  const canonical = canonicalJson({ schemaVersion: definition.schemaVersion, site: definition.site, release: definition.release, domain: definition.domain, deployment: definition.deployment, contractFloor: definition.contractFloor, packages: canonicalPackages });
+  return Object.freeze({ canonical, sha256: digest(canonical), packages: Object.freeze(canonicalPackages) });
 }
 
 function routeName(value) { return value.replace(/\/route$/u, "").replace(/\/page$/u, "") || "/"; }
-function routesFromManifest(manifest) {
-  const routes = new Set();
-  for (const [appPath, route] of Object.entries(record(manifest, "route manifest"))) {
-    if (typeof route === "string" && route.startsWith("/")) routes.add(route);
-    else if (typeof appPath === "string" && appPath.startsWith("/")) routes.add(routeName(appPath));
-  }
-  return routes;
-}
-/** Validate built Next manifests, never template source, against the fixed core route closure. */
-export function assertCoreSiteRoutes(manifests) {
-  exactKeys(manifests, ["appPaths", "appPathRoutes", "middleware"], "manifests");
-  record(manifests.middleware, "middleware");
-  const routes = new Set([...routesFromManifest(manifests.appPaths), ...routesFromManifest(manifests.appPathRoutes)]);
-  for (const route of REQUIRED_ROUTES) if (!routes.has(route)) throw new Error(`required core route missing: ${route}`);
-  for (const route of routes) {
-    const forbidden = FORBIDDEN_ROUTE_PREFIXES.find((prefix) => route === prefix || route.startsWith(`${prefix}/`));
-    if (forbidden !== undefined) throw new Error(`forbidden core route: ${route}`);
-  }
-  return [...routes].sort();
-}
+function routesFromManifest(manifest) { const routes = new Set(); for (const [appPath, route] of Object.entries(record(manifest, "route manifest"))) { if (typeof route === "string" && route.startsWith("/")) routes.add(route); else if (appPath.startsWith("/")) routes.add(routeName(appPath)); } return routes; }
+function assertEmptyRecord(value, field) { if (Object.keys(record(value, field)).length !== 0) throw new Error(`${field} must be empty`); }
+function assertMiddleware(manifest) { const value = record(manifest, "middleware manifest"); for (const key of Object.keys(value)) if (!["version", "middleware", "functions", "sortedMiddleware", "rewrites"].includes(key)) throw new Error(`middleware manifest has unexpected ${key}`); assertEmptyRecord(value.middleware, "middleware inventory"); assertEmptyRecord(value.functions, "middleware function inventory"); if (!Array.isArray(value.sortedMiddleware) || value.sortedMiddleware.length !== 0) throw new Error("middleware inventory must be empty"); if (value.rewrites !== undefined && (!Array.isArray(value.rewrites) || value.rewrites.length !== 0)) throw new Error("middleware rewrites must be empty"); }
+export function assertCoreSiteRoutes(manifests) { exactKeys(manifests, ["appPaths", "appPathRoutes", "middleware"], "manifests"); assertMiddleware(manifests.middleware); const appRoutes = routesFromManifest(manifests.appPaths); const routeManifestRoutes = routesFromManifest(manifests.appPathRoutes); for (const routes of [appRoutes, routeManifestRoutes]) { if (routes.size !== CORE_ROUTE_SET.size || [...routes].some((route) => !CORE_ROUTE_SET.has(route))) throw new Error(`core route closure mismatch: ${[...routes].sort().join(",")}`); } return [...CORE_ROUTES]; }
 
-/** Bind a mutable Buildx tag to the sole immutable digest metadata key. */
-export function exactImageReference(tag, metadata) {
-  const image = text(tag, "image", IMAGE);
-  const match = IMAGE.exec(image);
-  if (!match?.groups?.repository.includes("/")) throw new TypeError("image must name a registry/repository");
-  if (match?.groups?.tag === "latest") throw new TypeError("image tag must not be latest");
-  const rawDigest = record(metadata, "Buildx metadata")["containerimage.digest"];
-  if (typeof rawDigest !== "string" || !/^sha256:[0-9a-f]{64}$/u.test(rawDigest)) throw new TypeError("Buildx metadata has no exact containerimage.digest");
-  return `${match.groups.repository}@${rawDigest}`;
-}
-
-async function defaultRun(command, args, cwd, env = {}) {
-  await execFileAsync(command, args, { cwd, env: { ...process.env, CI: "1", NEXT_TELEMETRY_DISABLED: "1", ...env }, maxBuffer: 16 * 1024 * 1024 });
-}
-async function defaultCreateSiteProject(input) {
-  const module = await import(pathToFileURL(resolve(webRoot, "packages/site-scaffold/dist/scaffold.js")));
-  return module.createSiteProject(input);
-}
+export function exactImageReference(tag, metadata) { const image = text(tag, "image", IMAGE); const match = IMAGE.exec(image); if (!match?.groups?.repository.includes("/")) throw new TypeError("image must name a registry/repository"); if (match.groups.tag === "latest") throw new TypeError("image tag must not be latest"); const rawDigest = record(metadata, "Buildx metadata")["containerimage.digest"]; if (typeof rawDigest !== "string" || !/^sha256:[0-9a-f]{64}$/u.test(rawDigest)) throw new TypeError("Buildx metadata has no exact containerimage.digest"); return `${match.groups.repository}@${rawDigest}`; }
+async function run(command, args, cwd, env = {}) { return execFileAsync(command, args, { cwd, env: safePathEnvironment(env), maxBuffer: 64 * 1024 * 1024 }); }
 async function exists(path) { try { await lstat(path); return true; } catch (error) { if (error?.code === "ENOENT") return false; throw error; } }
+async function gitText(args) { const { stdout } = await run("git", args, webRoot); return stdout.trim(); }
 
-/** Create and verify a fixed core Site in an OS temporary directory. */
-export async function assembleCoreSite(input) {
-  const definition = input.definition;
-  const sourceClosure = coreSiteSourceClosure(definition);
-  const createSiteProject = input.createSiteProject ?? defaultCreateSiteProject;
-  const directory = resolve(input.directory);
-  if (await exists(directory)) throw new Error(`core Site target already exists: ${directory}`);
-  try {
-    await createSiteProject({
-      directory,
-      packageName: definition.site.packageName,
-      siteKey: definition.site.siteKey,
-      displayName: definition.site.displayName,
-      releaseId: definition.release.releaseId,
-      artifactSha256: sourceClosure.sha256,
-      profileRevision: definition.release.profileRevision,
-      domains: [definition.domain],
-      deployment: definition.deployment,
-      contractFloor: definition.contractFloor,
-      enabledProductIds: [],
-      packages: definition.packages,
-    });
-    for (const relative of ["src/app/studio/page.tsx", "src/app/library/page.tsx", "src/app/api/media/[[...path]]/route.ts", "src/app/api/assets/[[...path]]/route.ts"]) {
-      await rm(join(directory, relative), { force: true });
-    }
-    const chatPage = join(directory, "src/app/page.tsx");
-    const chatPageSource = await readFile(chatPage, "utf8");
-    if (!chatPageSource.includes("<ChatProduct")) throw new Error("generated core Site has no ChatProduct composition");
-    await writeFile(chatPage, chatPageSource.replace("<ChatProduct\n", "<ChatProduct\n      attachmentsEnabled={false}\n"), "utf8");
-    const verification = input.verify ?? verifyCoreSiteDirectory;
-    const verified = await verification(directory, input.contractKeyringPath);
-    return Object.freeze({ directory, sourceClosureSha256: sourceClosure.sha256, ...(verified ?? {}) });
-  } catch (error) {
-    await rm(directory, { recursive: true, force: true });
-    throw error;
-  }
-}
+async function assertCleanCheckout() { const status = await gitText(["status", "--porcelain", "--untracked-files=no"]); if (status !== "") throw new Error("core release requires a tracked-clean Web checkout"); return gitText(["rev-parse", "HEAD"]); }
+async function cleanSnapshot(root) { const commit = await assertCleanCheckout(); const archivePath = join(root, "web-head.tar"); const snapshot = join(root, "snapshot"); const { stdout } = await run("git", ["archive", "--format=tar", "HEAD"], webRoot); await mkdir(snapshot, { mode: 0o700 }); await writeFile(archivePath, stdout); await run("tar", ["-xf", archivePath, "-C", snapshot], root); await rm(archivePath); return { commit, snapshot }; }
+async function packPackage(snapshot, archiveDirectory, shortName) { await run(pnpmCommand(), ["--filter", `@kokoro/${shortName}`, "pack", "--pack-destination", archiveDirectory], snapshot); const archive = (await readdir(archiveDirectory)).filter((name) => name.endsWith(".tgz") && name.includes(shortName)).sort().at(-1); if (archive === undefined) throw new Error(`core package archive missing: ${shortName}`); const archivePath = join(archiveDirectory, archive); const manifest = JSON.parse(await readFile(join(snapshot, "packages", shortName, "package.json"), "utf8")); return Object.freeze({ name: `@kokoro/${shortName}`, version: text(manifest.version, `package ${shortName} version`), archivePath, sha256: digest(await readFile(archivePath)) }); }
+export async function createCorePackageClosure(temporaryRoot) { const { commit, snapshot } = await cleanSnapshot(temporaryRoot); const archives = join(temporaryRoot, "packages"); await mkdir(archives, { mode: 0o700 }); await run(pnpmCommand(), ["install", "--offline", "--frozen-lockfile"], snapshot); await run(pnpmCommand(), ["--filter", "@kokoro/site-scaffold", "build"], snapshot); const packages = []; for (const shortName of CORE_PACKAGE_NAMES) packages.push(await packPackage(snapshot, archives, shortName)); const scaffold = await import(pathToFileURL(join(snapshot, "packages/site-scaffold/dist/scaffold.js"))); return Object.freeze({ commit, snapshot, packages: Object.freeze(packages), createSiteProject: scaffold.createSiteProject }); }
 
-async function verifyCoreSiteDirectory(directory, contractKeyringPath) {
-  const keyring = contractKeyringPath === undefined ? undefined : await readFile(contractKeyringPath, "utf8");
-  const run = defaultRun;
-  const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
-  await run(pnpm, ["install", "--offline"], directory);
-  await run(pnpm, ["artifact:verify"], directory, keyring === undefined ? {} : { KOKORO_CONTRACT_KEYRING_JSON: keyring });
-  await run(pnpm, ["typecheck"], directory);
-  await run(pnpm, ["test"], directory);
-  await run(pnpm, ["build"], directory);
-  const [appPaths, appPathRoutes, middleware] = await Promise.all([
-    readFile(join(directory, ".next/server/app-paths-manifest.json"), "utf8").then(JSON.parse),
-    readFile(join(directory, ".next/app-path-routes-manifest.json"), "utf8").then(JSON.parse),
-    readFile(join(directory, ".next/server/middleware-manifest.json"), "utf8").then(JSON.parse),
-  ]);
-  const routes = assertCoreSiteRoutes({ appPaths, appPathRoutes, middleware });
-  return { routes, lockSha256: digest(await readFile(join(directory, "pnpm-lock.yaml"))) };
-}
+function metadataRouteSource(siteId) { return `import { NextResponse } from "next/server";\nimport { site } from "../../../site-bootstrap";\n\nexport const runtime = "nodejs";\nexport const dynamic = "force-dynamic";\n\nconst siteId = ${JSON.stringify(siteId)};\nconst digest = /^[0-9a-f]{64}$/u;\nfunction required(name: string): string {\n  const value = process.env[name];\n  if (typeof value !== "string" || value.trim() === "") throw new Error("RELEASE_METADATA_CONFIG_INVALID");\n  return value;\n}\n\nexport async function GET(): Promise<Response> {\n  const webArtifactDigest = required("KOKORO_WEB_ARTIFACT_DIGEST");\n  if (!digest.test(webArtifactDigest)) throw new Error("RELEASE_METADATA_CONFIG_INVALID");\n  return NextResponse.json({ schemaVersion: 1, siteId, siteReleaseRef: site.release.releaseId, webArtifactDigest, deploymentRef: required("KOKORO_SITE_DEPLOYMENT_REF"), readiness: "ready", observedAt: new Date().toISOString() });\n}\n`; }
+async function pruneCoreSite(directory, definition) { for (const relative of ["src/app/studio/page.tsx", "src/app/library/page.tsx", "src/app/api/media/[[...path]]/route.ts", "src/app/api/assets/[[...path]]/route.ts"]) await rm(join(directory, relative), { force: true }); const page = join(directory, "src/app/page.tsx"); const source = await readFile(page, "utf8"); if (!source.includes("<ChatProduct\n")) throw new Error("generated core Site has no ChatProduct composition"); await writeFile(page, source.replace("<ChatProduct\n", "<ChatProduct\n      attachmentsEnabled={false}\n")); const metadataRoute = join(directory, "src/app/api/release/metadata/route.ts"); await mkdir(dirname(metadataRoute), { recursive: true }); await writeFile(metadataRoute, metadataRouteSource(definition.site.siteId), { mode: 0o644 }); }
+async function verifyCoreSiteDirectory(directory, contractKeyringPath) { const keyring = await readFile(contractKeyringPath, "utf8"); await run(pnpmCommand(), ["install", "--offline", "--frozen-lockfile"], directory); await run(pnpmCommand(), ["artifact:verify"], directory, { KOKORO_CONTRACT_KEYRING_JSON: keyring }); await run(pnpmCommand(), ["typecheck"], directory); await run(pnpmCommand(), ["test"], directory); await run(pnpmCommand(), ["build"], directory); const [appPaths, appPathRoutes, middleware] = await Promise.all([readFile(join(directory, ".next/server/app-paths-manifest.json"), "utf8").then(JSON.parse), readFile(join(directory, ".next/app-path-routes-manifest.json"), "utf8").then(JSON.parse), readFile(join(directory, ".next/server/middleware-manifest.json"), "utf8").then(JSON.parse)]); return Object.freeze({ routes: assertCoreSiteRoutes({ appPaths, appPathRoutes, middleware }), lockSha256: digest(await readFile(join(directory, "pnpm-lock.yaml")) ) }); }
+
+export async function assembleCoreSite(input) { const directory = resolve(input.directory); if (await exists(directory)) throw new Error(`core Site target already exists: ${directory}`); const root = await mkdtemp(join(tmpdir(), "kokoro-core-site-")); try { const closure = await createCorePackageClosure(root); const source = coreSiteSourceClosure({ definition: input.definition, packages: closure.packages }); await closure.createSiteProject({ directory, packageName: input.definition.site.packageName, siteKey: input.definition.site.siteKey, displayName: input.definition.site.displayName, releaseId: input.definition.release.releaseId, artifactSha256: source.sha256, profileRevision: input.definition.release.profileRevision, domains: [input.definition.domain], deployment: input.definition.deployment, contractFloor: input.definition.contractFloor, enabledProductIds: [], packages: closure.packages }); await pruneCoreSite(directory, input.definition); const verified = await verifyCoreSiteDirectory(directory, input.contractKeyringPath); return Object.freeze({ directory, webCommit: closure.commit, sourceClosureSha256: source.sha256, artifactSha256: source.sha256, packageArtifacts: source.packages, ...verified }); } catch (error) { await rm(directory, { recursive: true, force: true }); throw error; } finally { await rm(root, { recursive: true, force: true }); } }
 
 function syncDirectory(directory) { const descriptor = openSync(directory, constants.O_RDONLY); try { fsyncSync(descriptor); } finally { closeSync(descriptor); } }
-async function writeAtomicReport(path, body) {
-  if (await exists(path)) throw new Error(`refusing to overwrite existing report: ${path}`);
-  await mkdir(dirname(path), { recursive: true, mode: 0o700 });
-  const temporary = join(dirname(path), `.${basename(path)}.${process.pid}.${Date.now()}.tmp`);
-  try {
-    await writeFile(temporary, `${JSON.stringify(body, null, 2)}\n`, { encoding: "utf8", mode: 0o600, flag: "wx" });
-    const descriptor = openSync(temporary, constants.O_RDONLY); try { fsyncSync(descriptor); } finally { closeSync(descriptor); }
-    await rename(temporary, path);
-    syncDirectory(dirname(path));
-  } catch (error) { await rm(temporary, { force: true }); throw error; }
-}
+async function writeAtomicReport(path, body) { await mkdir(dirname(path), { recursive: true, mode: 0o700 }); const temporary = join(dirname(path), `.${basename(path)}.${process.pid}.${crypto.randomUUID()}.tmp`); try { await writeFile(temporary, `${JSON.stringify(body, null, 2)}\n`, { encoding: "utf8", mode: 0o600, flag: "wx" }); const descriptor = openSync(temporary, constants.O_RDONLY); try { fsyncSync(descriptor); } finally { closeSync(descriptor); } await link(temporary, path); await rm(temporary); syncDirectory(dirname(path)); } catch (error) { await rm(temporary, { force: true }); throw error; } }
+export async function publishCoreSite(input) { const metadataFile = join(input.directory, `.kokoro-buildx-${process.pid}-${crypto.randomUUID()}.json`); try { const execute = input.run ?? ((command, args) => run(command, args, input.directory)); await execute("docker", ["buildx", "build", "--push", "--platform", input.platform, "--metadata-file", metadataFile, "--tag", input.image, input.directory]); const image = exactImageReference(input.image, JSON.parse(await readFile(metadataFile, "utf8"))); const webArtifactDigest = image.slice(image.lastIndexOf(":") + 1); await writeAtomicReport(input.report, { ...input.reportBody, platform: input.platform, image, webArtifactDigest }); return Object.freeze({ image, webArtifactDigest }); } finally { await rm(metadataFile, { force: true }); } }
 
-/** Buildx-push a prepared directory and write a no-overwrite 0600 report only after a digest exists. */
-export async function publishCoreSite(input) {
-  if (await exists(input.report)) throw new Error(`refusing to overwrite existing report: ${input.report}`);
-  const metadataFile = join(input.directory, `.kokoro-buildx-${process.pid}-${Date.now()}.json`);
-  try {
-    const run = input.run ?? ((command, args) => defaultRun(command, args, input.directory));
-    await run("docker", ["buildx", "build", "--push", "--platform", input.platform, "--metadata-file", metadataFile, "--tag", input.image, input.directory]);
-    const image = exactImageReference(input.image, JSON.parse(await readFile(metadataFile, "utf8")));
-    await writeAtomicReport(input.report, { ...input.reportBody, image });
-    return Object.freeze({ image });
-  } finally { await rm(metadataFile, { force: true }); }
-}
-
-function argumentsFor(argv) {
-  const values = new Map();
-  for (let index = 0; index < argv.length; index += 1) {
-    const key = argv[index];
-    if (key === "--push") { values.set(key, true); continue; }
-    if (!key.startsWith("--") || values.has(key) || index + 1 === argv.length || argv[index + 1].startsWith("--")) throw new TypeError("invalid release arguments");
-    values.set(key, argv[++index]);
-  }
-  for (const required of ["--definition", "--contract-keyring", "--image", "--platform", "--report"]) if (!values.has(required)) throw new TypeError(`${required} is required`);
-  if (values.get("--push") !== true) throw new TypeError("--push is required for immutable OCI publication");
-  return values;
-}
-async function gitCommit() {
-  const { stdout } = await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: webRoot });
-  return stdout.trim();
-}
-async function main() {
-  const args = argumentsFor(process.argv.slice(2));
-  const definition = parseCoreSiteDefinition(await readFile(resolve(process.cwd(), args.get("--definition"))));
-  const contractKeyringPath = resolve(process.cwd(), args.get("--contract-keyring"));
-  await readFile(contractKeyringPath);
-  const temporary = await mkdtemp(join(tmpdir(), "kokoro-core-site-"));
-  try {
-    const assembled = await assembleCoreSite({ definition, directory: join(temporary, definition.site.siteKey), contractKeyringPath });
-    await publishCoreSite({
-      directory: assembled.directory, image: args.get("--image"), platform: args.get("--platform"), report: resolve(process.cwd(), args.get("--report")),
-      reportBody: { schemaVersion: 1, siteKey: definition.site.siteKey, releaseId: definition.release.releaseId, webCommit: await gitCommit(), sourceClosureSha256: assembled.sourceClosureSha256, lockSha256: assembled.lockSha256, routes: assembled.routes },
-    });
-  } finally { await rm(temporary, { recursive: true, force: true }); }
-}
-
+function argumentsFor(argv) { const values = new Map(); for (let index = 0; index < argv.length; index += 1) { const key = argv[index]; if (key === "--push") { values.set(key, true); continue; } if (!key.startsWith("--") || values.has(key) || index + 1 === argv.length || argv[index + 1].startsWith("--")) throw new TypeError("invalid release arguments"); values.set(key, argv[++index]); } for (const required of ["--definition", "--contract-keyring", "--image", "--platform", "--report"]) if (!values.has(required)) throw new TypeError(`${required} is required`); if (values.get("--push") !== true) throw new TypeError("--push is required for immutable OCI publication"); return values; }
+async function main() { const args = argumentsFor(process.argv.slice(2)); const definition = parseCoreSiteDefinition(await readFile(resolve(process.cwd(), args.get("--definition")))); const contractKeyringPath = resolve(process.cwd(), args.get("--contract-keyring")); await readFile(contractKeyringPath); const assembled = await assembleCoreSite({ definition, directory: join(await mkdtemp(join(tmpdir(), "kokoro-core-site-output-")), definition.site.siteKey), contractKeyringPath }); try { await publishCoreSite({ directory: assembled.directory, image: args.get("--image"), platform: args.get("--platform"), report: resolve(process.cwd(), args.get("--report")), reportBody: { schemaVersion: 1, kind: "kokoro.core-site-release", webCommit: assembled.webCommit, siteId: definition.site.siteId, siteKey: definition.site.siteKey, releaseId: definition.release.releaseId, sourceClosureSha256: assembled.sourceClosureSha256, artifactSha256: assembled.artifactSha256, lockSha256: assembled.lockSha256, packageArtifacts: Object.fromEntries(assembled.packageArtifacts.map(({ name, version, sha256 }) => [name, { version, sha256 }])), routes: assembled.routes } }); } finally { await rm(dirname(assembled.directory), { recursive: true, force: true }); } }
 if (process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await main();

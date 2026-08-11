@@ -863,6 +863,7 @@ function ChatProductRuntime(props: ChatProductProps) {
   const contextPolicy = state.phase === "ready" ? state.projection.session?.contextPolicy ?? null : null
   const persistence = contextPolicy === null ? null : sessionBrowserPersistence(contextPolicy)
   const assetUploader = useSessionAssetUploader({
+    enabled: props.attachmentsEnabled !== false,
     ...(props.csrfToken === undefined ? {} : { csrfToken: props.csrfToken }),
     ...(props.bootstrap?.defaultProjectRef === undefined
       ? {}

@@ -55,6 +55,7 @@ export function createSessionAssetUploader(input: Readonly<{
 
 /** Owns uploader lifetime and recovery-store selection for one verified Session policy. */
 export function useSessionAssetUploader(input: Readonly<{
+  enabled?: boolean
   csrfToken?: string
   projectRef?: string
   sessionId: string | null
@@ -65,6 +66,7 @@ export function useSessionAssetUploader(input: Readonly<{
 
   useEffect(() => {
     if (
+      input.enabled === false ||
       typeof window === "undefined" ||
       input.csrfToken === undefined ||
       input.projectRef === undefined ||
@@ -91,6 +93,7 @@ export function useSessionAssetUploader(input: Readonly<{
     input.browserRuntimeScope,
     input.contextPolicy,
     input.csrfToken,
+    input.enabled,
     input.projectRef,
     input.sessionId,
   ])
