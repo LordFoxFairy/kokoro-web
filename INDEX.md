@@ -39,7 +39,7 @@ digest-only 发布、非特权只读运行和依赖感知 readiness；未绑定�
 
 ### Fixed core Site release
 
-`pnpm run release:core-site -- --definition ABS --contract-keyring ABS --image REGISTRY/REPO:TAG --platform linux/amd64 --report ABS --push`
+`pnpm run release:core-site -- --definition ABS --contract-keyring ABS --image REGISTRY/REPO:TAG --platform linux/amd64 --report ABS [--docker-config ABS] --push`
 在 OS 临时目录中生成一个固定的单 Site 工件：只保留登录、Account/兑换、Chat、Session proxy 和 health
 路由；Media、Memory、Payment 与附件 UI 均为关闭状态。该命令只接受精确的 Buildx
 `containerimage.digest`，报告只保存 `registry/repository@sha256:<64-hex>`。生成 Site 的
@@ -48,6 +48,10 @@ digest-only 发布、非特权只读运行和依赖感知 readiness；未绑定�
 offline/frozen 安装、构建 scaffold 并打包固定 11-package closure。核心 Site 另暴露静态
 `/api/release/metadata` 作为 fixed_http bootstrap identity，返回严格七字段 release metadata；它不替代
 `/api/health/ready` 的依赖就绪检查。
+
+报告中的 `finalSourceClosureSha256` 只表示最终裁剪前输入定义与固定 package closure 的 canonical
+source digest；运行时 `webArtifactDigest` 才是 Buildx 返回的 OCI manifest digest。子进程使用显式环境
+allowlist；私有 registry 只通过可选的绝对 `--docker-config` 及其中配置的 credential helper 取凭据。
 
 该离线构建与推送不改变库存 readiness；在真实推送镜像和 latest-head E2E 资格证据完成前，
 `independent-site-release` 仍保持 `blocked`。

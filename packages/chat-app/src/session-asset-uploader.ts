@@ -11,12 +11,14 @@ import { createEphemeralAssetRecoveryStore, type SessionContextPolicy } from "./
 export type SessionAssetUploader = ReturnType<typeof createAssetUploader>
 
 export function createSessionAssetUploader(input: Readonly<{
+  enabled?: boolean
   csrfToken: string
   contextPolicy: SessionContextPolicy
   recoveryScope: string
   localStorage: Storage
   sessionStorage: Storage
 }>): SessionAssetUploader | null {
+  if (input.enabled === false) return null
   if (input.contextPolicy === "temporary") {
     try {
       return createAssetUploader({
@@ -78,6 +80,7 @@ export function useSessionAssetUploader(input: Readonly<{
     }
 
     const next = createSessionAssetUploader({
+      enabled: input.enabled,
       csrfToken: input.csrfToken,
       contextPolicy: input.contextPolicy,
       recoveryScope: `${input.browserRuntimeScope}:${input.projectRef}`,

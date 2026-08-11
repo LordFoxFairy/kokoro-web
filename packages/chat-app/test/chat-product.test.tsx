@@ -1,10 +1,12 @@
 import { renderToStaticMarkup } from "react-dom/server"
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 
 import { createChatProjection } from "@kokoro/chat-surface"
+import * as assetClient from "@kokoro/asset-client"
 import { DEFAULT_CHAT_COPY } from "../src/chat-copy.js"
 import type { ChatController, ChatState } from "../src/chat-controller.js"
 import { ChatView } from "../src/chat-product.js"
+import { createSessionAssetUploader } from "../src/session-asset-uploader.js"
 
 function fixture() {
   const state: ChatState = {
@@ -37,6 +39,14 @@ function fixture() {
 }
 
 describe("ChatProduct attachments profile", () => {
+  it("does not call the Asset uploader factory when attachments are disabled", () => {
+    const factory = vi.spyOn(assetClient, "createAssetUploader")
+    const storage = { getItem: () => null, setItem: () => undefined, removeItem: () => undefined, clear: () => undefined, key: () => null, length: 0 } satisfies Storage
+    expect(createSessionAssetUploader({ enabled: false, csrfToken: "csrf", contextPolicy: "standard", recoveryScope: "scope", localStorage: storage, sessionStorage: storage })).toBeNull()
+    expect(factory).not.toHaveBeenCalled()
+    factory.mockRestore()
+  })
+
   it("hides the file input and attachment action only when attachments are disabled", () => {
     const { state, controller, assetUploader } = fixture()
     const disabled = renderToStaticMarkup(<ChatView attachmentsEnabled={false} assetUploader={assetUploader} brandName="Kokoro" controller={controller} copy={DEFAULT_CHAT_COPY} sessionId="session-12345678" state={state} />)
