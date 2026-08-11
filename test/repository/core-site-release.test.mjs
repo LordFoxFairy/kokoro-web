@@ -101,12 +101,14 @@ test("child environments use an explicit allowlist and scoped release inputs", (
     const base = release.coreReleaseChildEnvironment("pnpm");
     for (const key of ["TOKEN", "NPM_TOKEN", "AWS_SECRET_ACCESS_KEY", "GOOGLE_APPLICATION_CREDENTIALS", "AZURE_CLIENT_SECRET", "DOCKER_CONFIG"]) assert.equal(base[key], undefined);
     assert.equal(base.CI, "1"); assert.equal(base.NEXT_TELEMETRY_DISABLED, "1");
+    assert.equal(base.NPM_CONFIG_USERCONFIG, "/dev/null"); assert.equal(base.NPM_CONFIG_GLOBALCONFIG, "/dev/null"); assert.equal(base.COREPACK_ENABLE_PROJECT_SPEC, "0");
     const artifact = release.coreReleaseChildEnvironment("artifact-verify", { contractKeyringJson: "public-keyring" });
     assert.equal(artifact.KOKORO_CONTRACT_KEYRING_JSON, "public-keyring"); assert.equal(artifact.AUTH_SECRET, undefined);
     const build = release.coreReleaseChildEnvironment("next-build");
     assert.match(build.AUTH_SECRET, /core-release-build/u); assert.equal(build.KOKORO_CONTRACT_KEYRING_JSON, undefined);
     const docker = release.coreReleaseChildEnvironment("docker", { dockerConfig: "/controlled/docker" });
-    assert.equal(docker.DOCKER_CONFIG, "/controlled/docker"); assert.equal(docker.NPM_TOKEN, undefined);
+    assert.equal(docker.DOCKER_CONFIG, "/controlled/docker"); assert.equal(docker.NPM_TOKEN, undefined); assert.equal(docker.HOME, undefined);
+    assert.throws(() => release.coreReleaseChildEnvironment("docker"), /dockerConfig/u);
   } finally {
     for (const key of Object.keys(process.env)) if (!(key in previous)) delete process.env[key];
     Object.assign(process.env, previous);
@@ -145,12 +147,20 @@ test("Buildx publication races safely into one same-directory hard-linked report
   const reportBody = { schemaVersion: 1, kind: "kokoro.core-site-release", platform: "linux/amd64", webCommit: "a".repeat(40), siteKey: "core-site", releaseId: "core.2026.08.11.001", finalSourceClosureSha256: "b".repeat(64), lockSha256: "c".repeat(64), packageArtifacts: Object.fromEntries(packageArtifacts.map(({ name, version, sha256 }) => [name, { version, sha256 }])), routes: exactRoutes };
   const run = async (_command, args) => writeFile(args[args.indexOf("--metadata-file") + 1], JSON.stringify({ "containerimage.digest": `sha256:${"e".repeat(64)}` }));
   try {
-    const settled = await Promise.allSettled([release.publishCoreSite({ directory: temporary, image: "registry.example/kokoro/core:build-1", platform: "linux/amd64", report, reportBody, run }), release.publishCoreSite({ directory: temporary, image: "registry.example/kokoro/core:build-1", platform: "linux/amd64", report, reportBody, run })]);
+    const settled = await Promise.allSettled([release.publishCoreSite({ directory: temporary, image: "registry.example/kokoro/core:build-1", platform: "linux/amd64", dockerConfig: "/controlled/docker", report, reportBody, run }), release.publishCoreSite({ directory: temporary, image: "registry.example/kokoro/core:build-1", platform: "linux/amd64", dockerConfig: "/controlled/docker", report, reportBody, run })]);
     assert.equal(settled.filter(({ status }) => status === "fulfilled").length, 1); assert.equal(settled.filter(({ status }) => status === "rejected").length, 1);
     const published = JSON.parse(await readFile(report, "utf8")); assert.equal(published.image, `registry.example/kokoro/core@sha256:${"e".repeat(64)}`); assert.equal(published.webArtifactDigest, "e".repeat(64)); assert.deepEqual(published.packageArtifacts, reportBody.packageArtifacts); assert.deepEqual(published.routes, exactRoutes); assert.equal((await stat(report)).mode & 0o777, 0o600); assert.deepEqual((await readdir(temporary)).filter((name) => name.startsWith(".report.json.")), []);
   } finally { await rm(temporary, { recursive: true, force: true }); }
 });
 
 test("Buildx platform is a closed Linux allowlist", async () => {
-  await assert.rejects(release.publishCoreSite({ directory: tmpdir(), image: "registry.example/kokoro/core:tag", platform: "darwin/arm64", report: join(tmpdir(), `invalid-platform-${Date.now()}.json`), reportBody: {}, run: async () => assert.fail("Buildx must not run") }), /platform/u);
+  await assert.rejects(release.publishCoreSite({ directory: tmpdir(), image: "registry.example/kokoro/core:tag", platform: "darwin/arm64", dockerConfig: "/controlled/docker", report: join(tmpdir(), `invalid-platform-${Date.now()}.json`), reportBody: {}, run: async () => assert.fail("Buildx must not run") }), /platform/u);
+});
+
+test("CLI keys are exact and Docker config is mandatory before publication", async () => {
+  const valid = ["--definition", "/definition.json", "--contract-keyring", "/keyring.json", "--image", "registry.example/core:tag", "--platform", "linux/amd64", "--report", "/report.json", "--docker-config", "/docker", "--push"];
+  assert.equal(release.parseCoreReleaseArguments(valid).get("--docker-config"), "/docker");
+  assert.throws(() => release.parseCoreReleaseArguments([...valid, "--unknown", "value"]), /unknown/u);
+  assert.throws(() => release.parseCoreReleaseArguments(valid.filter((value, index) => value !== "--docker-config" && valid[index - 1] !== "--docker-config")), /docker-config/u);
+  await assert.rejects(release.publishCoreSite({ directory: tmpdir(), image: "registry.example/core:tag", platform: "linux/amd64", report: join(tmpdir(), `missing-docker-${Date.now()}.json`), reportBody: {}, run: async () => assert.fail("Buildx must not run") }), /dockerConfig/u);
 });
