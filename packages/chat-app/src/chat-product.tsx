@@ -621,6 +621,8 @@ export function ChatView(props: {
   readonly sessionId: string
   readonly draftStore?: ComposerDraftStore
   readonly assetUploader?: SessionAssetUploader | null
+  /** Product composition may omit the Asset data plane while retaining Chat. */
+  readonly attachmentsEnabled?: boolean
 }) {
   const contextPolicy = props.state.projection.session?.contextPolicy ?? "standard"
   const [composer, setComposerState] = useState<ComposerDraft>(() => props.draftStore?.load(props.sessionId) ?? {
@@ -809,7 +811,7 @@ export function ChatView(props: {
       {!hasModel && props.state.phase === "ready" ? <p className={styles.modelNotice}>{props.copy.modelRequired}</p> : null}
       {attachments.length > 0 ? <ul className={styles.attachments} aria-live="polite">{attachments.map((entry) => <li key={entry.id} data-status={entry.status}><span aria-hidden>◆</span><div><strong>{entry.file.name}</strong><small>{entry.status === "uploading" ? `${props.copy.uploadingFile} ${entry.progress === null ? "" : `${Math.round(entry.progress.uploadedBytes / entry.progress.totalBytes * 100)}%`}` : entry.status === "ready" ? props.copy.attachmentReady : props.copy.attachmentFailed}</small></div>{entry.status === "failed" ? <button type="button" onClick={() => beginUpload(entry)}>{props.copy.retryUpload}</button> : null}<button type="button" disabled={entry.status === "uploading"} onClick={() => { setAttachments((current) => current.filter(({ id }) => id !== entry.id)); reviseComposer() }}>{props.copy.removeAttachment}</button></li>)}</ul> : null}
       <div className={styles.composerBox}><textarea aria-describedby={activeRun ? "kokoro-active-run-draft" : undefined} aria-label={props.copy.messageLabel} disabled={repairing} maxLength={1_048_576} onChange={(event) => reviseComposer({ text: event.target.value })} onCompositionEnd={() => setComposing(false)} onCompositionStart={() => setComposing(true)} onKeyDown={onComposerKeyDown} placeholder={activeRun ? props.copy.activeRunPlaceholder : props.copy.messagePlaceholder} rows={3} value={composer.text} /><button type="submit" disabled={sendDisabled}>{commandPending ? props.copy.sending : props.copy.send}<span aria-hidden>↗</span></button></div>{activeRun ? <p className={styles.composerHint} id="kokoro-active-run-draft" role="status">{props.copy.draftWhileRunning}</p> : <p className={styles.composerHint}>Enter to send · Shift + Enter for a new line</p>}
-      {props.assetUploader !== null && props.assetUploader !== undefined ? <label className={styles.attachButton} data-disabled={repairing || attachments.length >= 8}><input type="file" multiple disabled={repairing || attachments.length >= 8} onChange={attach} /><span aria-hidden>＋</span>{props.copy.attachFiles}</label> : null}
+      {props.attachmentsEnabled !== false && props.assetUploader !== null && props.assetUploader !== undefined ? <label className={styles.attachButton} data-disabled={repairing || attachments.length >= 8}><input type="file" multiple disabled={repairing || attachments.length >= 8} onChange={attach} /><span aria-hidden>＋</span>{props.copy.attachFiles}</label> : null}
     </form> : null}
   </main>
 }
@@ -821,6 +823,8 @@ export type ChatProductProps = Readonly<{
   csrfToken?: string
   initialSessionId?: string
   copy?: Partial<ChatProductCopy>
+  /** Defaults to the existing Asset-enabled Chat composition. */
+  attachmentsEnabled?: boolean
 }>
 
 function ChatProductRuntime(props: ChatProductProps) {
@@ -895,7 +899,7 @@ function ChatProductRuntime(props: ChatProductProps) {
   const rail = <SessionRail activeSessionId={state.sessionId} available={productAvailable && state.projection.command.state !== "pending"} brandName={props.brandName} controller={organizer} copy={copy} onNew={createSession} onOpen={openSession} state={organizerState} />
 
   if (state.phase === "idle") return <div className={styles.appShell}>{rail}<main className={styles.startShell}><span className={styles.startMark} aria-hidden>✦</span><span className={styles.eyebrow}>{props.brandName}</span><h1>{copy.startTitle}</h1><p>{copy.startDescription}</p><div className={styles.creationActions}><button type="button" disabled={!productAvailable || state.projection.command.state === "pending"} onClick={() => createSession("standard")}>{state.projection.command.state === "pending" ? copy.creatingChat : copy.newChat}</button><button aria-describedby={temporaryCreationDescriptionId} type="button" disabled={!productAvailable || state.projection.command.state === "pending"} onClick={() => createSession("temporary")}>{copy.temporaryChat}</button></div><p className={styles.temporaryStartHint} id={temporaryCreationDescriptionId}>{copy.temporaryChatDescription}</p>{!productAvailable ? <p className={styles.failure} role="status">{copy.unavailable}</p> : null}{state.failure ? <p className={styles.failure} role="alert">{state.failure.message}</p> : null}</main></div>
-  return <div className={styles.appShell}>{rail}<ChatView key={`${props.browserRuntimeScope}:${state.sessionId ?? "unavailable"}:${contextPolicy ?? "unverified"}`} assetUploader={assetUploader} brandName={props.brandName} controller={controller} copy={copy} draftStore={persistence?.composerDraft === true ? draftStore : undefined} sessionId={state.sessionId ?? "unavailable"} state={state} /></div>
+  return <div className={styles.appShell}>{rail}<ChatView attachmentsEnabled={props.attachmentsEnabled} key={`${props.browserRuntimeScope}:${state.sessionId ?? "unavailable"}:${contextPolicy ?? "unverified"}`} assetUploader={assetUploader} brandName={props.brandName} controller={controller} copy={copy} draftStore={persistence?.composerDraft === true ? draftStore : undefined} sessionId={state.sessionId ?? "unavailable"} state={state} /></div>
 }
 
 export function ChatProduct(props: ChatProductProps) {

@@ -13,6 +13,7 @@
     "compat:agui-consumer": "pnpm --filter @kokoro/chat-surface compat:agui-consumer",
     "generate:agui-binding-authority": "node scripts/generate-agui-binding-authority.mjs --write",
     "verify:agui-binding-authority": "node scripts/generate-agui-binding-authority.mjs --check",
+    "release:core-site": "node scripts/release-core-site.mjs",
     "build": "pnpm run build:site && pnpm run build:admin",
     "build:site": "pnpm --filter @kokoro/site-scaffold... --filter @kokoro/reference-site... build",
     "build:admin": "pnpm --filter @kokoro/admin-web... build",
