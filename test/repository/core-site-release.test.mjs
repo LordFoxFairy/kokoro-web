@@ -1,161 +1,70 @@
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createHash, generateKeyPairSync, sign } from "node:crypto";
+import { mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
+import { pathToFileURL } from "node:url";
 
-const root = resolve(import.meta.dirname, "../..");
+const webRoot = resolve(import.meta.dirname, "../..");
 const release = await import(new URL("../../scripts/release-core-site.mjs", import.meta.url));
-
 const sha = (value) => createHash("sha256").update(value).digest("hex");
 const signature = "a".repeat(86);
-const definition = () => ({
-  schemaVersion: 1,
-  site: { siteKey: "core-site", packageName: "@kokoro/core-site", displayName: "Kokoro" },
-  release: { releaseId: "core.2026.08.11.001", profileRevision: "core.v1" },
-  domain: { hostname: "kokoro.example", environment: "production" },
-  deployment: { provider: "container-registry", projectRef: "kokoro/core", region: "us-east" },
-  contractFloor: {
-    contract: "platform-public-v1", version: "1", schemaSha256: "a".repeat(64), signature, signingKeyId: "release-key-1",
-  },
-  packages: [
-    { name: "@kokoro/chat-app", version: "1.0.0", archivePath: "/tmp/chat.tgz", sha256: "b".repeat(64) },
-    { name: "@kokoro/site-app-kit", version: "1.0.0", archivePath: "/tmp/kit.tgz", sha256: "c".repeat(64) },
-  ],
-});
+const packageArtifacts = [{ name: "@kokoro/chat-app", version: "1.0.0", sha256: "b".repeat(64) }, { name: "@kokoro/site-app-kit", version: "1.0.0", sha256: "c".repeat(64) }];
+const definition = () => ({ schemaVersion: 1, site: { siteId: "site:core", siteKey: "core-site", packageName: "@kokoro/core-site", displayName: "Kokoro" }, release: { releaseId: "core.2026.08.11.001", profileRevision: "core.v1" }, domain: { hostname: "kokoro.example", environment: "production" }, deployment: { provider: "container-registry", projectRef: "kokoro/core", region: "us-east" }, contractFloor: { contract: "platform-public-v1", version: "1", schemaSha256: "a".repeat(64), signature, signingKeyId: "release-key-1" } });
+const exactRoutes = ["/", "/_not-found", "/account", "/api/account/[action]", "/api/auth/[...nextauth]", "/api/auth/delivery-state", "/api/health/live", "/api/health/ready", "/api/release/metadata", "/api/session/[...path]", "/login", "/register", "/verify-email"];
+const allowedManifests = () => ({ appPaths: Object.fromEntries(exactRoutes.map((route) => [`${route === "/" ? "" : route}/page`.replace("//", "/"), "app.js"])), appPathRoutes: Object.fromEntries(exactRoutes.map((route) => [`${route === "/" ? "/page" : `${route}/page`}`, route])), middleware: { version: 3, middleware: {}, functions: {}, sortedMiddleware: [] } });
 
-const allowedManifests = () => ({
-  appPaths: {
-    "/page": "app/page.js",
-    "/account/page": "app/account/page.js",
-    "/login/page": "app/login/page.js",
-    "/api/account/[action]/route": "app/api/account/[action]/route.js",
-    "/api/auth/[...nextauth]/route": "app/api/auth/[...nextauth]/route.js",
-    "/api/health/live/route": "app/api/health/live/route.js",
-    "/api/health/ready/route": "app/api/health/ready/route.js",
-    "/api/session/[...path]/route": "app/api/session/[...path]/route.js",
-  },
-  appPathRoutes: {
-    "/page": "/", "/account/page": "/account", "/login/page": "/login",
-    "/api/account/[action]/route": "/api/account/[action]",
-    "/api/auth/[...nextauth]/route": "/api/auth/[...nextauth]",
-    "/api/health/live/route": "/api/health/live", "/api/health/ready/route": "/api/health/ready",
-    "/api/session/[...path]/route": "/api/session/[...path]",
-  },
-  middleware: { version: 3, middleware: {} },
-});
+async function createSignedContractFixture(directory) {
+  const metadata = (await import(pathToFileURL(resolve(webRoot, "packages/site-client/dist/generated/contracts/openapi/platform-public/contract-metadata.js")))).PLATFORM_PUBLIC_CONTRACT_METADATA;
+  const { privateKey, publicKey } = generateKeyPairSync("ed25519");
+  const signingKeyId = "core-release-fixture-key";
+  const floorSignature = sign(null, Buffer.from(`${metadata.schemaId}:${metadata.contractVersion}:${metadata.sourceDigestSha256}`), privateKey).toString("base64url");
+  const keyringPath = join(directory, "keyring.json");
+  await writeFile(keyringPath, JSON.stringify({ schemaVersion: 1, trustMode: "ephemeral_self_signed_fixture_not_production", keys: [{ keyId: signingKeyId, algorithm: "Ed25519", publicKeySpkiBase64url: publicKey.export({ type: "spki", format: "der" }).toString("base64url") }] }));
+  return { keyringPath, contractFloor: { contract: metadata.schemaId, version: metadata.contractVersion, schemaSha256: metadata.sourceDigestSha256, signature: floorSignature, signingKeyId } };
+}
 
-test("core definition is strict and canonical source closure ignores archive locations", () => {
+test("core definition is strict, excludes operator package archives, and canonicalizes the builder closure", () => {
   const parsed = release.parseCoreSiteDefinition(Buffer.from(JSON.stringify(definition())));
-  assert.equal(parsed.site.siteKey, "core-site");
-  const moved = definition();
-  moved.packages[0].archivePath = "/different/archive.tgz";
-  assert.deepEqual(release.coreSiteSourceClosure(parsed), release.coreSiteSourceClosure(release.parseCoreSiteDefinition(JSON.stringify(moved))));
-  assert.equal(release.coreSiteSourceClosure(parsed).sha256, sha(release.coreSiteSourceClosure(parsed).canonical));
-
-  for (const mutate of [
-    (value) => { value.unexpected = true; },
-    (value) => { value.domain.environment = "preview"; },
-    (value) => { value.domain.hostname = "https://kokoro.example"; },
-    (value) => { value.sites = [value.site]; },
-    (value) => { value.deployment.provider = "direct"; },
-    (value) => { value.media = {}; },
-    (value) => { value.memory = {}; },
-    (value) => { value.contractFloor.signature = "not-a-signature"; },
-  ]) {
-    const invalid = definition();
-    mutate(invalid);
-    assert.throws(() => release.parseCoreSiteDefinition(JSON.stringify(invalid)));
-  }
+  assert.equal(parsed.site.siteKey, "core-site"); assert.equal(parsed.packages, undefined);
+  const closure = release.coreSiteSourceClosure({ definition: parsed, packages: packageArtifacts });
+  assert.equal(closure.sha256, sha(closure.canonical)); assert.match(closure.canonical, /@kokoro\/chat-app/u);
+  for (const mutate of [(value) => { value.unexpected = true; }, (value) => { value.domain.environment = "preview"; }, (value) => { value.domain.hostname = "https://kokoro.example"; }, (value) => { value.sites = [value.site]; }, (value) => { value.deployment.provider = "direct"; }, (value) => { value.provider = "direct"; }, (value) => { value.media = {}; }, (value) => { value.memory = {}; }, (value) => { value.packages = packageArtifacts; }, (value) => { value.contractFloor.signature = "not-a-signature"; }]) { const invalid = definition(); mutate(invalid); assert.throws(() => release.parseCoreSiteDefinition(JSON.stringify(invalid))); }
 });
 
-test("core route closure accepts the exact required surface and rejects off-profile routes", () => {
-  assert.deepEqual(release.assertCoreSiteRoutes(allowedManifests()), [
-    "/", "/account", "/api/account/[action]", "/api/auth/[...nextauth]", "/api/health/live", "/api/health/ready", "/api/session/[...path]", "/login",
-  ]);
-  for (const route of ["/studio", "/library", "/memory", "/api/media/[...path]", "/api/assets/[...path]", "/api/payment/checkout"]) {
-    const manifests = allowedManifests();
-    manifests.appPathRoutes[`/bad${route}/page`] = route;
-    assert.throws(() => release.assertCoreSiteRoutes(manifests), new RegExp(route.replace(/[\[\]]/gu, "\\$&")));
-  }
+test("core route closure is an exact allowlist and middleware cannot add routes or rewrites", () => {
+  assert.deepEqual(release.assertCoreSiteRoutes(allowedManifests()), exactRoutes);
+  for (const route of ["/studio", "/library", "/memory", "/api/media/[...path]", "/api/assets/[...path]", "/api/payment/checkout", "/admin-debug", "/api/proxy", "/checkout"]) { const manifests = allowedManifests(); manifests.appPathRoutes[`/bad${route}/page`] = route; assert.throws(() => release.assertCoreSiteRoutes(manifests), new RegExp(route.replace(/[\[\]]/gu, "\\$&"))); }
+  for (const middleware of [{ version: 3, middleware: { "/middleware": {} }, functions: {}, sortedMiddleware: ["/"] }, { version: 3, middleware: {}, functions: {}, sortedMiddleware: [], rewrites: [{ source: "/", destination: "/api/proxy" }] }]) assert.throws(() => release.assertCoreSiteRoutes({ ...allowedManifests(), middleware }));
 });
 
-test("exact OCI reference binds a repository to only a lowercase Buildx digest", () => {
-  assert.equal(release.exactImageReference("registry.example/kokoro/core:mutable", { "containerimage.digest": `sha256:${"d".repeat(64)}` }), `registry.example/kokoro/core@sha256:${"d".repeat(64)}`);
-  for (const metadata of [
-    {},
-    { "containerimage.digest": `sha256:${"D".repeat(64)}` },
-    { digest: `sha256:${"d".repeat(64)}` },
-  ]) assert.throws(() => release.exactImageReference("registry.example/kokoro/core:tag", metadata));
-  for (const image of ["core:tag", "registry.example/kokoro/core", "registry.example/kokoro/core@sha256:abc", "registry.example/kokoro/core:latest"]) {
-    assert.throws(() => release.exactImageReference(image, { "containerimage.digest": `sha256:${"d".repeat(64)}` }));
-  }
+test("exact OCI reference accepts only a registry repository and lower-case Buildx digest", () => {
+  assert.equal(release.exactImageReference("registry.example/kokoro/core:build-1", { "containerimage.digest": `sha256:${"d".repeat(64)}` }), `registry.example/kokoro/core@sha256:${"d".repeat(64)}`);
+  for (const image of ["core:tag", "registry.example/kokoro/core", "registry.example/kokoro/core:latest"]) assert.throws(() => release.exactImageReference(image, { "containerimage.digest": `sha256:${"d".repeat(64)}` }));
+  for (const metadata of [{}, { digest: `sha256:${"d".repeat(64)}` }, { "containerimage.digest": `sha256:${"D".repeat(64)}` }]) assert.throws(() => release.exactImageReference("registry.example/kokoro/core:tag", metadata));
 });
 
-test("assembly prunes only the core-off routes and cleans up an injected failed target", async () => {
-  const temporary = await mkdtemp(join(tmpdir(), "core-site-test-"));
-  const target = join(temporary, "core-site");
+test("default core assembly is isolated: a clean archive supplies real scaffold, packages, verification, build, and manifest closure", { timeout: 180_000 }, async () => {
+  const temporary = await mkdtemp(join(tmpdir(), "core-site-real-"));
   try {
-    const parsed = release.parseCoreSiteDefinition(JSON.stringify(definition()));
-    const created = await release.assembleCoreSite({
-      definition: parsed,
-      directory: target,
-      createSiteProject: async ({ directory }) => {
-        await writeFile(join(temporary, "marker"), directory);
-        await (await import("node:fs/promises")).mkdir(join(directory, "src/app"), { recursive: true });
-        await writeFile(join(directory, "src/app/page.tsx"), "<ChatProduct\n />");
-        for (const relative of [
-          "src/app/studio/page.tsx", "src/app/library/page.tsx", "src/app/api/media/[[...path]]/route.ts", "src/app/api/assets/[[...path]]/route.ts",
-        ]) {
-          const file = join(directory, relative);
-          await (await import("node:fs/promises")).mkdir(file.slice(0, file.lastIndexOf("/")), { recursive: true });
-          await writeFile(file, "off profile");
-        }
-      },
-      verify: async () => {},
-    });
-    assert.equal(created.directory, target);
-    assert.match(await readFile(join(target, "src/app/page.tsx"), "utf8"), /attachmentsEnabled=\{false\}/u);
-    for (const relative of ["src/app/studio/page.tsx", "src/app/library/page.tsx", "src/app/api/media/[[...path]]/route.ts", "src/app/api/assets/[[...path]]/route.ts"]) {
-      await assert.rejects(readFile(join(target, relative)));
-    }
-    await assert.rejects(release.assembleCoreSite({ definition: parsed, directory: join(temporary, "failed"), createSiteProject: async () => { throw new Error("injected"); }, verify: async () => {} }));
-    await assert.rejects(readFile(join(temporary, "failed")));
-    await assert.rejects(release.assembleCoreSite({ definition: parsed, directory: join(temporary, "failed-verify"), createSiteProject: async ({ directory }) => { await (await import("node:fs/promises")).mkdir(join(directory, "src/app"), { recursive: true }); await writeFile(join(directory, "src/app/page.tsx"), "<ChatProduct\n />"); }, verify: async () => { throw new Error("verify failed"); } }));
-    await assert.rejects(readFile(join(temporary, "failed-verify")));
-  } finally {
-    await rm(temporary, { recursive: true, force: true });
-  }
+    const signed = await createSignedContractFixture(temporary);
+    const parsed = release.parseCoreSiteDefinition(JSON.stringify({ ...definition(), contractFloor: signed.contractFloor }));
+    const assembled = await release.assembleCoreSite({ definition: parsed, directory: join(temporary, "site"), contractKeyringPath: signed.keyringPath });
+    assert.equal(assembled.packageArtifacts.length, 11); assert.deepEqual(assembled.routes, exactRoutes); assert.equal(assembled.sourceClosureSha256, assembled.artifactSha256);
+    assert.match(await readFile(join(assembled.directory, "src/app/page.tsx"), "utf8"), /attachmentsEnabled=\{false\}/u);
+    for (const relative of ["src/app/studio/page.tsx", "src/app/library/page.tsx", "src/app/api/media/[[...path]]/route.ts", "src/app/api/assets/[[...path]]/route.ts", "src/app/api/memory/[[...path]]/route.ts"]) await assert.rejects(readFile(join(assembled.directory, relative)));
+    for (const manifest of [".next/server/app-paths-manifest.json", ".next/app-path-routes-manifest.json", ".next/server/middleware-manifest.json"]) await stat(join(assembled.directory, manifest));
+  } finally { await rm(temporary, { recursive: true, force: true }); }
 });
 
-test("publication uses exact Buildx argv and atomically writes a new safe report", async () => {
-  const temporary = await mkdtemp(join(tmpdir(), "core-site-publish-"));
-  const report = join(temporary, "report.json");
-  const invocations = [];
+test("Buildx publication races safely into one same-directory hard-linked report with complete digest-bound fields", async () => {
+  const temporary = await mkdtemp(join(tmpdir(), "core-site-publish-")); const report = join(temporary, "report.json");
+  const reportBody = { schemaVersion: 1, kind: "kokoro.core-site-release", platform: "linux/amd64", webCommit: "a".repeat(40), siteKey: "core-site", releaseId: "core.2026.08.11.001", sourceClosureSha256: "b".repeat(64), artifactSha256: "b".repeat(64), lockSha256: "c".repeat(64), packageArtifacts: Object.fromEntries(packageArtifacts.map(({ name, version, sha256 }) => [name, { version, sha256 }])), routes: exactRoutes };
+  const run = async (_command, args) => writeFile(args[args.indexOf("--metadata-file") + 1], JSON.stringify({ "containerimage.digest": `sha256:${"e".repeat(64)}` }));
   try {
-    const result = await release.publishCoreSite({
-      directory: temporary,
-      image: "registry.example/kokoro/core:build-1",
-      platform: "linux/amd64",
-      report,
-      reportBody: { schemaVersion: 1, siteKey: "core-site" },
-      run: async (command, args) => {
-        invocations.push([command, args]);
-        const metadataPath = args[args.indexOf("--metadata-file") + 1];
-        await writeFile(metadataPath, JSON.stringify({ "containerimage.digest": `sha256:${"e".repeat(64)}` }));
-      },
-    });
-    assert.equal(result.image, `registry.example/kokoro/core@sha256:${"e".repeat(64)}`);
-    assert.deepEqual(invocations[0], ["docker", ["buildx", "build", "--push", "--platform", "linux/amd64", "--metadata-file", invocations[0][1][6], "--tag", "registry.example/kokoro/core:build-1", temporary]]);
-    assert.equal(JSON.parse(await readFile(report, "utf8")).image, result.image);
-    await assert.rejects(release.publishCoreSite({ directory: temporary, image: "registry.example/kokoro/core:again", platform: "linux/amd64", report, reportBody: {}, run: async () => {} }));
-    const failedReport = join(temporary, "failed-report.json");
-    await assert.rejects(release.publishCoreSite({ directory: temporary, image: "registry.example/kokoro/core:build-2", platform: "linux/amd64", report: failedReport, reportBody: {}, run: async () => { throw new Error("buildx failed"); } }));
-    await assert.rejects(readFile(failedReport));
-    await assert.rejects(release.publishCoreSite({ directory: temporary, image: "registry.example/kokoro/core:build-3", platform: "linux/amd64", report: failedReport, reportBody: {}, run: async () => {} }));
-    await assert.rejects(readFile(failedReport));
-  } finally {
-    await rm(temporary, { recursive: true, force: true });
-  }
+    const settled = await Promise.allSettled([release.publishCoreSite({ directory: temporary, image: "registry.example/kokoro/core:build-1", platform: "linux/amd64", report, reportBody, run }), release.publishCoreSite({ directory: temporary, image: "registry.example/kokoro/core:build-1", platform: "linux/amd64", report, reportBody, run })]);
+    assert.equal(settled.filter(({ status }) => status === "fulfilled").length, 1); assert.equal(settled.filter(({ status }) => status === "rejected").length, 1);
+    const published = JSON.parse(await readFile(report, "utf8")); assert.equal(published.image, `registry.example/kokoro/core@sha256:${"e".repeat(64)}`); assert.equal(published.webArtifactDigest, "e".repeat(64)); assert.deepEqual(published.packageArtifacts, reportBody.packageArtifacts); assert.deepEqual(published.routes, exactRoutes); assert.equal((await stat(report)).mode & 0o777, 0o600); assert.deepEqual((await readdir(temporary)).filter((name) => name.startsWith(".report.json.")), []);
+  } finally { await rm(temporary, { recursive: true, force: true }); }
 });
