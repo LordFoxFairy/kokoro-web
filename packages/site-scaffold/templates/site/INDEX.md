@@ -49,6 +49,12 @@ generated supersede input. Receipt recovery capability never enters client JavaS
 {"schemaVersion":1,"keys":[{"keyId":"root-key-id","algorithm":"Ed25519","publicKeySpkiBase64url":"..."}]}
 ```
 
+The generated workspace exempts only the exact name and version of each verified `file:vendor/*.tgz`
+Kokoro artifact from pnpm's registry release-age lookup. Registry dependencies remain subject to the
+normal release-age policy.
+The container build supplies deterministic invalid Auth/Site values only to its `pnpm build` command
+so prerender validation can run. They are not production credentials and are absent from the runtime stage.
+
 ## Verification
 
 After the factory creates and commits the initial lockfile, run `pnpm install --frozen-lockfile`, `pnpm audit --prod --audit-level high`,

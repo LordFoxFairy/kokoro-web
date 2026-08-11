@@ -22,6 +22,9 @@ __MEMORY_OVERRIDE_FRAGMENT__
   path-to-regexp: 8.4.2
   sharp: 0.35.3
 
+minimumReleaseAgeExclude:
+__MINIMUM_RELEASE_AGE_EXCLUDE_FRAGMENT__
+
 allowBuilds:
   sharp: true
   unrs-resolver: true

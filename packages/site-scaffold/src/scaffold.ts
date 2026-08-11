@@ -332,6 +332,10 @@ export async function createSiteProject(input: CreateSiteProjectInput): Promise<
         : ["@kokoro/account-app", "@kokoro/asset-client", "@kokoro/chat-app", "@kokoro/media-app"]),
       __MEMORY_DEPENDENCY_FRAGMENT__: memoryApp === undefined ? "" : `,\n    "@kokoro/memory-app": "file:vendor/memory-app.tgz"`,
       __MEMORY_OVERRIDE_FRAGMENT__: memoryApp === undefined ? "" : `\n  "@kokoro/memory-app": "file:vendor/memory-app.tgz"`,
+      __MINIMUM_RELEASE_AGE_EXCLUDE_FRAGMENT__: requiredArtifacts
+        .map((name) => `  - ${JSON.stringify(`${name}@${artifact(name).version}`)}`)
+        .sort()
+        .join("\n"),
       __MEMORY_ARTIFACT_FRAGMENT__: memoryApp === undefined ? "" : `,\n    "@kokoro/memory-app": {\n      "version": ${JSON.stringify(memoryApp.version)},\n      "sha256": ${JSON.stringify(memoryApp.sha256)}\n    }`,
       __MEMORY_NAV_FRAGMENT__: memoryEnabled ? `<nav aria-label="Site products" className="site-product-nav"><a href="/memory">Memory</a></nav>` : "",
       __CREATE_ACCOUNT_LINK_FRAGMENT__: registrationEnabled

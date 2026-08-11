@@ -17,6 +17,9 @@ const packageArtifacts = ["site-app-kit", "site-client", "session-client", "bff-
 const definition = () => ({ schemaVersion: 1, site: { siteId: "site:core", siteKey: "core-site", packageName: "@kokoro/core-site", displayName: "Kokoro" }, release: { releaseId: "core.2026.08.11.001", profileRevision: "core.v1" }, domain: { hostname: "kokoro.example", environment: "production" }, deployment: { provider: "container-registry", projectRef: "kokoro/core", region: "us-east" }, contractFloor: { contract: "platform-public-v1", version: "1", schemaSha256: "a".repeat(64), signature, signingKeyId: "release-key-1" } });
 const exactRoutes = ["/", "/_global-error", "/_not-found", "/account", "/api/account/[action]", "/api/auth/[...nextauth]", "/api/auth/delivery-state", "/api/health/live", "/api/health/ready", "/api/release/metadata", "/api/session/[...path]", "/login"];
 const allowedManifests = () => ({ appPaths: Object.fromEntries(exactRoutes.map((route) => [`${route === "/" ? "" : route}/page`.replace("//", "/"), "app.js"])), appPathRoutes: Object.fromEntries(exactRoutes.map((route) => [`${route === "/" ? "/page" : `${route}/page`}`, route])), middleware: { version: 3, middleware: {}, functions: {}, sortedMiddleware: [] } });
+function minimumReleaseAgeExclusions(workspace) { const block = workspace.match(/^minimumReleaseAgeExclude:\n((?:  - .+\n?)+)/mu); if (block === null) return []; return block[1].trim().split("\n").map((line) => JSON.parse(line.trim().slice(2))).sort(); }
+function internalFileOverrideNames(workspace) { return [...workspace.matchAll(/^  "(@kokoro\/[^"]+)": "file:vendor\/[^"]+\.tgz"$/gmu)].map((match) => match[1]).sort(); }
+function selectorPackageNames(selectors) { return selectors.map((selector) => selector.slice(0, selector.lastIndexOf("@"))).sort(); }
 
 async function createSignedContractFixture(directory) {
   const metadata = (await import(pathToFileURL(resolve(webRoot, "packages/site-client/src/generated/contracts/openapi/platform-public/contract-metadata.ts")))).PLATFORM_PUBLIC_CONTRACT_METADATA;
@@ -122,6 +125,36 @@ test("default core assembly is isolated: a clean archive supplies real scaffold,
     const parsed = release.parseCoreSiteDefinition(JSON.stringify({ ...definition(), contractFloor: signed.contractFloor }));
     const assembled = await release.assembleCoreSite({ definition: parsed, directory: join(temporary, "site"), contractKeyringPath: signed.keyringPath });
     assert.equal(assembled.packageArtifacts.length, 11); assert.deepEqual(assembled.builtPackageNames, [...packageArtifacts.map(({ name }) => name), "@kokoro/site-scaffold"].sort()); assert.deepEqual(assembled.routes, exactRoutes); assert.match(assembled.finalSourceClosureSha256, /^[0-9a-f]{64}$/u);
+    const workspace = await readFile(join(assembled.directory, "pnpm-workspace.yaml"), "utf8");
+    const exclusions = minimumReleaseAgeExclusions(workspace);
+    assert.deepEqual(selectorPackageNames(exclusions), internalFileOverrideNames(workspace));
+    assert.deepEqual(exclusions, assembled.packageArtifacts.map(({ name, version }) => `${name}@${version}`).sort());
+    assert.equal(exclusions.some((selector) => !selector.startsWith("@kokoro/")), false);
+    const project = JSON.parse(await readFile(join(assembled.directory, "package.json"), "utf8"));
+    const artifactManifest = JSON.parse(await readFile(join(assembled.directory, "deploy/artifact-manifest.json"), "utf8"));
+    const lockfile = await readFile(join(assembled.directory, "pnpm-lock.yaml"), "utf8");
+    const importer = lockfile.slice(0, lockfile.indexOf("\npackages:"));
+    for (const { name, version, sha256 } of assembled.packageArtifacts) {
+      const archive = `${name.slice("@kokoro/".length)}.tgz`;
+      const fileReference = `file:vendor/${archive}`;
+      assert.equal(project.dependencies[name], fileReference);
+      assert.deepEqual(artifactManifest.packages[name], { version, sha256 });
+      assert.equal(workspace.includes(`  "${name}": "${fileReference}"`), true);
+      assert.equal(importer.includes(`      '${name}':\n        specifier: ${fileReference}\n        version: ${fileReference}`), true);
+      const start = lockfile.indexOf(`  '${name}@file:vendor/${archive}':`);
+      assert.notEqual(start, -1);
+      const entry = lockfile.slice(start, lockfile.indexOf("\n\n", start));
+      assert.match(entry, new RegExp(`tarball: file:vendor/${archive.replace(".", "\\.")}`));
+      assert.match(entry, new RegExp(`\\n    version: ${version.replaceAll(".", "\\.")}\\n`));
+    }
+    const dockerfile = await readFile(join(assembled.directory, "Dockerfile"), "utf8");
+    const builder = dockerfile.split("FROM dependencies AS builder\n", 2)[1].split(" AS runtime\n", 1)[0];
+    const runtime = dockerfile.split(" AS runtime\n", 2)[1];
+    const nextBuildEnvironment = release.coreReleaseChildEnvironment("next-build");
+    for (const key of ["AUTH_SECRET", "AUTH_URL", "KOKORO_SITE_PUBLIC_ORIGIN"]) {
+      assert.equal(builder.includes(`${key}=${nextBuildEnvironment[key]}`), true);
+      assert.equal(runtime.includes(`${key}=${nextBuildEnvironment[key]}`), false);
+    }
     assert.match(await readFile(join(assembled.directory, "src/app/page.tsx"), "utf8"), /attachmentsEnabled=\{false\}/u);
     assert.doesNotMatch(await readFile(join(assembled.directory, "src/app/login/page.tsx"), "utf8"), /Create an account|href="\/register"/u);
     const metadataPath = join(assembled.directory, "src/app/api/release/metadata/route.ts");

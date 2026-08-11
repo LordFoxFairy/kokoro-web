@@ -29,21 +29,42 @@ async function createPackageArtifact(
     | "@kokoro/account-app"
     | "@kokoro/media-app"
     | "@kokoro/memory-app",
+  version = "0.1.0",
 ) {
   const source = join(root, `${archiveName}-source`);
   await mkdir(join(source, "package"), { recursive: true });
   await writeFile(
     join(source, "package/package.json"),
-    `${JSON.stringify({ name, version: "0.1.0" })}\n`,
+    `${JSON.stringify({ name, version })}\n`,
   );
   const archivePath = join(root, `${archiveName}.tgz`);
   await createTar({ cwd: source, file: archivePath, gzip: true }, ["package"]);
   return {
     name,
-    version: "0.1.0",
+    version,
     archivePath,
     sha256: createHash("sha256").update(await readFile(archivePath)).digest("hex"),
   } as const;
+}
+
+function minimumReleaseAgeExclusions(workspace: string): string[] {
+  const block = workspace.match(/^minimumReleaseAgeExclude:\n((?:  - .+\n?)+)/mu);
+  if (block === null) return [];
+  return block[1]
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line.trim().slice(2)) as string)
+    .sort();
+}
+
+function internalFileOverrideNames(workspace: string): string[] {
+  return [...workspace.matchAll(/^  "(@kokoro\/[^"]+)": "file:vendor\/[^"]+\.tgz"$/gmu)]
+    .map((match) => match[1])
+    .sort();
+}
+
+function selectorPackageNames(selectors: readonly string[]): string[] {
+  return selectors.map((selector) => selector.slice(0, selector.lastIndexOf("@"))).sort();
 }
 
 describe("independent Site project scaffold", () => {
@@ -61,7 +82,7 @@ describe("independent Site project scaffold", () => {
       await createPackageArtifact(root, "chat-app", "@kokoro/chat-app"),
       await createPackageArtifact(root, "site-bff", "@kokoro/site-bff"),
       await createPackageArtifact(root, "account-app", "@kokoro/account-app"),
-      await createPackageArtifact(root, "media-app", "@kokoro/media-app"),
+      await createPackageArtifact(root, "media-app", "@kokoro/media-app", "0.2.0"),
     ] as const;
     const memoryPackage = await createPackageArtifact(root, "memory-app", "@kokoro/memory-app");
     const floor = {
@@ -175,7 +196,35 @@ describe("independent Site project scaffold", () => {
     const betaNextConfig = await readFile(join(beta.directory, "next.config.ts"), "utf8");
     const alphaWorkspace = await readFile(join(alpha.directory, "pnpm-workspace.yaml"), "utf8");
     const betaWorkspace = await readFile(join(beta.directory, "pnpm-workspace.yaml"), "utf8");
+    const coreWorkspace = await readFile(join(core.directory, "pnpm-workspace.yaml"), "utf8");
+    const coreDockerfile = await readFile(join(core.directory, "Dockerfile"), "utf8");
+    const coreBuilder = coreDockerfile.split("FROM dependencies AS builder\n", 2)[1].split(" AS runtime\n", 1)[0];
+    const coreRuntime = coreDockerfile.split(" AS runtime\n", 2)[1];
+    for (const fixture of [
+      "AUTH_SECRET=core-release-build-secret-with-at-least-32-characters",
+      "AUTH_URL=https://core.invalid",
+      "KOKORO_SITE_PUBLIC_ORIGIN=https://core.invalid",
+    ]) {
+      expect(coreBuilder).toContain(fixture);
+      expect(coreRuntime).not.toContain(fixture);
+    }
+    for (const [workspace, artifacts] of [
+      [alphaWorkspace, [...basePackages, memoryPackage]],
+      [betaWorkspace, basePackages],
+      [coreWorkspace, basePackages],
+    ] as const) {
+      const excluded = minimumReleaseAgeExclusions(workspace);
+      expect(excluded).toEqual(artifacts.map(({ name, version }) => `${name}@${version}`).sort());
+      expect(selectorPackageNames(excluded)).toEqual(internalFileOverrideNames(workspace));
+      expect(excluded.every((selector) => selector.startsWith("@kokoro/"))).toBe(true);
+      expect(excluded).not.toContain("next");
+    }
     expect(alphaManifest.enabledProductIds).toEqual(["memory"]);
+    expect(minimumReleaseAgeExclusions(alphaWorkspace)).toEqual(
+      Object.entries(alphaManifest.packages)
+        .map(([name, value]) => `${name}@${(value as { version: string }).version}`)
+        .sort(),
+    );
     expect(alphaManifest.packages).toHaveProperty("@kokoro/memory-app");
     expect(alphaSite).toContain('enabledProductIds: [\n  "memory"\n]');
     expect(alphaLayout).toContain('href="/memory"');

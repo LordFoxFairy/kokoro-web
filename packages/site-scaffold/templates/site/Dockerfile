@@ -8,7 +8,10 @@ RUN pnpm install --frozen-lockfile
 FROM dependencies AS builder
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
-RUN pnpm build
+RUN AUTH_SECRET=core-release-build-secret-with-at-least-32-characters \
+    AUTH_URL=https://core.invalid \
+    KOKORO_SITE_PUBLIC_ORIGIN=https://core.invalid \
+    pnpm build
 
 FROM node:24.13.0-alpine3.23@sha256:cd6fb7efa6490f039f3471a189214d5f548c11df1ff9e5b181aa49e22c14383e AS runtime
 WORKDIR /app
