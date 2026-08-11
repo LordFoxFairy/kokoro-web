@@ -5,17 +5,17 @@
     {
       "packagePath": "apps/admin",
       "manifestPath": "apps/admin/lib/generated/provenance.json",
-      "manifestDigest": "sha256:bf23cf93ffc02530cd3d3e07f7d34772009ecc978a696b5c0513776d302d4d34"
+      "manifestDigest": "sha256:0f8ce88df5ac09274c833b00785168d94716e5bb31d6725663fb6a1de65a6567"
     },
     {
       "packagePath": "packages/session-client",
       "manifestPath": "packages/session-client/src/generated/provenance.json",
-      "manifestDigest": "sha256:3a6e8854b46276c4f2499e3d6fb592b6d0d24caddb1ceb3301eacc365213da10"
+      "manifestDigest": "sha256:9ac67bf93ed3cb0e20ff93cdaa6f9830ee971595fb64534772d930781b553622"
     },
     {
       "packagePath": "packages/site-client",
       "manifestPath": "packages/site-client/src/generated/provenance.json",
-      "manifestDigest": "sha256:6acd545fdf993979470cb69b3acbd22a6e23ea662f9c4f43d718ac267682d490"
+      "manifestDigest": "sha256:2a7c233dc0e2785861a7e0d75944ae10d7a4289ad2e2e4fdb800b9dd3d57cebd"
     }
   ]
 }
