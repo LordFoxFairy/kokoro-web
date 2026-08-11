@@ -40,12 +40,15 @@ digest-only 发布、非特权只读运行和依赖感知 readiness；未绑定�
 ### Fixed core Site release
 
 `pnpm run release:core-site -- --definition ABS --contract-keyring ABS --image REGISTRY/REPO:TAG --platform linux/amd64 --report ABS --docker-config ABS --push`
+保持原有远端发布；固定单机本地构建把末尾替换为 `--load`。
 在 OS 临时目录中生成一个固定的单 Site 工件：只保留登录、Account/兑换、Chat、Session proxy 和 health
 路由；公共注册与邮件验证、Media、Memory、Payment 与附件 UI 均为关闭状态。Core 工件物理不包含
 `/register`、`/verify-email` 或登录页注册链接，并将同一静态 closed operation allowlist 传给 Site BFF，
 所以直接构造 acquisition 请求也会在 Platform transport 之前失败。登录、MFA、安全会话和卡密兑换保留。
-该命令只接受精确的 Buildx
-`containerimage.digest`，报告只保存 `registry/repository@sha256:<64-hex>`。生成 Site 的
+`--push` 保持原有 registry 发布路径；`--load` 用于固定单机的本地镜像库，只做单平台 Buildx load，并使用同仓库
+临时 tag。两条路径都读取 Buildx `containerimage.digest`；本地路径还必须从 `docker image inspect` 得到唯一匹配的
+`RepoDigest`，两者完全一致后才原子写入 `0600` 报告。报告只保存
+`registry/repository@sha256:<64-hex>`。生成 Site 的
 `KOKORO_WEB_ARTIFACT_DIGEST` 由部署环境设置为最终 OCI manifest digest（不使用 mutable tag）。定义包含稳定
 `siteId`，但不接受操作员提供的 package archive；builder 只从 HEAD 的 tracked-clean `git archive` 在临时目录
 offline/frozen 安装、构建 scaffold 并打包固定 11-package closure。核心 Site 另暴露静态

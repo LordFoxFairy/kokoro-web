@@ -1,4 +1,4 @@
-FROM node:24.13.0-alpine3.23 AS dependencies
+FROM node:24.13.0-alpine3.23@sha256:cd6fb7efa6490f039f3471a189214d5f548c11df1ff9e5b181aa49e22c14383e AS dependencies
 WORKDIR /workspace
 RUN npm install --global pnpm@11.2.2
 COPY . .
@@ -8,7 +8,7 @@ FROM dependencies AS builder
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN pnpm --filter @kokoro/admin-web build
 
-FROM node:24.13.0-alpine3.23 AS runtime
+FROM node:24.13.0-alpine3.23@sha256:cd6fb7efa6490f039f3471a189214d5f548c11df1ff9e5b181aa49e22c14383e AS runtime
 WORKDIR /app
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \

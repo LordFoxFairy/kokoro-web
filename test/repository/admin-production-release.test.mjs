@@ -16,7 +16,10 @@ test("Admin is a dedicated Next standalone image and never reuses the reference 
 
   assert.match(config, /output:\s*["']standalone["']/u);
   assert.match(config, /outputFileTracingRoot/u);
-  assert.match(dockerfile, /^FROM node:24\.13\.0-alpine3\.23 AS dependencies$/mu);
+  assert.deepEqual(dockerfile.split("\n").filter((line) => line.startsWith("FROM node:")), [
+    "FROM node:24.13.0-alpine3.23@sha256:cd6fb7efa6490f039f3471a189214d5f548c11df1ff9e5b181aa49e22c14383e AS dependencies",
+    "FROM node:24.13.0-alpine3.23@sha256:cd6fb7efa6490f039f3471a189214d5f548c11df1ff9e5b181aa49e22c14383e AS runtime",
+  ]);
   assert.match(dockerfile, /pnpm --filter @kokoro\/admin-web build/u);
   assert.match(dockerfile, /apps\/admin\/\.next\/standalone/u);
   assert.match(dockerfile, /apps\/admin\/\.next\/static/u);

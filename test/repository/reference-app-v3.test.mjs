@@ -58,6 +58,10 @@ test("the generated Site is a production artifact with fail-fast config and heal
   ])
   assert.match(environment, /KOKORO_SITE_RUNTIME_PLATFORM_ORIGIN/u)
   assert.match(environment, /KOKORO_SITE_RUNTIME_SESSION_ORIGIN/u)
+  assert.deepEqual(dockerfile.split("\n").filter((line) => line.startsWith("FROM node:")), [
+    "FROM node:24.13.0-alpine3.23@sha256:cd6fb7efa6490f039f3471a189214d5f548c11df1ff9e5b181aa49e22c14383e AS dependencies",
+    "FROM node:24.13.0-alpine3.23@sha256:cd6fb7efa6490f039f3471a189214d5f548c11df1ff9e5b181aa49e22c14383e AS runtime",
+  ])
   assert.match(dockerfile, /\.next\/standalone/u)
   assert.match(deployment, /\/api\/health\/live/u)
   assert.match(deployment, /\/api\/health\/ready/u)

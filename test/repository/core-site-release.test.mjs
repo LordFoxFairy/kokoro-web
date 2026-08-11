@@ -161,15 +161,76 @@ test("Buildx publication races safely into one same-directory hard-linked report
   } finally { await rm(temporary, { recursive: true, force: true }); }
 });
 
+test("local Buildx load publishes only after one inspected repository digest matches metadata", async () => {
+  const temporary = await mkdtemp(join(tmpdir(), "core-site-load-")); const report = join(temporary, "report.json");
+  const reportBody = { schemaVersion: 1, kind: "kokoro.core-site-release", webCommit: "a".repeat(40), siteId: "site:core", siteKey: "core-site", releaseId: "core.2026.08.11.001", finalSourceClosureSha256: "b".repeat(64), lockSha256: "c".repeat(64), packageArtifacts: Object.fromEntries(packageArtifacts.map(({ name, version, sha256 }) => [name, { version, sha256 }])), routes: exactRoutes };
+  const expectedImage = `registry.local/kokoro/core@sha256:${"d".repeat(64)}`;
+  const invocations = [];
+  const run = async (command, args, environment) => {
+    invocations.push({ command, args, environment });
+    if (args[0] === "buildx") {
+      await writeFile(args[args.indexOf("--metadata-file") + 1], JSON.stringify({ "containerimage.digest": `sha256:${"d".repeat(64)}` }));
+      return { stdout: "" };
+    }
+    return { stdout: `${JSON.stringify([expectedImage])}\n` };
+  };
+  try {
+    const published = await release.publishCoreSite({ directory: temporary, image: "registry.local/kokoro/core:build-1", platform: "linux/arm64", dockerConfig: "/controlled/docker", report, reportBody, mode: "load", run });
+    assert.deepEqual(published, { image: expectedImage, webArtifactDigest: "d".repeat(64) });
+    const recorded = JSON.parse(await readFile(report, "utf8"));
+    assert.equal(recorded.image, expectedImage); assert.equal(recorded.webArtifactDigest, "d".repeat(64)); assert.equal((await stat(report)).mode & 0o777, 0o600);
+    assert.equal(invocations.length, 2);
+    const temporaryTag = invocations[0].args[invocations[0].args.indexOf("--tag") + 1];
+    assert.match(temporaryTag, /^registry\.local\/kokoro\/core:kokoro-load-[0-9]+-[0-9a-f]{32}$/u);
+    assert.notEqual(temporaryTag, "registry.local/kokoro/core:build-1");
+    assert.deepEqual(invocations[0], {
+      command: "docker",
+      args: ["buildx", "build", "--load", "--platform", "linux/arm64", "--metadata-file", invocations[0].args[6], "--tag", temporaryTag, temporary],
+      environment: release.coreReleaseChildEnvironment("docker", { dockerConfig: "/controlled/docker" }),
+    });
+    assert.deepEqual(invocations[1], {
+      command: "docker",
+      args: ["image", "inspect", temporaryTag, "--format", "{{json .RepoDigests}}"],
+      environment: release.coreReleaseChildEnvironment("docker", { dockerConfig: "/controlled/docker" }),
+    });
+  } finally { await rm(temporary, { recursive: true, force: true }); }
+});
+
+test("local Buildx load rejects a missing, mismatched, or ambiguous inspected RepoDigest before writing a report", async () => {
+  for (const [name, repoDigests] of [
+    ["missing", []],
+    ["mismatched", [`registry.local/kokoro/core@sha256:${"e".repeat(64)}`]],
+    ["ambiguous", [`registry.local/kokoro/core@sha256:${"d".repeat(64)}`, `registry.local/kokoro/core@sha256:${"e".repeat(64)}`]],
+  ]) {
+    const temporary = await mkdtemp(join(tmpdir(), `core-site-load-${name}-`)); const report = join(temporary, "report.json");
+    const run = async (_command, args) => {
+      if (args[0] === "buildx") {
+        await writeFile(args[args.indexOf("--metadata-file") + 1], JSON.stringify({ "containerimage.digest": `sha256:${"d".repeat(64)}` }));
+        return { stdout: "" };
+      }
+      return { stdout: JSON.stringify(repoDigests) };
+    };
+    try {
+      await assert.rejects(release.publishCoreSite({ directory: temporary, image: "registry.local/kokoro/core:build-1", platform: "linux/amd64", dockerConfig: "/controlled/docker", report, reportBody: {}, mode: "load", run }), /RepoDigest/u);
+      await assert.rejects(stat(report));
+    } finally { await rm(temporary, { recursive: true, force: true }); }
+  }
+});
+
 test("Buildx platform is a closed Linux allowlist", async () => {
   await assert.rejects(release.publishCoreSite({ directory: tmpdir(), image: "registry.example/kokoro/core:tag", platform: "darwin/arm64", dockerConfig: "/controlled/docker", report: join(tmpdir(), `invalid-platform-${Date.now()}.json`), reportBody: {}, run: async () => assert.fail("Buildx must not run") }), /platform/u);
 });
 
 test("CLI keys are exact and Docker config is mandatory before publication", async () => {
-  const valid = ["--definition", "/definition.json", "--contract-keyring", "/keyring.json", "--image", "registry.example/core:tag", "--platform", "linux/amd64", "--report", "/report.json", "--docker-config", "/docker", "--push"];
-  assert.equal(release.parseCoreReleaseArguments(valid).get("--docker-config"), "/docker");
-  assert.throws(() => release.parseCoreReleaseArguments([...valid, "--unknown", "value"]), /unknown/u);
-  assert.throws(() => release.parseCoreReleaseArguments(valid.filter((value, index) => value !== "--docker-config" && valid[index - 1] !== "--docker-config")), /docker-config/u);
+  const base = ["--definition", "/definition.json", "--contract-keyring", "/keyring.json", "--image", "registry.example/core:tag", "--platform", "linux/amd64", "--report", "/report.json", "--docker-config", "/docker"];
+  const push = [...base, "--push"]; const load = [...base, "--load"];
+  assert.equal(release.parseCoreReleaseArguments(push).get("--docker-config"), "/docker");
+  assert.equal(release.parseCoreReleaseArguments(push).get("--push"), true);
+  assert.equal(release.parseCoreReleaseArguments(load).get("--load"), true);
+  assert.throws(() => release.parseCoreReleaseArguments([...push, "--unknown", "value"]), /unknown/u);
+  assert.throws(() => release.parseCoreReleaseArguments(push.filter((value, index) => value !== "--docker-config" && push[index - 1] !== "--docker-config")), /docker-config/u);
+  assert.throws(() => release.parseCoreReleaseArguments(base), /push.*load|load.*push/u);
+  assert.throws(() => release.parseCoreReleaseArguments([...base, "--push", "--load"]), /push.*load|load.*push/u);
   await assert.rejects(release.publishCoreSite({ directory: tmpdir(), image: "registry.example/core:tag", platform: "linux/amd64", report: join(tmpdir(), `missing-docker-${Date.now()}.json`), reportBody: {}, run: async () => assert.fail("Buildx must not run") }), /dockerConfig/u);
 });
 
