@@ -30,6 +30,38 @@ const retiredSourceNames = Object.freeze([
   "presentation-binding-authority-delta-v1.yaml",
 ]);
 
+test("the active AG-UI compatibility validator is Web-owned source, not an untracked generated root", () => {
+  const packageJson = JSON.parse(readFileSync(new URL("package.json", webRoot), "utf8"));
+  const productionSource = readFileSync(new URL(
+    "packages/session-client/src/agui-presentation-state-machine.internal.ts",
+    webRoot,
+  ), "utf8");
+
+  assert.equal(packageJson.scripts["generate:agui-binding-authority"], undefined);
+  assert.equal(packageJson.scripts["verify:agui-binding-authority"], undefined);
+  assert.equal(existsSync(new URL("scripts/generate-agui-binding-authority.mjs", webRoot)), false);
+  assert.equal(existsSync(new URL(
+    "packages/session-client/src/generated/agui-binding-authority.ts",
+    webRoot,
+  )), false);
+  assert.equal(existsSync(new URL(
+    "packages/session-client/src/agui-binding-authority.compat.ts",
+    webRoot,
+  )), true);
+  const compatibilitySource = readFileSync(new URL(
+    "packages/session-client/src/agui-binding-authority.compat.ts",
+    webRoot,
+  ), "utf8");
+  assert.match(productionSource, /from "\.\/agui-binding-authority\.compat\.js"/u);
+  assert.doesNotMatch(productionSource, /generated\/agui-binding-authority/u);
+  assert.match(compatibilitySource, /owner: "kokoro-web"/u);
+  assert.match(compatibilitySource, /activeLane: "session-browser-v3"/u);
+  assert.doesNotMatch(
+    compatibilitySource,
+    /GENERATED|DO NOT EDIT|Generation authority: Kokoro Root|contract\/spec\/presentation-(?:run|message|owner|binding-authority)/u,
+  );
+});
+
 function fileDigest(path) {
   return `sha256:${createHash("sha256").update(readFileSync(path)).digest("hex")}`;
 }

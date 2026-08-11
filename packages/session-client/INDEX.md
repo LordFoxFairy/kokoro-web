@@ -38,14 +38,20 @@ That subpath is a whitelist façade over one production state-machine implementa
 future-authority, preload, or test-only decoder variant.
 Root's unified generated roots are `src/generated/schema/**` and `src/generated/contracts/**`; the exact input/output
 ledger is `src/generated/provenance.json`, and duplicate top-level generated contract files are forbidden.
-Root's unified Presentation source ledger is `binding-v1`, `binding-update-v1`, `owner-state-v1`, and `snapshot-v1`.
-The Root consumer registry owns their committed mirrors under
-`src/generated/schema/presentation/`; Web has no editable binding schema source. The package drift gate pins the exact
-Root source digests and schema IDs in a federated checkout, while the repository gate validates the typed
-source-to-output mappings and rejects every retired split binding/delta schema path. An independently built Web package
-skips the Root-only checks and never reads a parent checkout at build time or runtime, nor treats the conformance corpus
-as a schema authority. Root-owned event, Run, message, thread, binding, owner-state, and snapshot identities retain
-closed runtime patterns at the browser boundary.
+Root's canonical Presentation source ledger is `binding-v1`, `binding-update-v1`, `owner-state-v1`, and `snapshot-v1`.
+The Root consumer registry owns their committed mirrors under `src/generated/schema/presentation/`; the package drift
+gate pins their exact source digests and schema IDs in a federated checkout, while the repository gate validates the
+typed source-to-output mappings and rejects every retired split binding/delta schema path.
+
+The promoted Session browser-v3 runtime still publishes the earlier `kokoro-agui-presentation.v1` projection envelope.
+`src/agui-binding-authority.compat.ts` is the explicit Web-owned, frozen validator for that active compatibility lane;
+it is ordinary reviewed source, is outside every `generated` tree, and has no generator that reads retired Root paths.
+Its metadata names Web and `session-browser-v3` directly and makes no Root-source or generation-authority claim.
+Switching this module to the canonical `bindingKind`/`contractRevision` and
+`wireProfileRevision`/`frameData.bindingUpdate` shapes is a coordinated Session-and-Web migration, not a unilateral Web
+change. Until that migration is scheduled, both sides retain their currently deployed wire behavior and the Root
+canonical mirrors remain dormant for this browser lane. An independently built Web package never reads a parent
+checkout at build time or runtime, nor treats the conformance corpus as a schema authority.
 `@ag-ui/core@0.0.57` is pinned exactly and
 `EventSchemas` is used only after Kokoro's smaller closed profile has passed UTF-8 byte, JSON depth/node/key/array,
 event, source-mapping, grant, cursor, Session, epoch, sequence, timestamp, binding, thread, message-END, and terminal
@@ -133,7 +139,10 @@ Only an exact last-frame retry is replayable. Older cursors, gaps, conflicts, or
 
 ## Extension rules and forbidden dependencies
 
-Regenerate wire surfaces from Root contracts and extend the closed profile with corpus tests. Do not add raw SessionEvent fallback, Agent transport, stock browser client, or hand-written DTOs.
+Regenerate canonical wire surfaces from Root contracts and extend the closed profile with corpus tests. Keep the active
+browser-v3 compatibility validator explicitly Web-owned until its coordinated Session/Web retirement; do not create a
+new generated copy or revive its deleted generator. Do not add raw SessionEvent fallback, Agent transport, stock browser
+client, or hand-written DTOs.
 
 ## Current gotchas
 

@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import * as AguiPresentationModule from "../src/agui-presentation.js";
 import {
   AguiPresentationProtocolError,
+  admitAguiPresentationWireFrame,
   createAguiPresentationDecoder,
   type AguiGrantBinding,
   type AguiSseFrame,
@@ -24,10 +25,28 @@ type FixtureCase = Readonly<{
 
 type FixtureCorpus = Readonly<{ positiveCases: readonly FixtureCase[] }>;
 
+type CanonicalFrame = Readonly<{
+  cursor: string;
+  eventName: string;
+  dataUtf8: string;
+}>;
+
+type CanonicalCorpus = Readonly<{
+  wireFrames: Readonly<{
+    scenarios: readonly Readonly<{
+      stream: Readonly<{ frames: readonly CanonicalFrame[] }>;
+    }>[];
+  }>;
+}>;
+
 const fixture = JSON.parse(readFileSync(
   new URL("./fixtures/root-agui-presentation-v1.json", import.meta.url),
   "utf8",
 )) as FixtureCorpus;
+const canonicalFixture = JSON.parse(readFileSync(
+  new URL("../src/generated/contracts/presentation/corpus-v1.json", import.meta.url),
+  "utf8",
+)) as CanonicalCorpus;
 
 function primary(): FixtureCase {
   const contractCase = fixture.positiveCases[0];
@@ -68,6 +87,12 @@ describe("AG-UI presentation decoder", () => {
     expect(AguiPresentationModule).toHaveProperty("createAguiPresentationDecoder");
     expect(AguiPresentationModule).toHaveProperty("admitAguiPresentationWireFrame");
     expect(AguiPresentationModule).not.toHaveProperty("createAguiPresentationStateMachineForTesting");
+    expect(AguiPresentationModule.aguiBindingAuthorityContractMetadata).toEqual({
+      owner: "kokoro-web",
+      activeLane: "session-browser-v3",
+      contractRevision: "kokoro.web.session-browser-v3-binding-compat.v1",
+      profileRevision: "kokoro-agui-presentation.v1",
+    });
   });
 
   it("admits canonical durable and draining wire syntax without manufacturing cursor authority", () => {
@@ -95,6 +120,24 @@ describe("AG-UI presentation decoder", () => {
         action: "retry-same-cursor",
       }),
     })).toMatchObject({ kind: "control" });
+  });
+
+  it("keeps the active Session compatibility envelope distinct from the inactive canonical lane", () => {
+    const activeFrame = primary().frames[0];
+    const canonicalFrame = canonicalFixture.wireFrames.scenarios[0]?.stream.frames[0];
+    if (activeFrame === undefined || canonicalFrame === undefined) {
+      throw new Error("AG-UI compatibility fixtures missing");
+    }
+
+    expect(admitAguiPresentationWireFrame(sse(activeFrame))).toMatchObject({
+      kind: "durable",
+      data: activeFrame.data,
+    });
+    expectCode(() => admitAguiPresentationWireFrame({
+      id: canonicalFrame.cursor,
+      event: canonicalFrame.eventName,
+      data: canonicalFrame.dataUtf8,
+    }), "agui_projection_payload_invalid");
   });
 
   it("serializes admission, acknowledgement, replay, and resume state", () => {

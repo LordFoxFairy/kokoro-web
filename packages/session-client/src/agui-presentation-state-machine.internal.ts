@@ -23,7 +23,7 @@ import {
   type AguiPresentationOwnerBinding,
   type AguiPresentationRunBindingRef,
   type AguiPresentationRunBinding,
-} from "./generated/agui-binding-authority.js";
+} from "./agui-binding-authority.compat.js";
 
 export {
   aguiBindingAuthorityContractMetadata,
@@ -49,7 +49,7 @@ export {
   type AguiPresentationRunBinding,
   type AguiPresentationThreadId,
   type AguiPublicSourceEventId,
-} from "./generated/agui-binding-authority.js";
+} from "./agui-binding-authority.compat.js";
 
 export const AGUI_PRESENTATION_PROFILE_REVISION = "kokoro-agui-presentation.v1" as const;
 export const AGUI_CURSOR_PROFILE_REVISION = "opaque-session-cursor-v1" as const;

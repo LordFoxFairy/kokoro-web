@@ -108,3 +108,13 @@ test("the Admin generated root contains only provenance-owned outputs", () => {
     .sort();
   assert.deepEqual(actual, expected);
 });
+
+test("the Session client generated root contains only provenance-owned outputs", () => {
+  const manifestPath = "packages/session-client/src/generated/provenance.json";
+  const manifest = JSON.parse(readFileSync(resolve(webRoot, manifestPath), "utf8"));
+  const expected = [manifestPath, ...manifest.outputs.map(({ path }) => path)].sort();
+  const actual = allFiles(resolve(webRoot, "packages/session-client/src/generated"))
+    .map((path) => relative(webRoot, path).split(sep).join("/"))
+    .sort();
+  assert.deepEqual(actual, expected);
+});

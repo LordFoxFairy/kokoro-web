@@ -1,25 +1,15 @@
-// GENERATED — DO NOT EDIT.
-// Sources:
-//   contract/spec/presentation-run-binding-v1.yaml
-//   contract/spec/presentation-message-binding-v1.yaml
-//   contract/spec/presentation-owner-binding-v1.yaml
-//   contract/spec/presentation-binding-authority-delta-v1.yaml
-// Generation authority: Kokoro Root contract authority.
+// Web-owned frozen compatibility validator for the active Session browser-v3
+// `kokoro-agui-presentation.v1` lane. This is reviewed runtime source, not a
+// Root-generated mirror. Retire it only through one coordinated Session/Web
+// migration to the canonical Presentation binding and frame shapes.
 
 import { z } from "zod";
 
 export const aguiBindingAuthorityContractMetadata = Object.freeze({
+  owner: "kokoro-web",
+  activeLane: "session-browser-v3",
+  contractRevision: "kokoro.web.session-browser-v3-binding-compat.v1",
   profileRevision: "kokoro-agui-presentation.v1",
-  sources: Object.freeze({
-    "contract/spec/presentation-run-binding-v1.yaml":
-      "54d50fd4179147e5b421d5ce6c957dce8d36be68906ba19bebd6372eea4136fe",
-    "contract/spec/presentation-message-binding-v1.yaml":
-      "56a2b5728f6ac880eb44648f30b0a05a09cf58ae713bc4f111a02928211dd1a5",
-    "contract/spec/presentation-owner-binding-v1.yaml":
-      "43d6434304ea1ce483b0a8d4f87f2916135eeb3bd07ab0a7ec7e7dd04315a2c6",
-    "contract/spec/presentation-binding-authority-delta-v1.yaml":
-      "df61ff36f09195f9e9ed9764c8de27f5c59a717bee495a834316cae0988772ac",
-  }),
 });
 
 const idPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/u;
