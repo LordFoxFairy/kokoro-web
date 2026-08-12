@@ -37,7 +37,10 @@ Account redemption journey. The main entry owns setup state, lifecycle and final
   the intentional malformed response. A non-success confirmation response is continued exactly once and rejects
   with a fixed non-sensitive fixture code; a missing confirmation response and confirmation CDP teardown are each
   bounded by the Chromium action deadline. A primary confirmation failure remains authoritative if CDP teardown
-  also fails. It writes journey evidence and returns only a bounded exercised receipt.
+  also fails. The request audit always checks URL, body and provisional headers synchronously; complete-header
+  inspection starts at the explicit Code-introduction boundary, is independently bounded per request, and treats
+  rejection or timeout as an authority violation. It writes journey evidence and returns only a bounded exercised
+  receipt.
 - `observe` remains unavailable until both journey and lifecycle evidence exist, then returns only bounded booleans
   and counts for Host resolution, the browser Session turn, terminal assistant output, Chat and three redemption
   Account reads, two execute requests, one UI recovery request, Credit/Product readback, replay stability, pinned

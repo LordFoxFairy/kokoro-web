@@ -419,7 +419,7 @@ test("browser redemption bounds a never-resolving Chromium close and still remov
   await assert.rejects(stat(profileDirectory), { code: "ENOENT" });
 });
 
-function accountBrowserPage() {
+function accountBrowserPage(retainCode = true) {
   return `<!doctype html><html><body>
 <h1>Account</h1><p id="status" role="status"></p>
 <section id="redemption"><h2>Redeem a code</h2>
@@ -450,7 +450,7 @@ async function loadDashboard() {
 previewForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const code = String(new FormData(previewForm).get("code") || "");
-  document.documentElement.setAttribute("data-retained-code", code);
+  ${retainCode ? 'document.documentElement.setAttribute("data-retained-code", code);' : ""}
   await invoke("prepare", { operation: "redemption.preview", flowRef: previewFlow });
   const response = await invoke("execute", { operation: "redemption.preview", flowRef: previewFlow, code });
   const result = await response.json();
@@ -490,7 +490,7 @@ void loadDashboard();
 </script></body></html>`;
 }
 
-test("real Chromium recovers through the Account Continue UI and rejects a retained DOM attribute", async (t) => {
+test("real Chromium survives the immediate post-login navigation and rejects a retained DOM attribute", async (t) => {
   const privateDirectory = await mkdtemp(join(tmpdir(), "kokoro-web-browser-ui-recovery-test-"));
   t.after(() => rm(privateDirectory, { recursive: true, force: true }));
   const environment = fixtureEnvironment(privateDirectory);
@@ -501,6 +501,7 @@ test("real Chromium recovers through the Account Continue UI and rejects a retai
   const state = JSON.parse(await readFile(setup.runtimeStateFile, "utf8"));
   const rawCode = runtimeMaterial("KOKORO_WEB_FIXTURE_REDEMPTION_CODE_FILE");
   const serverFacts = { dashboard: 0, execute: 0, recover: 0, violation: false, redeemed: false };
+  let retainCode = false;
   const upstream = createServer(async (request, response) => {
     const chunks = [];
     for await (const chunk of request) chunks.push(chunk);
@@ -533,7 +534,7 @@ test("real Chromium recovers through the Account Continue UI and rejects a retai
       return;
     }
     if (request.url === "/account" && request.method === "GET") {
-      const html = accountBrowserPage();
+      const html = accountBrowserPage(retainCode);
       response.writeHead(200, {
         "cache-control": "no-store",
         "content-type": "text/html; charset=utf-8",
@@ -607,7 +608,7 @@ test("real Chromium recovers through the Account Continue UI and rejects a retai
   });
   t.after(() => proxy.close());
 
-  await assert.rejects(redeemAccountInChromium({
+  const browserInput = {
     publicOrigin: setup.publicOrigin,
     candidateHost: setup.candidateHost,
     publicCertificateAuthorityFile: setup.publicCertificateAuthorityFile,
@@ -618,7 +619,28 @@ test("real Chromium recovers through the Account Continue UI and rejects a retai
       password: "runtime-fixture-password-at-least-32-characters",
     },
     rawCode,
-  }), /WEB_FIXTURE_BROWSER_REDEMPTION_FAILED/u);
+  };
+
+  const startedAt = Date.now();
+  assert.deepEqual(await redeemAccountInChromium(browserInput), redemptionEvidence());
+  assert.ok(Date.now() - startedAt < 20_000);
+  assert.deepEqual(serverFacts, {
+    dashboard: 3,
+    execute: 2,
+    recover: 1,
+    violation: false,
+    redeemed: true,
+  });
+
+  Object.assign(serverFacts, {
+    dashboard: 0,
+    execute: 0,
+    recover: 0,
+    violation: false,
+    redeemed: false,
+  });
+  retainCode = true;
+  await assert.rejects(redeemAccountInChromium(browserInput), /WEB_FIXTURE_BROWSER_REDEMPTION_FAILED/u);
 
   assert.deepEqual(serverFacts, {
     dashboard: 3,

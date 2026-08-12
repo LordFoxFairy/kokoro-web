@@ -12,6 +12,7 @@ const SAFE_TEXT = /^[^\u0000-\u001f\u007f]{1,256}$/u;
 const ACTION_TIMEOUT_MS = 30_000;
 const TOTAL_TIMEOUT_MS = 120_000;
 const CLEANUP_TIMEOUT_MS = 10_000;
+const HEADER_INSPECTION_TIMEOUT_MS = 1_000;
 const MAXIMUM_PROFILE_FILES = 50_000;
 const MAXIMUM_PROFILE_BYTES = 512 * 1024 * 1024;
 const PROFILE_SCAN_CHUNK_BYTES = 64 * 1024;
@@ -211,7 +212,11 @@ export function createBrowserAudit(origin, rawCode) {
   let redemptionDashboardReadCount = 0;
   let redemptionExecuteRequestCount = 0;
   let redemptionRecoveryRequestCount = 0;
+  let secretIntroduced = false;
   return Object.freeze({
+    markSecretIntroduced() {
+      secretIntroduced = true;
+    },
     attach(page) {
       page.on("framenavigated", (frame) => {
         const url = frame.url();
@@ -231,11 +236,21 @@ export function createBrowserAudit(origin, rawCode) {
         const serializedHeaders = JSON.stringify(request.headers());
         const body = request.postData();
         secretViolation ||= request.url().includes(rawCode) || serializedHeaders.includes(rawCode);
-        headerInspections.push(request.allHeaders().then((headers) => {
-          secretViolation ||= JSON.stringify(headers).includes(rawCode);
-        }).catch(() => {
-          requestViolation = true;
-        }));
+        if (secretIntroduced) {
+          try {
+            headerInspections.push(withTimeout(
+              Promise.resolve(request.allHeaders()),
+              HEADER_INSPECTION_TIMEOUT_MS,
+              "WEB_FIXTURE_BROWSER_HEADER_INSPECTION_TIMEOUT",
+            ).then((headers) => {
+              secretViolation ||= JSON.stringify(headers).includes(rawCode);
+            }).catch(() => {
+              requestViolation = true;
+            }));
+          } catch {
+            requestViolation = true;
+          }
+        }
         const accountMutation = url !== null && [
           "/api/account/prepare", "/api/account/execute", "/api/account/recover",
         ].includes(url.pathname);
@@ -282,7 +297,7 @@ export function createBrowserAudit(origin, rawCode) {
         "preview.prepare", "preview.execute", "confirm.prepare", "confirm.execute", "confirm.recover",
       ];
       const [previewPrepare, previewExecute, confirmPrepare, confirmExecute, confirmationRecovery] = mutations;
-      const authorityEnforced = !requestViolation && !responseViolation &&
+      const authorityEnforced = secretIntroduced && !requestViolation && !responseViolation &&
         labels.length === expectedLabels.length &&
         labels.every((label, index) => label === expectedLabels[index]) &&
         previewPrepare?.flowRef === previewExecute?.flowRef &&
@@ -612,6 +627,7 @@ async function performRedemptionJourney(page, context, input, origin, authority,
     has: page.getByRole("heading", { name: "Redeem a code", exact: true, level: 2 }),
   });
   await redemption.waitFor({ state: "visible" });
+  audit.markSecretIntroduced();
   await redemption.getByLabel("Code", { exact: true }).fill(input.rawCode);
   await Promise.all([
     page.waitForRequest((request) => requestHasOperation(request, "execute", "redemption.preview")),

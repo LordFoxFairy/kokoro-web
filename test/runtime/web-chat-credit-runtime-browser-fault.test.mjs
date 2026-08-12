@@ -4,6 +4,7 @@ import test from "node:test";
 import * as browserFixture from "../fixtures/web-chat-credit-runtime-browser.mjs";
 
 const ORIGIN = new URL("https://web-chat-credit.fixture.local:4343");
+const RAW_CODE = "KC1-ABCDEFGH-0123456789-0123456789ABCDEFGHJKMNPQRSTVWXYZ-ABCDEFGH";
 
 function createCdpHarness(options = {}) {
   const commands = [];
@@ -54,6 +55,160 @@ function within(promise, milliseconds = 100) {
     }),
   ]).finally(() => clearTimeout(timer));
 }
+
+function createAuditHarness() {
+  const handlers = new Map();
+  const audit = browserFixture.createBrowserAudit(ORIGIN, RAW_CODE);
+  audit.attach({ on(event, handler) { handlers.set(event, handler); } });
+  return Object.freeze({ audit, handlers });
+}
+
+function emitValidMutationSequence(handlers, allHeadersForIndex = () => Promise.resolve({})) {
+  const requests = [
+    ["prepare", { operation: "redemption.preview", flowRef: "preview-flow" }],
+    ["execute", { operation: "redemption.preview", flowRef: "preview-flow", code: RAW_CODE }],
+    ["prepare", { operation: "redemption.confirm", flowRef: "confirm-flow" }],
+    ["execute", {
+      operation: "redemption.confirm",
+      flowRef: "confirm-flow",
+      previewFlowRef: "preview-flow",
+      legalAccepted: true,
+    }],
+    ["recover", { operation: "redemption.confirm", flowRef: "confirm-flow" }],
+  ];
+  requests.forEach(([suffix, body], index) => {
+    handlers.get("request")({
+      url() { return `${ORIGIN.origin}/api/account/${suffix}`; },
+      method() { return "POST"; },
+      headers() {
+        return {
+          "content-type": "application/json",
+          "x-kokoro-browser-csrf": "fixture-csrf",
+        };
+      },
+      postData() { return JSON.stringify(body); },
+      allHeaders() { return allHeadersForIndex(index); },
+    });
+  });
+}
+
+test("browser audit does not wait for complete headers before the code enters Chromium", async () => {
+  const handlers = new Map();
+  let allHeadersCalls = 0;
+  const audit = browserFixture.createBrowserAudit(ORIGIN, RAW_CODE);
+  audit.attach({ on(event, handler) { handlers.set(event, handler); } });
+
+  handlers.get("request")({
+    url() { return `${ORIGIN.origin}/api/session/v1/sessions`; },
+    method() { return "GET"; },
+    headers() { return {}; },
+    postData() { return null; },
+    allHeaders() {
+      allHeadersCalls += 1;
+      return new Promise(() => {});
+    },
+  });
+
+  const outcome = await within(audit.finalize());
+  assert.equal(outcome.kind, "resolved");
+  assert.equal(allHeadersCalls, 0);
+  assert.equal(outcome.value.redemptionSecretRequestsConfined, true);
+});
+
+test("browser audit bounds complete headers after the code enters Chromium and fails authority closed", async () => {
+  const clean = createAuditHarness();
+  clean.audit.markSecretIntroduced();
+  emitValidMutationSequence(clean.handlers);
+  assert.equal((await clean.audit.finalize()).browserMutationAuthorityEnforced, true);
+
+  const hanging = createAuditHarness();
+  hanging.audit.markSecretIntroduced();
+  emitValidMutationSequence(
+    hanging.handlers,
+    (index) => index === 2 ? new Promise(() => {}) : Promise.resolve({}),
+  );
+
+  const outcome = await within(hanging.audit.finalize(), 2_000);
+  assert.equal(outcome.kind, "resolved");
+  assert.equal(outcome.value.browserMutationAuthorityEnforced, false);
+});
+
+test("browser audit detects hidden code headers and treats complete-header rejection as an authority violation", async () => {
+  const hiddenSecret = createAuditHarness();
+  hiddenSecret.audit.markSecretIntroduced();
+  emitValidMutationSequence(
+    hiddenSecret.handlers,
+    (index) => Promise.resolve(index === 3 ? { cookie: `probe=${RAW_CODE}` } : {}),
+  );
+  const hiddenSecretEvidence = await hiddenSecret.audit.finalize();
+  assert.equal(hiddenSecretEvidence.browserMutationAuthorityEnforced, true);
+  assert.equal(hiddenSecretEvidence.redemptionSecretRequestsConfined, false);
+
+  const rejected = createAuditHarness();
+  rejected.audit.markSecretIntroduced();
+  emitValidMutationSequence(
+    rejected.handlers,
+    (index) => index === 3 ? Promise.reject(new Error("private request ended")) : Promise.resolve({}),
+  );
+  const rejectedEvidence = await rejected.audit.finalize();
+  assert.equal(rejectedEvidence.browserMutationAuthorityEnforced, false);
+  assert.equal(rejectedEvidence.redemptionSecretRequestsConfined, true);
+
+  const missing = createAuditHarness();
+  missing.audit.markSecretIntroduced();
+  emitValidMutationSequence(
+    missing.handlers,
+    (index) => index === 3 ? undefined : Promise.resolve({}),
+  );
+  assert.equal((await missing.audit.finalize()).browserMutationAuthorityEnforced, false);
+
+  const threw = createAuditHarness();
+  threw.audit.markSecretIntroduced();
+  emitValidMutationSequence(threw.handlers, (index) => {
+    if (index === 3) throw new Error("private request disposed");
+    return Promise.resolve({});
+  });
+  assert.equal((await threw.audit.finalize()).browserMutationAuthorityEnforced, false);
+});
+
+test("browser audit keeps synchronous request checks before code introduction and rejects cross-origin POST", async () => {
+  const provisional = createAuditHarness();
+  let allHeadersCalls = 0;
+  provisional.handlers.get("request")({
+    url() { return `${ORIGIN.origin}/before-redemption`; },
+    method() { return "GET"; },
+    headers() { return { "x-visible-probe": RAW_CODE }; },
+    postData() { return null; },
+    allHeaders() {
+      allHeadersCalls += 1;
+      return Promise.resolve({});
+    },
+  });
+  const provisionalEvidence = await provisional.audit.finalize();
+  assert.equal(allHeadersCalls, 0);
+  assert.equal(provisionalEvidence.redemptionSecretRequestsConfined, false);
+
+  const crossOrigin = createAuditHarness();
+  crossOrigin.handlers.get("request")({
+    url() { return "https://cross-origin.fixture.local:4343/collect"; },
+    method() { return "POST"; },
+    headers() { return { "content-type": "application/json" }; },
+    postData() { return "{}"; },
+    allHeaders() { return Promise.resolve({}); },
+  });
+  crossOrigin.audit.markSecretIntroduced();
+  emitValidMutationSequence(crossOrigin.handlers);
+  assert.equal((await crossOrigin.audit.finalize()).browserMutationAuthorityEnforced, false);
+});
+
+test("browser audit cannot attest mutation authority without the explicit code-introduction boundary", async () => {
+  const unmarked = createAuditHarness();
+  emitValidMutationSequence(unmarked.handlers);
+
+  const evidence = await unmarked.audit.finalize();
+  assert.equal(evidence.browserMutationAuthorityEnforced, false);
+  assert.equal(evidence.redemptionSameFlowReplay, false);
+});
 
 test("confirmation response fault is exposed by the runtime fixture for deterministic CDP regression tests", () => {
   assert.equal(typeof browserFixture.createConfirmationResponseFault, "function");
