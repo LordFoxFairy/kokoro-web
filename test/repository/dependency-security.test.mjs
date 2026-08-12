@@ -24,8 +24,54 @@ const chatAppPackage = await readPackage("packages/chat-app");
 const siteBffPackage = await readPackage("packages/site-bff");
 const referenceSitePackage = await readPackage("apps/reference-site");
 const workspace = await readFile(resolve(root, "pnpm-workspace.yaml"), "utf8");
+const lockfile = await readFile(resolve(root, "pnpm-lock.yaml"), "utf8");
 const sessionClientMain = await readFile(resolve(root, "packages/session-client/src/index.ts"), "utf8");
 const chatSurfaceMain = await readFile(resolve(root, "packages/chat-surface/src/index.ts"), "utf8");
+
+function parseSemver(value) {
+  const match = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/u.exec(value);
+  assert.ok(match, `invalid semantic version in pnpm lock: ${value}`);
+  const prerelease = match[4]?.split(".") ?? [];
+  for (const identifier of prerelease) {
+    assert.ok(!/^[0-9]+$/u.test(identifier) || identifier === "0" || !identifier.startsWith("0"));
+  }
+  return {
+    core: match.slice(1, 4).map((part) => BigInt(part)),
+    prerelease,
+  };
+}
+
+function compareSemver(leftValue, rightValue) {
+  const left = parseSemver(leftValue);
+  const right = parseSemver(rightValue);
+  for (let index = 0; index < left.core.length; index += 1) {
+    if (left.core[index] < right.core[index]) return -1;
+    if (left.core[index] > right.core[index]) return 1;
+  }
+  if (left.prerelease.length === 0 || right.prerelease.length === 0) {
+    return left.prerelease.length === right.prerelease.length ? 0 : left.prerelease.length === 0 ? 1 : -1;
+  }
+  for (let index = 0; index < Math.max(left.prerelease.length, right.prerelease.length); index += 1) {
+    const leftIdentifier = left.prerelease[index];
+    const rightIdentifier = right.prerelease[index];
+    if (leftIdentifier === undefined || rightIdentifier === undefined) {
+      return leftIdentifier === rightIdentifier ? 0 : leftIdentifier === undefined ? -1 : 1;
+    }
+    if (leftIdentifier === rightIdentifier) continue;
+    const leftNumeric = /^[0-9]+$/u.test(leftIdentifier);
+    const rightNumeric = /^[0-9]+$/u.test(rightIdentifier);
+    if (leftNumeric && rightNumeric) return BigInt(leftIdentifier) < BigInt(rightIdentifier) ? -1 : 1;
+    if (leftNumeric !== rightNumeric) return leftNumeric ? -1 : 1;
+    return leftIdentifier < rightIdentifier ? -1 : 1;
+  }
+  return 0;
+}
+
+function nanoidAffectedByCve202667213(version) {
+  return compareSemver(version, "3.3.17") < 0 || (
+    compareSemver(version, "4.0.0") >= 0 && compareSemver(version, "5.1.6") < 0
+  );
+}
 
 test("deployable apps pin the reviewed security patch line", () => {
   for (const app of [adminPackage, referenceSitePackage]) {
@@ -48,7 +94,34 @@ test("deployable apps pin the reviewed security patch line", () => {
 
 test("workspace overrides close transitive production advisories", () => {
   assert.equal(rootPackage.pnpm, undefined);
-  assert.match(workspace, /^overrides:\n  "@auth\/core@0\.41\.3>nodemailer": 9\.0\.3\n  "next-auth@5\.0\.0-beta\.32>nodemailer": 9\.0\.3\n  brace-expansion@<1\.1\.16: 1\.1\.16\n  "brace-expansion@>=5\.0\.0 <5\.0\.8": 5\.0\.8\n  postcss: 8\.5\.23\n  path-to-regexp: 8\.4\.2\n  sharp: 0\.35\.3$/mu);
+  assert.match(workspace, /^overrides:\n  "@auth\/core@0\.41\.3>nodemailer": 9\.0\.3\n  "next-auth@5\.0\.0-beta\.32>nodemailer": 9\.0\.3\n  brace-expansion@<1\.1\.16: 1\.1\.16\n  "brace-expansion@>=5\.0\.0 <5\.0\.8": 5\.0\.8\n  "nanoid@3\.3\.16": 3\.3\.17\n  postcss: 8\.5\.23\n  path-to-regexp: 8\.4\.2\n  sharp: 0\.35\.3$/mu);
+});
+
+test("the pnpm lock excludes every nanoid version affected by CVE-2026-67213", () => {
+  const versions = [...new Set(
+    [...lockfile.matchAll(/^  nanoid@([^:\s]+):$/gmu)].map((match) => match[1]),
+  )].sort(compareSemver);
+  assert.ok(versions.length > 0, "pnpm lock must expose its nanoid resolutions");
+  assert.deepEqual(
+    versions.filter(nanoidAffectedByCve202667213),
+    [],
+    `affected nanoid resolutions: ${versions.filter(nanoidAffectedByCve202667213).join(", ")}`,
+  );
+});
+
+test("the nanoid advisory guard follows both official semantic-version ranges", () => {
+  assert.deepEqual([
+    "3.3.16", "3.3.17-0", "3.3.17", "4.0.0", "5.1.5", "5.1.6-rc.0", "5.1.6", "6.0.0",
+  ].map((version) => [version, nanoidAffectedByCve202667213(version)]), [
+    ["3.3.16", true],
+    ["3.3.17-0", true],
+    ["3.3.17", false],
+    ["4.0.0", true],
+    ["5.1.5", true],
+    ["5.1.6-rc.0", true],
+    ["5.1.6", false],
+    ["6.0.0", false],
+  ]);
 });
 
 test("the reviewed Next security patch has narrow release-age exceptions", () => {
