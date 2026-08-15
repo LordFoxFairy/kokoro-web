@@ -598,6 +598,7 @@ Initial implementation pins:
 | TypeScript | 5.9.3 |
 | Vitest / coverage | 4.1.10 |
 | Playwright | 1.51.1 |
+| Mailpit container | `axllent/mailpit:v1.30.6` |
 
 The migration does not upgrade NextAuth/Next/React/Ant Design at the same time. Caret ranges in
 Admin Web are replaced by exact pins; the repository lockfile remains authoritative. Dependencies
