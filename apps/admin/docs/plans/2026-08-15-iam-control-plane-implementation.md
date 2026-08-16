@@ -587,12 +587,16 @@ git commit -m "refactor(admin): cut over to IAM control plane shell"
 - Create: `apps/admin/server/commands/identity.ts`
 - Create: `apps/admin/server/commands/result.ts`
 - Create: `apps/admin/modules/iam/users/query.ts`
+- Create: `apps/admin/modules/iam/users/url.ts`
 - Create: `apps/admin/modules/iam/users/actions.ts`
+- Create: `apps/admin/modules/iam/users/action-server.ts`
 - Create: `apps/admin/modules/iam/users/schema.ts`
 - Create: `apps/admin/modules/iam/users/user-table.tsx`
 - Create: `apps/admin/modules/iam/users/user-detail.tsx`
 - Create: `apps/admin/modules/iam/sessions/query.ts`
+- Create: `apps/admin/modules/iam/sessions/url.ts`
 - Create: `apps/admin/modules/iam/sessions/actions.ts`
+- Create: `apps/admin/modules/iam/sessions/action-server.ts`
 - Create: `apps/admin/modules/iam/sessions/session-table.tsx`
 - Create: `apps/admin/app/(control)/users/page.tsx`
 - Create: `apps/admin/app/(control)/users/[userId]/page.tsx`
@@ -609,14 +613,14 @@ git commit -m "refactor(admin): cut over to IAM control plane shell"
 - Produces: authoritative User search/detail/lifecycle and Session list/revocation routes with stable
   URL filters/cursors and command recovery.
 
-- [ ] **Step 1: Write failing query/action/component tests**
+- [x] **Step 1: Write failing query/action/component tests**
 
 Cover query/status/include-deleted, cursor reset/round-trip, page limit 25/max 100, missing/deleted
 detail, Session token exclusion, suspend/reactivate/delete/restore, revoke one/all, required reason,
 expected version, stable command ID on double submit/in-progress, safe errors, reload after success,
 and correlated User events.
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 ```bash
 pnpm --filter @kokoro/admin-web test:unit -- command-identity pagination
@@ -624,7 +628,7 @@ pnpm --filter @kokoro/admin-web test:component -- users sessions
 pnpm --filter @kokoro/admin-web test:integration -- user-actions session-actions
 ```
 
-- [ ] **Step 3: Implement reads and commands through narrow clients**
+- [x] **Step 3: Implement reads and commands through narrow clients**
 
 Server page queries return `Readonly<{ items; nextCursor; filters }>` view models. Actions return:
 
@@ -636,7 +640,7 @@ type CommandActionResult =
 
 Tables receive no generated message or secret. After success, actions revalidate the list/detail path.
 
-- [ ] **Step 4: Verify GREEN and commit**
+- [x] **Step 4: Verify GREEN and commit**
 
 ```bash
 pnpm --filter @kokoro/admin-web test:unit

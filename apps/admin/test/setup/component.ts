@@ -1,8 +1,15 @@
 import * as jestDomMatchers from "@testing-library/jest-dom/matchers";
 import type {} from "@testing-library/jest-dom/vitest";
-import { expect } from "vitest";
+import { cleanup } from "@testing-library/react";
+import { afterEach, expect, vi } from "vitest";
+
+vi.mock("next/navigation", () => ({
+  usePathname: () => "/",
+  useRouter: () => ({ back: vi.fn(), push: vi.fn(), refresh: vi.fn() }),
+}));
 
 expect.extend(jestDomMatchers);
+afterEach(cleanup);
 
 Object.defineProperty(window, "matchMedia", {
   writable: true,

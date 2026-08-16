@@ -6,7 +6,7 @@ import { adminNavigation } from "../../components/shell/navigation";
 import { LocaleProvider } from "../../i18n/context";
 
 describe("compact IAM control-plane shell", () => {
-  it("WEB-COMP-SHELL-001 renders only the registered Overview route and safe administrator identity", () => {
+  it("WEB-COMP-SHELL-001 renders only executable IAM routes and safe administrator identity", () => {
     render(
       <LocaleProvider>
         <AdminShell
@@ -23,10 +23,12 @@ describe("compact IAM control-plane shell", () => {
       </LocaleProvider>,
     );
 
-    expect(adminNavigation).toHaveLength(1);
+    expect(adminNavigation).toHaveLength(3);
     expect(adminNavigation[0]).toMatchObject({ href: "/", labelKey: "nav.overview" });
     expect(screen.getByRole("navigation", { name: "主导航" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /概览/u })).toHaveAttribute("href", "/");
+    expect(screen.getByRole("link", { name: /用户/u })).toHaveAttribute("href", "/users");
+    expect(screen.getByRole("link", { name: /会话/u })).toHaveAttribute("href", "/sessions");
     expect(screen.getByText("admin@example.com")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "退出登录" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Overview content" })).toBeInTheDocument();

@@ -25,12 +25,13 @@ export function CursorPagination({
   return (
     <nav className="cursor-pagination" aria-label={`${t("pagination.previous")} / ${t("pagination.next")}`}>
       <Space>
-        <Button icon={<LeftOutlined />} disabled={!canGoBack || busy} onClick={onPrevious}>
+        <Button aria-label={t("pagination.previous")} icon={<LeftOutlined />} disabled={!canGoBack || busy} onClick={onPrevious}>
           {t("pagination.previous")}
         </Button>
         <Button
           icon={<RightOutlined />}
-          iconPosition="end"
+          iconPlacement="end"
+          aria-label={t("pagination.next")}
           disabled={nextCursor === null || busy}
           onClick={() => nextCursor !== null && onNext(nextCursor)}
         >

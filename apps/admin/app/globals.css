@@ -180,6 +180,64 @@ button, input, textarea, select { font: inherit; }
 .field-error { color: var(--danger); font-size: 12px; }
 .cursor-pagination { display: flex; justify-content: flex-end; min-height: 34px; margin-top: 16px; }
 
+.data-page { width: min(100%, 1320px); }
+.detail-heading, .section-heading {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+.filter-bar {
+  display: flex;
+  min-height: 76px;
+  gap: 12px;
+  align-items: flex-end;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.filter-bar label { display: grid; gap: 6px; color: var(--muted); font-size: 12px; }
+.filter-checkbox { display: flex !important; min-height: 34px; align-items: center; }
+.filter-checkbox input { width: 16px; height: 16px; accent-color: var(--primary); }
+.filter-search { flex: 1; min-width: 220px; }
+.filter-search input {
+  width: 100%;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid #bcc7c2;
+  border-radius: var(--radius);
+  color: var(--ink);
+  background: #ffffff;
+}
+.filter-bar select {
+  min-width: 148px;
+  height: 34px;
+  padding: 0 30px 0 10px;
+  border: 1px solid #bcc7c2;
+  border-radius: var(--radius);
+  color: var(--ink);
+  background: #ffffff;
+}
+.data-table {
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.data-table:focus-visible { outline-offset: 3px; }
+.technical-value, .technical-value code, .technical-value time {
+  font-family: var(--font-mono), monospace;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.session-section, .event-section { margin-top: 28px; }
+.section-heading { min-height: 42px; margin-bottom: 12px; }
+.section-heading h2 { margin: 0; font-size: 18px; line-height: 26px; letter-spacing: 0; }
+.section-heading p { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
+.command-result { margin: 8px 0 12px; }
+
 @media (max-width: 760px) {
   .auth-page { align-items: center; padding: 20px 16px; background: var(--canvas); }
   .auth-panel { padding: 28px 22px; }
@@ -189,6 +247,9 @@ button, input, textarea, select { font: inherit; }
   .metric-panel { min-height: 120px; border-right: 0; border-bottom: 1px solid var(--border); }
   .metric-panel:last-child { border-bottom: 0; }
   .page-state { min-height: 240px; padding: 20px 12px; }
+  .filter-bar { align-items: stretch; flex-direction: column; }
+  .filter-search { min-width: 0; }
+  .detail-heading, .section-heading { align-items: stretch; flex-direction: column; }
 }
 
 @media (prefers-reduced-motion: reduce) {
