@@ -403,14 +403,14 @@ git commit -m "feat(admin): establish secure IAM client boundary"
 - Produces: `createIamAuthAdapter()`, exported Auth.js `handlers/auth/signIn/signOut`,
   `sessionCookie()`, `requireAdminSession()`, and `requireIamActor()`.
 
-- [ ] **Step 1: Write failing Adapter and Session tests**
+- [x] **Step 1: Write failing Adapter and Session tests**
 
 Test all fourteen methods, `null` optional mapping, WKT dates, safe int64 account expiry, registration
 denial, active/suspended/deleted session resolution, database Session creation/update/delete, explicit
 cookie names/options, platform-admin route guard, actor exchange, logout, enumeration-safe request
 state, callback replay, and redirect rejection.
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 ```bash
 pnpm --filter @kokoro/admin-web test:unit -- auth-adapter auth-cookie
@@ -418,7 +418,7 @@ pnpm --filter @kokoro/admin-web test:integration -- auth-routes database-session
 pnpm --filter @kokoro/admin-web test:security -- enumeration redirect-policy
 ```
 
-- [ ] **Step 3: Implement Adapter and Auth.js database Session**
+- [x] **Step 3: Implement Adapter and Auth.js database Session**
 
 The Adapter maps one-for-one to IAM. Auth.js config uses:
 
@@ -458,7 +458,7 @@ export interface IamSessionClient {
 }
 ```
 
-- [ ] **Step 4: Verify GREEN and commit**
+- [x] **Step 4: Verify GREEN and commit**
 
 ```bash
 pnpm --filter @kokoro/admin-web test:unit

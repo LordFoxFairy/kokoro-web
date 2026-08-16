@@ -19,6 +19,14 @@ export default defineConfig({
         test: {
           name: "node",
           environment: "node",
+          env: {
+            AUTH_URL: "http://localhost:3100",
+          },
+          server: {
+            deps: {
+              inline: [/next-auth/u, /@auth\+core/u],
+            },
+          },
           include: [
             "lib/**/*.test.ts",
             "test/unit/**/*.test.ts",

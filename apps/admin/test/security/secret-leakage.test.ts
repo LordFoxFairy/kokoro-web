@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { serializeAuthLog } from "../../server/logging/auth-logger";
 import { serializeIamLog } from "../../server/logging/logger";
 
 describe("Admin secret leakage boundary", () => {
@@ -42,5 +43,22 @@ describe("Admin secret leakage boundary", () => {
 
     expect(message).toBe("invalid IAM log record");
     expect(message).not.toContain(marker);
+  });
+
+  it("WEB-SEC-SECRET-001 allowlists Auth.js error type without serializing its message or cause", () => {
+    const marker = "AUTH_CALLBACK_SECRET_MARKER";
+    const error = Object.assign(new Error(`callback failed ${marker}`), {
+      type: "Verification",
+      cause: { token: marker },
+    });
+
+    const serialized = serializeAuthLog("error", error);
+
+    expect(JSON.parse(serialized)).toEqual({
+      event: "auth.framework",
+      level: "error",
+      kind: "Verification",
+    });
+    expect(serialized).not.toContain(marker);
   });
 });

@@ -6,6 +6,8 @@ or `@connectrpc/connect-node`.
 - `transport.ts` creates workload-only and actor transports with fixed limits and no retry policy.
 - `error.ts` converts Connect errors to the public-safe `IamWebError` union.
 - `records.ts` validates generated provider records into immutable Admin domain records.
+- `auth-adapter-client.ts` maps all fourteen Auth.js Adapter operations to generated IAM RPC methods.
+- `session-client.ts` maps the workload-only Session token exchange and validates its response.
 
 Client Components import local module view models only. New provider modules add narrow server ports
 beside this boundary and do not import IAM persistence or sibling repositories.
