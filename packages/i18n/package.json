@@ -13,11 +13,13 @@
     "test": "vitest run test",
     "test:integration": "vitest run --passWithNoTests",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint .",
+    "lint": "eslint . --max-warnings=0",
     "coverage": "vitest run --coverage --no-file-parallelism"
   },
   "devDependencies": {
+    "eslint": "9.39.4",
     "typescript": "^5.9.3",
+    "typescript-eslint": "8.62.1",
     "vitest": "^2.1.9"
   }
 }

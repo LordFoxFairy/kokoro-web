@@ -16,10 +16,12 @@
 
 ## 消费方
 
-- `@kokoro/admin-web`：`lib/i18n/` 注入 zh 源 + en 覆盖 + React 绑定（`LocaleProvider`/`useT`）。
-  admin manifest 的 `labelKey`（`admin.*`）即经本引擎解析成可读文案。
+- `@kokoro/admin-web`：`i18n/` 注入完整 zh/en 词典与 React 绑定
+  （`LocaleProvider`/`useT`）。
 
 ## 扩展规则
 
 - 新增消费方：各自建 `messages`（源）+ `overrides`（增量）+ 框架绑定，注入本引擎。引擎不持有任何具体词典。
 - 引擎保持纯函数、零依赖；React/DOM/存储等副作用留在消费方绑定层。
+- 包内 ESLint flat config、测试和精确工具依赖自行维护；isolated linker 下不依赖应用或
+  根目录的幽灵工具依赖。

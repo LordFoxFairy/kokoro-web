@@ -1,36 +1,26 @@
 import type { Metadata } from "next";
-import { IBM_Plex_Sans, IBM_Plex_Mono, Fraunces } from "next/font/google";
 import { AntdRegistry } from "@ant-design/nextjs-registry";
-import { AppShell } from "@/components/shell/app-shell";
+import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
+
+import { AdminProviders } from "@/components/providers/admin-providers";
+
 import "./globals.css";
 
-// 运营后台恒在鉴权门后、数据驱动，不做静态预渲染（也规避 Next16 turbopack 预渲染期
-// 模块初始化顺序问题）。全路由动态渲染。
-export const dynamic = "force-dynamic";
-
-// UI 正文：Plex Sans，专业密实、字重齐全。
 const sans = IBM_Plex_Sans({
   variable: "--font-sans",
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
 });
 
-// 数据/金额/ID：Plex Mono，tabular 对齐。
 const mono = IBM_Plex_Mono({
   variable: "--font-mono",
   subsets: ["latin"],
   weight: ["400", "500", "600"],
 });
 
-// wordmark / 大标题：Fraunces 高对比软衬线，给 Kokoro 一点灵魂（克制使用）。
-const display = Fraunces({
-  variable: "--font-display",
-  subsets: ["latin"],
-});
-
 export const metadata: Metadata = {
   title: "Kokoro 管理后台",
-  description: "Kokoro 平台管理后台",
+  description: "Kokoro IAM 运营控制台",
 };
 
 export default function RootLayout({
@@ -41,11 +31,11 @@ export default function RootLayout({
   return (
     <html
       lang="zh-CN"
-      className={`${sans.variable} ${mono.variable} ${display.variable} h-full antialiased`}
+      className={`${sans.variable} ${mono.variable} h-full antialiased`}
     >
       <body className="min-h-full">
         <AntdRegistry>
-          <AppShell>{children}</AppShell>
+          <AdminProviders>{children}</AdminProviders>
         </AntdRegistry>
       </body>
     </html>

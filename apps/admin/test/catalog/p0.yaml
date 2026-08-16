@@ -99,6 +99,15 @@ cases:
     testFile: test/component/admin-shell.test.tsx
     evidence: [junit, coverage, accessibility]
     retries: 0
+  - id: WEB-COMP-OVERVIEW-001
+    category: component
+    status: PLANNED
+    title: Sanitized live IAM overview and complete locale switching
+    requirements: [WEB-IAM-FR-MODULE-001, WEB-IAM-FR-I18N-001]
+    acceptance: []
+    testFile: test/component/overview.test.tsx
+    evidence: [junit, coverage, accessibility]
+    retries: 0
   - id: WEB-COMP-STATE-001
     category: component
     status: PLANNED
@@ -168,7 +177,7 @@ cases:
     title: Keyboard focus announcements and mobile semantics
     requirements: [WEB-IAM-FR-MODULE-001, WEB-IAM-FR-I18N-001]
     acceptance: []
-    testFile: test/component/accessibility.test.tsx
+    testFile: test/component/command-dialog.test.tsx
     evidence: [junit, coverage, accessibility]
     retries: 0
   - id: WEB-CONTRACT-CATALOG-001

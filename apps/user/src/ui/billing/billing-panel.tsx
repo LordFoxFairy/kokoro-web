@@ -22,7 +22,7 @@ const BY_MODEL_KEY = "billing/by-model"
 
 // 低余额阈值：可用余额低于此值 → 顶部预警条引导充值。50 积分 = 500_000 微单位。
 const LOW_BALANCE_MICROS = BigInt(500_000)
-const ZERO = BigInt(0)
+const EMPTY_LEDGER_ENTRIES: BillingLedgerEntry[] = []
 
 type SummaryState =
   | { kind: "loading" }
@@ -202,7 +202,7 @@ export function BillingContent({ client, onOpenPricing }: BillingContentProps) {
     }
   }, [client, ledger])
 
-  const allEntries = ledger.kind === "ready" ? ledger.entries : []
+  const allEntries = ledger.kind === "ready" ? ledger.entries : EMPTY_LEDGER_ENTRIES
 
   // 余额走势：入账后余额（chronological）——entries newest-first,故 reverse。
   const trend = useMemo(

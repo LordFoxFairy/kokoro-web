@@ -539,7 +539,7 @@ git commit -m "feat(admin): use IAM-backed Auth.js database sessions"
 - Produces: public auth routes, Node-protected control layout, reusable accessible UI primitives,
   complete bilingual copy, and zero old authority files/dependencies.
 
-- [ ] **Step 1: Write failing shell/hard-cut/i18n/header tests**
+- [x] **Step 1: Write failing shell/hard-cut/i18n/header tests**
 
 Assert protected/public route behavior, compact grouped navigation, mobile drawer, logout, loading /
 empty / filtered-empty / forbidden / unavailable / malformed states, required-reason dialog, keyboard
@@ -547,7 +547,7 @@ focus/announcements, exact Chinese/English key equality, security headers, and a
 gateway URLs/secrets, rewrites, old routes, JWT strategy, no-op Adapter methods, Radix/shadcn dead code,
 and console Magic Link output.
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 ```bash
 pnpm --filter @kokoro/admin-web test:component
@@ -555,7 +555,7 @@ pnpm --filter @kokoro/admin-web test:contract -- hard-cut i18n
 pnpm --filter @kokoro/admin-web test:security -- headers
 ```
 
-- [ ] **Step 3: Implement the final shell and delete obsolete code**
+- [x] **Step 3: Implement the final shell and delete obsolete code**
 
 Use route groups without changing public URLs. `app/layout.tsx` contains global providers only;
 `(control)/layout.tsx` calls `requireAdminSession`. The initial static registry contains Overview;
@@ -567,7 +567,7 @@ the authenticated administrator summary, not a placeholder feature page.
 Remove every unimported legacy file and dependency in the same task; do not create redirect aliases or
 feature flags.
 
-- [ ] **Step 4: Verify GREEN and commit**
+- [x] **Step 4: Verify GREEN and commit**
 
 ```bash
 pnpm install --frozen-lockfile=false

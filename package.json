@@ -6,7 +6,7 @@
   "engines": {
     "node": ">=22 <23"
   },
-  "description": "Kokoro web monorepo：apps/user（面向用户）+ apps/admin（后台管理，后续迁入）+ packages/*（共享）。两 app 独立部署，共享层收敛。",
+  "description": "Kokoro Web 子仓库：独立部署的用户工作台与 IAM 管理平台，以及受控共享包。",
   "scripts": {
     "dev": "pnpm --filter @kokoro/web-user dev",
     "build": "pnpm --filter @kokoro/web-user build",

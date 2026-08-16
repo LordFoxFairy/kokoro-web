@@ -1,40 +1,65 @@
 # Kokoro Admin Web
 
-Next.js BFF and Ant Design Pro operations console for Kokoro Platform.
+Next.js browser BFF and Ant Design Pro operations console for `kokoro-iam`.
 
 ## Runtime
 
-- Next.js App Router renders the console and owns Auth.js magic-link login.
-- `/api/auth/*` is handled by Auth.js.
-- Other `/api/*` requests are same-origin rewrites to `kokoro-platform-admin`.
-- Middleware injects `x-kokoro-operator` and `x-kokoro-proxy-secret`; platform-admin remains the authority for RBAC, tenant scope, approval, and audit.
+- App Router owns public `/login` and `/auth/verify`, protected control routes, and `/api/auth/*`.
+- Auth.js owns Magic Link, CSRF, callback, cookie, and database Session mechanics.
+- The complete Auth.js Adapter and protected operations call IAM through generated ConnectRPC
+  descriptors and narrow server-only clients.
+- `app/(control)/layout.tsx` resolves the current active platform administrator before rendering the
+  shell. The Overview performs an actor-token exchange as live IAM readiness evidence.
+- Admin Web owns no database, SQL, Prisma client, gateway proxy, or browser-visible IAM token.
 
 ## Environment
 
-Copy `.env.example` to `.env.local` and fill real values.
+Use this package's ignored `.env.local`; runtime code does not read a parent workspace environment
+file. Start from `.env.example` and set:
 
-Important local defaults:
+```text
+AUTH_URL
+AUTH_SECRET_FILE
+AUTH_SECURE_COOKIES
+KOKORO_IAM_BASE_URL
+KOKORO_IAM_ADMIN_WEB_TOKEN_FILE
+MAGIC_LINK_MAX_AGE
+EMAIL_FROM
+EMAIL_SERVER_HOST
+EMAIL_SERVER_PORT
+```
 
-- `AUTH_URL` must match the browser host used for login, for example `http://localhost:3000`.
-- `KOKORO_GATEWAY_URL` points to platform-admin, usually `http://127.0.0.1:4290`.
-- `KOKORO_ADMIN_PROXY_SECRET` must match one value in platform-admin `KOKORO_ADMIN_PROXY_SECRETS`.
-- SMTP may be omitted in development; magic links print to the server console.
+`EMAIL_SERVER_USER` and `EMAIL_SERVER_PASSWORD_FILE` are an optional exact pair. Secret paths must
+be absolute, normalized, owned regular files with exact mode `0600`. Production requires HTTPS and
+secure cookies. Local HTTP endpoints must use loopback hosts; the browser origin is
+`http://localhost:3100`.
 
 ## Commands
 
+Run from the `kokoro-web` repository root:
+
 ```bash
-pnpm --filter @kokoro/admin-web db:generate
-pnpm --filter @kokoro/admin-web dev
+pnpm --filter @kokoro/admin-web dev --port 3100
+pnpm --filter @kokoro/admin-web proto:check
 pnpm --filter @kokoro/admin-web test
-pnpm --filter @kokoro/admin-web lint
 pnpm --filter @kokoro/admin-web typecheck
+pnpm --filter @kokoro/admin-web lint --max-warnings=0
 pnpm --filter @kokoro/admin-web build
+pnpm --filter @kokoro/admin-web verify
 ```
 
-## Data Boundary
+Formal repository and IAM-pair acceptance use `acceptance` and `acceptance:pair`. Their catalog,
+rules, report template, screenshots, timestamps, hashes, and final evidence remain under this app's
+`test/` and `reports/` trees.
 
-This package does not own business data or migrations. Its Prisma schema only maps admin DB tables needed for login:
+## Structure
 
-- `OperatorAccount` is read to allow only active operators.
-- `VerificationToken` stores one-time magic-link tokens.
-- `AuthEvent` records sign-in, sign-out, and denied login events.
+- `contracts/iam/` and `generated/iam/`: frozen provider contract and deterministic generated code.
+- `server/`: Node-only config, Auth.js, IAM transport/client, and safe logging boundaries.
+- `app/(public)/`: public enumeration-safe authentication UI.
+- `app/(control)/`: authenticated management routes.
+- `components/`, `i18n/`, `lib/theme.ts`: reusable Admin-owned UI foundation.
+- `docs/`: PRD, technical design, ADR, and implementation plan.
+- `test/`, `reports/`, `scripts/test/`: classified verification and repository-owned evidence.
+
+Read [INDEX.md](INDEX.md) before changing package boundaries.

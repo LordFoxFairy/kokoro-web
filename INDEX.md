@@ -1,52 +1,46 @@
-# kokoro-web（pnpm monorepo）
+# kokoro-web 架构地图
 
-Kokoro 的 web 子仓。一个仓库承载**两个独立部署的 Next.js app** + 共享包。收拢自
-"用户面 web + 后台管理 admin 两处分散"，是"一个 web 子仓、方便管理"的落点。
+`kokoro-web` 是独立 Git 子仓库，管理两个独立部署的 Next.js 应用和仓内共享包。配置、
+契约消费、生成、测试、CI 入口与验收证据均由本仓库管理，不依赖父仓库的集中生成器或
+集中测试目录。
 
-## 目录职责与成员
+## 目录职责
 
-```
+```text
 apps/
-  user/     @kokoro/web-user   面向用户的工作台。走 session BFF，从不直连 DB。Next16 / React19 / antd6。
-  admin/    @kokoro/admin-web  运营后台。NextAuth + Prisma 直连 DB，RBAC 特权面。Next16 / React19 / antd6。
+  user/     @kokoro/web-user   面向用户的工作台；通过 Session BFF 消费后端能力。
+  admin/    @kokoro/admin-web  IAM 管理平台；Auth.js + ConnectRPC，无数据库直连。
 packages/
-  tsconfig/ @kokoro/tsconfig   共享 TS 基线 base.json（app 各自 extends，只留 app 专属）。
-  i18n/     @kokoro/i18n       framework-agnostic i18n 引擎（negotiate/translate/interpolate）。见其 INDEX。
+  tsconfig/ @kokoro/tsconfig   仓内 TypeScript 基线。
+  i18n/     @kokoro/i18n       framework-agnostic i18n 引擎。
 ```
 
-- 工作区声明：`pnpm-workspace.yaml`（`apps/*` + `packages/*`）。
-- 根 `package.json`（`@kokoro/web`）：`dev`/`build`/`start` 委派 `apps/user`；`lint`/`typecheck`/`test` 为 `-r` 全量。
+根 `package.json` 与 `pnpm-workspace.yaml` 只负责 pnpm 工作区和跨成员门禁。每个应用自行
+拥有运行配置、代码边界、测试目录和报告目录；共享代码只有在两个应用都稳定消费时才进入
+`packages/*`。
 
-## 关键协作者与边界
+## 边界与协作者
 
-- **两 app 信任边界不同，不可混**：`apps/user` 只消费 session HTTP/SSE（web BFF 密封 cookie，浏览器不持 bearer）；
-  `apps/admin` 直连平台 DB（Prisma）+ NextAuth，是运营特权面。**故保持两个独立部署目标**（admin 宜挂内网/子域），
-  绝不合成单 app（会把 admin 的 DB 直连与公网用户面同源同包）。
-- `apps/user` 上游：`kokoro-session`（契约类型见 `apps/user/src/contract/*`，由根仓 `contract/generate.py` 生成，**勿手改**）。
-- `apps/admin` 上游：`kokoro-platform`（platform-admin 网关）。
+- `apps/user` 和 `apps/admin` 信任边界、Cookie、运行配置及部署目标完全独立，不合并为
+  单一 Next.js 应用。
+- `apps/user` 通过自己的 BFF 消费 Session 服务，浏览器不持有后端 bearer token。
+- `apps/admin` 只通过仓内冻结并生成的 IAM RPC 契约消费 `kokoro-iam`；Auth.js 管理浏览器
+  登录机械，IAM 管理用户、Session、组织、RBAC、幂等命令与安全事件。
+- Admin Web 不拥有 SQL、数据库客户端、Prisma、通用网关 rewrite 或父仓库运行时配置。
 
-## 运行时约束（踩过的坑，改动前必读）
+## 工具链约束
 
-- **`.npmrc` 当前使用 `node-linker=isolated`**（非 hoisted）。两个 app 已统一到 Next 16.2.6、React 19.2.4、
-  antd 6.5.0 和 Vitest 4.1.x；isolated 仍用于防止 app/private package 依赖被根级幽灵依赖掩盖。切换 linker 属于
-  根工具链迁移，必须以 clean install、两 app build/test 与 dependency-boundary evidence 证明，不能直接改。
-- **jest-dom matchers 挂载**（`apps/user/tests/setup.ts`）：必须 `import * as m from "@testing-library/jest-dom/matchers"`
-  + `expect.extend(m)`。**不要**用 `import "@testing-library/jest-dom/vitest"`——isolated 下它解析到异 vitest 实例，
-  matcher 静默不注册（报 "Invalid Chai property: toBeInTheDocument"）。
-- **prisma**（admin）：`postinstall` 跑 `prisma generate` 到 `apps/admin/generated`（gitignore，不入库）。
-  `pnpm-workspace.yaml` 的 `allowBuilds` 已批准 prisma/esbuild/sharp 的 build 脚本。
-- **dev 起环**：主仓 `scripts/closure-up.py` 的 `pnpm run dev`（在 web 根）经根 `package.json` 委派到 `apps/user`——
-  迁移不改 closure-up。admin 不由 closure-up 托管（需另起 platform-admin 栈）。
+- Node.js `22.x`、pnpm `11.2.2`、`node-linker=isolated`。
+- Next.js `16.2.6`、React `19.2.4`、Ant Design `6.5.0`、Vitest `4.1.x`。
+- jest-dom 运行时通过 `@testing-library/jest-dom/matchers` 挂载到当前 Vitest 实例；类型增强
+  使用纯类型 import，避免 isolated linker 下出现第二个 Vitest 实例。
+- 锁文件和依赖声明是本仓库权威；改动依赖后运行无冻结安装，再执行两个应用的全量门禁。
 
-## 扩展规则
+## Admin 扩展规则
 
-- 两 app 都用的东西 → 抽 `packages/*`；app 专属（页面、业务组件、各自消息字典）留 `apps/*`。
-- 新增共享包：`packages/<name>/package.json` 命名 `@kokoro/<name>`，app 以 `workspace:*` 依赖。
+修改 IAM 管理平台前先读 `apps/admin/INDEX.md`、PRD、技术方案与当前实施计划。新增能力必须
+按 RPC client → query/action → schema/view model → route/component → classified tests 的纵向切片
+闭环，并在真实路由可执行后才加入导航。禁止兼容旧路由或恢复第二套数据权威。
 
-## 当前陷阱 / 欠账
-
-- **跨仓工具链仍未对齐**：Web 两 app 已统一，但 Session/Platform 的 TypeScript、Vitest、Node types、package manager
-  与 lockfile 仍分裂；目标版本与单根 lock 由 Wave 0 Spec 冻结，不在 Web 子仓局部升级。
-- **i18n 仍两套**：`apps/user/src/i18n`（自造引擎 + 消息）与 `packages/i18n`（`@kokoro/i18n`，admin 用）并存。
-  统一（user 切共享引擎、引擎泛型化）归 phase-3。
-- **prod 构建上下文待 repoint**：`apps/user/Dockerfile` 随 app 迁深一层，生产 compose 的 build context/dockerfile 路径需更新（WS5）。
+正式验收由 `apps/admin` 自己生成分类报告；最终两轮使用全新夹具和可见 Chromium，逐步记录
+本地/UTC 时间、截图、trace、视频、HAR、RPC/日志/受限 SQL 证据及 SHA-256。
