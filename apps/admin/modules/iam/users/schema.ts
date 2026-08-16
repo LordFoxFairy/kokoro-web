@@ -35,7 +35,7 @@ export type UserEventView = Readonly<{
 }>;
 export type UserDetailView = Readonly<{
   user: UserListItem;
-  sessions: import("../sessions/query").SessionListView;
+  sessions: import("../sessions/schema").SessionListView;
   events: readonly UserEventView[];
 }>;
 

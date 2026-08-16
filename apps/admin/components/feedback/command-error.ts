@@ -1,7 +1,7 @@
 import type { MessageKey } from "@/i18n/messages";
-import type { IamWebErrorKind } from "@/server/iam/error";
+import type { CommandErrorKind } from "@/lib/command-result";
 
-const errorKeys: Readonly<Record<IamWebErrorKind, MessageKey>> = {
+const errorKeys: Readonly<Record<CommandErrorKind, MessageKey>> = {
   invalid: "error.invalid",
   unauthenticated: "error.unauthenticated",
   forbidden: "error.forbidden",
@@ -14,6 +14,6 @@ const errorKeys: Readonly<Record<IamWebErrorKind, MessageKey>> = {
   internal: "error.internal",
 };
 
-export function commandErrorKey(kind: IamWebErrorKind): MessageKey {
+export function commandErrorKey(kind: CommandErrorKind): MessageKey {
   return errorKeys[kind];
 }

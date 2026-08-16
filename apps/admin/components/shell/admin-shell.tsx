@@ -45,9 +45,15 @@ export function AdminShell({
     name: t(item.labelKey),
     icon: createElement(item.icon),
   }));
+  const access = adminNavigation.filter((item) => item.groupKey === "nav.group.access").map((item) => ({
+    path: item.href,
+    name: t(item.labelKey),
+    icon: createElement(item.icon),
+  }));
   const routes = [
     ...ungrouped,
     ...(identity.length === 0 ? [] : [{ path: "/__identity", name: t("nav.group.identity"), routes: identity }]),
+    ...(access.length === 0 ? [] : [{ path: "/__access", name: t("nav.group.access"), routes: access }]),
   ];
 
   return (

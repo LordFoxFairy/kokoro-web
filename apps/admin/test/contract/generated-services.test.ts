@@ -7,7 +7,14 @@ import { describe, expect, it } from "vitest";
 import { IamAdministrationService } from "../../generated/iam/proto/kokoro/iam/v1/administration_pb";
 import { IamAuthAdapterService } from "../../generated/iam/proto/kokoro/iam/v1/auth_adapter_pb";
 import { IamAuthorizationService } from "../../generated/iam/proto/kokoro/iam/v1/authorization_pb";
-import { IamOrganizationService } from "../../generated/iam/proto/kokoro/iam/v1/organization_pb";
+import {
+  ChangeMemberRoleRequestSchema,
+  IamOrganizationService,
+  ReactivateMemberRequestSchema,
+  RemoveMemberRequestSchema,
+  RestoreMemberRequestSchema,
+  SuspendMemberRequestSchema,
+} from "../../generated/iam/proto/kokoro/iam/v1/organization_pb";
 import {
   IamSessionService,
   ListSessionsResponseSchema,
@@ -77,6 +84,7 @@ describe("generated IAM service inventory", () => {
   it("WEB-CONTRACT-RPC-001 exposes every accepted authorization and Session method", () => {
     expect(methodNames(IamAuthorizationService)).toEqual([
       "Authorize",
+      "InspectUserAuthorization",
       "ListPermissionCatalog",
       "ListRoleCatalog",
     ].sort());
@@ -86,6 +94,27 @@ describe("generated IAM service inventory", () => {
       "RevokeAllSessions",
       "RevokeSession",
     ].sort());
+  });
+
+  it("WEB-CONTRACT-RPC-001 binds every non-add Member mutation to the exact Organization field", () => {
+    expect(requestFields(ChangeMemberRoleRequestSchema)).toEqual([
+      ["command", 1],
+      ["member_id", 2],
+      ["role_key", 3],
+      ["organization_id", 4],
+    ]);
+    for (const schema of [
+      SuspendMemberRequestSchema,
+      ReactivateMemberRequestSchema,
+      RemoveMemberRequestSchema,
+      RestoreMemberRequestSchema,
+    ]) {
+      expect(requestFields(schema), schema.typeName).toEqual([
+        ["command", 1],
+        ["member_id", 2],
+        ["organization_id", 3],
+      ]);
+    }
   });
 
   it("WEB-CONTRACT-RPC-001 keeps administrative Session records token-free", () => {
@@ -109,6 +138,10 @@ describe("generated IAM service inventory", () => {
     }
   });
 });
+
+function requestFields(schema: { readonly fields: readonly { readonly name: string; readonly number: number }[] }) {
+  return schema.fields.map((field) => [field.name, field.number]);
+}
 
 async function filesBelow(root: string): Promise<string[]> {
   const files: string[] = [];

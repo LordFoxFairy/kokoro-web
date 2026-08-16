@@ -10,6 +10,8 @@ Next.js browser BFF and Ant Design Pro operations console for `kokoro-iam`.
   descriptors and narrow server-only clients.
 - `app/(control)/layout.tsx` resolves the current active platform administrator before rendering the
   shell. The Overview performs an actor-token exchange as live IAM readiness evidence.
+- Protected business routes currently include `/users`, `/users/[userId]`, `/sessions`,
+  `/organizations`, `/organizations/[organizationId]`, and `/access`.
 - Admin Web owns no database, SQL, Prisma client, gateway proxy, or browser-visible IAM token.
 
 ## Environment
@@ -51,6 +53,10 @@ pnpm --filter @kokoro/admin-web verify
 Formal repository and IAM-pair acceptance use `acceptance` and `acceptance:pair`. Their catalog,
 rules, report template, screenshots, timestamps, hashes, and final evidence remain under this app's
 `test/` and `reports/` trees.
+
+The frozen Provider binds every Member mutation to its Organization and exposes administrator-only
+selected-User authorization inspection. Access results contain the inspected User and Organization,
+not the administrator's Session identity. Real pair evidence remains required for product release.
 
 ## Structure
 

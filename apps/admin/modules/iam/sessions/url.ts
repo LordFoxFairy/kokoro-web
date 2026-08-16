@@ -1,4 +1,4 @@
-import type { SessionFilters } from "./query";
+import type { SessionFilters } from "./schema";
 
 export function sessionListHref(filters: SessionFilters, cursor?: string): string {
   const params = new URLSearchParams();

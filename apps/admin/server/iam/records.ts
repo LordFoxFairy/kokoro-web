@@ -3,11 +3,24 @@ import "server-only";
 import { timestampDate } from "@bufbuild/protobuf/wkt";
 
 import type {
+  MemberRecord,
   OrganizationRecord,
+  PermissionRecord,
+  RoleRecord,
   SecurityEventRecord,
   SessionSummaryRecord,
   UserRecord,
 } from "../../generated/iam/proto/kokoro/iam/v1/types_pb";
+import type {
+  AuthorizeResponse,
+  InspectUserAuthorizationResponse,
+} from "../../generated/iam/proto/kokoro/iam/v1/authorization_pb";
+import {
+  iamAuthorizationReasons,
+  iamRoleKeys,
+  type IamAuthorizationReason,
+  type IamRoleKey,
+} from "../../lib/iam-values";
 
 export type AdminUser = Readonly<{
   id: string;
@@ -32,6 +45,65 @@ export type AdminOrganization = Readonly<{
   deletedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
+}>;
+
+export type AdminRoleKey = IamRoleKey;
+
+export type AdminMember = Readonly<{
+  id: string;
+  organizationId: string;
+  userId: string;
+  roleId: string;
+  roleKey: AdminRoleKey;
+  status: "active" | "suspended" | "deleted";
+  version: bigint;
+  deletedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}>;
+
+export type AdminRole = Readonly<{
+  id: string;
+  organizationId: string;
+  key: AdminRoleKey;
+  name: string;
+  description: string;
+  builtIn: boolean;
+  status: "active" | "deleted";
+  version: bigint;
+  permissionKeys: readonly string[];
+}>;
+
+export type AdminPermission = Readonly<{
+  id: string;
+  key: string;
+  resource: string;
+  action: string;
+  description: string;
+  status: "active" | "retired";
+}>;
+
+export type AdminAuthorizationReason = IamAuthorizationReason;
+
+export type AdminAuthorizationDecision = Readonly<{
+  allowed: boolean;
+  reasonCode: AdminAuthorizationReason;
+  userId: string;
+  sessionId: string;
+  organizationId: string;
+  roleKeys: readonly AdminRoleKey[];
+  authorizationVersion: bigint;
+  evaluatedAt: Date;
+}>;
+
+export type AdminAuthorizationInspection = Readonly<{
+  allowed: boolean;
+  reasonCode: AdminAuthorizationReason;
+  userId: string;
+  organizationId: string;
+  roleKeys: readonly AdminRoleKey[];
+  authorizationVersion: bigint;
+  evaluatedAt: Date;
 }>;
 
 export type AdminSession = Readonly<{
@@ -59,10 +131,30 @@ export type AdminSecurityEvent = Readonly<{
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/u;
 const slugPattern = /^[a-z0-9](?:[a-z0-9-]{0,78}[a-z0-9])?$/u;
+const roleKeyPattern = /^[a-z][a-z0-9_]{0,63}$/u;
+const permissionKeyPattern = /^[a-z][a-z0-9_]*:[a-z][a-z0-9_]*$/u;
 const userStatuses = new Set(["active", "suspended", "deleted"]);
 const organizationStatuses = new Set(["active", "suspended", "deleted"]);
+const memberStatuses = new Set(["active", "suspended", "deleted"]);
+const roleStatuses = new Set(["active", "deleted"]);
+const permissionStatuses = new Set(["active", "retired"]);
+const roleKeys = new Set<string>(iamRoleKeys);
+const authorizationReasons = new Set<AdminAuthorizationReason>(iamAuthorizationReasons);
 
-type RecordName = "UserRecord" | "OrganizationRecord" | "SessionSummaryRecord" | "SecurityEventRecord";
+function isAdminRoleKey(value: string): value is AdminRoleKey {
+  return roleKeys.has(value);
+}
+
+type RecordName =
+  | "UserRecord"
+  | "OrganizationRecord"
+  | "MemberRecord"
+  | "RoleRecord"
+  | "PermissionRecord"
+  | "AuthorizeResponse"
+  | "InspectUserAuthorizationResponse"
+  | "SessionSummaryRecord"
+  | "SecurityEventRecord";
 
 function invalid(name: RecordName): never {
   throw new Error(`invalid IAM ${name}`);
@@ -129,6 +221,134 @@ export function organizationFromRecord(record: OrganizationRecord | undefined): 
     deletedAt: record.deletedAt === undefined ? null : date(record.deletedAt, "OrganizationRecord"),
     createdAt: date(record.createdAt, "OrganizationRecord"),
     updatedAt: date(record.updatedAt, "OrganizationRecord"),
+  });
+}
+
+export function memberFromRecord(record: MemberRecord | undefined): AdminMember {
+  if (
+    record === undefined
+    || !uuidPattern.test(record.id)
+    || !uuidPattern.test(record.organizationId)
+    || !uuidPattern.test(record.userId)
+    || !uuidPattern.test(record.roleId)
+    || !isAdminRoleKey(record.roleKey)
+    || !memberStatuses.has(record.status)
+    || record.version < BigInt(0)
+  ) {
+    return invalid("MemberRecord");
+  }
+  return Object.freeze({
+    id: record.id,
+    organizationId: record.organizationId,
+    userId: record.userId,
+    roleId: record.roleId,
+    roleKey: record.roleKey as AdminRoleKey,
+    status: record.status as AdminMember["status"],
+    version: record.version,
+    deletedAt: record.deletedAt === undefined ? null : date(record.deletedAt, "MemberRecord"),
+    createdAt: date(record.createdAt, "MemberRecord"),
+    updatedAt: date(record.updatedAt, "MemberRecord"),
+  });
+}
+
+export function roleFromRecord(record: RoleRecord | undefined): AdminRole {
+  if (
+    record === undefined
+    || !uuidPattern.test(record.id)
+    || !uuidPattern.test(record.organizationId)
+    || !isAdminRoleKey(record.key)
+    || record.name.trim().length < 1
+    || record.name.length > 160
+    || record.description.length > 1_000
+    || !roleStatuses.has(record.status)
+    || record.version < BigInt(0)
+    || record.permissionKeys.some((key) => !permissionKeyPattern.test(key) || key.length > 128)
+  ) {
+    return invalid("RoleRecord");
+  }
+  return Object.freeze({
+    id: record.id,
+    organizationId: record.organizationId,
+    key: record.key as AdminRoleKey,
+    name: record.name,
+    description: record.description,
+    builtIn: record.builtIn,
+    status: record.status as AdminRole["status"],
+    version: record.version,
+    permissionKeys: Object.freeze([...record.permissionKeys]),
+  });
+}
+
+export function permissionFromRecord(record: PermissionRecord | undefined): AdminPermission {
+  if (
+    record === undefined
+    || !uuidPattern.test(record.id)
+    || !permissionKeyPattern.test(record.key)
+    || record.key.length > 128
+    || !roleKeyPattern.test(record.resource)
+    || !roleKeyPattern.test(record.action)
+    || record.description.length > 1_000
+    || !permissionStatuses.has(record.status)
+  ) {
+    return invalid("PermissionRecord");
+  }
+  return Object.freeze({
+    id: record.id,
+    key: record.key,
+    resource: record.resource,
+    action: record.action,
+    description: record.description,
+    status: record.status as AdminPermission["status"],
+  });
+}
+
+export function authorizationFromResponse(response: AuthorizeResponse | undefined): AdminAuthorizationDecision {
+  if (
+    response === undefined
+    || !authorizationReasons.has(response.reasonCode as AdminAuthorizationReason)
+    || !uuidPattern.test(response.userId)
+    || !uuidPattern.test(response.sessionId)
+    || !uuidPattern.test(response.organizationId)
+    || response.roleKeys.some((key) => !isAdminRoleKey(key))
+    || response.authorizationVersion < BigInt(0)
+    || response.allowed !== (response.reasonCode === "allowed")
+  ) {
+    return invalid("AuthorizeResponse");
+  }
+  return Object.freeze({
+    allowed: response.allowed,
+    reasonCode: response.reasonCode as AdminAuthorizationReason,
+    userId: response.userId,
+    sessionId: response.sessionId,
+    organizationId: response.organizationId,
+    roleKeys: Object.freeze(response.roleKeys.filter(isAdminRoleKey)),
+    authorizationVersion: response.authorizationVersion,
+    evaluatedAt: date(response.evaluatedAt, "AuthorizeResponse"),
+  });
+}
+
+export function authorizationInspectionFromResponse(
+  response: InspectUserAuthorizationResponse | undefined,
+): AdminAuthorizationInspection {
+  if (
+    response === undefined
+    || !authorizationReasons.has(response.reasonCode as AdminAuthorizationReason)
+    || !uuidPattern.test(response.userId)
+    || !uuidPattern.test(response.organizationId)
+    || response.roleKeys.some((key) => !isAdminRoleKey(key))
+    || response.authorizationVersion < BigInt(0)
+    || response.allowed !== (response.reasonCode === "allowed")
+  ) {
+    return invalid("InspectUserAuthorizationResponse");
+  }
+  return Object.freeze({
+    allowed: response.allowed,
+    reasonCode: response.reasonCode as AdminAuthorizationReason,
+    userId: response.userId,
+    organizationId: response.organizationId,
+    roleKeys: Object.freeze(response.roleKeys.filter(isAdminRoleKey)),
+    authorizationVersion: response.authorizationVersion,
+    evaluatedAt: date(response.evaluatedAt, "InspectUserAuthorizationResponse"),
   });
 }
 

@@ -12,10 +12,9 @@ import { StatusTag } from "@/components/data/status-tag";
 import { commandErrorKey } from "@/components/feedback/command-error";
 import { PageState } from "@/components/feedback/page-state";
 import { useT } from "@/i18n/context";
-import type { CommandActionResult } from "@/server/commands/result";
+import type { CommandActionResult } from "@/lib/command-result";
 
-import type { SessionCommandActionInput } from "./actions";
-import type { SessionListItem, SessionListView } from "./query";
+import type { SessionCommandActionInput, SessionListItem, SessionListView } from "./schema";
 import { sessionListHref } from "./url";
 
 export type SessionAction = (input: SessionCommandActionInput) => Promise<CommandActionResult>;
@@ -99,7 +98,7 @@ export function SessionTable({ view, action }: Readonly<{
           </Button>
         )}
       </div>
-      {result?.status === "error" ? (
+      {pending === null && result?.status === "error" ? (
         <Alert
           className="command-result"
           type="error"
@@ -108,7 +107,7 @@ export function SessionTable({ view, action }: Readonly<{
           description={result.requestId.length > 0 ? result.requestId : undefined}
         />
       ) : null}
-      {result?.status === "success" ? (
+      {pending === null && result?.status === "success" ? (
         <Alert
           className="command-result"
           type="success"
@@ -135,6 +134,7 @@ export function SessionTable({ view, action }: Readonly<{
           title={t(pending.operation === "revoke" ? "session.revokeTitle" : "session.revokeAllTitle")}
           entityLabel={pending.operation === "revoke" ? pending.session.id : pending.userId}
           danger
+          result={result}
           onCancel={() => setPending(null)}
           onConfirm={confirm}
         />

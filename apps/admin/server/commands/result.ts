@@ -1,16 +1,9 @@
 import "server-only";
 
+import type { CommandActionResult } from "../../lib/command-result";
 import type { IamWebError } from "../iam/error";
 
-export type CommandActionResult =
-  | Readonly<{ status: "success"; commandId: string; replayed: boolean }>
-  | Readonly<{
-      status: "error";
-      commandId: string;
-      kind: IamWebError["kind"];
-      requestId: string;
-      field?: string;
-    }>;
+export type { CommandActionResult } from "../../lib/command-result";
 
 export function commandError(commandId: string, error: IamWebError): CommandActionResult {
   return Object.freeze({

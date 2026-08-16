@@ -1,32 +1,10 @@
 import "server-only";
 
-import { z } from "zod";
-
 import { parseCommandContext } from "../../../server/commands/identity";
 import { commandError, type CommandActionResult } from "../../../server/commands/result";
 import { toIamWebError } from "../../../server/iam/error";
 import type { IamManagementClient } from "../../../server/iam/management-client";
-
-const identity = {
-  requestId: z.string().uuid(),
-  commandId: z.string().uuid(),
-  reason: z.string().trim().min(1).max(500),
-};
-const sessionCommandInputSchema = z.discriminatedUnion("operation", [
-  z.object({
-    operation: z.literal("revoke"),
-    sessionId: z.string().uuid(),
-    userId: z.string().uuid().optional(),
-    ...identity,
-  }).strict(),
-  z.object({
-    operation: z.literal("revoke-all"),
-    userId: z.string().uuid(),
-    ...identity,
-  }).strict(),
-]);
-
-export type SessionCommandActionInput = z.input<typeof sessionCommandInputSchema>;
+import { sessionCommandInputSchema, type SessionCommandActionInput } from "./schema";
 export type SessionActionHandlerDependencies = Readonly<{
   loadClient(): Promise<IamManagementClient>;
   revalidatePath(path: string): void;

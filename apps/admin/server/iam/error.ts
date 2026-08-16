@@ -3,18 +3,9 @@ import "server-only";
 import { Code, ConnectError } from "@connectrpc/connect";
 
 import { ErrorDetailSchema } from "../../generated/iam/proto/kokoro/common/v1/error_pb";
+import type { CommandErrorKind } from "../../lib/command-result";
 
-export type IamWebErrorKind =
-  | "invalid"
-  | "unauthenticated"
-  | "forbidden"
-  | "not_found"
-  | "conflict"
-  | "in_progress"
-  | "last_owner"
-  | "precondition"
-  | "unavailable"
-  | "internal";
+export type IamWebErrorKind = CommandErrorKind;
 
 export type IamWebError = Readonly<{
   kind: IamWebErrorKind;

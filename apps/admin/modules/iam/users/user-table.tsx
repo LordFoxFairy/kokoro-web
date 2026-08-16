@@ -14,7 +14,7 @@ import { commandErrorKey } from "@/components/feedback/command-error";
 import { PageState } from "@/components/feedback/page-state";
 import { useT } from "@/i18n/context";
 import type { MessageKey } from "@/i18n/messages";
-import type { CommandActionResult } from "@/server/commands/result";
+import type { CommandActionResult } from "@/lib/command-result";
 
 import type { UserCommandActionInput, UserListItem, UserListView } from "./schema";
 import { userListHref } from "./url";
@@ -87,7 +87,7 @@ export function UserLifecycleControls({ user, action }: Readonly<{
           );
         })}
       </Space>
-      {result?.status === "error" ? (
+      {pending === null && result?.status === "error" ? (
         <Alert
           className="command-result"
           type="error"
@@ -96,7 +96,7 @@ export function UserLifecycleControls({ user, action }: Readonly<{
           description={result.requestId.length > 0 ? result.requestId : undefined}
         />
       ) : null}
-      {result?.status === "success" ? (
+      {pending === null && result?.status === "success" ? (
         <Alert
           className="command-result"
           type="success"
@@ -110,6 +110,7 @@ export function UserLifecycleControls({ user, action }: Readonly<{
           title={t(operationCopy[pending.operation].title)}
           entityLabel={pending.user.email}
           danger={operationCopy[pending.operation].danger}
+          result={result}
           onCancel={() => setPending(null)}
           onConfirm={confirm}
         />

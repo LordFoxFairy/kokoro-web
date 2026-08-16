@@ -408,7 +408,7 @@ explicit.
 | `/organizations` | `IamAdministrationService/ListOrganizations` | `IamOrganizationService/CreateOrganization` |
 | `/organizations/[organizationId]` | `GetOrganization`, `ListMembers`, `ListRoleCatalog`, organization events | update/delete/restore Organization; add/change/suspend/reactivate/remove/restore Member |
 | `/sessions` | `IamSessionService/ListSessions` | revoke one/all |
-| `/access` | `ListPermissionCatalog`, selected Organization `ListRoleCatalog`, `Authorize` probe | none; membership role changes remain on Organization detail |
+| `/access` | `ListPermissionCatalog`, selected Organization `ListRoleCatalog`, active User lookup, `InspectUserAuthorization` | none; membership role changes remain on Organization detail |
 | `/audit` | `IamAdministrationService/ListSecurityEvents` | none |
 
 The overview does not invent global totals from paginated first pages. It displays IAM readiness,

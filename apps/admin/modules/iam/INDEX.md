@@ -16,17 +16,55 @@ messages, actor tokens, Connect transports, and raw provider errors do not cross
 
 ## Sessions
 
+- `sessions/schema.ts`: Client-safe Session filters, view models, and command inputs.
 - `sessions/query.ts`: user-scoped/global cursor reads and token-free Session view models.
 - `sessions/url.ts`: Client-safe Session cursor URL construction.
 - `sessions/actions.ts`: injectable revoke-one/revoke-all command handler.
 - `sessions/action-server.ts`: real actor/client Server Action assembly.
 - `sessions/session-table.tsx`: inventory, safe status, command confirmation, and refresh.
 
+## Organizations
+
+- `organizations/schema.ts`: strict Organization/Member view models, filters, and lifecycle inputs.
+- `organizations/query.ts`: platform search, deleted detail, active User lookup, Member/Role reads,
+  and exact Organization-scoped event projection.
+- `organizations/url.ts`: Client-safe list/detail filter and cursor URL construction.
+- `organizations/actions.ts` and `organizations/action-server.ts`: generated RPC lifecycle commands,
+  version propagation, stable identity, safe errors, and authoritative revalidation.
+- `organizations/organization-table.tsx` and `organizations/organization-detail.tsx`: creation,
+  update, soft delete, restore, details, Members, and correlated events.
+
+## Members
+
+- `members/schema.ts`: strict client-safe add and lifecycle command inputs.
+- `members/actions.ts` and `members/action-server.ts`: add, role change, suspend, reactivate, remove,
+  and restore commands through the global platform-administrator actor.
+- `members/member-table.tsx`: active User selection, provider Role options, complete lifecycle
+  controls, deleted discovery, command recovery, and Role catalog presentation.
+
+## Access
+
+- `access/schema.ts` and `access/url.ts`: strict searchable Organization and User selection state
+  plus Client-safe URL construction.
+- `access/query.ts`: searchable Organization and active User selection with selected-record
+  retention, Permission/Role catalogs, and a fresh IAM `InspectUserAuthorization` decision.
+- `access/access-catalog.tsx`: read-only catalogs and live allow/deny evidence; it exposes no custom
+  Role or Permission mutation control.
+
 ## Constraints
 
 - Reads are Server Component operations; filters are URL state and page size is bounded to 100.
 - Commands use a new request ID and one stable command ID per logical interaction. Recovery retains
-  the command ID; automatic mutation retry is prohibited.
+  the command ID and freezes the original digest payload after the first RPC attempt; automatic
+  mutation retry is prohibited.
 - Client Components receive ISO dates, decimal version strings, IDs, and safe enums only.
+- Client Components and every transitive local dependency are contract-tested against `server-only`
+  imports; shared action results and IAM enum values live in `lib/`.
+- Organization detail rejects Member or SecurityEvent records whose Organization scope differs from
+  the requested record instead of relabeling or rendering them.
+- Every non-add Member command carries both Member and Organization IDs; IAM verifies that scope
+  transactionally before any state, receipt, or SecurityEvent mutation.
+- Access inspection requires an explicit active User, validates both User and Organization response
+  correlation, and never treats the administrator's Session as the inspected subject.
 - New IAM capabilities add a sibling vertical module and navigation only after its route is
   executable and classified tests pass.

@@ -1,6 +1,8 @@
 @import "tailwindcss";
 
 :root {
+  --font-sans: -apple-system, blinkmacsystemfont, "Segoe UI", "Noto Sans", "Helvetica Neue", arial, sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", consolas, "Liberation Mono", menlo, monospace;
   --canvas: #f4f6f5;
   --surface: #ffffff;
   --ink: #18201d;
@@ -16,7 +18,7 @@
 
 * { box-sizing: border-box; }
 html, body { min-height: 100%; }
-html { font-family: var(--font-sans), system-ui, sans-serif; background: var(--canvas); }
+html { font-family: var(--font-sans); background: var(--canvas); }
 body { margin: 0; color: var(--ink); background: var(--canvas); -webkit-font-smoothing: antialiased; }
 button, input, textarea, select { font: inherit; }
 :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
@@ -237,6 +239,20 @@ button, input, textarea, select { font: inherit; }
 .section-heading h2 { margin: 0; font-size: 18px; line-height: 26px; letter-spacing: 0; }
 .section-heading p { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
 .command-result { margin: 8px 0 12px; }
+.form-stack { display: grid; gap: 8px; }
+.form-stack label { margin-top: 4px; font-size: 13px; font-weight: 600; }
+.form-stack select, .member-section select {
+  min-width: 148px;
+  height: 34px;
+  padding: 0 30px 0 10px;
+  border: 1px solid #bcc7c2;
+  border-radius: var(--radius);
+  color: var(--ink);
+  background: #ffffff;
+}
+.member-section, .catalog-section, .decision-section { margin-top: 28px; }
+.member-filter { min-height: 68px; }
+.catalog-section .section-heading h3 { margin: 0; font-size: 16px; line-height: 24px; letter-spacing: 0; }
 
 @media (max-width: 760px) {
   .auth-page { align-items: center; padding: 20px 16px; background: var(--canvas); }

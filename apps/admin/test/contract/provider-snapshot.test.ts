@@ -10,12 +10,12 @@ const contractRoot = resolve(appRoot, "contracts/iam");
 
 const providerSchema = z.object({
   repository: z.literal("kokoro-iam"),
-  commit: z.literal("c96e369d3f04f1ae653da16fec3c83266484c9bc"),
-  tree: z.literal("ee0326d14876cff12c50c8b77efef5204cbff898"),
-  protoSha256: z.literal("30ca6dd986764a9f2a7b9283d0c470613974eb39bfd3ca02a98b4e427909c2ce"),
+  commit: z.literal("16afccdbec9c22176f9fd493feeb0ed0d7fe3445"),
+  tree: z.literal("a72b870c8e890eb63176ddb80cc34df3658a474f"),
+  protoSha256: z.literal("4daad8affaa7eb36e8f587dca3a016dd080b3ca4f3e36f08a19963133a27e38a"),
   migrationSha256: z.literal("846491c5a72331a8d7aa1a2b51a153165dc636957ac1edf867e3836405f358c2"),
-  catalogSha256: z.literal("eac700d3b39c33c7caad4ed00df6ad7a1de0fe747abf833d5352f76184fd62a4"),
-  acceptedRunId: z.literal("iam-20260815T202800186Z-c96e369d3f04"),
+  catalogSha256: z.literal("e388f4a865fa98744989f3e7a6d41d2bf8e6367ae51b8eeee804c763b4bc8552"),
+  acceptedRunId: z.literal("iam-20260816T111434155Z-16afccdbec9c"),
   files: z.array(z.object({
     path: z.string().regex(/^proto\/kokoro\/(?:common|iam)\/v1\/[a-z_]+\.proto$/u),
     sha256: z.string().regex(/^[a-f0-9]{64}$/u),

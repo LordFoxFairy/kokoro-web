@@ -15,7 +15,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file kokoro/iam/v1/authorization.proto.
  */
 export const file_kokoro_iam_v1_authorization: GenFile = /*@__PURE__*/
-  fileDesc("CiFrb2tvcm8vaWFtL3YxL2F1dGhvcml6YXRpb24ucHJvdG8SDWtva29yby5pYW0udjEizgEKEEF1dGhvcml6ZVJlcXVlc3QSHAoKcmVxdWVzdF9pZBgBIAEoCUIIukgFcgOwAQESIQoPb3JnYW5pemF0aW9uX2lkGAIgASgJQgi6SAVyA7ABARJDCg5wZXJtaXNzaW9uX2tleRgDIAEoCUIrukgociYYgAEyIV5bYS16XVthLXowLTlfXSo6W2Etel1bYS16MC05X10qJBIjCgxyZXNvdXJjZV9yZWYYBCABKAlCCLpIBXIDGMACSACIAQFCDwoNX3Jlc291cmNlX3JlZiLbAQoRQXV0aG9yaXplUmVzcG9uc2USDwoHYWxsb3dlZBgBIAEoCBITCgtyZWFzb25fY29kZRgCIAEoCRIPCgd1c2VyX2lkGAMgASgJEhIKCnNlc3Npb25faWQYBCABKAkSFwoPb3JnYW5pemF0aW9uX2lkGAUgASgJEhEKCXJvbGVfa2V5cxgGIAMoCRIdChVhdXRob3JpemF0aW9uX3ZlcnNpb24YByABKAQSMAoMZXZhbHVhdGVkX2F0GAggASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCJZChZMaXN0Um9sZUNhdGFsb2dSZXF1ZXN0EhwKCnJlcXVlc3RfaWQYASABKAlCCLpIBXIDsAEBEiEKD29yZ2FuaXphdGlvbl9pZBgCIAEoCUIIukgFcgOwAQEiQwoXTGlzdFJvbGVDYXRhbG9nUmVzcG9uc2USKAoFcm9sZXMYASADKAsyGS5rb2tvcm8uaWFtLnYxLlJvbGVSZWNvcmQiPAocTGlzdFBlcm1pc3Npb25DYXRhbG9nUmVxdWVzdBIcCgpyZXF1ZXN0X2lkGAEgASgJQgi6SAVyA7ABASJVCh1MaXN0UGVybWlzc2lvbkNhdGFsb2dSZXNwb25zZRI0CgtwZXJtaXNzaW9ucxgBIAMoCzIfLmtva29yby5pYW0udjEuUGVybWlzc2lvblJlY29yZDK/AgoXSWFtQXV0aG9yaXphdGlvblNlcnZpY2USTgoJQXV0aG9yaXplEh8ua29rb3JvLmlhbS52MS5BdXRob3JpemVSZXF1ZXN0GiAua29rb3JvLmlhbS52MS5BdXRob3JpemVSZXNwb25zZRJgCg9MaXN0Um9sZUNhdGFsb2cSJS5rb2tvcm8uaWFtLnYxLkxpc3RSb2xlQ2F0YWxvZ1JlcXVlc3QaJi5rb2tvcm8uaWFtLnYxLkxpc3RSb2xlQ2F0YWxvZ1Jlc3BvbnNlEnIKFUxpc3RQZXJtaXNzaW9uQ2F0YWxvZxIrLmtva29yby5pYW0udjEuTGlzdFBlcm1pc3Npb25DYXRhbG9nUmVxdWVzdBosLmtva29yby5pYW0udjEuTGlzdFBlcm1pc3Npb25DYXRhbG9nUmVzcG9uc2ViBnByb3RvMw", [file_buf_validate_validate, file_google_protobuf_timestamp, file_kokoro_iam_v1_types]);
+  fileDesc("CiFrb2tvcm8vaWFtL3YxL2F1dGhvcml6YXRpb24ucHJvdG8SDWtva29yby5pYW0udjEizgEKEEF1dGhvcml6ZVJlcXVlc3QSHAoKcmVxdWVzdF9pZBgBIAEoCUIIukgFcgOwAQESIQoPb3JnYW5pemF0aW9uX2lkGAIgASgJQgi6SAVyA7ABARJDCg5wZXJtaXNzaW9uX2tleRgDIAEoCUIrukgociYYgAEyIV5bYS16XVthLXowLTlfXSo6W2Etel1bYS16MC05X10qJBIjCgxyZXNvdXJjZV9yZWYYBCABKAlCCLpIBXIDGMACSACIAQFCDwoNX3Jlc291cmNlX3JlZiLbAQoRQXV0aG9yaXplUmVzcG9uc2USDwoHYWxsb3dlZBgBIAEoCBITCgtyZWFzb25fY29kZRgCIAEoCRIPCgd1c2VyX2lkGAMgASgJEhIKCnNlc3Npb25faWQYBCABKAkSFwoPb3JnYW5pemF0aW9uX2lkGAUgASgJEhEKCXJvbGVfa2V5cxgGIAMoCRIdChVhdXRob3JpemF0aW9uX3ZlcnNpb24YByABKAQSMAoMZXZhbHVhdGVkX2F0GAggASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCL4AQofSW5zcGVjdFVzZXJBdXRob3JpemF0aW9uUmVxdWVzdBIcCgpyZXF1ZXN0X2lkGAEgASgJQgi6SAVyA7ABARIhCg9vcmdhbml6YXRpb25faWQYAiABKAlCCLpIBXIDsAEBEhkKB3VzZXJfaWQYAyABKAlCCLpIBXIDsAEBEkMKDnBlcm1pc3Npb25fa2V5GAQgASgJQiu6SChyJhiAATIhXlthLXpdW2EtejAtOV9dKjpbYS16XVthLXowLTlfXSokEiMKDHJlc291cmNlX3JlZhgFIAEoCUIIukgFcgMYwAJIAIgBAUIPCg1fcmVzb3VyY2VfcmVmItYBCiBJbnNwZWN0VXNlckF1dGhvcml6YXRpb25SZXNwb25zZRIPCgdhbGxvd2VkGAEgASgIEhMKC3JlYXNvbl9jb2RlGAIgASgJEg8KB3VzZXJfaWQYAyABKAkSFwoPb3JnYW5pemF0aW9uX2lkGAQgASgJEhEKCXJvbGVfa2V5cxgFIAMoCRIdChVhdXRob3JpemF0aW9uX3ZlcnNpb24YBiABKAQSMAoMZXZhbHVhdGVkX2F0GAcgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCJZChZMaXN0Um9sZUNhdGFsb2dSZXF1ZXN0EhwKCnJlcXVlc3RfaWQYASABKAlCCLpIBXIDsAEBEiEKD29yZ2FuaXphdGlvbl9pZBgCIAEoCUIIukgFcgOwAQEiQwoXTGlzdFJvbGVDYXRhbG9nUmVzcG9uc2USKAoFcm9sZXMYASADKAsyGS5rb2tvcm8uaWFtLnYxLlJvbGVSZWNvcmQiPAocTGlzdFBlcm1pc3Npb25DYXRhbG9nUmVxdWVzdBIcCgpyZXF1ZXN0X2lkGAEgASgJQgi6SAVyA7ABASJVCh1MaXN0UGVybWlzc2lvbkNhdGFsb2dSZXNwb25zZRI0CgtwZXJtaXNzaW9ucxgBIAMoCzIfLmtva29yby5pYW0udjEuUGVybWlzc2lvblJlY29yZDK8AwoXSWFtQXV0aG9yaXphdGlvblNlcnZpY2USTgoJQXV0aG9yaXplEh8ua29rb3JvLmlhbS52MS5BdXRob3JpemVSZXF1ZXN0GiAua29rb3JvLmlhbS52MS5BdXRob3JpemVSZXNwb25zZRJ7ChhJbnNwZWN0VXNlckF1dGhvcml6YXRpb24SLi5rb2tvcm8uaWFtLnYxLkluc3BlY3RVc2VyQXV0aG9yaXphdGlvblJlcXVlc3QaLy5rb2tvcm8uaWFtLnYxLkluc3BlY3RVc2VyQXV0aG9yaXphdGlvblJlc3BvbnNlEmAKD0xpc3RSb2xlQ2F0YWxvZxIlLmtva29yby5pYW0udjEuTGlzdFJvbGVDYXRhbG9nUmVxdWVzdBomLmtva29yby5pYW0udjEuTGlzdFJvbGVDYXRhbG9nUmVzcG9uc2UScgoVTGlzdFBlcm1pc3Npb25DYXRhbG9nEisua29rb3JvLmlhbS52MS5MaXN0UGVybWlzc2lvbkNhdGFsb2dSZXF1ZXN0Giwua29rb3JvLmlhbS52MS5MaXN0UGVybWlzc2lvbkNhdGFsb2dSZXNwb25zZWIGcHJvdG8z", [file_buf_validate_validate, file_google_protobuf_timestamp, file_kokoro_iam_v1_types]);
 
 /**
  * @generated from message kokoro.iam.v1.AuthorizeRequest
@@ -102,6 +102,90 @@ export const AuthorizeResponseSchema: GenMessage<AuthorizeResponse> = /*@__PURE_
   messageDesc(file_kokoro_iam_v1_authorization, 1);
 
 /**
+ * @generated from message kokoro.iam.v1.InspectUserAuthorizationRequest
+ */
+export type InspectUserAuthorizationRequest = Message<"kokoro.iam.v1.InspectUserAuthorizationRequest"> & {
+  /**
+   * @generated from field: string request_id = 1;
+   */
+  requestId: string;
+
+  /**
+   * @generated from field: string organization_id = 2;
+   */
+  organizationId: string;
+
+  /**
+   * @generated from field: string user_id = 3;
+   */
+  userId: string;
+
+  /**
+   * @generated from field: string permission_key = 4;
+   */
+  permissionKey: string;
+
+  /**
+   * @generated from field: optional string resource_ref = 5;
+   */
+  resourceRef?: string | undefined;
+};
+
+/**
+ * Describes the message kokoro.iam.v1.InspectUserAuthorizationRequest.
+ * Use `create(InspectUserAuthorizationRequestSchema)` to create a new message.
+ */
+export const InspectUserAuthorizationRequestSchema: GenMessage<InspectUserAuthorizationRequest> = /*@__PURE__*/
+  messageDesc(file_kokoro_iam_v1_authorization, 2);
+
+/**
+ * @generated from message kokoro.iam.v1.InspectUserAuthorizationResponse
+ */
+export type InspectUserAuthorizationResponse = Message<"kokoro.iam.v1.InspectUserAuthorizationResponse"> & {
+  /**
+   * @generated from field: bool allowed = 1;
+   */
+  allowed: boolean;
+
+  /**
+   * @generated from field: string reason_code = 2;
+   */
+  reasonCode: string;
+
+  /**
+   * @generated from field: string user_id = 3;
+   */
+  userId: string;
+
+  /**
+   * @generated from field: string organization_id = 4;
+   */
+  organizationId: string;
+
+  /**
+   * @generated from field: repeated string role_keys = 5;
+   */
+  roleKeys: string[];
+
+  /**
+   * @generated from field: uint64 authorization_version = 6;
+   */
+  authorizationVersion: bigint;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp evaluated_at = 7;
+   */
+  evaluatedAt?: Timestamp | undefined;
+};
+
+/**
+ * Describes the message kokoro.iam.v1.InspectUserAuthorizationResponse.
+ * Use `create(InspectUserAuthorizationResponseSchema)` to create a new message.
+ */
+export const InspectUserAuthorizationResponseSchema: GenMessage<InspectUserAuthorizationResponse> = /*@__PURE__*/
+  messageDesc(file_kokoro_iam_v1_authorization, 3);
+
+/**
  * @generated from message kokoro.iam.v1.ListRoleCatalogRequest
  */
 export type ListRoleCatalogRequest = Message<"kokoro.iam.v1.ListRoleCatalogRequest"> & {
@@ -121,7 +205,7 @@ export type ListRoleCatalogRequest = Message<"kokoro.iam.v1.ListRoleCatalogReque
  * Use `create(ListRoleCatalogRequestSchema)` to create a new message.
  */
 export const ListRoleCatalogRequestSchema: GenMessage<ListRoleCatalogRequest> = /*@__PURE__*/
-  messageDesc(file_kokoro_iam_v1_authorization, 2);
+  messageDesc(file_kokoro_iam_v1_authorization, 4);
 
 /**
  * @generated from message kokoro.iam.v1.ListRoleCatalogResponse
@@ -138,7 +222,7 @@ export type ListRoleCatalogResponse = Message<"kokoro.iam.v1.ListRoleCatalogResp
  * Use `create(ListRoleCatalogResponseSchema)` to create a new message.
  */
 export const ListRoleCatalogResponseSchema: GenMessage<ListRoleCatalogResponse> = /*@__PURE__*/
-  messageDesc(file_kokoro_iam_v1_authorization, 3);
+  messageDesc(file_kokoro_iam_v1_authorization, 5);
 
 /**
  * @generated from message kokoro.iam.v1.ListPermissionCatalogRequest
@@ -155,7 +239,7 @@ export type ListPermissionCatalogRequest = Message<"kokoro.iam.v1.ListPermission
  * Use `create(ListPermissionCatalogRequestSchema)` to create a new message.
  */
 export const ListPermissionCatalogRequestSchema: GenMessage<ListPermissionCatalogRequest> = /*@__PURE__*/
-  messageDesc(file_kokoro_iam_v1_authorization, 4);
+  messageDesc(file_kokoro_iam_v1_authorization, 6);
 
 /**
  * @generated from message kokoro.iam.v1.ListPermissionCatalogResponse
@@ -172,7 +256,7 @@ export type ListPermissionCatalogResponse = Message<"kokoro.iam.v1.ListPermissio
  * Use `create(ListPermissionCatalogResponseSchema)` to create a new message.
  */
 export const ListPermissionCatalogResponseSchema: GenMessage<ListPermissionCatalogResponse> = /*@__PURE__*/
-  messageDesc(file_kokoro_iam_v1_authorization, 5);
+  messageDesc(file_kokoro_iam_v1_authorization, 7);
 
 /**
  * @generated from service kokoro.iam.v1.IamAuthorizationService
@@ -185,6 +269,14 @@ export const IamAuthorizationService: GenService<{
     methodKind: "unary";
     input: typeof AuthorizeRequestSchema;
     output: typeof AuthorizeResponseSchema;
+  },
+  /**
+   * @generated from rpc kokoro.iam.v1.IamAuthorizationService.InspectUserAuthorization
+   */
+  inspectUserAuthorization: {
+    methodKind: "unary";
+    input: typeof InspectUserAuthorizationRequestSchema;
+    output: typeof InspectUserAuthorizationResponseSchema;
   },
   /**
    * @generated from rpc kokoro.iam.v1.IamAuthorizationService.ListRoleCatalog

@@ -11,6 +11,7 @@ const statuses = {
   deleted: { color: "default", label: "status.deleted" },
   revoked: { color: "error", label: "status.revoked" },
   expired: { color: "default", label: "status.expired" },
+  retired: { color: "default", label: "status.retired" },
 } as const satisfies Record<string, Readonly<{ color: string; label: MessageKey }>>;
 
 export type KnownStatus = keyof typeof statuses;

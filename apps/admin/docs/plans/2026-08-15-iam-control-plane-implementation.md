@@ -23,8 +23,8 @@ and persistence authority.
 - Follow `apps/admin/docs/product/PRD-001-iam-control-plane.md`,
   `apps/admin/docs/architecture/iam-control-plane-technical-design.md`, and
   `apps/admin/docs/decisions/ADR-001-iam-rpc-control-plane.md`.
-- Consume IAM candidate `c96e369d3f04f1ae653da16fec3c83266484c9bc`, tree
-  `ee0326d14876cff12c50c8b77efef5204cbff898`, and frozen hashes exactly.
+- Consume IAM candidate `16afccdbec9c22176f9fd493feeb0ed0d7fe3445`, tree
+  `a72b870c8e890eb63176ddb80cc34df3658a474f`, and frozen hashes exactly.
 - Keep Next.js, React, Auth.js, Ant Design, Pro Components, Tailwind tokens, and `@kokoro/i18n`.
 - Do not add another authentication, administration, component, query-state, or form framework.
 - Admin Web runtime, pages, actions, and application tests never receive an IAM database credential.
@@ -275,12 +275,12 @@ Expected: fail because provider metadata and generated descriptors do not exist.
 ```json
 {
   "repository": "kokoro-iam",
-  "commit": "c96e369d3f04f1ae653da16fec3c83266484c9bc",
-  "tree": "ee0326d14876cff12c50c8b77efef5204cbff898",
-  "protoSha256": "30ca6dd986764a9f2a7b9283d0c470613974eb39bfd3ca02a98b4e427909c2ce",
+  "commit": "16afccdbec9c22176f9fd493feeb0ed0d7fe3445",
+  "tree": "a72b870c8e890eb63176ddb80cc34df3658a474f",
+  "protoSha256": "4daad8affaa7eb36e8f587dca3a016dd080b3ca4f3e36f08a19963133a27e38a",
   "migrationSha256": "846491c5a72331a8d7aa1a2b51a153165dc636957ac1edf867e3836405f358c2",
-  "catalogSha256": "eac700d3b39c33c7caad4ed00df6ad7a1de0fe747abf833d5352f76184fd62a4",
-  "acceptedRunId": "iam-20260815T202800186Z-c96e369d3f04"
+  "catalogSha256": "e388f4a865fa98744989f3e7a6d41d2bf8e6367ae51b8eeee804c763b4bc8552",
+  "acceptedRunId": "iam-20260816T111434155Z-16afccdbec9c"
 }
 ```
 
@@ -656,12 +656,18 @@ git commit -m "feat(admin): manage IAM users and sessions"
 **Files:**
 - Create: `apps/admin/modules/iam/organizations/query.ts`
 - Create: `apps/admin/modules/iam/organizations/actions.ts`
+- Create: `apps/admin/modules/iam/organizations/action-server.ts`
 - Create: `apps/admin/modules/iam/organizations/schema.ts`
+- Create: `apps/admin/modules/iam/organizations/url.ts`
 - Create: `apps/admin/modules/iam/organizations/organization-table.tsx`
 - Create: `apps/admin/modules/iam/organizations/organization-detail.tsx`
 - Create: `apps/admin/modules/iam/members/actions.ts`
+- Create: `apps/admin/modules/iam/members/action-server.ts`
+- Create: `apps/admin/modules/iam/members/schema.ts`
 - Create: `apps/admin/modules/iam/members/member-table.tsx`
 - Create: `apps/admin/modules/iam/access/query.ts`
+- Create: `apps/admin/modules/iam/access/schema.ts`
+- Create: `apps/admin/modules/iam/access/url.ts`
 - Create: `apps/admin/modules/iam/access/access-catalog.tsx`
 - Create: `apps/admin/app/(control)/organizations/page.tsx`
 - Create: `apps/admin/app/(control)/organizations/[organizationId]/page.tsx`
@@ -679,14 +685,19 @@ git commit -m "feat(admin): manage IAM users and sessions"
 - Produces: Organization lifecycle, complete Member lifecycle, Role/Permission catalog, live
   authorization probe, tenant isolation, and last-owner UI behavior.
 
-- [ ] **Step 1: Write failing organization/member/RBAC tests**
+**Provider contract:** the frozen Provider requires `organization_id` on every non-add Member
+command and exposes administrator-only `InspectUserAuthorization` for a selected User. Admin Web
+validates Organization and User response correlation; real pair evidence must still prove the full
+grant/deny transition.
+
+- [x] **Step 1: Write failing organization/member/RBAC tests**
 
 Cover create/update/reload/delete/find-deleted/restore, slug/name validation, restore conflict,
 add/list/change/suspend/reactivate/remove/restore Member, active User lookup, built-in role options,
 last-owner preservation, cross-organization nondisclosure, permission/role catalogs, and grant/allow
 then role-change or suspension/revoke/deny.
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 ```bash
 pnpm --filter @kokoro/admin-web test:component -- organizations members access
@@ -694,14 +705,14 @@ pnpm --filter @kokoro/admin-web test:integration -- organization-actions member-
 pnpm --filter @kokoro/admin-web test:security -- tenant-isolation last-owner
 ```
 
-- [ ] **Step 3: Implement the vertical slice**
+- [x] **Step 3: Implement the vertical slice**
 
 Use `IamAdministrationService/ListOrganizations` for platform search and
 `IamOrganizationService` for lifecycle/member commands. Load Role catalog per Organization and
 Permission catalog on Access. Do not expose custom Role/Permission mutation controls. Preserve IAM
 `last_owner`, `conflict`, and `not_found` results without a client fallback.
 
-- [ ] **Step 4: Verify GREEN and commit**
+- [x] **Step 4: Verify GREEN and commit**
 
 ```bash
 pnpm --filter @kokoro/admin-web test:component

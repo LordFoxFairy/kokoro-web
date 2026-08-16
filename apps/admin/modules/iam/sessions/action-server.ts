@@ -5,7 +5,8 @@ import { revalidatePath } from "next/cache";
 import { requireIamActor } from "../../../server/auth/session";
 import type { CommandActionResult } from "../../../server/commands/result";
 import { createIamManagementClient } from "../../../server/iam/management-client";
-import { createSessionActionHandler, type SessionCommandActionInput } from "./actions";
+import { createSessionActionHandler } from "./actions";
+import type { SessionCommandActionInput } from "./schema";
 
 const handle = createSessionActionHandler({
   async loadClient() {

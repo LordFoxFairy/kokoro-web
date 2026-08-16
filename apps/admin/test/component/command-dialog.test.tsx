@@ -31,4 +31,30 @@ describe("IAM command confirmation", () => {
     fireEvent.click(confirm);
     await waitFor(() => expect(reasons).toEqual(["Security review"]));
   });
+
+  it("WEB-UNIT-COMMAND-001 freezes the reason after the first RPC attempt", async () => {
+    const reasons: string[] = [];
+    render(
+      <LocaleProvider>
+        <CommandDialog
+          open
+          title="停用用户"
+          entityLabel="admin@example.com"
+          onCancel={() => {}}
+          onConfirm={async (reason) => { reasons.push(reason); }}
+        />
+      </LocaleProvider>,
+    );
+
+    const reason = screen.getByRole("textbox", { name: "操作原因" });
+    const confirm = screen.getByRole("button", { name: "确认" });
+    fireEvent.change(reason, { target: { value: "Security review" } });
+    fireEvent.click(confirm);
+    await waitFor(() => expect(reasons).toEqual(["Security review"]));
+
+    expect(reason).toBeDisabled();
+    fireEvent.change(reason, { target: { value: "Changed digest" } });
+    fireEvent.click(confirm);
+    await waitFor(() => expect(reasons).toEqual(["Security review", "Security review"]));
+  });
 });

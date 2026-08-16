@@ -2,34 +2,16 @@ import "server-only";
 
 import { randomUUID } from "node:crypto";
 
-import { z } from "zod";
-
 import type { IamManagementClient } from "../../../server/iam/management-client";
 import type { AdminSession } from "../../../server/iam/records";
+import {
+  sessionFiltersSchema,
+  type SessionFilters,
+  type SessionListItem,
+  type SessionListView,
+} from "./schema";
 
 type SearchParams = Readonly<Record<string, string | string[] | undefined>>;
-const sessionFiltersSchema = z.object({
-  userId: z.string().uuid().nullable().default(null),
-  cursor: z.string().max(512).nullable().default(null),
-  limit: z.number().int().min(1).max(100).default(25),
-}).strict();
-
-export type SessionFilters = z.infer<typeof sessionFiltersSchema>;
-export type SessionListItem = Readonly<{
-  id: string;
-  userId: string;
-  status: "active" | "revoked" | "expired";
-  activeOrganizationId: string | null;
-  expiresAt: string;
-  revokedAt: string | null;
-  createdAt: string;
-  updatedAt: string;
-}>;
-export type SessionListView = Readonly<{
-  items: readonly SessionListItem[];
-  nextCursor: string | null;
-  filters: SessionFilters;
-}>;
 
 function scalar(value: string | string[] | undefined): string | undefined {
   return typeof value === "string" ? value : undefined;

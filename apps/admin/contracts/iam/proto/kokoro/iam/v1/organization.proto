@@ -64,30 +64,35 @@ message ChangeMemberRoleRequest {
   CommandContext command = 1 [(buf.validate.field).required = true];
   string member_id = 2 [(buf.validate.field).string.uuid = true];
   string role_key = 3 [(buf.validate.field).string = {min_len: 1, max_len: 64}];
+  string organization_id = 4 [(buf.validate.field).string.uuid = true];
 }
 message ChangeMemberRoleResponse { MemberRecord member = 1; bool replayed = 2; }
 
 message SuspendMemberRequest {
   CommandContext command = 1 [(buf.validate.field).required = true];
   string member_id = 2 [(buf.validate.field).string.uuid = true];
+  string organization_id = 3 [(buf.validate.field).string.uuid = true];
 }
 message SuspendMemberResponse { MemberRecord member = 1; bool replayed = 2; }
 
 message ReactivateMemberRequest {
   CommandContext command = 1 [(buf.validate.field).required = true];
   string member_id = 2 [(buf.validate.field).string.uuid = true];
+  string organization_id = 3 [(buf.validate.field).string.uuid = true];
 }
 message ReactivateMemberResponse { MemberRecord member = 1; bool replayed = 2; }
 
 message RemoveMemberRequest {
   CommandContext command = 1 [(buf.validate.field).required = true];
   string member_id = 2 [(buf.validate.field).string.uuid = true];
+  string organization_id = 3 [(buf.validate.field).string.uuid = true];
 }
 message RemoveMemberResponse { MemberRecord member = 1; bool replayed = 2; }
 
 message RestoreMemberRequest {
   CommandContext command = 1 [(buf.validate.field).required = true];
   string member_id = 2 [(buf.validate.field).string.uuid = true];
+  string organization_id = 3 [(buf.validate.field).string.uuid = true];
 }
 message RestoreMemberResponse { MemberRecord member = 1; bool replayed = 2; }
 

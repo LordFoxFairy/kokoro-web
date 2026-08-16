@@ -98,12 +98,12 @@ fresh database, but the Web process never receives that database connection.
 
 | Field | Accepted value |
 |---|---|
-| IAM candidate commit | `c96e369d3f04f1ae653da16fec3c83266484c9bc` |
-| IAM candidate tree | `ee0326d14876cff12c50c8b77efef5204cbff898` |
-| Proto SHA-256 | `30ca6dd986764a9f2a7b9283d0c470613974eb39bfd3ca02a98b4e427909c2ce` |
+| IAM candidate commit | `16afccdbec9c22176f9fd493feeb0ed0d7fe3445` |
+| IAM candidate tree | `a72b870c8e890eb63176ddb80cc34df3658a474f` |
+| Proto SHA-256 | `4daad8affaa7eb36e8f587dca3a016dd080b3ca4f3e36f08a19963133a27e38a` |
 | Migration SHA-256 | `846491c5a72331a8d7aa1a2b51a153165dc636957ac1edf867e3836405f358c2` |
-| IAM P0 catalog SHA-256 | `eac700d3b39c33c7caad4ed00df6ad7a1de0fe747abf833d5352f76184fd62a4` |
-| IAM accepted run | `iam-20260815T202800186Z-c96e369d3f04` |
+| IAM P0 catalog SHA-256 | `e388f4a865fa98744989f3e7a6d41d2bf8e6367ae51b8eeee804c763b4bc8552` |
+| IAM accepted run | `iam-20260816T111434155Z-16afccdbec9c` |
 
 A change to IAM production code, Proto, or migrations requires a new accepted candidate before pair
 acceptance. Admin Web records provider hashes in generated-client tests and every pair manifest.
@@ -175,8 +175,10 @@ timing class. Detailed reasons remain in authorized security events and structur
 3. Last-owner removal or demotion is rejected and the UI retains the authoritative state.
 4. Cross-organization IDs do not disclose or mutate another tenant.
 5. The Access view displays the provider-owned Role and Permission catalogs.
-6. A granted operation is allowed, then becomes denied immediately after role change, suspension, or
-   membership removal. No permission decision is cached as Web authority.
+6. The administrator selects a User and inspects that User's authorization. A granted operation is
+   allowed, then becomes denied immediately after role change, suspension, or membership removal.
+   No permission decision is cached as Web authority, and the administrator Session is not the
+   inspected subject.
 
 ### 9.5 Audit review
 
