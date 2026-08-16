@@ -331,7 +331,7 @@ git commit -m "feat(admin): consume frozen IAM RPC contract"
 - Produces: `loadAdminConfig()`, `createWorkloadTransport()`, `createActorTransport()`,
   `toIamWebError()`, strict domain record mappers, and structured safe logging.
 
-- [ ] **Step 1: Write failing config/security/boundary tests**
+- [x] **Step 1: Write failing config/security/boundary tests**
 
 Test absolute normalized non-symlink exact-0600 secret files, 64 lowercase-hex IAM credential,
 Auth.js secret length, paired SMTP authentication, production HTTPS/secure-cookie requirement,
@@ -339,7 +339,7 @@ loopback-only HTTP fixture, distinct request/response limits, and rejection of r
 Boundary tests scan Client Components and compiled entry imports for `connect-node`, generated IAM,
 secret-file modules, SQL, Prisma, and secret environment names.
 
-- [ ] **Step 2: Run focused tests and verify RED**
+- [x] **Step 2: Run focused tests and verify RED**
 
 ```bash
 pnpm --filter @kokoro/admin-web test:unit -- config secret-file iam-error iam-records
@@ -347,7 +347,7 @@ pnpm --filter @kokoro/admin-web test:contract -- server-boundary
 pnpm --filter @kokoro/admin-web test:security -- secret-leakage
 ```
 
-- [ ] **Step 3: Implement strict Node-only modules**
+- [x] **Step 3: Implement strict Node-only modules**
 
 Every file starts with `import "server-only"`. Expose these stable signatures:
 
@@ -364,7 +364,7 @@ Configuration reads `AUTH_URL`, `AUTH_SECRET_FILE`, `AUTH_SECURE_COOKIES`, `KOKO
 `KOKORO_IAM_ADMIN_WEB_TOKEN_FILE`, Magic Link, and SMTP fields. The transport sets workload and actor
 Bearer headers only on the server and never retries commands.
 
-- [ ] **Step 4: Verify GREEN and commit**
+- [x] **Step 4: Verify GREEN and commit**
 
 ```bash
 pnpm --filter @kokoro/admin-web test:unit
