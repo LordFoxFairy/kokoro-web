@@ -1,4 +1,4 @@
-import { access } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -91,7 +91,9 @@ describe("Admin Web P0 catalog", () => {
       expect(entry.evidence.length, entry.id).toBeGreaterThan(0);
       if (entry.category !== "pair_e2e") {
         expect(entry.testFile, entry.id).toMatch(/\.test\.tsx?$/u);
-        await expect(access(resolve(appRoot, entry.testFile ?? "")), entry.id).resolves.toBeUndefined();
+        const testPath = resolve(appRoot, entry.testFile ?? "");
+        await expect(access(testPath), entry.id).resolves.toBeUndefined();
+        expect(await readFile(testPath, "utf8"), entry.id).toContain(entry.id);
       }
     }
   });

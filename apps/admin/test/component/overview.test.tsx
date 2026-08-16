@@ -5,7 +5,7 @@ import { LocaleProvider } from "../../i18n/context";
 import { IamOverview } from "../../modules/iam/overview/overview";
 
 describe("IAM operational overview", () => {
-  it("WEB-COMP-STATE-001 renders readiness and the latest real events without fabricated totals", () => {
+  it("WEB-COMP-OVERVIEW-001 renders readiness and the latest real events without fabricated totals", () => {
     render(
       <LocaleProvider>
         <IamOverview state={{
