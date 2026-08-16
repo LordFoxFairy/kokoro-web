@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="34" failures="0" errors="0" time="0.136433917">
+    <testsuite name="test/unit/auth-adapter.test.ts" timestamp="2026-08-16T15:16:08.171Z" hostname="nakodeMacBook-Pro.local" tests="5" failures="0" errors="0" skipped="0" time="0.023551875">
+        <testcase classname="test/unit/auth-adapter.test.ts" name="complete Auth.js IAM Adapter &gt; WEB-UNIT-ADAPTER-001 exposes exactly the fourteen accepted Adapter methods" time="0.002295625">
+        </testcase>
+        <testcase classname="test/unit/auth-adapter.test.ts" name="complete Auth.js IAM Adapter &gt; WEB-UNIT-ADAPTER-001 maps create/read/update/delete User calls and preserves registration denial" time="0.015443125">
+        </testcase>
+        <testcase classname="test/unit/auth-adapter.test.ts" name="complete Auth.js IAM Adapter &gt; WEB-UNIT-ADAPTER-001 maps complete Account fields and rejects unsafe int64 expiry" time="0.00183775">
+        </testcase>
+        <testcase classname="test/unit/auth-adapter.test.ts" name="complete Auth.js IAM Adapter &gt; WEB-UNIT-ADAPTER-001 maps database Session lifecycle and rejects partial joined responses" time="0.002191375">
+        </testcase>
+        <testcase classname="test/unit/auth-adapter.test.ts" name="complete Auth.js IAM Adapter &gt; WEB-UNIT-ADAPTER-001 maps one-time VerificationToken lifecycle with null optional results" time="0.001004459">
+        </testcase>
+    </testsuite>
+    <testsuite name="test/unit/auth-cookie.test.ts" timestamp="2026-08-16T15:16:08.172Z" hostname="nakodeMacBook-Pro.local" tests="3" failures="0" errors="0" skipped="0" time="0.00219325">
+        <testcase classname="test/unit/auth-cookie.test.ts" name="explicit Auth.js database Session cookie &gt; WEB-UNIT-COOKIE-001 uses the exact production Secure cookie contract" time="0.00110525">
+        </testcase>
+        <testcase classname="test/unit/auth-cookie.test.ts" name="explicit Auth.js database Session cookie &gt; WEB-UNIT-COOKIE-001 uses the exact loopback HTTP fixture cookie contract" time="0.000089125">
+        </testcase>
+        <testcase classname="test/unit/auth-cookie.test.ts" name="explicit Auth.js database Session cookie &gt; WEB-UNIT-COOKIE-001 reads only a bounded opaque token from the configured cookie" time="0.000219875">
+        </testcase>
+    </testsuite>
+    <testsuite name="test/unit/command-identity.test.ts" timestamp="2026-08-16T15:16:08.172Z" hostname="nakodeMacBook-Pro.local" tests="2" failures="0" errors="0" skipped="0" time="0.004820958">
+        <testcase classname="test/unit/command-identity.test.ts" name="stable IAM command identity &gt; WEB-UNIT-COMMAND-001 keeps one command ID while recovery gets a fresh request ID" time="0.002300833">
+        </testcase>
+        <testcase classname="test/unit/command-identity.test.ts" name="stable IAM command identity &gt; WEB-UNIT-COMMAND-001 validates and normalizes command context without changing identity" time="0.001778333">
+        </testcase>
+    </testsuite>
+    <testsuite name="test/unit/config.test.ts" timestamp="2026-08-16T15:16:08.173Z" hostname="nakodeMacBook-Pro.local" tests="5" failures="0" errors="0" skipped="0" time="0.018638083">
+        <testcase classname="test/unit/config.test.ts" name="strict Admin runtime configuration &gt; WEB-UNIT-CONFIG-001 loads normalized local fixture settings and distinct RPC limits" time="0.008748625">
+        </testcase>
+        <testcase classname="test/unit/config.test.ts" name="strict Admin runtime configuration &gt; WEB-UNIT-CONFIG-001 requires a lowercase 64-hex IAM credential and 32-byte Auth.js secret" time="0.002538">
+        </testcase>
+        <testcase classname="test/unit/config.test.ts" name="strict Admin runtime configuration &gt; WEB-UNIT-CONFIG-001 requires SMTP user and password file as an exact pair" time="0.001491459">
+        </testcase>
+        <testcase classname="test/unit/config.test.ts" name="strict Admin runtime configuration &gt; WEB-UNIT-CONFIG-001 validates the browser origin separately from the IAM RPC endpoint" time="0.003161209">
+        </testcase>
+        <testcase classname="test/unit/config.test.ts" name="strict Admin runtime configuration &gt; WEB-UNIT-CONFIG-001 requires HTTPS and secure cookies together in production" time="0.001561208">
+        </testcase>
+    </testsuite>
+    <testsuite name="test/unit/iam-error.test.ts" timestamp="2026-08-16T15:16:08.173Z" hostname="nakodeMacBook-Pro.local" tests="3" failures="0" errors="0" skipped="0" time="0.01118725">
+        <testcase classname="test/unit/iam-error.test.ts" name="safe IAM error translation &gt; WEB-UNIT-ERROR-001 maps an allowlisted ErrorDetail and discards the upstream message" time="0.010131792">
+        </testcase>
+        <testcase classname="test/unit/iam-error.test.ts" name="safe IAM error translation &gt; WEB-UNIT-ERROR-001 removes unknown reasons fields and malformed request IDs" time="0.000181625">
+        </testcase>
+        <testcase classname="test/unit/iam-error.test.ts" name="safe IAM error translation &gt; WEB-UNIT-ERROR-001 maps transport failures without reflecting arbitrary values" time="0.00009775">
+        </testcase>
+    </testsuite>
+    <testsuite name="test/unit/iam-records.test.ts" timestamp="2026-08-16T15:16:08.173Z" hostname="nakodeMacBook-Pro.local" tests="7" failures="0" errors="0" skipped="0" time="0.003847542">
+        <testcase classname="test/unit/iam-records.test.ts" name="strict IAM domain record mapping &gt; WEB-UNIT-RECORD-001 maps a complete UserRecord to an immutable AdminUser" time="0.00133875">
+        </testcase>
+        <testcase classname="test/unit/iam-records.test.ts" name="strict IAM domain record mapping &gt; WEB-UNIT-RECORD-001 maps a complete OrganizationRecord" time="0.000218667">
+        </testcase>
+        <testcase classname="test/unit/iam-records.test.ts" name="strict IAM domain record mapping &gt; WEB-UNIT-RECORD-001 rejects missing records timestamps and unknown enums" time="0.00050425">
+        </testcase>
+        <testcase classname="test/unit/iam-records.test.ts" name="strict IAM domain record mapping &gt; WEB-UNIT-RECORD-001 accepts the provider-owned retired Permission status" time="0.000353833">
+        </testcase>
+        <testcase classname="test/unit/iam-records.test.ts" name="strict IAM domain record mapping &gt; WEB-UNIT-RECORD-001 rejects an authorization reason outside the accepted provider catalog" time="0.000139083">
+        </testcase>
+        <testcase classname="test/unit/iam-records.test.ts" name="strict IAM domain record mapping &gt; WEB-UNIT-RECORD-001 maps selected-User authorization inspection without an actor Session" time="0.000331875">
+        </testcase>
+        <testcase classname="test/unit/iam-records.test.ts" name="strict IAM domain record mapping &gt; WEB-UNIT-RECORD-001 rejects unknown Role keys and inconsistent authorization decisions" time="0.00024725">
+        </testcase>
+    </testsuite>
+    <testsuite name="test/unit/iam-transport.test.ts" timestamp="2026-08-16T15:16:08.173Z" hostname="nakodeMacBook-Pro.local" tests="3" failures="0" errors="0" skipped="0" time="0.047610834">
+        <testcase classname="test/unit/iam-transport.test.ts" name="IAM Node transport &gt; WEB-UNIT-CONFIG-001 sends workload request-id and actor credentials only from server transport" time="0.014714625">
+        </testcase>
+        <testcase classname="test/unit/iam-transport.test.ts" name="IAM Node transport &gt; WEB-UNIT-CONFIG-001 enforces request response and deadline bounds at the real Node transport" time="0.031662667">
+        </testcase>
+        <testcase classname="test/unit/iam-transport.test.ts" name="IAM Node transport &gt; WEB-UNIT-CONFIG-001 rejects malformed bearer credentials before sending a request" time="0.000464959">
+        </testcase>
+    </testsuite>
+    <testsuite name="test/unit/pagination.test.ts" timestamp="2026-08-16T15:16:08.174Z" hostname="nakodeMacBook-Pro.local" tests="3" failures="0" errors="0" skipped="0" time="0.00505525">
+        <testcase classname="test/unit/pagination.test.ts" name="IAM URL filters and cursor pagination &gt; WEB-UNIT-PAGE-001 defaults to 25 caps at 100 and round-trips opaque cursors" time="0.002506041">
+        </testcase>
+        <testcase classname="test/unit/pagination.test.ts" name="IAM URL filters and cursor pagination &gt; WEB-UNIT-PAGE-001 clears cursor on a filter change and preserves it on next-page links" time="0.000491916">
+        </testcase>
+        <testcase classname="test/unit/pagination.test.ts" name="IAM URL filters and cursor pagination &gt; WEB-UNIT-PAGE-001 rejects malformed filters instead of forwarding them to IAM" time="0.00111625">
+        </testcase>
+    </testsuite>
+    <testsuite name="test/unit/secret-file.test.ts" timestamp="2026-08-16T15:16:08.174Z" hostname="nakodeMacBook-Pro.local" tests="3" failures="0" errors="0" skipped="0" time="0.019528875">
+        <testcase classname="test/unit/secret-file.test.ts" name="exact secret-file boundary &gt; WEB-UNIT-SECRET-001 reads an absolute normalized owned 0600 regular file" time="0.004944458">
+        </testcase>
+        <testcase classname="test/unit/secret-file.test.ts" name="exact secret-file boundary &gt; WEB-UNIT-SECRET-001 rejects relative non-normalized and symlink paths" time="0.008928291">
+        </testcase>
+        <testcase classname="test/unit/secret-file.test.ts" name="exact secret-file boundary &gt; WEB-UNIT-SECRET-001 rejects permissions other than exact 0600 without leaking values" time="0.004678667">
+        </testcase>
+    </testsuite>
+</testsuites>

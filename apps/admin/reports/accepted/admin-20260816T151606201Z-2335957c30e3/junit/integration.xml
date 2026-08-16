@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="21" failures="0" errors="0" time="0.178456541">
+    <testsuite name="test/integration/audit-query.test.ts" timestamp="2026-08-16T15:16:17.932Z" hostname="nakodeMacBook-Pro.local" tests="3" failures="0" errors="0" skipped="0" time="0.019719916">
+        <testcase classname="test/integration/audit-query.test.ts" name="IAM SecurityEvent audit query &gt; WEB-INT-AUDIT-001 forwards every exact filter and retains correlation with cursor pagination" time="0.016897292">
+        </testcase>
+        <testcase classname="test/integration/audit-query.test.ts" name="IAM SecurityEvent audit query &gt; WEB-INT-AUDIT-001 rejects malformed identifiers time ranges arrays and cursors before RPC" time="0.00095525">
+        </testcase>
+        <testcase classname="test/integration/audit-query.test.ts" name="IAM SecurityEvent audit query &gt; WEB-INT-AUDIT-001 requests exactly the ten latest events for the overview" time="0.000802083">
+        </testcase>
+    </testsuite>
+    <testsuite name="test/integration/auth-routes.test.ts" timestamp="2026-08-16T15:16:17.932Z" hostname="nakodeMacBook-Pro.local" tests="3" failures="0" errors="0" skipped="0" time="0.024802958">
+        <testcase classname="test/integration/auth-routes.test.ts" name="real Auth.js route handlers with IAM Adapter &gt; WEB-INT-AUTH-001 requests consumes and exposes a safe database Session" time="0.016666917">
+        </testcase>
+        <testcase classname="test/integration/auth-routes.test.ts" name="real Auth.js route handlers with IAM Adapter &gt; WEB-INT-AUTH-001 consumes a Magic Link once and routes replay to one public-safe error page" time="0.003747958">
+        </testcase>
+        <testcase classname="test/integration/auth-routes.test.ts" name="real Auth.js route handlers with IAM Adapter &gt; WEB-INT-SESSION-001 logs out through Auth.js and deletes the IAM database Session" time="0.003682125">
+        </testcase>
+    </testsuite>
+    <testsuite name="test/integration/database-session.test.ts" timestamp="2026-08-16T15:16:17.933Z" hostname="nakodeMacBook-Pro.local" tests="3" failures="0" errors="0" skipped="0" time="0.020504166">
+        <testcase classname="test/integration/database-session.test.ts" name="Auth.js database Session actor exchange &gt; WEB-INT-SESSION-001 exchanges the configured opaque cookie then uses one ephemeral actor transport" time="0.017366708">
+        </testcase>
+        <testcase classname="test/integration/database-session.test.ts" name="Auth.js database Session actor exchange &gt; WEB-INT-SESSION-001 rejects missing inactive and non-admin Sessions before actor exchange" time="0.001080625">
+        </testcase>
+        <testcase classname="test/integration/database-session.test.ts" name="Auth.js database Session actor exchange &gt; WEB-INT-SESSION-001 rejects a missing cookie and malformed token response without exposing either token" time="0.001280791">
+        </testcase>
+    </testsuite>
+    <testsuite name="test/integration/member-actions.test.ts" timestamp="2026-08-16T15:16:17.933Z" hostname="nakodeMacBook-Pro.local" tests="4" failures="0" errors="0" skipped="0" time="0.028035542">
+        <testcase classname="test/integration/member-actions.test.ts" name="IAM Member commands and Access reads &gt; WEB-INT-MEMBER-001 executes the complete lifecycle through generated commands" time="0.019870583">
+        </testcase>
+        <testcase classname="test/integration/member-actions.test.ts" name="IAM Member commands and Access reads &gt; WEB-INT-MEMBER-001 inspects the selected User without using an actor Session as the subject" time="0.00380525">
+        </testcase>
+        <testcase classname="test/integration/member-actions.test.ts" name="IAM Member commands and Access reads &gt; WEB-INT-MEMBER-001 loads only provider-owned built-in Role and Permission catalogs" time="0.00174225">
+        </testcase>
+        <testcase classname="test/integration/member-actions.test.ts" name="IAM Member commands and Access reads &gt; WEB-UNIT-PAGE-001 pages Organization choices and retains a selected Organization outside the page" time="0.0016885">
+        </testcase>
+    </testsuite>
+    <testsuite name="test/integration/organization-actions.test.ts" timestamp="2026-08-16T15:16:17.933Z" hostname="nakodeMacBook-Pro.local" tests="3" failures="0" errors="0" skipped="0" time="0.027031167">
+        <testcase classname="test/integration/organization-actions.test.ts" name="IAM Organization queries and server actions &gt; WEB-INT-ORG-001 executes create update delete restore and stable replay through generated RPC" time="0.017200666">
+        </testcase>
+        <testcase classname="test/integration/organization-actions.test.ts" name="IAM Organization queries and server actions &gt; WEB-INT-ORG-001 loads filtered Organizations and complete deleted detail with active User lookup" time="0.006564875">
+        </testcase>
+        <testcase classname="test/integration/organization-actions.test.ts" name="IAM Organization queries and server actions &gt; WEB-INT-ORG-001 rejects invalid names locally and preserves a safe restore conflict" time="0.002020125">
+        </testcase>
+    </testsuite>
+    <testsuite name="test/integration/runtime-smoke.test.ts" timestamp="2026-08-16T15:16:17.933Z" hostname="nakodeMacBook-Pro.local" tests="1" failures="0" errors="0" skipped="0" time="0.0159985">
+        <testcase classname="test/integration/runtime-smoke.test.ts" name="production-shaped Admin HTTP probes &gt; WEB-INT-SMOKE-001 requires public login headers and protected redirect behavior" time="0.015237375">
+        </testcase>
+    </testsuite>
+    <testsuite name="test/integration/session-actions.test.ts" timestamp="2026-08-16T15:16:17.933Z" hostname="nakodeMacBook-Pro.local" tests="1" failures="0" errors="0" skipped="0" time="0.017953875">
+        <testcase classname="test/integration/session-actions.test.ts" name="IAM Session server actions &gt; WEB-INT-SESSION-002 lists safe summaries and revokes one or all with stable commands" time="0.01709125">
+        </testcase>
+    </testsuite>
+    <testsuite name="test/integration/user-actions.test.ts" timestamp="2026-08-16T15:16:17.934Z" hostname="nakodeMacBook-Pro.local" tests="3" failures="0" errors="0" skipped="0" time="0.024410417">
+        <testcase classname="test/integration/user-actions.test.ts" name="IAM User server actions &gt; WEB-INT-USER-001 executes every lifecycle command with expected version and stable replay identity" time="0.018867958">
+        </testcase>
+        <testcase classname="test/integration/user-actions.test.ts" name="IAM User server actions &gt; WEB-INT-USER-001 loads deleted detail explicitly and returns null for a missing User" time="0.003350833">
+        </testcase>
+        <testcase classname="test/integration/user-actions.test.ts" name="IAM User server actions &gt; WEB-INT-USER-001 returns a safe in-progress result with the same command ID" time="0.001435666">
+        </testcase>
+    </testsuite>
+</testsuites>

@@ -1,0 +1,2 @@
+ADMIN_RUNTIME_SMOKE=PASS
+SMOKE_EVIDENCE=/Users/nako/WebstormProjects/github/thefoxfairy/Kokoro/kokoro-web/apps/admin/test-results/admin-20260816T151606201Z-2335957c30e3

@@ -1,0 +1,13 @@
+{
+  "recordedAt": {
+    "utc": "2026-08-16T15:16:30.955Z",
+    "local": "2026-08-16T11:16:30.955-04:00",
+    "timezoneOffset": "-04:00",
+    "epochMs": 1786893390955
+  },
+  "service": "kokoro.iam.v1.IamAdministrationService",
+  "method": "ListUsers",
+  "requestId": "38304356-f1d7-4b90-afe3-552db2f910d2",
+  "itemCount": 0,
+  "nextCursor": null
+}

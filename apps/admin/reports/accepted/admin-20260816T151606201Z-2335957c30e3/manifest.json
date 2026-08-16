@@ -1,0 +1,2238 @@
+{
+  "schemaVersion": 1,
+  "reportType": "kokoro-admin-web-repository-acceptance",
+  "runId": "admin-20260816T151606201Z-2335957c30e3",
+  "started": {
+    "utc": "2026-08-16T15:16:06.189Z",
+    "local": "2026-08-16T11:16:06.189-04:00",
+    "timezoneOffset": "-04:00",
+    "epochMs": 1786893366189
+  },
+  "finished": {
+    "utc": "2026-08-16T15:16:31.108Z",
+    "local": "2026-08-16T11:16:31.108-04:00",
+    "timezoneOffset": "-04:00",
+    "epochMs": 1786893391108
+  },
+  "candidate": {
+    "repository": "kokoro-web",
+    "branch": "codex/admin-web-iam-control-plane",
+    "commit": "2335957c30e3a74c946218e435e1f7d28623c506",
+    "tree": "a760ea5ae25a6cec3f9218dfaeb51a276904ea14",
+    "dirtyBefore": false,
+    "catalogSha256": "acc0da65b5df7b6d8d91c132eae9b68c01516801fe3d2f74e46ef2bbb82f44aa",
+    "dirtyAfter": false
+  },
+  "provider": {
+    "repository": "kokoro-iam",
+    "commit": "16afccdbec9c22176f9fd493feeb0ed0d7fe3445",
+    "tree": "a72b870c8e890eb63176ddb80cc34df3658a474f",
+    "protoSha256": "4daad8affaa7eb36e8f587dca3a016dd080b3ca4f3e36f08a19963133a27e38a",
+    "migrationSha256": "846491c5a72331a8d7aa1a2b51a153165dc636957ac1edf867e3836405f358c2",
+    "catalogSha256": "e388f4a865fa98744989f3e7a6d41d2bf8e6367ae51b8eeee804c763b4bc8552",
+    "acceptedRunId": "iam-20260816T111434155Z-16afccdbec9c",
+    "files": [
+      {
+        "path": "proto/kokoro/common/v1/error.proto",
+        "sha256": "324b81549c01e6b1a4288039a1d12a664dd63e0fb4dc15cdac103b371a3116e1"
+      },
+      {
+        "path": "proto/kokoro/iam/v1/administration.proto",
+        "sha256": "e2560b49b00db5557734b2fedae3bc0aa13cec9d556d77b220b93611adf8529e"
+      },
+      {
+        "path": "proto/kokoro/iam/v1/auth_adapter.proto",
+        "sha256": "e7c20337862d676bc2936bffe6c6dba723d80b2a5595a59ff9e3d51b59f47586"
+      },
+      {
+        "path": "proto/kokoro/iam/v1/authorization.proto",
+        "sha256": "65b5b7a167045f8ecca3cae4c85648198a5974c937981ea7c9a8b625e808bad9"
+      },
+      {
+        "path": "proto/kokoro/iam/v1/organization.proto",
+        "sha256": "56fa4d42e2b70c603dac539c849ed494f0c1ab56ea343d94ac1df1bdfbbdb555"
+      },
+      {
+        "path": "proto/kokoro/iam/v1/session.proto",
+        "sha256": "d6281d30f4730223caf9f347799f516eb6b38f137d30b78ddba26d21fc54a025"
+      },
+      {
+        "path": "proto/kokoro/iam/v1/types.proto",
+        "sha256": "c5b5b79c1863a7c19e42ddb40e81f530f4af8afe59046c28708d76f2e26abc68"
+      }
+    ]
+  },
+  "environment": {
+    "host": "nakodeMacBook-Pro.local",
+    "os": "darwin 24.6.0",
+    "node": "v22.22.2",
+    "pnpm": "11.2.2",
+    "timezoneOffset": "-04:00",
+    "chromium": "Pair acceptance-owned; not executed in repository acceptance"
+  },
+  "decisions": {
+    "adminWebRepository": "PASS",
+    "productPair": "NOT_READY"
+  },
+  "rules": {
+    "retries": 0,
+    "skips": 0,
+    "todos": 0,
+    "unclassified": 0,
+    "chromiumRoundsRequired": 2
+  },
+  "commands": [
+    {
+      "name": "install",
+      "command": "pnpm",
+      "args": [
+        "install",
+        "--frozen-lockfile"
+      ],
+      "started": {
+        "utc": "2026-08-16T15:16:06.404Z",
+        "local": "2026-08-16T11:16:06.404-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893366404
+      },
+      "finished": {
+        "utc": "2026-08-16T15:16:06.588Z",
+        "local": "2026-08-16T11:16:06.588-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893366588
+      },
+      "durationMs": 184,
+      "exitCode": 0,
+      "stdoutPath": "commands/install.stdout.log",
+      "stderrPath": "commands/install.stderr.log"
+    },
+    {
+      "name": "proto_check",
+      "command": "pnpm",
+      "args": [
+        "proto:check"
+      ],
+      "started": {
+        "utc": "2026-08-16T15:16:06.588Z",
+        "local": "2026-08-16T11:16:06.588-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893366588
+      },
+      "finished": {
+        "utc": "2026-08-16T15:16:07.473Z",
+        "local": "2026-08-16T11:16:07.473-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893367473
+      },
+      "durationMs": 885,
+      "exitCode": 0,
+      "stdoutPath": "commands/proto_check.stdout.log",
+      "stderrPath": "commands/proto_check.stderr.log"
+    },
+    {
+      "name": "test_unit",
+      "command": "pnpm",
+      "args": [
+        "exec",
+        "vitest",
+        "run",
+        "test/unit",
+        "--reporter=default",
+        "--reporter=junit",
+        "--reporter=json",
+        "--outputFile.junit=/Users/nako/WebstormProjects/github/thefoxfairy/Kokoro/kokoro-web/apps/admin/test-results/admin-20260816T151606201Z-2335957c30e3/junit/unit.xml",
+        "--outputFile.json=/Users/nako/WebstormProjects/github/thefoxfairy/Kokoro/kokoro-web/apps/admin/test-results/admin-20260816T151606201Z-2335957c30e3/json/unit.json",
+        "--coverage",
+        "--coverage.provider=v8",
+        "--coverage.reportsDirectory=/Users/nako/WebstormProjects/github/thefoxfairy/Kokoro/kokoro-web/apps/admin/test-results/admin-20260816T151606201Z-2335957c30e3/coverage/unit",
+        "--coverage.reporter=json-summary",
+        "--coverage.reporter=text"
+      ],
+      "started": {
+        "utc": "2026-08-16T15:16:07.473Z",
+        "local": "2026-08-16T11:16:07.473-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893367473
+      },
+      "finished": {
+        "utc": "2026-08-16T15:16:08.193Z",
+        "local": "2026-08-16T11:16:08.193-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893368193
+      },
+      "durationMs": 720,
+      "exitCode": 0,
+      "stdoutPath": "commands/test_unit.stdout.log",
+      "stderrPath": "commands/test_unit.stderr.log"
+    },
+    {
+      "name": "test_component",
+      "command": "pnpm",
+      "args": [
+        "exec",
+        "vitest",
+        "run",
+        "test/component",
+        "--reporter=default",
+        "--reporter=junit",
+        "--reporter=json",
+        "--outputFile.junit=/Users/nako/WebstormProjects/github/thefoxfairy/Kokoro/kokoro-web/apps/admin/test-results/admin-20260816T151606201Z-2335957c30e3/junit/component.xml",
+        "--outputFile.json=/Users/nako/WebstormProjects/github/thefoxfairy/Kokoro/kokoro-web/apps/admin/test-results/admin-20260816T151606201Z-2335957c30e3/json/component.json",
+        "--coverage",
+        "--coverage.provider=v8",
+        "--coverage.reportsDirectory=/Users/nako/WebstormProjects/github/thefoxfairy/Kokoro/kokoro-web/apps/admin/test-results/admin-20260816T151606201Z-2335957c30e3/coverage/component",
+        "--coverage.reporter=json-summary",
+        "--coverage.reporter=text"
+      ],
+      "started": {
+        "utc": "2026-08-16T15:16:08.195Z",
+        "local": "2026-08-16T11:16:08.195-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893368195
+      },
+      "finished": {
+        "utc": "2026-08-16T15:16:15.609Z",
+        "local": "2026-08-16T11:16:15.609-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893375609
+      },
+      "durationMs": 7414,
+      "exitCode": 0,
+      "stdoutPath": "commands/test_component.stdout.log",
+      "stderrPath": "commands/test_component.stderr.log"
+    },
+    {
+      "name": "test_contract",
+      "command": "pnpm",
+      "args": [
+        "exec",
+        "vitest",
+        "run",
+        "test/contract",
+        "--reporter=default",
+        "--reporter=junit",
+        "--reporter=json",
+        "--outputFile.junit=/Users/nako/WebstormProjects/github/thefoxfairy/Kokoro/kokoro-web/apps/admin/test-results/admin-20260816T151606201Z-2335957c30e3/junit/contract.xml",
+        "--outputFile.json=/Users/nako/WebstormProjects/github/thefoxfairy/Kokoro/kokoro-web/apps/admin/test-results/admin-20260816T151606201Z-2335957c30e3/json/contract.json",
+        "--coverage",
+        "--coverage.provider=v8",
+        "--coverage.reportsDirectory=/Users/nako/WebstormProjects/github/thefoxfairy/Kokoro/kokoro-web/apps/admin/test-results/admin-20260816T151606201Z-2335957c30e3/coverage/contract",
+        "--coverage.reporter=json-summary",
+        "--coverage.reporter=text"
+      ],
+      "started": {
+        "utc": "2026-08-16T15:16:15.611Z",
+        "local": "2026-08-16T11:16:15.611-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893375611
+      },
+      "finished": {
+        "utc": "2026-08-16T15:16:17.019Z",
+        "local": "2026-08-16T11:16:17.019-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893377019
+      },
+      "durationMs": 1408,
+      "exitCode": 0,
+      "stdoutPath": "commands/test_contract.stdout.log",
+      "stderrPath": "commands/test_contract.stderr.log"
+    },
+    {
+      "name": "test_integration",
+      "command": "pnpm",
+      "args": [
+        "exec",
+        "vitest",
+        "run",
+        "test/integration",
+        "--reporter=default",
+        "--reporter=junit",
+        "--reporter=json",
+        "--outputFile.junit=/Users/nako/WebstormProjects/github/thefoxfairy/Kokoro/kokoro-web/apps/admin/test-results/admin-20260816T151606201Z-2335957c30e3/junit/integration.xml",
+        "--outputFile.json=/Users/nako/WebstormProjects/github/thefoxfairy/Kokoro/kokoro-web/apps/admin/test-results/admin-20260816T151606201Z-2335957c30e3/json/integration.json",
+        "--coverage",
+        "--coverage.provider=v8",
+        "--coverage.reportsDirectory=/Users/nako/WebstormProjects/github/thefoxfairy/Kokoro/kokoro-web/apps/admin/test-results/admin-20260816T151606201Z-2335957c30e3/coverage/integration",
+        "--coverage.reporter=json-summary",
+        "--coverage.reporter=text"
+      ],
+      "started": {
+        "utc": "2026-08-16T15:16:17.020Z",
+        "local": "2026-08-16T11:16:17.020-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893377020
+      },
+      "finished": {
+        "utc": "2026-08-16T15:16:17.956Z",
+        "local": "2026-08-16T11:16:17.956-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893377956
+      },
+      "durationMs": 936,
+      "exitCode": 0,
+      "stdoutPath": "commands/test_integration.stdout.log",
+      "stderrPath": "commands/test_integration.stderr.log"
+    },
+    {
+      "name": "test_security",
+      "command": "pnpm",
+      "args": [
+        "exec",
+        "vitest",
+        "run",
+        "test/security",
+        "--reporter=default",
+        "--reporter=junit",
+        "--reporter=json",
+        "--outputFile.junit=/Users/nako/WebstormProjects/github/thefoxfairy/Kokoro/kokoro-web/apps/admin/test-results/admin-20260816T151606201Z-2335957c30e3/junit/security.xml",
+        "--outputFile.json=/Users/nako/WebstormProjects/github/thefoxfairy/Kokoro/kokoro-web/apps/admin/test-results/admin-20260816T151606201Z-2335957c30e3/json/security.json",
+        "--coverage",
+        "--coverage.provider=v8",
+        "--coverage.reportsDirectory=/Users/nako/WebstormProjects/github/thefoxfairy/Kokoro/kokoro-web/apps/admin/test-results/admin-20260816T151606201Z-2335957c30e3/coverage/security",
+        "--coverage.reporter=json-summary",
+        "--coverage.reporter=text"
+      ],
+      "started": {
+        "utc": "2026-08-16T15:16:17.959Z",
+        "local": "2026-08-16T11:16:17.959-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893377959
+      },
+      "finished": {
+        "utc": "2026-08-16T15:16:18.851Z",
+        "local": "2026-08-16T11:16:18.851-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893378851
+      },
+      "durationMs": 892,
+      "exitCode": 0,
+      "stdoutPath": "commands/test_security.stdout.log",
+      "stderrPath": "commands/test_security.stderr.log"
+    },
+    {
+      "name": "typecheck",
+      "command": "pnpm",
+      "args": [
+        "typecheck"
+      ],
+      "started": {
+        "utc": "2026-08-16T15:16:18.853Z",
+        "local": "2026-08-16T11:16:18.853-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893378853
+      },
+      "finished": {
+        "utc": "2026-08-16T15:16:20.437Z",
+        "local": "2026-08-16T11:16:20.437-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893380437
+      },
+      "durationMs": 1584,
+      "exitCode": 0,
+      "stdoutPath": "commands/typecheck.stdout.log",
+      "stderrPath": "commands/typecheck.stderr.log"
+    },
+    {
+      "name": "lint",
+      "command": "pnpm",
+      "args": [
+        "lint",
+        "--max-warnings=0"
+      ],
+      "started": {
+        "utc": "2026-08-16T15:16:20.437Z",
+        "local": "2026-08-16T11:16:20.437-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893380437
+      },
+      "finished": {
+        "utc": "2026-08-16T15:16:22.531Z",
+        "local": "2026-08-16T11:16:22.531-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893382531
+      },
+      "durationMs": 2094,
+      "exitCode": 0,
+      "stdoutPath": "commands/lint.stdout.log",
+      "stderrPath": "commands/lint.stderr.log"
+    },
+    {
+      "name": "build",
+      "command": "pnpm",
+      "args": [
+        "build"
+      ],
+      "started": {
+        "utc": "2026-08-16T15:16:22.531Z",
+        "local": "2026-08-16T11:16:22.531-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893382531
+      },
+      "finished": {
+        "utc": "2026-08-16T15:16:29.946Z",
+        "local": "2026-08-16T11:16:29.946-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893389946
+      },
+      "durationMs": 7415,
+      "exitCode": 0,
+      "stdoutPath": "commands/build.stdout.log",
+      "stderrPath": "commands/build.stderr.log"
+    },
+    {
+      "name": "runtime_smoke",
+      "command": "pnpm",
+      "args": [
+        "exec",
+        "tsx",
+        "scripts/test/smoke-runtime.ts",
+        "--output-root",
+        "/Users/nako/WebstormProjects/github/thefoxfairy/Kokoro/kokoro-web/apps/admin/test-results/admin-20260816T151606201Z-2335957c30e3"
+      ],
+      "started": {
+        "utc": "2026-08-16T15:16:29.946Z",
+        "local": "2026-08-16T11:16:29.946-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893389946
+      },
+      "finished": {
+        "utc": "2026-08-16T15:16:31.092Z",
+        "local": "2026-08-16T11:16:31.092-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893391092
+      },
+      "durationMs": 1146,
+      "exitCode": 0,
+      "stdoutPath": "commands/runtime_smoke.stdout.log",
+      "stderrPath": "commands/runtime_smoke.stderr.log"
+    }
+  ],
+  "categories": [
+    {
+      "category": "unit",
+      "status": "PASS",
+      "total": 8,
+      "passed": 8,
+      "failed": 0,
+      "pending": 0,
+      "started": {
+        "utc": "2026-08-16T15:16:07.473Z",
+        "local": "2026-08-16T11:16:07.473-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893367473
+      },
+      "finished": {
+        "utc": "2026-08-16T15:16:08.193Z",
+        "local": "2026-08-16T11:16:08.193-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893368193
+      },
+      "durationMs": 720
+    },
+    {
+      "category": "component",
+      "status": "PASS",
+      "total": 11,
+      "passed": 11,
+      "failed": 0,
+      "pending": 0,
+      "started": {
+        "utc": "2026-08-16T15:16:08.195Z",
+        "local": "2026-08-16T11:16:08.195-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893368195
+      },
+      "finished": {
+        "utc": "2026-08-16T15:16:15.609Z",
+        "local": "2026-08-16T11:16:15.609-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893375609
+      },
+      "durationMs": 7414
+    },
+    {
+      "category": "contract",
+      "status": "PASS",
+      "total": 8,
+      "passed": 8,
+      "failed": 0,
+      "pending": 0,
+      "started": {
+        "utc": "2026-08-16T15:16:15.611Z",
+        "local": "2026-08-16T11:16:15.611-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893375611
+      },
+      "finished": {
+        "utc": "2026-08-16T15:16:17.019Z",
+        "local": "2026-08-16T11:16:17.019-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893377019
+      },
+      "durationMs": 1408
+    },
+    {
+      "category": "integration",
+      "status": "PASS",
+      "total": 8,
+      "passed": 8,
+      "failed": 0,
+      "pending": 0,
+      "started": {
+        "utc": "2026-08-16T15:16:17.020Z",
+        "local": "2026-08-16T11:16:17.020-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893377020
+      },
+      "finished": {
+        "utc": "2026-08-16T15:16:17.956Z",
+        "local": "2026-08-16T11:16:17.956-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893377956
+      },
+      "durationMs": 936
+    },
+    {
+      "category": "security",
+      "status": "PASS",
+      "total": 9,
+      "passed": 9,
+      "failed": 0,
+      "pending": 0,
+      "started": {
+        "utc": "2026-08-16T15:16:17.959Z",
+        "local": "2026-08-16T11:16:17.959-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893377959
+      },
+      "finished": {
+        "utc": "2026-08-16T15:16:18.851Z",
+        "local": "2026-08-16T11:16:18.851-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893378851
+      },
+      "durationMs": 892
+    },
+    {
+      "category": "pair_e2e",
+      "status": "NOT_STARTED",
+      "total": 10,
+      "passed": 0,
+      "failed": 0,
+      "pending": 10,
+      "started": null,
+      "finished": null,
+      "durationMs": null
+    }
+  ],
+  "cases": [
+    {
+      "id": "WEB-UNIT-CONFIG-001",
+      "category": "unit",
+      "title": "Strict runtime configuration and paired SMTP authentication",
+      "status": "PASS",
+      "started": {
+        "utc": "2026-08-16T15:16:07.473Z",
+        "local": "2026-08-16T11:16:07.473-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893367473
+      },
+      "finished": {
+        "utc": "2026-08-16T15:16:08.193Z",
+        "local": "2026-08-16T11:16:08.193-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893368193
+      },
+      "durationMs": 720,
+      "attempts": 1,
+      "testFile": "test/unit/config.test.ts",
+      "evidence": [
+        "junit/unit.xml",
+        "json/unit.json",
+        "coverage/unit/coverage-summary.json",
+        "commands/test_unit.stdout.log"
+      ],
+      "requirements": [
+        "WEB-IAM-FR-AUTH-002",
+        "WEB-IAM-FR-SESSION-001"
+      ],
+      "acceptance": []
+    },
+    {
+      "id": "WEB-UNIT-SECRET-001",
+      "category": "unit",
+      "title": "Exact mode secret file boundary",
+      "status": "PASS",
+      "started": {
+        "utc": "2026-08-16T15:16:07.473Z",
+        "local": "2026-08-16T11:16:07.473-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893367473
+      },
+      "finished": {
+        "utc": "2026-08-16T15:16:08.193Z",
+        "local": "2026-08-16T11:16:08.193-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893368193
+      },
+      "durationMs": 720,
+      "attempts": 1,
+      "testFile": "test/unit/secret-file.test.ts",
+      "evidence": [
+        "junit/unit.xml",
+        "json/unit.json",
+        "coverage/unit/coverage-summary.json",
+        "commands/test_unit.stdout.log"
+      ],
+      "requirements": [
+        "WEB-IAM-FR-RPC-001"
+      ],
+      "acceptance": []
+    },
+    {
+      "id": "WEB-UNIT-COOKIE-001",
+      "category": "unit",
+      "title": "Explicit secure and local database Session cookies",
+      "status": "PASS",
+      "started": {
+        "utc": "2026-08-16T15:16:07.473Z",
+        "local": "2026-08-16T11:16:07.473-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893367473
+      },
+      "finished": {
+        "utc": "2026-08-16T15:16:08.193Z",
+        "local": "2026-08-16T11:16:08.193-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893368193
+      },
+      "durationMs": 720,
+      "attempts": 1,
+      "testFile": "test/unit/auth-cookie.test.ts",
+      "evidence": [
+        "junit/unit.xml",
+        "json/unit.json",
+        "coverage/unit/coverage-summary.json",
+        "commands/test_unit.stdout.log"
+      ],
+      "requirements": [
+        "WEB-IAM-FR-SESSION-001"
+      ],
+      "acceptance": [
+        "WEB-IAM-ACC-SESSION-001"
+      ]
+    },
+    {
+      "id": "WEB-UNIT-ADAPTER-001",
+      "category": "unit",
+      "title": "Complete fourteen-method Auth.js IAM Adapter mapping",
+      "status": "PASS",
+      "started": {
+        "utc": "2026-08-16T15:16:07.473Z",
+        "local": "2026-08-16T11:16:07.473-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893367473
+      },
+      "finished": {
+        "utc": "2026-08-16T15:16:08.193Z",
+        "local": "2026-08-16T11:16:08.193-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893368193
+      },
+      "durationMs": 720,
+      "attempts": 1,
+      "testFile": "test/unit/auth-adapter.test.ts",
+      "evidence": [
+        "junit/unit.xml",
+        "json/unit.json",
+        "coverage/unit/coverage-summary.json",
+        "commands/test_unit.stdout.log"
+      ],
+      "requirements": [
+        "WEB-IAM-FR-AUTH-001"
+      ],
+      "acceptance": [
+        "WEB-IAM-ACC-AUTH-001"
+      ]
+    },
+    {
+      "id": "WEB-UNIT-ERROR-001",
+      "category": "unit",
+      "title": "Safe IAM ErrorDetail translation",
+      "status": "PASS",
+      "started": {
+        "utc": "2026-08-16T15:16:07.473Z",
+        "local": "2026-08-16T11:16:07.473-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893367473
+      },
+      "finished": {
+        "utc": "2026-08-16T15:16:08.193Z",
+        "local": "2026-08-16T11:16:08.193-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893368193
+      },
+      "durationMs": 720,
+      "attempts": 1,
+      "testFile": "test/unit/iam-error.test.ts",
+      "evidence": [
+        "junit/unit.xml",
+        "json/unit.json",
+        "coverage/unit/coverage-summary.json",
+        "commands/test_unit.stdout.log"
+      ],
+      "requirements": [
+        "WEB-IAM-FR-RPC-001"
+      ],
+      "acceptance": []
+    },
+    {
+      "id": "WEB-UNIT-RECORD-001",
+      "category": "unit",
+      "title": "Strict generated IAM record validation and mapping",
+      "status": "PASS",
+      "started": {
+        "utc": "2026-08-16T15:16:07.473Z",
+        "local": "2026-08-16T11:16:07.473-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893367473
+      },
+      "finished": {
+        "utc": "2026-08-16T15:16:08.193Z",
+        "local": "2026-08-16T11:16:08.193-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893368193
+      },
+      "durationMs": 720,
+      "attempts": 1,
+      "testFile": "test/unit/iam-records.test.ts",
+      "evidence": [
+        "junit/unit.xml",
+        "json/unit.json",
+        "coverage/unit/coverage-summary.json",
+        "commands/test_unit.stdout.log"
+      ],
+      "requirements": [
+        "WEB-IAM-FR-RPC-001"
+      ],
+      "acceptance": []
+    },
+    {
+      "id": "WEB-UNIT-COMMAND-001",
+      "category": "unit",
+      "title": "Stable command identity and ambiguous-result recovery",
+      "status": "PASS",
+      "started": {
+        "utc": "2026-08-16T15:16:07.473Z",
+        "local": "2026-08-16T11:16:07.473-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893367473
+      },
+      "finished": {
+        "utc": "2026-08-16T15:16:08.193Z",
+        "local": "2026-08-16T11:16:08.193-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893368193
+      },
+      "durationMs": 720,
+      "attempts": 1,
+      "testFile": "test/unit/command-identity.test.ts",
+      "evidence": [
+        "junit/unit.xml",
+        "json/unit.json",
+        "coverage/unit/coverage-summary.json",
+        "commands/test_unit.stdout.log"
+      ],
+      "requirements": [
+        "WEB-IAM-FR-IDEM-001"
+      ],
+      "acceptance": [
+        "WEB-IAM-ACC-IDEM-001"
+      ]
+    },
+    {
+      "id": "WEB-UNIT-PAGE-001",
+      "category": "unit",
+      "title": "URL filters opaque cursor and bounded page size",
+      "status": "PASS",
+      "started": {
+        "utc": "2026-08-16T15:16:07.473Z",
+        "local": "2026-08-16T11:16:07.473-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893367473
+      },
+      "finished": {
+        "utc": "2026-08-16T15:16:08.193Z",
+        "local": "2026-08-16T11:16:08.193-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893368193
+      },
+      "durationMs": 720,
+      "attempts": 1,
+      "testFile": "test/unit/pagination.test.ts",
+      "evidence": [
+        "junit/unit.xml",
+        "json/unit.json",
+        "coverage/unit/coverage-summary.json",
+        "commands/test_unit.stdout.log"
+      ],
+      "requirements": [
+        "WEB-IAM-FR-USER-001",
+        "WEB-IAM-FR-ORG-001",
+        "WEB-IAM-FR-AUDIT-001"
+      ],
+      "acceptance": []
+    },
+    {
+      "id": "WEB-COMP-LOGIN-001",
+      "category": "component",
+      "title": "Login and uniform verification states",
+      "status": "PASS",
+      "started": {
+        "utc": "2026-08-16T15:16:08.195Z",
+        "local": "2026-08-16T11:16:08.195-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893368195
+      },
+      "finished": {
+        "utc": "2026-08-16T15:16:15.609Z",
+        "local": "2026-08-16T11:16:15.609-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893375609
+      },
+      "durationMs": 7414,
+      "attempts": 1,
+      "testFile": "test/component/login.test.tsx",
+      "evidence": [
+        "junit/component.xml",
+        "json/component.json",
+        "coverage/component/coverage-summary.json",
+        "commands/test_component.stdout.log"
+      ],
+      "requirements": [
+        "WEB-IAM-FR-AUTH-002",
+        "WEB-IAM-FR-AUTH-003",
+        "WEB-IAM-FR-I18N-001"
+      ],
+      "acceptance": [
+        "WEB-IAM-ACC-AUTH-001",
+        "WEB-IAM-ACC-AUTH-002"
+      ]
+    },
+    {
+      "id": "WEB-COMP-SHELL-001",
+      "category": "component",
+      "title": "Static module navigation logout and responsive shell",
+      "status": "PASS",
+      "started": {
+        "utc": "2026-08-16T15:16:08.195Z",
+        "local": "2026-08-16T11:16:08.195-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893368195
+      },
+      "finished": {
+        "utc": "2026-08-16T15:16:15.609Z",
+        "local": "2026-08-16T11:16:15.609-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893375609
+      },
+      "durationMs": 7414,
+      "attempts": 1,
+      "testFile": "test/component/admin-shell.test.tsx",
+      "evidence": [
+        "junit/component.xml",
+        "json/component.json",
+        "coverage/component/coverage-summary.json",
+        "commands/test_component.stdout.log"
+      ],
+      "requirements": [
+        "WEB-IAM-FR-MODULE-001",
+        "WEB-IAM-FR-I18N-001"
+      ],
+      "acceptance": []
+    },
+    {
+      "id": "WEB-COMP-OVERVIEW-001",
+      "category": "component",
+      "title": "Sanitized live IAM overview and complete locale switching",
+      "status": "PASS",
+      "started": {
+        "utc": "2026-08-16T15:16:08.195Z",
+        "local": "2026-08-16T11:16:08.195-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893368195
+      },
+      "finished": {
+        "utc": "2026-08-16T15:16:15.609Z",
+        "local": "2026-08-16T11:16:15.609-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893375609
+      },
+      "durationMs": 7414,
+      "attempts": 1,
+      "testFile": "test/component/overview.test.tsx",
+      "evidence": [
+        "junit/component.xml",
+        "json/component.json",
+        "coverage/component/coverage-summary.json",
+        "commands/test_component.stdout.log"
+      ],
+      "requirements": [
+        "WEB-IAM-FR-MODULE-001",
+        "WEB-IAM-FR-I18N-001"
+      ],
+      "acceptance": []
+    },
+    {
+      "id": "WEB-COMP-STATE-001",
+      "category": "component",
+      "title": "Loading empty forbidden unavailable and malformed page states",
+      "status": "PASS",
+      "started": {
+        "utc": "2026-08-16T15:16:08.195Z",
+        "local": "2026-08-16T11:16:08.195-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893368195
+      },
+      "finished": {
+        "utc": "2026-08-16T15:16:15.609Z",
+        "local": "2026-08-16T11:16:15.609-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893375609
+      },
+      "durationMs": 7414,
+      "attempts": 1,
+      "testFile": "test/component/page-state.test.tsx",
+      "evidence": [
+        "junit/component.xml",
+        "json/component.json",
+        "coverage/component/coverage-summary.json",
+        "commands/test_component.stdout.log"
+      ],
+      "requirements": [
+        "WEB-IAM-FR-RPC-001"
+      ],
+      "acceptance": []
+    },
+    {
+      "id": "WEB-COMP-USER-001",
+      "category": "component",
+      "title": "User list detail lifecycle and restore controls",
+      "status": "PASS",
+      "started": {
+        "utc": "2026-08-16T15:16:08.195Z",
+        "local": "2026-08-16T11:16:08.195-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893368195
+      },
+      "finished": {
+        "utc": "2026-08-16T15:16:15.609Z",
+        "local": "2026-08-16T11:16:15.609-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893375609
+      },
+      "durationMs": 7414,
+      "attempts": 1,
+      "testFile": "test/component/users.test.tsx",
+      "evidence": [
+        "junit/component.xml",
+        "json/component.json",
+        "coverage/component/coverage-summary.json",
+        "commands/test_component.stdout.log"
+      ],
+      "requirements": [
+        "WEB-IAM-FR-USER-001",
+        "WEB-IAM-FR-DELETE-001"
+      ],
+      "acceptance": [
+        "WEB-IAM-ACC-USER-001"
+      ]
+    },
+    {
+      "id": "WEB-COMP-SESSION-001",
+      "category": "component",
+      "title": "Session inventory and revocation controls",
+      "status": "PASS",
+      "started": {
+        "utc": "2026-08-16T15:16:08.195Z",
+        "local": "2026-08-16T11:16:08.195-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893368195
+      },
+      "finished": {
+        "utc": "2026-08-16T15:16:15.609Z",
+        "local": "2026-08-16T11:16:15.609-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893375609
+      },
+      "durationMs": 7414,
+      "attempts": 1,
+      "testFile": "test/component/sessions.test.tsx",
+      "evidence": [
+        "junit/component.xml",
+        "json/component.json",
+        "coverage/component/coverage-summary.json",
+        "commands/test_component.stdout.log"
+      ],
+      "requirements": [
+        "WEB-IAM-FR-SESSION-002"
+      ],
+      "acceptance": [
+        "WEB-IAM-ACC-SESSION-001"
+      ]
+    },
+    {
+      "id": "WEB-COMP-ORG-001",
+      "category": "component",
+      "title": "Organization list detail lifecycle and restore controls",
+      "status": "PASS",
+      "started": {
+        "utc": "2026-08-16T15:16:08.195Z",
+        "local": "2026-08-16T11:16:08.195-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893368195
+      },
+      "finished": {
+        "utc": "2026-08-16T15:16:15.609Z",
+        "local": "2026-08-16T11:16:15.609-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893375609
+      },
+      "durationMs": 7414,
+      "attempts": 1,
+      "testFile": "test/component/organizations.test.tsx",
+      "evidence": [
+        "junit/component.xml",
+        "json/component.json",
+        "coverage/component/coverage-summary.json",
+        "commands/test_component.stdout.log"
+      ],
+      "requirements": [
+        "WEB-IAM-FR-ORG-001",
+        "WEB-IAM-FR-DELETE-001"
+      ],
+      "acceptance": [
+        "WEB-IAM-ACC-ORG-001"
+      ]
+    },
+    {
+      "id": "WEB-COMP-MEMBER-001",
+      "category": "component",
+      "title": "Member lifecycle role change and last-owner feedback",
+      "status": "PASS",
+      "started": {
+        "utc": "2026-08-16T15:16:08.195Z",
+        "local": "2026-08-16T11:16:08.195-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893368195
+      },
+      "finished": {
+        "utc": "2026-08-16T15:16:15.609Z",
+        "local": "2026-08-16T11:16:15.609-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893375609
+      },
+      "durationMs": 7414,
+      "attempts": 1,
+      "testFile": "test/component/members.test.tsx",
+      "evidence": [
+        "junit/component.xml",
+        "json/component.json",
+        "coverage/component/coverage-summary.json",
+        "commands/test_component.stdout.log"
+      ],
+      "requirements": [
+        "WEB-IAM-FR-MEMBER-001",
+        "WEB-IAM-FR-RBAC-002"
+      ],
+      "acceptance": [
+        "WEB-IAM-ACC-MEMBER-001"
+      ]
+    },
+    {
+      "id": "WEB-COMP-ACCESS-001",
+      "category": "component",
+      "title": "Role Permission and live authorization inspection",
+      "status": "PASS",
+      "started": {
+        "utc": "2026-08-16T15:16:08.195Z",
+        "local": "2026-08-16T11:16:08.195-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893368195
+      },
+      "finished": {
+        "utc": "2026-08-16T15:16:15.609Z",
+        "local": "2026-08-16T11:16:15.609-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893375609
+      },
+      "durationMs": 7414,
+      "attempts": 1,
+      "testFile": "test/component/access.test.tsx",
+      "evidence": [
+        "junit/component.xml",
+        "json/component.json",
+        "coverage/component/coverage-summary.json",
+        "commands/test_component.stdout.log"
+      ],
+      "requirements": [
+        "WEB-IAM-FR-RBAC-001",
+        "WEB-IAM-FR-RBAC-002"
+      ],
+      "acceptance": [
+        "WEB-IAM-ACC-RBAC-001"
+      ]
+    },
+    {
+      "id": "WEB-COMP-AUDIT-001",
+      "category": "component",
+      "title": "SecurityEvent filters pagination and correlation",
+      "status": "PASS",
+      "started": {
+        "utc": "2026-08-16T15:16:08.195Z",
+        "local": "2026-08-16T11:16:08.195-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893368195
+      },
+      "finished": {
+        "utc": "2026-08-16T15:16:15.609Z",
+        "local": "2026-08-16T11:16:15.609-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893375609
+      },
+      "durationMs": 7414,
+      "attempts": 1,
+      "testFile": "test/component/audit.test.tsx",
+      "evidence": [
+        "junit/component.xml",
+        "json/component.json",
+        "coverage/component/coverage-summary.json",
+        "commands/test_component.stdout.log"
+      ],
+      "requirements": [
+        "WEB-IAM-FR-AUDIT-001"
+      ],
+      "acceptance": [
+        "WEB-IAM-ACC-AUDIT-001"
+      ]
+    },
+    {
+      "id": "WEB-COMP-A11Y-001",
+      "category": "component",
+      "title": "Keyboard focus announcements and mobile semantics",
+      "status": "PASS",
+      "started": {
+        "utc": "2026-08-16T15:16:08.195Z",
+        "local": "2026-08-16T11:16:08.195-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893368195
+      },
+      "finished": {
+        "utc": "2026-08-16T15:16:15.609Z",
+        "local": "2026-08-16T11:16:15.609-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893375609
+      },
+      "durationMs": 7414,
+      "attempts": 1,
+      "testFile": "test/component/command-dialog.test.tsx",
+      "evidence": [
+        "junit/component.xml",
+        "json/component.json",
+        "coverage/component/coverage-summary.json",
+        "commands/test_component.stdout.log"
+      ],
+      "requirements": [
+        "WEB-IAM-FR-MODULE-001",
+        "WEB-IAM-FR-I18N-001"
+      ],
+      "acceptance": []
+    },
+    {
+      "id": "WEB-CONTRACT-CATALOG-001",
+      "category": "contract",
+      "title": "Complete unique PRD and executable test mapping",
+      "status": "PASS",
+      "started": {
+        "utc": "2026-08-16T15:16:15.611Z",
+        "local": "2026-08-16T11:16:15.611-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893375611
+      },
+      "finished": {
+        "utc": "2026-08-16T15:16:17.019Z",
+        "local": "2026-08-16T11:16:17.019-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893377019
+      },
+      "durationMs": 1408,
+      "attempts": 1,
+      "testFile": "test/contract/catalog.test.ts",
+      "evidence": [
+        "junit/contract.xml",
+        "json/contract.json",
+        "coverage/contract/coverage-summary.json",
+        "commands/test_contract.stdout.log"
+      ],
+      "requirements": [],
+      "acceptance": []
+    },
+    {
+      "id": "WEB-CONTRACT-TOOLS-001",
+      "category": "contract",
+      "title": "Exact scripts dependencies and native Next ESLint",
+      "status": "PASS",
+      "started": {
+        "utc": "2026-08-16T15:16:15.611Z",
+        "local": "2026-08-16T11:16:15.611-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893375611
+      },
+      "finished": {
+        "utc": "2026-08-16T15:16:17.019Z",
+        "local": "2026-08-16T11:16:17.019-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893377019
+      },
+      "durationMs": 1408,
+      "attempts": 1,
+      "testFile": "test/contract/toolchain-boundary.test.ts",
+      "evidence": [
+        "junit/contract.xml",
+        "json/contract.json",
+        "coverage/contract/coverage-summary.json",
+        "commands/test_contract.stdout.log"
+      ],
+      "requirements": [
+        "WEB-IAM-FR-MODULE-001"
+      ],
+      "acceptance": []
+    },
+    {
+      "id": "WEB-CONTRACT-PROTO-001",
+      "category": "contract",
+      "title": "Frozen provider metadata and deterministic generation",
+      "status": "PASS",
+      "started": {
+        "utc": "2026-08-16T15:16:15.611Z",
+        "local": "2026-08-16T11:16:15.611-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893375611
+      },
+      "finished": {
+        "utc": "2026-08-16T15:16:17.019Z",
+        "local": "2026-08-16T11:16:17.019-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893377019
+      },
+      "durationMs": 1408,
+      "attempts": 1,
+      "testFile": "test/contract/provider-snapshot.test.ts",
+      "evidence": [
+        "junit/contract.xml",
+        "json/contract.json",
+        "coverage/contract/coverage-summary.json",
+        "commands/test_contract.stdout.log"
+      ],
+      "requirements": [
+        "WEB-IAM-FR-RPC-001"
+      ],
+      "acceptance": []
+    },
+    {
+      "id": "WEB-CONTRACT-RPC-001",
+      "category": "contract",
+      "title": "Complete five-service generated RPC inventory",
+      "status": "PASS",
+      "started": {
+        "utc": "2026-08-16T15:16:15.611Z",
+        "local": "2026-08-16T11:16:15.611-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893375611
+      },
+      "finished": {
+        "utc": "2026-08-16T15:16:17.019Z",
+        "local": "2026-08-16T11:16:17.019-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893377019
+      },
+      "durationMs": 1408,
+      "attempts": 1,
+      "testFile": "test/contract/generated-services.test.ts",
+      "evidence": [
+        "junit/contract.xml",
+        "json/contract.json",
+        "coverage/contract/coverage-summary.json",
+        "commands/test_contract.stdout.log"
+      ],
+      "requirements": [
+        "WEB-IAM-FR-AUTH-001",
+        "WEB-IAM-FR-RPC-001"
+      ],
+      "acceptance": []
+    },
+    {
+      "id": "WEB-CONTRACT-BOUNDARY-001",
+      "category": "contract",
+      "title": "Server-only IAM and zero database boundary",
+      "status": "PASS",
+      "started": {
+        "utc": "2026-08-16T15:16:15.611Z",
+        "local": "2026-08-16T11:16:15.611-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893375611
+      },
+      "finished": {
+        "utc": "2026-08-16T15:16:17.019Z",
+        "local": "2026-08-16T11:16:17.019-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893377019
+      },
+      "durationMs": 1408,
+      "attempts": 1,
+      "testFile": "test/contract/server-boundary.test.ts",
+      "evidence": [
+        "junit/contract.xml",
+        "json/contract.json",
+        "coverage/contract/coverage-summary.json",
+        "commands/test_contract.stdout.log"
+      ],
+      "requirements": [
+        "WEB-IAM-FR-RPC-001",
+        "WEB-IAM-FR-MODULE-001"
+      ],
+      "acceptance": []
+    },
+    {
+      "id": "WEB-CONTRACT-I18N-001",
+      "category": "contract",
+      "title": "Complete Chinese and English message key sets",
+      "status": "PASS",
+      "started": {
+        "utc": "2026-08-16T15:16:15.611Z",
+        "local": "2026-08-16T11:16:15.611-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893375611
+      },
+      "finished": {
+        "utc": "2026-08-16T15:16:17.019Z",
+        "local": "2026-08-16T11:16:17.019-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893377019
+      },
+      "durationMs": 1408,
+      "attempts": 1,
+      "testFile": "test/contract/i18n-completeness.test.ts",
+      "evidence": [
+        "junit/contract.xml",
+        "json/contract.json",
+        "coverage/contract/coverage-summary.json",
+        "commands/test_contract.stdout.log"
+      ],
+      "requirements": [
+        "WEB-IAM-FR-I18N-001"
+      ],
+      "acceptance": []
+    },
+    {
+      "id": "WEB-CONTRACT-BUILD-001",
+      "category": "contract",
+      "title": "Production bundle route and import boundary",
+      "status": "PASS",
+      "started": {
+        "utc": "2026-08-16T15:16:15.611Z",
+        "local": "2026-08-16T11:16:15.611-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893375611
+      },
+      "finished": {
+        "utc": "2026-08-16T15:16:17.019Z",
+        "local": "2026-08-16T11:16:17.019-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893377019
+      },
+      "durationMs": 1408,
+      "attempts": 1,
+      "testFile": "test/contract/build-boundary.test.ts",
+      "evidence": [
+        "junit/contract.xml",
+        "json/contract.json",
+        "coverage/contract/coverage-summary.json",
+        "commands/test_contract.stdout.log",
+        "build/boundary.json"
+      ],
+      "requirements": [
+        "WEB-IAM-FR-RPC-001",
+        "WEB-IAM-FR-MODULE-001"
+      ],
+      "acceptance": []
+    },
+    {
+      "id": "WEB-CONTRACT-RUNTIME-001",
+      "category": "contract",
+      "title": "Real Next listener and generated client compatibility",
+      "status": "PASS",
+      "started": {
+        "utc": "2026-08-16T15:16:15.611Z",
+        "local": "2026-08-16T11:16:15.611-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893375611
+      },
+      "finished": {
+        "utc": "2026-08-16T15:16:17.019Z",
+        "local": "2026-08-16T11:16:17.019-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893377019
+      },
+      "durationMs": 1408,
+      "attempts": 1,
+      "testFile": "test/contract/runtime-listener.test.ts",
+      "evidence": [
+        "junit/contract.xml",
+        "json/contract.json",
+        "coverage/contract/coverage-summary.json",
+        "commands/test_contract.stdout.log",
+        "http/smoke.json",
+        "rpc/smoke.json",
+        "logs/admin.stdout.log",
+        "logs/admin.stderr.log"
+      ],
+      "requirements": [
+        "WEB-IAM-FR-RPC-001"
+      ],
+      "acceptance": []
+    },
+    {
+      "id": "WEB-INT-AUTH-001",
+      "category": "integration",
+      "title": "Real Auth.js request and callback route behavior",
+      "status": "PASS",
+      "started": {
+        "utc": "2026-08-16T15:16:17.020Z",
+        "local": "2026-08-16T11:16:17.020-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893377020
+      },
+      "finished": {
+        "utc": "2026-08-16T15:16:17.956Z",
+        "local": "2026-08-16T11:16:17.956-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893377956
+      },
+      "durationMs": 936,
+      "attempts": 1,
+      "testFile": "test/integration/auth-routes.test.ts",
+      "evidence": [
+        "junit/integration.xml",
+        "json/integration.json",
+        "coverage/integration/coverage-summary.json",
+        "commands/test_integration.stdout.log",
+        "http/smoke.json",
+        "rpc/smoke.json"
+      ],
+      "requirements": [
+        "WEB-IAM-FR-AUTH-001",
+        "WEB-IAM-FR-AUTH-002"
+      ],
+      "acceptance": [
+        "WEB-IAM-ACC-AUTH-001"
+      ]
+    },
+    {
+      "id": "WEB-INT-SESSION-001",
+      "category": "integration",
+      "title": "Database Session actor exchange and logout",
+      "status": "PASS",
+      "started": {
+        "utc": "2026-08-16T15:16:17.020Z",
+        "local": "2026-08-16T11:16:17.020-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893377020
+      },
+      "finished": {
+        "utc": "2026-08-16T15:16:17.956Z",
+        "local": "2026-08-16T11:16:17.956-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893377956
+      },
+      "durationMs": 936,
+      "attempts": 1,
+      "testFile": "test/integration/database-session.test.ts",
+      "evidence": [
+        "junit/integration.xml",
+        "json/integration.json",
+        "coverage/integration/coverage-summary.json",
+        "commands/test_integration.stdout.log",
+        "rpc/smoke.json"
+      ],
+      "requirements": [
+        "WEB-IAM-FR-SESSION-001"
+      ],
+      "acceptance": [
+        "WEB-IAM-ACC-SESSION-001"
+      ]
+    },
+    {
+      "id": "WEB-INT-USER-001",
+      "category": "integration",
+      "title": "User lifecycle command result and reload",
+      "status": "PASS",
+      "started": {
+        "utc": "2026-08-16T15:16:17.020Z",
+        "local": "2026-08-16T11:16:17.020-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893377020
+      },
+      "finished": {
+        "utc": "2026-08-16T15:16:17.956Z",
+        "local": "2026-08-16T11:16:17.956-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893377956
+      },
+      "durationMs": 936,
+      "attempts": 1,
+      "testFile": "test/integration/user-actions.test.ts",
+      "evidence": [
+        "junit/integration.xml",
+        "json/integration.json",
+        "coverage/integration/coverage-summary.json",
+        "commands/test_integration.stdout.log",
+        "rpc/smoke.json"
+      ],
+      "requirements": [
+        "WEB-IAM-FR-USER-001",
+        "WEB-IAM-FR-DELETE-001",
+        "WEB-IAM-FR-IDEM-001"
+      ],
+      "acceptance": [
+        "WEB-IAM-ACC-USER-001",
+        "WEB-IAM-ACC-IDEM-001"
+      ]
+    },
+    {
+      "id": "WEB-INT-SESSION-002",
+      "category": "integration",
+      "title": "Revoke one and all Sessions through IAM commands",
+      "status": "PASS",
+      "started": {
+        "utc": "2026-08-16T15:16:17.020Z",
+        "local": "2026-08-16T11:16:17.020-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893377020
+      },
+      "finished": {
+        "utc": "2026-08-16T15:16:17.956Z",
+        "local": "2026-08-16T11:16:17.956-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893377956
+      },
+      "durationMs": 936,
+      "attempts": 1,
+      "testFile": "test/integration/session-actions.test.ts",
+      "evidence": [
+        "junit/integration.xml",
+        "json/integration.json",
+        "coverage/integration/coverage-summary.json",
+        "commands/test_integration.stdout.log",
+        "rpc/smoke.json"
+      ],
+      "requirements": [
+        "WEB-IAM-FR-SESSION-002",
+        "WEB-IAM-FR-IDEM-001"
+      ],
+      "acceptance": [
+        "WEB-IAM-ACC-SESSION-001"
+      ]
+    },
+    {
+      "id": "WEB-INT-ORG-001",
+      "category": "integration",
+      "title": "Organization lifecycle command result and reload",
+      "status": "PASS",
+      "started": {
+        "utc": "2026-08-16T15:16:17.020Z",
+        "local": "2026-08-16T11:16:17.020-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893377020
+      },
+      "finished": {
+        "utc": "2026-08-16T15:16:17.956Z",
+        "local": "2026-08-16T11:16:17.956-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893377956
+      },
+      "durationMs": 936,
+      "attempts": 1,
+      "testFile": "test/integration/organization-actions.test.ts",
+      "evidence": [
+        "junit/integration.xml",
+        "json/integration.json",
+        "coverage/integration/coverage-summary.json",
+        "commands/test_integration.stdout.log",
+        "rpc/smoke.json"
+      ],
+      "requirements": [
+        "WEB-IAM-FR-ORG-001",
+        "WEB-IAM-FR-DELETE-001",
+        "WEB-IAM-FR-IDEM-001"
+      ],
+      "acceptance": [
+        "WEB-IAM-ACC-ORG-001",
+        "WEB-IAM-ACC-IDEM-001"
+      ]
+    },
+    {
+      "id": "WEB-INT-MEMBER-001",
+      "category": "integration",
+      "title": "Member lifecycle and live authorization behavior",
+      "status": "PASS",
+      "started": {
+        "utc": "2026-08-16T15:16:17.020Z",
+        "local": "2026-08-16T11:16:17.020-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893377020
+      },
+      "finished": {
+        "utc": "2026-08-16T15:16:17.956Z",
+        "local": "2026-08-16T11:16:17.956-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893377956
+      },
+      "durationMs": 936,
+      "attempts": 1,
+      "testFile": "test/integration/member-actions.test.ts",
+      "evidence": [
+        "junit/integration.xml",
+        "json/integration.json",
+        "coverage/integration/coverage-summary.json",
+        "commands/test_integration.stdout.log",
+        "rpc/smoke.json"
+      ],
+      "requirements": [
+        "WEB-IAM-FR-MEMBER-001",
+        "WEB-IAM-FR-RBAC-001",
+        "WEB-IAM-FR-RBAC-002"
+      ],
+      "acceptance": [
+        "WEB-IAM-ACC-MEMBER-001",
+        "WEB-IAM-ACC-RBAC-001"
+      ]
+    },
+    {
+      "id": "WEB-INT-AUDIT-001",
+      "category": "integration",
+      "title": "Exact SecurityEvent filters cursors and correlation",
+      "status": "PASS",
+      "started": {
+        "utc": "2026-08-16T15:16:17.020Z",
+        "local": "2026-08-16T11:16:17.020-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893377020
+      },
+      "finished": {
+        "utc": "2026-08-16T15:16:17.956Z",
+        "local": "2026-08-16T11:16:17.956-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893377956
+      },
+      "durationMs": 936,
+      "attempts": 1,
+      "testFile": "test/integration/audit-query.test.ts",
+      "evidence": [
+        "junit/integration.xml",
+        "json/integration.json",
+        "coverage/integration/coverage-summary.json",
+        "commands/test_integration.stdout.log",
+        "rpc/smoke.json"
+      ],
+      "requirements": [
+        "WEB-IAM-FR-AUDIT-001"
+      ],
+      "acceptance": [
+        "WEB-IAM-ACC-AUDIT-001"
+      ]
+    },
+    {
+      "id": "WEB-INT-SMOKE-001",
+      "category": "integration",
+      "title": "Production-shaped Admin HTTP smoke",
+      "status": "PASS",
+      "started": {
+        "utc": "2026-08-16T15:16:17.020Z",
+        "local": "2026-08-16T11:16:17.020-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893377020
+      },
+      "finished": {
+        "utc": "2026-08-16T15:16:17.956Z",
+        "local": "2026-08-16T11:16:17.956-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893377956
+      },
+      "durationMs": 936,
+      "attempts": 1,
+      "testFile": "test/integration/runtime-smoke.test.ts",
+      "evidence": [
+        "junit/integration.xml",
+        "json/integration.json",
+        "coverage/integration/coverage-summary.json",
+        "commands/test_integration.stdout.log",
+        "http/smoke.json",
+        "logs/admin.stdout.log",
+        "logs/admin.stderr.log"
+      ],
+      "requirements": [
+        "WEB-IAM-FR-RPC-001",
+        "WEB-IAM-FR-MODULE-001"
+      ],
+      "acceptance": []
+    },
+    {
+      "id": "WEB-SEC-ENUM-001",
+      "category": "security",
+      "title": "Login-request enumeration resistance",
+      "status": "PASS",
+      "started": {
+        "utc": "2026-08-16T15:16:17.959Z",
+        "local": "2026-08-16T11:16:17.959-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893377959
+      },
+      "finished": {
+        "utc": "2026-08-16T15:16:18.851Z",
+        "local": "2026-08-16T11:16:18.851-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893378851
+      },
+      "durationMs": 892,
+      "attempts": 1,
+      "testFile": "test/security/enumeration.test.ts",
+      "evidence": [
+        "junit/security.xml",
+        "json/security.json",
+        "coverage/security/coverage-summary.json",
+        "commands/test_security.stdout.log",
+        "http/smoke.json",
+        "rpc/smoke.json",
+        "logs/admin.stdout.log",
+        "logs/admin.stderr.log"
+      ],
+      "requirements": [
+        "WEB-IAM-FR-AUTH-003"
+      ],
+      "acceptance": [
+        "WEB-IAM-ACC-AUTH-002"
+      ]
+    },
+    {
+      "id": "WEB-SEC-REDIRECT-001",
+      "category": "security",
+      "title": "Callback and return URL rejection",
+      "status": "PASS",
+      "started": {
+        "utc": "2026-08-16T15:16:17.959Z",
+        "local": "2026-08-16T11:16:17.959-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893377959
+      },
+      "finished": {
+        "utc": "2026-08-16T15:16:18.851Z",
+        "local": "2026-08-16T11:16:18.851-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893378851
+      },
+      "durationMs": 892,
+      "attempts": 1,
+      "testFile": "test/security/redirect-policy.test.ts",
+      "evidence": [
+        "junit/security.xml",
+        "json/security.json",
+        "coverage/security/coverage-summary.json",
+        "commands/test_security.stdout.log",
+        "http/smoke.json"
+      ],
+      "requirements": [
+        "WEB-IAM-FR-AUTH-002"
+      ],
+      "acceptance": [
+        "WEB-IAM-ACC-AUTH-003"
+      ]
+    },
+    {
+      "id": "WEB-SEC-SECRET-001",
+      "category": "security",
+      "title": "Source log error and artifact secret leakage rejection",
+      "status": "PASS",
+      "started": {
+        "utc": "2026-08-16T15:16:17.959Z",
+        "local": "2026-08-16T11:16:17.959-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893377959
+      },
+      "finished": {
+        "utc": "2026-08-16T15:16:18.851Z",
+        "local": "2026-08-16T11:16:18.851-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893378851
+      },
+      "durationMs": 892,
+      "attempts": 1,
+      "testFile": "test/security/secret-leakage.test.ts",
+      "evidence": [
+        "junit/security.xml",
+        "json/security.json",
+        "coverage/security/coverage-summary.json",
+        "commands/test_security.stdout.log"
+      ],
+      "requirements": [
+        "WEB-IAM-FR-AUTH-002",
+        "WEB-IAM-FR-RPC-001"
+      ],
+      "acceptance": []
+    },
+    {
+      "id": "WEB-SEC-ROUTE-001",
+      "category": "security",
+      "title": "Protected route and platform-admin fail closed",
+      "status": "PASS",
+      "started": {
+        "utc": "2026-08-16T15:16:17.959Z",
+        "local": "2026-08-16T11:16:17.959-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893377959
+      },
+      "finished": {
+        "utc": "2026-08-16T15:16:18.851Z",
+        "local": "2026-08-16T11:16:18.851-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893378851
+      },
+      "durationMs": 892,
+      "attempts": 1,
+      "testFile": "test/security/route-authorization.test.ts",
+      "evidence": [
+        "junit/security.xml",
+        "json/security.json",
+        "coverage/security/coverage-summary.json",
+        "commands/test_security.stdout.log",
+        "http/smoke.json",
+        "rpc/smoke.json"
+      ],
+      "requirements": [
+        "WEB-IAM-FR-SESSION-001"
+      ],
+      "acceptance": [
+        "WEB-IAM-ACC-SESSION-001"
+      ]
+    },
+    {
+      "id": "WEB-SEC-TENANT-001",
+      "category": "security",
+      "title": "Cross-organization nondisclosure",
+      "status": "PASS",
+      "started": {
+        "utc": "2026-08-16T15:16:17.959Z",
+        "local": "2026-08-16T11:16:17.959-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893377959
+      },
+      "finished": {
+        "utc": "2026-08-16T15:16:18.851Z",
+        "local": "2026-08-16T11:16:18.851-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893378851
+      },
+      "durationMs": 892,
+      "attempts": 1,
+      "testFile": "test/security/tenant-isolation.test.ts",
+      "evidence": [
+        "junit/security.xml",
+        "json/security.json",
+        "coverage/security/coverage-summary.json",
+        "commands/test_security.stdout.log",
+        "rpc/smoke.json"
+      ],
+      "requirements": [
+        "WEB-IAM-FR-RBAC-002"
+      ],
+      "acceptance": [
+        "WEB-IAM-ACC-RBAC-001"
+      ]
+    },
+    {
+      "id": "WEB-SEC-OWNER-001",
+      "category": "security",
+      "title": "Concurrent last-owner preservation",
+      "status": "PASS",
+      "started": {
+        "utc": "2026-08-16T15:16:17.959Z",
+        "local": "2026-08-16T11:16:17.959-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893377959
+      },
+      "finished": {
+        "utc": "2026-08-16T15:16:18.851Z",
+        "local": "2026-08-16T11:16:18.851-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893378851
+      },
+      "durationMs": 892,
+      "attempts": 1,
+      "testFile": "test/security/last-owner.test.ts",
+      "evidence": [
+        "junit/security.xml",
+        "json/security.json",
+        "coverage/security/coverage-summary.json",
+        "commands/test_security.stdout.log",
+        "rpc/smoke.json"
+      ],
+      "requirements": [
+        "WEB-IAM-FR-MEMBER-001",
+        "WEB-IAM-FR-RBAC-002"
+      ],
+      "acceptance": [
+        "WEB-IAM-ACC-MEMBER-001"
+      ]
+    },
+    {
+      "id": "WEB-SEC-HEADER-001",
+      "category": "security",
+      "title": "Browser and BFF security headers",
+      "status": "PASS",
+      "started": {
+        "utc": "2026-08-16T15:16:17.959Z",
+        "local": "2026-08-16T11:16:17.959-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893377959
+      },
+      "finished": {
+        "utc": "2026-08-16T15:16:18.851Z",
+        "local": "2026-08-16T11:16:18.851-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893378851
+      },
+      "durationMs": 892,
+      "attempts": 1,
+      "testFile": "test/security/headers.test.ts",
+      "evidence": [
+        "junit/security.xml",
+        "json/security.json",
+        "coverage/security/coverage-summary.json",
+        "commands/test_security.stdout.log",
+        "http/smoke.json"
+      ],
+      "requirements": [
+        "WEB-IAM-FR-AUTH-002"
+      ],
+      "acceptance": []
+    },
+    {
+      "id": "WEB-SEC-INPUT-001",
+      "category": "security",
+      "title": "Hostile boundary input rejection",
+      "status": "PASS",
+      "started": {
+        "utc": "2026-08-16T15:16:17.959Z",
+        "local": "2026-08-16T11:16:17.959-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893377959
+      },
+      "finished": {
+        "utc": "2026-08-16T15:16:18.851Z",
+        "local": "2026-08-16T11:16:18.851-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893378851
+      },
+      "durationMs": 892,
+      "attempts": 1,
+      "testFile": "test/security/hostile-input.test.ts",
+      "evidence": [
+        "junit/security.xml",
+        "json/security.json",
+        "coverage/security/coverage-summary.json",
+        "commands/test_security.stdout.log",
+        "http/smoke.json",
+        "rpc/smoke.json"
+      ],
+      "requirements": [
+        "WEB-IAM-FR-RPC-001"
+      ],
+      "acceptance": []
+    },
+    {
+      "id": "WEB-SEC-METADATA-001",
+      "category": "security",
+      "title": "Audit metadata safe projection",
+      "status": "PASS",
+      "started": {
+        "utc": "2026-08-16T15:16:17.959Z",
+        "local": "2026-08-16T11:16:17.959-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893377959
+      },
+      "finished": {
+        "utc": "2026-08-16T15:16:18.851Z",
+        "local": "2026-08-16T11:16:18.851-04:00",
+        "timezoneOffset": "-04:00",
+        "epochMs": 1786893378851
+      },
+      "durationMs": 892,
+      "attempts": 1,
+      "testFile": "test/security/audit-metadata.test.ts",
+      "evidence": [
+        "junit/security.xml",
+        "json/security.json",
+        "coverage/security/coverage-summary.json",
+        "commands/test_security.stdout.log"
+      ],
+      "requirements": [
+        "WEB-IAM-FR-AUDIT-001"
+      ],
+      "acceptance": [
+        "WEB-IAM-ACC-AUDIT-001"
+      ]
+    },
+    {
+      "id": "IAM-SEC-ENUM-001",
+      "category": "pair_e2e",
+      "title": "Uniform active unknown suspended and deleted login requests",
+      "status": "NOT_STARTED",
+      "started": null,
+      "finished": null,
+      "durationMs": null,
+      "attempts": 0,
+      "testFile": null,
+      "evidence": [],
+      "requirements": [
+        "WEB-IAM-FR-AUTH-003"
+      ],
+      "acceptance": [
+        "WEB-IAM-ACC-AUTH-002"
+      ]
+    },
+    {
+      "id": "IAM-SEC-REDIRECT-001",
+      "category": "pair_e2e",
+      "title": "Reject untrusted Magic Link callback and return URLs",
+      "status": "NOT_STARTED",
+      "started": null,
+      "finished": null,
+      "durationMs": null,
+      "attempts": 0,
+      "testFile": null,
+      "evidence": [],
+      "requirements": [
+        "WEB-IAM-FR-AUTH-002"
+      ],
+      "acceptance": [
+        "WEB-IAM-ACC-AUTH-003"
+      ]
+    },
+    {
+      "id": "IAM-E2E-AUTH-001",
+      "category": "pair_e2e",
+      "title": "Request consume and replay real Magic Link",
+      "status": "NOT_STARTED",
+      "started": null,
+      "finished": null,
+      "durationMs": null,
+      "attempts": 0,
+      "testFile": null,
+      "evidence": [],
+      "requirements": [
+        "WEB-IAM-FR-AUTH-001",
+        "WEB-IAM-FR-AUTH-002"
+      ],
+      "acceptance": [
+        "WEB-IAM-ACC-AUTH-001"
+      ]
+    },
+    {
+      "id": "IAM-E2E-SESSION-001",
+      "category": "pair_e2e",
+      "title": "Reload logout and administrator Session revocation",
+      "status": "NOT_STARTED",
+      "started": null,
+      "finished": null,
+      "durationMs": null,
+      "attempts": 0,
+      "testFile": null,
+      "evidence": [],
+      "requirements": [
+        "WEB-IAM-FR-SESSION-001",
+        "WEB-IAM-FR-SESSION-002"
+      ],
+      "acceptance": [
+        "WEB-IAM-ACC-SESSION-001"
+      ]
+    },
+    {
+      "id": "IAM-E2E-ORG-001",
+      "category": "pair_e2e",
+      "title": "Complete Organization lifecycle through Admin Web",
+      "status": "NOT_STARTED",
+      "started": null,
+      "finished": null,
+      "durationMs": null,
+      "attempts": 0,
+      "testFile": null,
+      "evidence": [],
+      "requirements": [
+        "WEB-IAM-FR-ORG-001",
+        "WEB-IAM-FR-DELETE-001"
+      ],
+      "acceptance": [
+        "WEB-IAM-ACC-ORG-001"
+      ]
+    },
+    {
+      "id": "IAM-E2E-MEMBER-001",
+      "category": "pair_e2e",
+      "title": "Complete Member lifecycle and last-owner protection",
+      "status": "NOT_STARTED",
+      "started": null,
+      "finished": null,
+      "durationMs": null,
+      "attempts": 0,
+      "testFile": null,
+      "evidence": [],
+      "requirements": [
+        "WEB-IAM-FR-MEMBER-001",
+        "WEB-IAM-FR-RBAC-002"
+      ],
+      "acceptance": [
+        "WEB-IAM-ACC-MEMBER-001"
+      ]
+    },
+    {
+      "id": "IAM-E2E-RBAC-001",
+      "category": "pair_e2e",
+      "title": "Grant allow revoke deny and cross-organization denial",
+      "status": "NOT_STARTED",
+      "started": null,
+      "finished": null,
+      "durationMs": null,
+      "attempts": 0,
+      "testFile": null,
+      "evidence": [],
+      "requirements": [
+        "WEB-IAM-FR-RBAC-001",
+        "WEB-IAM-FR-RBAC-002"
+      ],
+      "acceptance": [
+        "WEB-IAM-ACC-RBAC-001"
+      ]
+    },
+    {
+      "id": "IAM-E2E-DELETE-001",
+      "category": "pair_e2e",
+      "title": "User and Organization delete restore and audit continuity",
+      "status": "NOT_STARTED",
+      "started": null,
+      "finished": null,
+      "durationMs": null,
+      "attempts": 0,
+      "testFile": null,
+      "evidence": [],
+      "requirements": [
+        "WEB-IAM-FR-USER-001",
+        "WEB-IAM-FR-DELETE-001",
+        "WEB-IAM-FR-AUDIT-001"
+      ],
+      "acceptance": [
+        "WEB-IAM-ACC-USER-001",
+        "WEB-IAM-ACC-AUDIT-001"
+      ]
+    },
+    {
+      "id": "IAM-E2E-IDEM-001",
+      "category": "pair_e2e",
+      "title": "Double-submit one command and recover one durable result",
+      "status": "NOT_STARTED",
+      "started": null,
+      "finished": null,
+      "durationMs": null,
+      "attempts": 0,
+      "testFile": null,
+      "evidence": [],
+      "requirements": [
+        "WEB-IAM-FR-IDEM-001"
+      ],
+      "acceptance": [
+        "WEB-IAM-ACC-IDEM-001"
+      ]
+    },
+    {
+      "id": "IAM-E2E-FRESH-001",
+      "category": "pair_e2e",
+      "title": "Two independent fresh Chromium rounds",
+      "status": "NOT_STARTED",
+      "started": null,
+      "finished": null,
+      "durationMs": null,
+      "attempts": 0,
+      "testFile": null,
+      "evidence": [],
+      "requirements": [
+        "WEB-IAM-FR-RPC-001",
+        "WEB-IAM-FR-MODULE-001",
+        "WEB-IAM-FR-I18N-001"
+      ],
+      "acceptance": [
+        "WEB-IAM-ACC-FRESH-001"
+      ]
+    }
+  ],
+  "secretScan": {
+    "status": "PASS",
+    "scannedFiles": 43,
+    "matches": []
+  },
+  "evidenceSha256": {
+    "build/boundary.json": "f0b997e51aa72ec56594e34e14a82bcddac8f16c7767e0ca32305201daf66feb",
+    "commands/build.stderr.log": "8c87e6c88f8aa719cdec20bba96b21a6a64d5678f80517663f3457e265cbe519",
+    "commands/build.stdout.log": "978c060003fa20a52e8d595717caffa6c544d960ae2c224e307f5da3f1399ec6",
+    "commands/install.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "commands/install.stdout.log": "873f1889c612670276b80082cd014c6f68667606da4f19ac41b54f79c1311411",
+    "commands/lint.stderr.log": "7b89be8c41f3e607d8942dde688c7d6aac92f845d6000846db6c50c961e24418",
+    "commands/lint.stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "commands/proto_check.stderr.log": "b00673155e60347bdf0cfc19a90d95fd5c38648d6f5cccca1c8d215523b73532",
+    "commands/proto_check.stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "commands/runtime_smoke.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "commands/runtime_smoke.stdout.log": "fd6374e28a4762db82b83f722e7d6dbe8e9293c1af61174b6597216e3b1b5320",
+    "commands/test_component.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "commands/test_component.stdout.log": "43a469eefe013dcd13c3bc9ec21675232cc843511f2cb44d3cb0c87fb3a44e85",
+    "commands/test_contract.stderr.log": "d9eb253e06987fa74a5d3189f73d9f7a8104cca786fafbb52bc9555972f5477f",
+    "commands/test_contract.stdout.log": "142d15e94347a0bf975b27f2435cf0cf5f5e7f2728fd257e41e888456c3fa97d",
+    "commands/test_integration.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "commands/test_integration.stdout.log": "f44f073e23cd20839f2be8f163dd156204827f59b7c865645557d25183e0ea14",
+    "commands/test_security.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "commands/test_security.stdout.log": "fe080a2b859b8efc1104e13966391f20ce9040f90179d4c9b78506f4ab7da298",
+    "commands/test_unit.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "commands/test_unit.stdout.log": "d0fed554c45ae644512565fdf936cdb756bb8a1d37fc76972432755758ba153c",
+    "commands/typecheck.stderr.log": "cfa69a51e55057ccedc8f49f26354f7691f65298677767c6424aefe649f6ee22",
+    "commands/typecheck.stdout.log": "adba4af9194e10e47dda75ff0fd0f8c2b756474896d0eba5612799c527ff372a",
+    "coverage/component/coverage-summary.json": "0c6a732ae55f098be7b628ac7d1d38562541c6bc8dd11616d369ec57004b4481",
+    "coverage/contract/coverage-summary.json": "66fec3dc0348fcb6e9c7e8e1dffefa0116a838ec2c20fb926f6115504f222059",
+    "coverage/integration/coverage-summary.json": "aff10ebf47424d0a6a4670527f64deb33f2aeebcee14f7ccbb9e3308db205a15",
+    "coverage/security/coverage-summary.json": "cc81902756728dff8bc88ca7e6b64f05f739f373d2de88504340b1f5513c4c96",
+    "coverage/unit/coverage-summary.json": "2430195b095db4b99414fe031a39fb68516689ed93d97d062c4a64fcfe700c1b",
+    "http/smoke.json": "ef7751ae939c17c223ffef688694fbd7f090118183de6534373cf022eb2b2e4b",
+    "json/component.json": "b0df7464a61838619b6633b7fe77a3637cb9bc5b1ee7c9f01ef2dd027ee2751c",
+    "json/contract.json": "f83f9b8a69065e1a0b6651881263e13aeda82a395d3badadc1288d391b9f3183",
+    "json/integration.json": "1c8716ca088f9403f4646e9e5badfa10bc4b892e483888807e458f474ad60324",
+    "json/security.json": "ed677ca7a39429d611b8980f2c127d68f48719316316ff4c8fa701b24efb09f0",
+    "json/unit.json": "8a7667be2fde61c992883a5d8fa99025caafe8da60747b7e875f34daf996b2b2",
+    "junit/component.xml": "f23067d5b1c07908157f375ffb9f7138bf9477ec6e94698fc5f054d6d701d116",
+    "junit/contract.xml": "46da0b4c4984d557282cf223e0290ba76192a6055633c67ed2bd45b6b269339e",
+    "junit/integration.xml": "79ec5e95dde09aaed0705d1408c4cb8c3c29717d46e324c185267eead180b8b9",
+    "junit/security.xml": "7c0452276a57d1c8e791d3116efe76ec9e1be1ab74841e8a8c035535b33d400d",
+    "junit/unit.xml": "174ffa4ace085cd1ad69f460df8ac06db4a5a83d83d6a0fc897e212f70427b59",
+    "logs/admin.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "logs/admin.stdout.log": "de1ec33ab1aee8b3379a5686ca1a288f07bf2b9532c736eb4639b11bdd5a2d63",
+    "process/smoke.json": "e4e6029072bb9a973b2b04dd9744584c9cf4f3ead69add3e8e2ed4bb88939eb2",
+    "report.md": "825de57d058bddfa9d500a0456c44ebb663fd643f82415058d031415f75d05b6",
+    "rpc/smoke.json": "7702797bfcb023dbb1aaebc1eb3fb1adc2b5c9070046d8723ea22ff7b32655fb",
+    "security/secret-scan.json": "69fd1fc975711c0089d3dbc9c35fa0c737495ba4c44db5abda1eb5b76ce5c86b"
+  }
+}

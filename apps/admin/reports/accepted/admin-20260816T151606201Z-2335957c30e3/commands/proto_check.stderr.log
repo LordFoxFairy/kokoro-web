@@ -1,0 +1,3 @@
+$ pnpm proto:lint && pnpm proto:generate && git diff --exit-code -- generated/iam
+$ buf lint contracts/iam
+$ buf generate contracts/iam --template contracts/iam/buf.gen.yaml

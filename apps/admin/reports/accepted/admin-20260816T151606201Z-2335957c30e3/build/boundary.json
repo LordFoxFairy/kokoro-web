@@ -1,0 +1,23 @@
+{
+  "recordedAt": {
+    "utc": "2026-08-16T15:16:31.073Z",
+    "local": "2026-08-16T11:16:31.073-04:00",
+    "timezoneOffset": "-04:00",
+    "epochMs": 1786893391073
+  },
+  "routes": [
+    "/",
+    "/access",
+    "/api/auth/[...nextauth]",
+    "/audit",
+    "/auth/verify",
+    "/login",
+    "/organizations",
+    "/organizations/[organizationId]",
+    "/sessions",
+    "/users",
+    "/users/[userId]"
+  ],
+  "scannedFiles": 379,
+  "violations": []
+}

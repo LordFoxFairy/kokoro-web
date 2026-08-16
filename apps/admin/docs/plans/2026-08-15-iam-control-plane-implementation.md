@@ -821,7 +821,7 @@ runtime HTTP/RPC evidence, structured logs, case/category totals, retry/skip/tod
 counts, decision, and ordered SHA-256 values. Never record secret values. Use a unique ignored
 `test-results/admin-<UTC>-<commit>/` directory and fail if it already exists.
 
-- [ ] **Step 4: Create a clean candidate and run full repository acceptance**
+- [x] **Step 4: Create a clean candidate and run full repository acceptance**
 
 Commit production code before acceptance so the candidate starts clean:
 
@@ -835,7 +835,7 @@ Expected: every install/generate/test/typecheck/lint/build/smoke gate exits 0, a
 pass once, pair cases remain `NOT_STARTED`, and `ADMIN_WEB_REPOSITORY_DECISION=PASS` while
 `PRODUCT_PAIR_DECISION=NOT_READY`.
 
-- [ ] **Step 5: Inspect, archive, verify, and commit the report**
+- [x] **Step 5: Inspect, archive, verify, and commit the report**
 
 Independently verify manifest JSON, case totals, zero retries/skips, candidate cleanliness, secret
 scan, and all checksums. Copy the entire run verbatim to `apps/admin/reports/accepted/<run-id>/`,
