@@ -34,9 +34,9 @@ EMAIL_SERVER_PORT
 ```
 
 `EMAIL_SERVER_USER` and `EMAIL_SERVER_PASSWORD_FILE` are an optional exact pair. Secret paths must
-be absolute, normalized, owned regular files with exact mode `0600`. Production requires HTTPS and
-secure cookies. Local HTTP endpoints must use loopback hosts; the browser origin is
-`http://localhost:3100`.
+be absolute, normalized, owned regular files with exact mode `0600`. The production browser origin
+requires HTTPS and secure cookies; a local browser origin must use loopback.
+`KOKORO_IAM_BASE_URL` configures the IAM ConnectRPC endpoint.
 
 ## Commands
 

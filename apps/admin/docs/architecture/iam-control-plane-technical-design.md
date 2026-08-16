@@ -470,8 +470,8 @@ authenticated SMTP provider and both are absent for the isolated Mailpit fixture
 `AUTH_SECRET_FILE`, IAM credential, and a configured SMTP password file are absolute normalized
 regular files, owned by the runtime user/root, with exact mode `0600`. Values never appear in error
 messages.
-Production requires HTTPS, secure cookies, and configured SMTP. Local/test may use HTTP only when
-explicitly configured and binds to loopback.
+The production browser origin requires HTTPS, secure cookies, and configured SMTP. Local browser
+HTTP is loopback-only.
 
 ## 16. Security Controls
 

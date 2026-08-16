@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 export const auditFiltersSchema = z.object({
-  kind: z.string().trim().min(1).max(96).nullable().default(null),
+  kind: z.string().trim().regex(/^[a-z][a-z0-9_.-]*$/u).max(96).nullable().default(null),
   actorUserId: z.string().uuid().nullable().default(null),
   targetUserId: z.string().uuid().nullable().default(null),
   organizationId: z.string().uuid().nullable().default(null),

@@ -334,8 +334,9 @@ git commit -m "feat(admin): consume frozen IAM RPC contract"
 - [x] **Step 1: Write failing config/security/boundary tests**
 
 Test absolute normalized non-symlink exact-0600 secret files, 64 lowercase-hex IAM credential,
-Auth.js secret length, paired SMTP authentication, production HTTPS/secure-cookie requirement,
-loopback-only HTTP fixture, distinct request/response limits, and rejection of raw upstream messages.
+Auth.js secret length, paired SMTP authentication, production browser HTTPS/secure-cookie
+requirement, configured IAM ConnectRPC endpoint, distinct request/response limits, and rejection of
+raw upstream messages.
 Boundary tests scan Client Components and compiled entry imports for `connect-node`, generated IAM,
 secret-file modules, SQL, Prisma, and secret environment names.
 
@@ -771,7 +772,7 @@ git add apps/admin
 git commit -m "feat(admin): add IAM audit and operations overview"
 ```
 
-### Task 9: Production Boundary, Runtime Smoke, and Repository Acceptance
+### Task 9: Build Boundary, Runtime Smoke, and Repository Acceptance
 
 **Files:**
 - Create: `apps/admin/scripts/test/evidence.ts`
@@ -781,9 +782,15 @@ git commit -m "feat(admin): add IAM audit and operations overview"
 - Create: `apps/admin/test/contract/runtime-listener.test.ts`
 - Create: `apps/admin/test/security/hostile-input.test.ts`
 - Create: `apps/admin/test/security/production-bundle.test.ts`
+- Create: `apps/admin/test/security/route-authorization.test.ts`
+- Modify: `apps/admin/test/unit/config.test.ts`
+- Modify: `apps/admin/server/config/config.ts`
+- Modify: `apps/admin/modules/iam/audit/schema.ts`
 - Modify: `apps/admin/test/catalog/p0.yaml`
+- Modify: `apps/admin/test/README.md`
 - Modify: `apps/admin/README.md`
-- Modify: `INDEX.md`
+- Modify: `apps/admin/package.json`
+- Modify: `apps/admin/docs/architecture/iam-control-plane-technical-design.md`
 - Create: `apps/admin/reports/README.md`
 
 **Interfaces:**
@@ -791,7 +798,7 @@ git commit -m "feat(admin): add IAM audit and operations overview"
 - Produces: `pnpm verify`, real server smoke, immutable Web repository report/manifest/checksums, and
   a clean candidate ready for pair execution.
 
-- [ ] **Step 1: Write failing build/runtime/acceptance tests**
+- [x] **Step 1: Write failing build/runtime/acceptance tests**
 
 Assert production manifest/bundles contain no Prisma, SQL, database URL, workload credential value,
 actor/session/verification token, generated IAM import in a client chunk, sibling path, wildcard API
@@ -799,20 +806,20 @@ rewrite, or old route. Start `next start`, verify security headers/public login/
 and invoke a real generated IAM-compatible listener. Catalog test now requires every Admin-owned P0
 case executable with no `PLANNED` status.
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 ```bash
 pnpm --filter @kokoro/admin-web test:contract -- build-boundary runtime-listener
 pnpm --filter @kokoro/admin-web test:security -- hostile-input production-bundle
 ```
 
-- [ ] **Step 3: Implement evidence and acceptance runner**
+- [x] **Step 3: Implement evidence and acceptance runner**
 
-Record local/UTC timestamps, timezone offset, git commit/tree/dirty state, Node/pnpm/browser versions,
-provider hashes, command start/finish/duration/exit, JUnit, coverage, runtime HTTP evidence, structured
-logs, case/category totals, retry/skip counts, decision, and ordered SHA-256 values. Never record
-secret values. Use a unique ignored `test-results/admin-<UTC>-<commit>/` directory and fail if it
-already exists.
+Record local/UTC timestamps, timezone offset, git commit/tree/dirty state, Node/pnpm versions,
+browser requirement status, provider hashes, command start/finish/duration/exit, JUnit, coverage,
+runtime HTTP/RPC evidence, structured logs, case/category totals, retry/skip/todo/unclassified
+counts, decision, and ordered SHA-256 values. Never record secret values. Use a unique ignored
+`test-results/admin-<UTC>-<commit>/` directory and fail if it already exists.
 
 - [ ] **Step 4: Create a clean candidate and run full repository acceptance**
 

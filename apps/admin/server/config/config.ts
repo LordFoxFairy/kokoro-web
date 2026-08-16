@@ -61,15 +61,13 @@ function isLoopback(hostname: string): boolean {
   return isIP(normalized) === 4 && normalized.startsWith("127.");
 }
 
-function normalizedUrl(value: string, label: string, mode: AdminRuntimeConfig["mode"]): string {
+function normalizedUrl(value: string, label: string): URL {
   try {
     const url = new URL(value);
     if (url.username || url.password || url.search || url.hash) return invalid(label);
-    if (url.protocol !== "https:") {
-      if (url.protocol !== "http:" || mode === "production" || !isLoopback(url.hostname)) return invalid(label);
-    }
+    if (url.protocol !== "http:" && url.protocol !== "https:") return invalid(label);
     if (url.pathname !== "/") return invalid(label);
-    return url.origin;
+    return url;
   } catch {
     return invalid(label);
   }
@@ -86,8 +84,11 @@ export function loadAdminConfig(source: NodeJS.ProcessEnv = process.env): AdminR
     return invalid("EMAIL_SERVER_USER", "EMAIL_SERVER_PASSWORD_FILE");
   }
 
-  const authUrl = normalizedUrl(value.AUTH_URL, "AUTH_URL", value.NODE_ENV);
-  const iamBaseUrl = normalizedUrl(value.KOKORO_IAM_BASE_URL, "KOKORO_IAM_BASE_URL", value.NODE_ENV);
+  const authUrl = normalizedUrl(value.AUTH_URL, "AUTH_URL");
+  const iamBaseUrl = normalizedUrl(value.KOKORO_IAM_BASE_URL, "KOKORO_IAM_BASE_URL");
+  if (authUrl.protocol === "http:" && (value.NODE_ENV === "production" || !isLoopback(authUrl.hostname))) {
+    return invalid("AUTH_URL");
+  }
   if (value.NODE_ENV === "production" && !value.AUTH_SECURE_COOKIES) return invalid("AUTH_SECURE_COOKIES");
 
   const authSecret = readSecretFile(value.AUTH_SECRET_FILE, {
@@ -114,9 +115,9 @@ export function loadAdminConfig(source: NodeJS.ProcessEnv = process.env): AdminR
 
   return Object.freeze({
     mode: value.NODE_ENV,
-    auth: Object.freeze({ url: authUrl, secret: authSecret, secureCookies: value.AUTH_SECURE_COOKIES }),
+    auth: Object.freeze({ url: authUrl.origin, secret: authSecret, secureCookies: value.AUTH_SECURE_COOKIES }),
     iam: Object.freeze({
-      baseUrl: iamBaseUrl,
+      baseUrl: iamBaseUrl.origin,
       workloadToken,
       requestLimitBytes: 64 * 1_024,
       responseLimitBytes: 1_024 * 1_024,

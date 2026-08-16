@@ -19,7 +19,7 @@
     "proto:generate": "buf generate contracts/iam --template contracts/iam/buf.gen.yaml",
     "proto:check": "pnpm proto:lint && pnpm proto:generate && git diff --exit-code -- generated/iam",
     "smoke": "tsx scripts/test/smoke-runtime.ts",
-    "verify": "pnpm proto:check && pnpm test && pnpm typecheck && pnpm lint --max-warnings=0 && pnpm build && pnpm smoke",
+    "verify": "pnpm proto:check && pnpm test && pnpm typecheck && pnpm lint --max-warnings=0 && pnpm smoke -- --build",
     "acceptance": "tsx scripts/test/run-acceptance.ts",
     "acceptance:pair": "tsx scripts/test/run-pair-acceptance.ts"
   },

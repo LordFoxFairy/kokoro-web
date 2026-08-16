@@ -11,7 +11,7 @@ evidence, zero retries, and an explicit status.
 | `unit` | Pure config, validation, mapping, cookie, Adapter, command, and pagination behavior | Vitest Node |
 | `component` | Real rendered Admin UI states, interaction, accessibility, and 360px behavior | Vitest jsdom + Testing Library |
 | `contract` | Toolchain, frozen Proto, generated clients, imports, i18n, build, and listener boundaries | Vitest Node |
-| `integration` | Auth.js routes and Admin BFF behavior against real protocol-shaped collaborators | Vitest Node |
+| `integration` | Auth.js routes and Admin BFF behavior against local ConnectRPC listeners and protocol-shaped collaborators | Vitest Node |
 | `security` | Enumeration, redirects, route authorization, tenant/owner protection, headers, hostile input, and leakage | Vitest Node |
 | `pair_e2e` | Production Admin Web with the accepted IAM candidate, fresh PostgreSQL, Mailpit, and visible Chromium | Playwright + real services |
 

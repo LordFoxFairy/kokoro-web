@@ -100,17 +100,24 @@ describe("strict Admin runtime configuration", () => {
     })).smtp.auth).toEqual({ user: "mailer", password: "P".repeat(32) });
   });
 
-  it("WEB-UNIT-CONFIG-001 allows HTTP only for explicit non-production loopback fixtures", () => {
+  it("WEB-UNIT-CONFIG-001 validates the browser origin separately from the IAM RPC endpoint", () => {
     expect(() => loadAdminConfig(validSource({ AUTH_URL: "http://admin.example.test" })))
       .toThrow("AUTH_URL");
-    expect(() => loadAdminConfig(validSource({ KOKORO_IAM_BASE_URL: "http://iam.example.test" })))
-      .toThrow("KOKORO_IAM_BASE_URL");
+    expect(loadAdminConfig(validSource({
+      KOKORO_IAM_BASE_URL: "http://iam.internal:4100",
+    })).iam.baseUrl).toBe("http://iam.internal:4100");
     expect(() => loadAdminConfig(validSource({
       NODE_ENV: "production",
       AUTH_URL: "http://127.0.0.1:3100",
       AUTH_SECURE_COOKIES: "true",
       KOKORO_IAM_BASE_URL: "https://iam.example.test",
     }))).toThrow("AUTH_URL");
+    expect(loadAdminConfig(validSource({
+      NODE_ENV: "production",
+      AUTH_URL: "https://admin.example.test",
+      AUTH_SECURE_COOKIES: "true",
+      KOKORO_IAM_BASE_URL: "http://iam.internal:4100",
+    })).iam.baseUrl).toBe("http://iam.internal:4100");
   });
 
   it("WEB-UNIT-CONFIG-001 requires HTTPS and secure cookies together in production", () => {

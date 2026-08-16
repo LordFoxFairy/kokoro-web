@@ -11,7 +11,7 @@ acceptance:
 cases:
   - id: WEB-UNIT-CONFIG-001
     category: unit
-    status: PLANNED
+    status: NOT_STARTED
     title: Strict runtime configuration and paired SMTP authentication
     requirements: [WEB-IAM-FR-AUTH-002, WEB-IAM-FR-SESSION-001]
     acceptance: []
@@ -20,7 +20,7 @@ cases:
     retries: 0
   - id: WEB-UNIT-SECRET-001
     category: unit
-    status: PLANNED
+    status: NOT_STARTED
     title: Exact mode secret file boundary
     requirements: [WEB-IAM-FR-RPC-001]
     acceptance: []
@@ -29,7 +29,7 @@ cases:
     retries: 0
   - id: WEB-UNIT-COOKIE-001
     category: unit
-    status: PLANNED
+    status: NOT_STARTED
     title: Explicit secure and local database Session cookies
     requirements: [WEB-IAM-FR-SESSION-001]
     acceptance: [WEB-IAM-ACC-SESSION-001]
@@ -38,7 +38,7 @@ cases:
     retries: 0
   - id: WEB-UNIT-ADAPTER-001
     category: unit
-    status: PLANNED
+    status: NOT_STARTED
     title: Complete fourteen-method Auth.js IAM Adapter mapping
     requirements: [WEB-IAM-FR-AUTH-001]
     acceptance: [WEB-IAM-ACC-AUTH-001]
@@ -47,7 +47,7 @@ cases:
     retries: 0
   - id: WEB-UNIT-ERROR-001
     category: unit
-    status: PLANNED
+    status: NOT_STARTED
     title: Safe IAM ErrorDetail translation
     requirements: [WEB-IAM-FR-RPC-001]
     acceptance: []
@@ -56,7 +56,7 @@ cases:
     retries: 0
   - id: WEB-UNIT-RECORD-001
     category: unit
-    status: PLANNED
+    status: NOT_STARTED
     title: Strict generated IAM record validation and mapping
     requirements: [WEB-IAM-FR-RPC-001]
     acceptance: []
@@ -65,7 +65,7 @@ cases:
     retries: 0
   - id: WEB-UNIT-COMMAND-001
     category: unit
-    status: PLANNED
+    status: NOT_STARTED
     title: Stable command identity and ambiguous-result recovery
     requirements: [WEB-IAM-FR-IDEM-001]
     acceptance: [WEB-IAM-ACC-IDEM-001]
@@ -74,7 +74,7 @@ cases:
     retries: 0
   - id: WEB-UNIT-PAGE-001
     category: unit
-    status: PLANNED
+    status: NOT_STARTED
     title: URL filters opaque cursor and bounded page size
     requirements: [WEB-IAM-FR-USER-001, WEB-IAM-FR-ORG-001, WEB-IAM-FR-AUDIT-001]
     acceptance: []
@@ -83,7 +83,7 @@ cases:
     retries: 0
   - id: WEB-COMP-LOGIN-001
     category: component
-    status: PLANNED
+    status: NOT_STARTED
     title: Login and uniform verification states
     requirements: [WEB-IAM-FR-AUTH-002, WEB-IAM-FR-AUTH-003, WEB-IAM-FR-I18N-001]
     acceptance: [WEB-IAM-ACC-AUTH-001, WEB-IAM-ACC-AUTH-002]
@@ -92,7 +92,7 @@ cases:
     retries: 0
   - id: WEB-COMP-SHELL-001
     category: component
-    status: PLANNED
+    status: NOT_STARTED
     title: Static module navigation logout and responsive shell
     requirements: [WEB-IAM-FR-MODULE-001, WEB-IAM-FR-I18N-001]
     acceptance: []
@@ -101,7 +101,7 @@ cases:
     retries: 0
   - id: WEB-COMP-OVERVIEW-001
     category: component
-    status: PLANNED
+    status: NOT_STARTED
     title: Sanitized live IAM overview and complete locale switching
     requirements: [WEB-IAM-FR-MODULE-001, WEB-IAM-FR-I18N-001]
     acceptance: []
@@ -110,7 +110,7 @@ cases:
     retries: 0
   - id: WEB-COMP-STATE-001
     category: component
-    status: PLANNED
+    status: NOT_STARTED
     title: Loading empty forbidden unavailable and malformed page states
     requirements: [WEB-IAM-FR-RPC-001]
     acceptance: []
@@ -119,7 +119,7 @@ cases:
     retries: 0
   - id: WEB-COMP-USER-001
     category: component
-    status: PLANNED
+    status: NOT_STARTED
     title: User list detail lifecycle and restore controls
     requirements: [WEB-IAM-FR-USER-001, WEB-IAM-FR-DELETE-001]
     acceptance: [WEB-IAM-ACC-USER-001]
@@ -128,7 +128,7 @@ cases:
     retries: 0
   - id: WEB-COMP-SESSION-001
     category: component
-    status: PLANNED
+    status: NOT_STARTED
     title: Session inventory and revocation controls
     requirements: [WEB-IAM-FR-SESSION-002]
     acceptance: [WEB-IAM-ACC-SESSION-001]
@@ -137,7 +137,7 @@ cases:
     retries: 0
   - id: WEB-COMP-ORG-001
     category: component
-    status: PLANNED
+    status: NOT_STARTED
     title: Organization list detail lifecycle and restore controls
     requirements: [WEB-IAM-FR-ORG-001, WEB-IAM-FR-DELETE-001]
     acceptance: [WEB-IAM-ACC-ORG-001]
@@ -146,7 +146,7 @@ cases:
     retries: 0
   - id: WEB-COMP-MEMBER-001
     category: component
-    status: PLANNED
+    status: NOT_STARTED
     title: Member lifecycle role change and last-owner feedback
     requirements: [WEB-IAM-FR-MEMBER-001, WEB-IAM-FR-RBAC-002]
     acceptance: [WEB-IAM-ACC-MEMBER-001]
@@ -155,7 +155,7 @@ cases:
     retries: 0
   - id: WEB-COMP-ACCESS-001
     category: component
-    status: PLANNED
+    status: NOT_STARTED
     title: Role Permission and live authorization inspection
     requirements: [WEB-IAM-FR-RBAC-001, WEB-IAM-FR-RBAC-002]
     acceptance: [WEB-IAM-ACC-RBAC-001]
@@ -164,7 +164,7 @@ cases:
     retries: 0
   - id: WEB-COMP-AUDIT-001
     category: component
-    status: PLANNED
+    status: NOT_STARTED
     title: SecurityEvent filters pagination and correlation
     requirements: [WEB-IAM-FR-AUDIT-001]
     acceptance: [WEB-IAM-ACC-AUDIT-001]
@@ -173,7 +173,7 @@ cases:
     retries: 0
   - id: WEB-COMP-A11Y-001
     category: component
-    status: PLANNED
+    status: NOT_STARTED
     title: Keyboard focus announcements and mobile semantics
     requirements: [WEB-IAM-FR-MODULE-001, WEB-IAM-FR-I18N-001]
     acceptance: []
@@ -182,7 +182,7 @@ cases:
     retries: 0
   - id: WEB-CONTRACT-CATALOG-001
     category: contract
-    status: PLANNED
+    status: NOT_STARTED
     title: Complete unique PRD and executable test mapping
     requirements: []
     acceptance: []
@@ -191,7 +191,7 @@ cases:
     retries: 0
   - id: WEB-CONTRACT-TOOLS-001
     category: contract
-    status: PLANNED
+    status: NOT_STARTED
     title: Exact scripts dependencies and native Next ESLint
     requirements: [WEB-IAM-FR-MODULE-001]
     acceptance: []
@@ -200,7 +200,7 @@ cases:
     retries: 0
   - id: WEB-CONTRACT-PROTO-001
     category: contract
-    status: PLANNED
+    status: NOT_STARTED
     title: Frozen provider metadata and deterministic generation
     requirements: [WEB-IAM-FR-RPC-001]
     acceptance: []
@@ -209,7 +209,7 @@ cases:
     retries: 0
   - id: WEB-CONTRACT-RPC-001
     category: contract
-    status: PLANNED
+    status: NOT_STARTED
     title: Complete five-service generated RPC inventory
     requirements: [WEB-IAM-FR-AUTH-001, WEB-IAM-FR-RPC-001]
     acceptance: []
@@ -218,7 +218,7 @@ cases:
     retries: 0
   - id: WEB-CONTRACT-BOUNDARY-001
     category: contract
-    status: PLANNED
+    status: NOT_STARTED
     title: Server-only IAM and zero database boundary
     requirements: [WEB-IAM-FR-RPC-001, WEB-IAM-FR-MODULE-001]
     acceptance: []
@@ -227,7 +227,7 @@ cases:
     retries: 0
   - id: WEB-CONTRACT-I18N-001
     category: contract
-    status: PLANNED
+    status: NOT_STARTED
     title: Complete Chinese and English message key sets
     requirements: [WEB-IAM-FR-I18N-001]
     acceptance: []
@@ -236,7 +236,7 @@ cases:
     retries: 0
   - id: WEB-CONTRACT-BUILD-001
     category: contract
-    status: PLANNED
+    status: NOT_STARTED
     title: Production bundle route and import boundary
     requirements: [WEB-IAM-FR-RPC-001, WEB-IAM-FR-MODULE-001]
     acceptance: []
@@ -245,7 +245,7 @@ cases:
     retries: 0
   - id: WEB-CONTRACT-RUNTIME-001
     category: contract
-    status: PLANNED
+    status: NOT_STARTED
     title: Real Next listener and generated client compatibility
     requirements: [WEB-IAM-FR-RPC-001]
     acceptance: []
@@ -254,7 +254,7 @@ cases:
     retries: 0
   - id: WEB-INT-AUTH-001
     category: integration
-    status: PLANNED
+    status: NOT_STARTED
     title: Real Auth.js request and callback route behavior
     requirements: [WEB-IAM-FR-AUTH-001, WEB-IAM-FR-AUTH-002]
     acceptance: [WEB-IAM-ACC-AUTH-001]
@@ -263,7 +263,7 @@ cases:
     retries: 0
   - id: WEB-INT-SESSION-001
     category: integration
-    status: PLANNED
+    status: NOT_STARTED
     title: Database Session actor exchange and logout
     requirements: [WEB-IAM-FR-SESSION-001]
     acceptance: [WEB-IAM-ACC-SESSION-001]
@@ -272,7 +272,7 @@ cases:
     retries: 0
   - id: WEB-INT-USER-001
     category: integration
-    status: PLANNED
+    status: NOT_STARTED
     title: User lifecycle command result and reload
     requirements: [WEB-IAM-FR-USER-001, WEB-IAM-FR-DELETE-001, WEB-IAM-FR-IDEM-001]
     acceptance: [WEB-IAM-ACC-USER-001, WEB-IAM-ACC-IDEM-001]
@@ -281,7 +281,7 @@ cases:
     retries: 0
   - id: WEB-INT-SESSION-002
     category: integration
-    status: PLANNED
+    status: NOT_STARTED
     title: Revoke one and all Sessions through IAM commands
     requirements: [WEB-IAM-FR-SESSION-002, WEB-IAM-FR-IDEM-001]
     acceptance: [WEB-IAM-ACC-SESSION-001]
@@ -290,7 +290,7 @@ cases:
     retries: 0
   - id: WEB-INT-ORG-001
     category: integration
-    status: PLANNED
+    status: NOT_STARTED
     title: Organization lifecycle command result and reload
     requirements: [WEB-IAM-FR-ORG-001, WEB-IAM-FR-DELETE-001, WEB-IAM-FR-IDEM-001]
     acceptance: [WEB-IAM-ACC-ORG-001, WEB-IAM-ACC-IDEM-001]
@@ -299,7 +299,7 @@ cases:
     retries: 0
   - id: WEB-INT-MEMBER-001
     category: integration
-    status: PLANNED
+    status: NOT_STARTED
     title: Member lifecycle and live authorization behavior
     requirements: [WEB-IAM-FR-MEMBER-001, WEB-IAM-FR-RBAC-001, WEB-IAM-FR-RBAC-002]
     acceptance: [WEB-IAM-ACC-MEMBER-001, WEB-IAM-ACC-RBAC-001]
@@ -308,7 +308,7 @@ cases:
     retries: 0
   - id: WEB-INT-AUDIT-001
     category: integration
-    status: PLANNED
+    status: NOT_STARTED
     title: Exact SecurityEvent filters cursors and correlation
     requirements: [WEB-IAM-FR-AUDIT-001]
     acceptance: [WEB-IAM-ACC-AUDIT-001]
@@ -317,7 +317,7 @@ cases:
     retries: 0
   - id: WEB-INT-SMOKE-001
     category: integration
-    status: PLANNED
+    status: NOT_STARTED
     title: Production-shaped Admin HTTP smoke
     requirements: [WEB-IAM-FR-RPC-001, WEB-IAM-FR-MODULE-001]
     acceptance: []
@@ -326,7 +326,7 @@ cases:
     retries: 0
   - id: WEB-SEC-ENUM-001
     category: security
-    status: PLANNED
+    status: NOT_STARTED
     title: Login-request enumeration resistance
     requirements: [WEB-IAM-FR-AUTH-003]
     acceptance: [WEB-IAM-ACC-AUTH-002]
@@ -335,7 +335,7 @@ cases:
     retries: 0
   - id: WEB-SEC-REDIRECT-001
     category: security
-    status: PLANNED
+    status: NOT_STARTED
     title: Callback and return URL rejection
     requirements: [WEB-IAM-FR-AUTH-002]
     acceptance: [WEB-IAM-ACC-AUTH-003]
@@ -344,7 +344,7 @@ cases:
     retries: 0
   - id: WEB-SEC-SECRET-001
     category: security
-    status: PLANNED
+    status: NOT_STARTED
     title: Source log error and artifact secret leakage rejection
     requirements: [WEB-IAM-FR-AUTH-002, WEB-IAM-FR-RPC-001]
     acceptance: []
@@ -353,7 +353,7 @@ cases:
     retries: 0
   - id: WEB-SEC-ROUTE-001
     category: security
-    status: PLANNED
+    status: NOT_STARTED
     title: Protected route and platform-admin fail closed
     requirements: [WEB-IAM-FR-SESSION-001]
     acceptance: [WEB-IAM-ACC-SESSION-001]
@@ -362,7 +362,7 @@ cases:
     retries: 0
   - id: WEB-SEC-TENANT-001
     category: security
-    status: PLANNED
+    status: NOT_STARTED
     title: Cross-organization nondisclosure
     requirements: [WEB-IAM-FR-RBAC-002]
     acceptance: [WEB-IAM-ACC-RBAC-001]
@@ -371,7 +371,7 @@ cases:
     retries: 0
   - id: WEB-SEC-OWNER-001
     category: security
-    status: PLANNED
+    status: NOT_STARTED
     title: Concurrent last-owner preservation
     requirements: [WEB-IAM-FR-MEMBER-001, WEB-IAM-FR-RBAC-002]
     acceptance: [WEB-IAM-ACC-MEMBER-001]
@@ -380,7 +380,7 @@ cases:
     retries: 0
   - id: WEB-SEC-HEADER-001
     category: security
-    status: PLANNED
+    status: NOT_STARTED
     title: Browser and BFF security headers
     requirements: [WEB-IAM-FR-AUTH-002]
     acceptance: []
@@ -389,7 +389,7 @@ cases:
     retries: 0
   - id: WEB-SEC-INPUT-001
     category: security
-    status: PLANNED
+    status: NOT_STARTED
     title: Hostile boundary input rejection
     requirements: [WEB-IAM-FR-RPC-001]
     acceptance: []
@@ -398,7 +398,7 @@ cases:
     retries: 0
   - id: WEB-SEC-METADATA-001
     category: security
-    status: PLANNED
+    status: NOT_STARTED
     title: Audit metadata safe projection
     requirements: [WEB-IAM-FR-AUDIT-001]
     acceptance: [WEB-IAM-ACC-AUDIT-001]

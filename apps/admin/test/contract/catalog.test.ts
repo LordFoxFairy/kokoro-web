@@ -1,3 +1,4 @@
+import { access } from "node:fs/promises";
 import { resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -73,7 +74,7 @@ describe("Admin Web P0 catalog", () => {
     expect(ids).toHaveLength(54);
     expect(new Set(ids).size).toBe(ids.length);
     expect(adminCases).toHaveLength(44);
-    expect(adminCases.every((entry) => entry.status === "PLANNED" && entry.retries === 0)).toBe(true);
+    expect(adminCases.every((entry) => entry.status === "NOT_STARTED" && entry.retries === 0)).toBe(true);
     expect(pairCases.map((entry) => entry.id)).toEqual(sharedPairIds);
     expect(pairCases.every((entry) => entry.status === "NOT_STARTED" && entry.testFile === null)).toBe(true);
   });
@@ -88,7 +89,10 @@ describe("Admin Web P0 catalog", () => {
     for (const entry of catalog.cases) {
       expect(entry.title.trim().length, entry.id).toBeGreaterThan(0);
       expect(entry.evidence.length, entry.id).toBeGreaterThan(0);
-      if (entry.category !== "pair_e2e") expect(entry.testFile, entry.id).toMatch(/\.test\.tsx?$/u);
+      if (entry.category !== "pair_e2e") {
+        expect(entry.testFile, entry.id).toMatch(/\.test\.tsx?$/u);
+        await expect(access(resolve(appRoot, entry.testFile ?? "")), entry.id).resolves.toBeUndefined();
+      }
     }
   });
 });
