@@ -15,8 +15,8 @@ identity, Sessions, organizations, RBAC, command idempotency, and SecurityEvents
 - `app/(control)`: protected control-plane shell and business routes.
 - `server/auth/session.ts`: protected Server Component actor/session boundary.
 - `components/`: local reusable presentation components; no generated messages or tokens.
-- `modules/iam/`: executable User, Session, Organization, Member, and selected-User Access slices;
-  see its adjacent `INDEX.md`. Audit remains outside the route tree until its own slice closes.
+- `modules/iam/`: executable User, Session, Organization, Member, selected-User Access, Audit, and
+  Overview slices plus the static IAM module registry; see its adjacent `INDEX.md`.
 
 ## Collaborators
 

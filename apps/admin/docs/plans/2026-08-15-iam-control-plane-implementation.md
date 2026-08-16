@@ -745,13 +745,13 @@ git commit -m "feat(admin): manage IAM organizations and access"
 - Produces: filtered/cursor Audit route, safe metadata projection, honest overview, and final static
   IAM module registry for the shell.
 
-- [ ] **Step 1: Write failing audit/overview tests**
+- [x] **Step 1: Write failing audit/overview tests**
 
 Cover all exact event filters, invalid UUID/time range, cursor navigation, copyable request/command
 IDs, malformed/oversized/secret-bearing metadata hidden, IAM readiness, recent event limit 10, no
 fabricated totals, unavailable/malformed states, and complete registry/navigation.
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 ```bash
 pnpm --filter @kokoro/admin-web test:component -- audit overview
@@ -759,7 +759,7 @@ pnpm --filter @kokoro/admin-web test:integration -- audit-query
 pnpm --filter @kokoro/admin-web test:security -- audit-metadata
 ```
 
-- [ ] **Step 3: Implement, verify GREEN, and commit**
+- [x] **Step 3: Implement, verify GREEN, and commit**
 
 ```bash
 pnpm --filter @kokoro/admin-web test:component

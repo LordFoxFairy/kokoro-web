@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { AdminShell } from "../../components/shell/admin-shell";
 import { adminNavigation } from "../../components/shell/navigation";
 import { LocaleProvider } from "../../i18n/context";
+import { iamModuleRegistry } from "../../modules/iam/registry";
 
 describe("compact IAM control-plane shell", () => {
   it("WEB-COMP-SHELL-001 renders only executable IAM routes and safe administrator identity", () => {
@@ -23,7 +24,15 @@ describe("compact IAM control-plane shell", () => {
       </LocaleProvider>,
     );
 
-    expect(adminNavigation).toHaveLength(5);
+    expect(iamModuleRegistry.map((module) => module.id)).toEqual([
+      "overview",
+      "users",
+      "sessions",
+      "organizations",
+      "access",
+      "audit",
+    ]);
+    expect(adminNavigation).toHaveLength(6);
     expect(adminNavigation[0]).toMatchObject({ href: "/", labelKey: "nav.overview" });
     expect(screen.getByRole("navigation", { name: "主导航" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /概览/u })).toHaveAttribute("href", "/");
@@ -31,6 +40,7 @@ describe("compact IAM control-plane shell", () => {
     expect(screen.getByRole("link", { name: /会话/u })).toHaveAttribute("href", "/sessions");
     expect(screen.getByRole("link", { name: /组织/u })).toHaveAttribute("href", "/organizations");
     expect(screen.getByRole("link", { name: /访问控制/u })).toHaveAttribute("href", "/access");
+    expect(screen.getByRole("link", { name: /安全审计/u })).toHaveAttribute("href", "/audit");
     expect(screen.getByText("admin@example.com")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "退出登录" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Overview content" })).toBeInTheDocument();

@@ -1,36 +1,43 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { OverviewContent } from "../../components/overview/overview-content";
-import { LocaleProvider, useLocale } from "../../i18n/context";
+import { LocaleProvider } from "../../i18n/context";
+import { IamOverview } from "../../modules/iam/overview/overview";
 
-function LanguageControl(): React.ReactElement {
-  const { setLocale } = useLocale();
-  return <button onClick={() => setLocale("en")}>English</button>;
-}
-
-describe("IAM overview presentation", () => {
-  it("WEB-COMP-OVERVIEW-001 translates the sanitized readiness view without exposing credentials", () => {
+describe("IAM operational overview", () => {
+  it("WEB-COMP-STATE-001 renders readiness and the latest real events without fabricated totals", () => {
     render(
       <LocaleProvider>
-        <LanguageControl />
-        <OverviewContent state={{
+        <IamOverview state={{
           status: "ready",
-          administrator: {
-            email: "admin@example.com",
-            id: "bce7762a-f7c7-4d22-8031-4336803038eb",
-          },
-          actorExpiresAt: "2026-08-16T12:00:00.000Z",
+          administrator: { email: "admin@example.com", id: "bce7762a-f7c7-4d22-8031-4336803038eb" },
+          actorExpiresAt: "2026-08-16T13:00:00.000Z",
+          recentEvents: [{
+            id: "0dbc85ab-70fb-4362-8854-e4834be725ec",
+            kind: "member.changed",
+            requestId: "df486566-7614-461f-a72c-1b3d4ea9e985",
+            commandId: "8deecb20-8d72-4b7e-a719-722a2e606728",
+            createdAt: "2026-08-16T12:30:00.000Z",
+          }],
         }} />
       </LocaleProvider>,
     );
 
     expect(screen.getByRole("heading", { name: "IAM 运行概览" })).toBeInTheDocument();
+    expect(screen.getByText("可用")).toBeInTheDocument();
     expect(screen.getByText("admin@example.com")).toBeInTheDocument();
-    expect(document.body.textContent).not.toMatch(/token|credential|bearer/iu);
+    expect(screen.getByRole("heading", { name: "最近安全事件" })).toBeInTheDocument();
+    expect(screen.getByText("member.changed")).toBeInTheDocument();
+    expect(screen.queryByText(/总用户|总组织|total users|total organizations/u)).not.toBeInTheDocument();
+  });
 
-    fireEvent.click(screen.getByRole("button", { name: "English" }));
-    expect(screen.getByRole("heading", { name: "IAM operational overview" })).toBeInTheDocument();
-    expect(screen.getByText("Available")).toBeInTheDocument();
+  it("WEB-COMP-STATE-001 renders unavailable and malformed states distinctly", () => {
+    const { rerender } = render(
+      <LocaleProvider><IamOverview state={{ status: "unavailable" }} /></LocaleProvider>,
+    );
+    expect(screen.getByText("服务暂不可用")).toBeInTheDocument();
+
+    rerender(<LocaleProvider><IamOverview state={{ status: "malformed" }} /></LocaleProvider>);
+    expect(screen.getByText("数据不可读取")).toBeInTheDocument();
   });
 });

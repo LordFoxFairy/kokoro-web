@@ -51,6 +51,16 @@ messages, actor tokens, Connect transports, and raw provider errors do not cross
 - `access/access-catalog.tsx`: read-only catalogs and live allow/deny evidence; it exposes no custom
   Role or Permission mutation control.
 
+## Audit And Overview
+
+- `audit/schema.ts`, `audit/query.ts`, and `audit/url.ts`: exact Provider filter validation,
+  cursor state, bounded metadata parsing, and safe allowlisted SecurityEvent projection.
+- `audit/event-table.tsx`: filterable event ledger with copyable request/command/entity correlation.
+- `overview/schema.ts`, `overview/query.ts`, and `overview/overview.tsx`: Client-safe state, IAM
+  readiness, current administrator context, and exactly ten recent SecurityEvents without
+  fabricated totals.
+- `registry.ts`: final static route/label/group/icon descriptors consumed by the shell navigation.
+
 ## Constraints
 
 - Reads are Server Component operations; filters are URL state and page size is bounded to 100.
@@ -66,5 +76,7 @@ messages, actor tokens, Connect transports, and raw provider errors do not cross
   transactionally before any state, receipt, or SecurityEvent mutation.
 - Access inspection requires an explicit active User, validates both User and Organization response
   correlation, and never treats the administrator's Session as the inspected subject.
+- Raw SecurityEvent metadata remains server-only; malformed, oversized, or secret-bearing values
+  produce no Client-visible metadata, and only validated allowlisted fields are rendered.
 - New IAM capabilities add a sibling vertical module and navigation only after its route is
   executable and classified tests pass.

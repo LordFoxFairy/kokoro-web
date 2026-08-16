@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createClient, type Transport } from "@connectrpc/connect";
+import { timestampFromDate } from "@bufbuild/protobuf/wkt";
 
 import { IamAdministrationService } from "../../generated/iam/proto/kokoro/iam/v1/administration_pb";
 import { IamAuthorizationService } from "../../generated/iam/proto/kokoro/iam/v1/authorization_pb";
@@ -78,8 +79,13 @@ export type InspectUserAuthorizationInput = Readonly<{
 }>;
 export type SecurityEventListInput = Readonly<{
   requestId: string;
+  kind?: string;
+  actorUserId?: string;
   targetUserId?: string;
   organizationId?: string;
+  commandId?: string;
+  createdAfter?: Date;
+  createdBefore?: Date;
   cursor?: string;
   limit: number;
 }>;
@@ -301,8 +307,13 @@ export function createIamManagementClient(transport: Transport): IamManagementCl
     async listSecurityEvents(input) {
       const response = await administration.listSecurityEvents({
         requestId: input.requestId,
+        ...(input.kind === undefined ? {} : { kind: input.kind }),
+        ...(input.actorUserId === undefined ? {} : { actorUserId: input.actorUserId }),
         ...(input.targetUserId === undefined ? {} : { targetUserId: input.targetUserId }),
         ...(input.organizationId === undefined ? {} : { organizationId: input.organizationId }),
+        ...(input.commandId === undefined ? {} : { commandId: input.commandId }),
+        ...(input.createdAfter === undefined ? {} : { createdAfter: timestampFromDate(input.createdAfter) }),
+        ...(input.createdBefore === undefined ? {} : { createdBefore: timestampFromDate(input.createdBefore) }),
         page: { limit: input.limit, cursor: input.cursor ?? "" },
       });
       return Object.freeze({

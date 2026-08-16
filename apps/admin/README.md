@@ -10,8 +10,10 @@ Next.js browser BFF and Ant Design Pro operations console for `kokoro-iam`.
   descriptors and narrow server-only clients.
 - `app/(control)/layout.tsx` resolves the current active platform administrator before rendering the
   shell. The Overview performs an actor-token exchange as live IAM readiness evidence.
-- Protected business routes currently include `/users`, `/users/[userId]`, `/sessions`,
-  `/organizations`, `/organizations/[organizationId]`, and `/access`.
+- Protected business routes include `/users`, `/users/[userId]`, `/sessions`, `/organizations`,
+  `/organizations/[organizationId]`, `/access`, and `/audit`.
+- Overview reports live IAM readiness and the ten most recent SecurityEvents without deriving totals
+  from paginated lists.
 - Admin Web owns no database, SQL, Prisma client, gateway proxy, or browser-visible IAM token.
 
 ## Environment

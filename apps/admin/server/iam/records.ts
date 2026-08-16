@@ -125,6 +125,7 @@ export type AdminSecurityEvent = Readonly<{
   sessionId: string | null;
   requestId: string;
   commandId: string | null;
+  metadataJson: string | null;
   createdAt: Date;
 }>;
 
@@ -387,7 +388,6 @@ export function securityEventFromRecord(record: SecurityEventRecord | undefined)
     || record.kind.length > 96
     || !uuidPattern.test(record.requestId)
     || optionalIds.some((value) => value !== undefined && !uuidPattern.test(value))
-    || record.metadataJson.length > 16_384
   ) {
     return invalid("SecurityEventRecord");
   }
@@ -400,6 +400,7 @@ export function securityEventFromRecord(record: SecurityEventRecord | undefined)
     sessionId: record.sessionId ?? null,
     requestId: record.requestId,
     commandId: record.commandId ?? null,
+    metadataJson: record.metadataJson.length > 4_096 ? null : record.metadataJson,
     createdAt: date(record.createdAt, "SecurityEventRecord"),
   });
 }
