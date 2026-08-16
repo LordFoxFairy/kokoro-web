@@ -241,7 +241,7 @@ export default function UsersPage(): React.ReactElement {
                 if (!route) return [];
                 const rows = await apiGet(
                   `/api/resource?${queryString({ moduleId: "payment", route, siteId })}`,
-                  z.array(z.record(z.unknown())),
+                  z.array(z.record(z.string(), z.unknown())),
                 );
                 return rows
                   .filter((r) => r.siteId === siteId)

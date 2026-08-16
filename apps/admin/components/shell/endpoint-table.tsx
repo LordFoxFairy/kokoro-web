@@ -7,7 +7,7 @@ import { z } from "zod";
 import { apiGet, queryString } from "@/lib/api";
 import { useAdmin } from "@/components/shell/app-shell";
 
-const rowsSchema = z.array(z.record(z.unknown()));
+const rowsSchema = z.array(z.record(z.string(), z.unknown()));
 type Row = Record<string, unknown>;
 
 const NUMERIC = /micros|amount|minor|balance|price|qty|count|total|held|score|num$/i;

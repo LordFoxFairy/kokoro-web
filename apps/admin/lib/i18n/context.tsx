@@ -3,7 +3,7 @@
 // React 绑定：LocaleProvider（协商初值 + 持久化切换）+ useT/useLocale。
 // 引擎（协商/解析/插值）来自共享窄包 @kokoro/i18n；此处只做 React/存储副作用。
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { createI18n, type TranslateFn } from "@kokoro/i18n";
 import { DEFAULT_LOCALE, LOCALES, LOCALE_STORAGE_KEY, zh, type Locale, type MessageKey } from "./messages";
 import { en } from "./en";
@@ -23,15 +23,18 @@ interface LocaleContextValue {
 
 const LocaleContext = createContext<LocaleContextValue | null>(null);
 
-export function LocaleProvider({ children }: { children: React.ReactNode }): React.ReactElement {
-  // SSR 与水合首帧保持默认，挂载后按持久化偏好/浏览器语言协商，避免注水不一致。
-  const [mounted, setMounted] = useState(false);
-  const [override, setOverride] = useState<Locale | null>(null);
-  useEffect(() => setMounted(true), []);
+function subscribeToLocaleStorage(onStoreChange: () => void): () => void {
+  window.addEventListener("storage", onStoreChange);
+  return () => window.removeEventListener("storage", onStoreChange);
+}
 
-  const negotiated = mounted
-    ? i18n.negotiate(window.localStorage.getItem(LOCALE_STORAGE_KEY), navigator.languages)
-    : DEFAULT_LOCALE;
+function browserLocale(): Locale {
+  return i18n.negotiate(window.localStorage.getItem(LOCALE_STORAGE_KEY), navigator.languages);
+}
+
+export function LocaleProvider({ children }: { children: React.ReactNode }): React.ReactElement {
+  const [override, setOverride] = useState<Locale | null>(null);
+  const negotiated = useSyncExternalStore(subscribeToLocaleStorage, browserLocale, () => DEFAULT_LOCALE);
   const locale = override ?? negotiated;
 
   useEffect(() => {

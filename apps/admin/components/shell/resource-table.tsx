@@ -148,7 +148,7 @@ function FormFields({
                 if (!route) return [];
                 const rows = await apiGet(
                   `/api/resource?${queryString(resourceQueryParams(of.moduleId, of.resourceId, route, of.siteScoped ? siteId : ""))}`,
-                  z.array(z.record(z.unknown())),
+                  z.array(z.record(z.string(), z.unknown())),
                 );
                 return rows
                   .filter((r) => !of.siteScoped || r.siteId === siteId)
@@ -282,7 +282,7 @@ export function ResourceTable({
         ],
       },
     ];
-  }, [baseCols, rowActions, rowFormActions, upsertAvailable, t]);
+  }, [baseCols, rowActions, rowFormActions, resourceForm?.createOnly, upsertAvailable, t]);
 
   async function dispatchAction(actionId: string, extra: { params?: Record<string, string>; body?: Record<string, unknown>; reason?: string }): Promise<boolean> {
     try {
@@ -354,7 +354,7 @@ export function ResourceTable({
           try {
             const raw = await apiGet(
               `/api/resource?${queryString(resourceQueryParams(moduleId, active.id, active.route, siteId))}`,
-              z.array(z.record(z.unknown())),
+              z.array(z.record(z.string(), z.unknown())),
             );
             setSampleRows(raw);
             return { data: raw, success: true, total: raw.length };

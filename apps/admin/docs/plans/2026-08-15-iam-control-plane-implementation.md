@@ -83,7 +83,7 @@ apps/admin/reports/**                               report templates and accepte
 - Produces: exact toolchain scripts, classified Vitest environments, executable catalog loader, and
   report structure used by all later tasks.
 
-- [ ] **Step 1: Write failing toolchain and catalog tests**
+- [x] **Step 1: Write failing toolchain and catalog tests**
 
 The toolchain test reads source/config files and requires native Next 16 flat config, no
 `FlatCompat`, exact Admin dependency pins, and scripts for every category.
@@ -171,7 +171,7 @@ pair_e2e:
   IAM-E2E-IDEM-001          IAM-E2E-FRESH-001
 ```
 
-- [ ] **Step 2: Run focused tests and verify RED**
+- [x] **Step 2: Run focused tests and verify RED**
 
 Run:
 
@@ -182,7 +182,7 @@ pnpm --filter @kokoro/admin-web exec vitest run test/contract/catalog.test.ts te
 Expected: fail because the catalog does not exist and Admin still uses `FlatCompat`, Prisma build
 scripts/dependencies, caret ranges, and unclassified test scripts.
 
-- [ ] **Step 3: Replace the stale ESLint bridge and define exact scripts**
+- [x] **Step 3: Replace the stale ESLint bridge and define exact scripts**
 
 Use the proven native Next 16 shape:
 
@@ -203,13 +203,13 @@ Add `test:unit`, `test:component`, `test:contract`, `test:integration`, `test:se
 Configure Vitest projects for Node categories and jsdom components, using the same isolated-linker
 matcher registration already proven in `apps/user/tests/setup.ts`.
 
-- [ ] **Step 4: Add the catalog and report template**
+- [x] **Step 4: Add the catalog and report template**
 
 Define each case with stable ID, category, title, PRD requirements, acceptance IDs, executable test
 file, expected evidence types, retry `0`, and initial status. Pair cases remain `NOT_STARTED`; every
 Admin-owned case starts `PLANNED` and must become executable before repository acceptance.
 
-- [ ] **Step 5: Install exactly and verify GREEN**
+- [x] **Step 5: Install exactly and verify GREEN**
 
 Run:
 
@@ -223,7 +223,7 @@ pnpm --filter @kokoro/admin-web lint --max-warnings=0
 Expected: catalog/toolchain tests pass and ESLint evaluates source with zero warnings. Existing
 Prisma production removal remains for Task 5 after the replacement Auth.js Adapter is executable.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add package.json pnpm-workspace.yaml pnpm-lock.yaml apps/admin

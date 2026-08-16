@@ -7,6 +7,12 @@ Read target-state documents in this order before changing the IAM control plane:
 3. `decisions/ADR-001-iam-rpc-control-plane.md`
 4. `plans/2026-08-15-iam-control-plane-implementation.md`
 
+Test execution authority and report structure:
+
+- `../test/README.md`
+- `../test/catalog/p0.yaml`
+- `../reports/templates/acceptance-report.md`
+
 The current implementation may lag these documents until the implementation plan is complete. Do
 not add compatibility paths to reduce that gap; execute the hard-cut plan and update this index when
 the accepted target changes.

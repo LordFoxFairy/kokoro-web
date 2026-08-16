@@ -1,14 +1,43 @@
-import { defineConfig } from "vitest/config";
-import { fileURLToPath } from "url";
-import { dirname } from "path";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
-// adapter/纯逻辑单测：node 环境 + 手动 @ 别名（避免 ESM-only 插件在 CJS 配置里 require 失败）。
+import { defineConfig } from "vitest/config";
+
 const root = dirname(fileURLToPath(import.meta.url));
+const resolveConfig = {
+  alias: {
+    "@": root,
+    "server-only": resolve(root, "test/support/server-only.ts"),
+  },
+};
 
 export default defineConfig({
-  resolve: { alias: { "@": root } },
   test: {
-    environment: "node",
-    include: ["lib/**/*.test.ts"],
+    projects: [
+      {
+        resolve: resolveConfig,
+        test: {
+          name: "node",
+          environment: "node",
+          include: [
+            "lib/**/*.test.ts",
+            "test/unit/**/*.test.ts",
+            "test/contract/**/*.test.ts",
+            "test/integration/**/*.test.ts",
+            "test/security/**/*.test.ts",
+            "test/pair/**/*.test.ts",
+          ],
+        },
+      },
+      {
+        resolve: resolveConfig,
+        test: {
+          name: "component",
+          environment: "jsdom",
+          setupFiles: ["./test/setup/component.ts"],
+          include: ["test/component/**/*.test.ts", "test/component/**/*.test.tsx"],
+        },
+      },
+    ],
   },
 });
