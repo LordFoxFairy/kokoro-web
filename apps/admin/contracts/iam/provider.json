@@ -1,0 +1,39 @@
+{
+  "repository": "kokoro-iam",
+  "commit": "c96e369d3f04f1ae653da16fec3c83266484c9bc",
+  "tree": "ee0326d14876cff12c50c8b77efef5204cbff898",
+  "protoSha256": "30ca6dd986764a9f2a7b9283d0c470613974eb39bfd3ca02a98b4e427909c2ce",
+  "migrationSha256": "846491c5a72331a8d7aa1a2b51a153165dc636957ac1edf867e3836405f358c2",
+  "catalogSha256": "eac700d3b39c33c7caad4ed00df6ad7a1de0fe747abf833d5352f76184fd62a4",
+  "acceptedRunId": "iam-20260815T202800186Z-c96e369d3f04",
+  "files": [
+    {
+      "path": "proto/kokoro/common/v1/error.proto",
+      "sha256": "324b81549c01e6b1a4288039a1d12a664dd63e0fb4dc15cdac103b371a3116e1"
+    },
+    {
+      "path": "proto/kokoro/iam/v1/administration.proto",
+      "sha256": "e2560b49b00db5557734b2fedae3bc0aa13cec9d556d77b220b93611adf8529e"
+    },
+    {
+      "path": "proto/kokoro/iam/v1/auth_adapter.proto",
+      "sha256": "e7c20337862d676bc2936bffe6c6dba723d80b2a5595a59ff9e3d51b59f47586"
+    },
+    {
+      "path": "proto/kokoro/iam/v1/authorization.proto",
+      "sha256": "20c0550f5a264047fb72fa1eba1c4588c9aea46b4f1b02126ff69b92746f77e3"
+    },
+    {
+      "path": "proto/kokoro/iam/v1/organization.proto",
+      "sha256": "b4ae59db85c47b7a1206705ac75ea694d65bc6f7a29cd1a318870ff496ce8026"
+    },
+    {
+      "path": "proto/kokoro/iam/v1/session.proto",
+      "sha256": "d6281d30f4730223caf9f347799f516eb6b38f137d30b78ddba26d21fc54a025"
+    },
+    {
+      "path": "proto/kokoro/iam/v1/types.proto",
+      "sha256": "c5b5b79c1863a7c19e42ddb40e81f530f4af8afe59046c28708d76f2e26abc68"
+    }
+  ]
+}

@@ -1,0 +1,98 @@
+syntax = "proto3";
+
+package kokoro.iam.v1;
+
+import "buf/validate/validate.proto";
+import "google/protobuf/timestamp.proto";
+import "kokoro/iam/v1/types.proto";
+
+message IamAdministrationServiceListUsersRequest {
+  string request_id = 1 [(buf.validate.field).string.uuid = true];
+  string query = 2 [(buf.validate.field).string.max_len = 320];
+  string status = 3 [(buf.validate.field).string.max_len = 32];
+  PageInput page = 4;
+  bool include_deleted = 5;
+}
+message IamAdministrationServiceListUsersResponse { repeated UserRecord users = 1; PageOutput page = 2; }
+
+message IamAdministrationServiceGetUserRequest {
+  string request_id = 1 [(buf.validate.field).string.uuid = true];
+  string user_id = 2 [(buf.validate.field).string.uuid = true];
+  bool include_deleted = 3;
+}
+message IamAdministrationServiceGetUserResponse { optional UserRecord user = 1; }
+
+message IamAdministrationServiceSuspendUserRequest {
+  CommandContext command = 1 [(buf.validate.field).required = true];
+  string user_id = 2 [(buf.validate.field).string.uuid = true];
+}
+message IamAdministrationServiceSuspendUserResponse { UserRecord user = 1; bool replayed = 2; }
+
+message IamAdministrationServiceReactivateUserRequest {
+  CommandContext command = 1 [(buf.validate.field).required = true];
+  string user_id = 2 [(buf.validate.field).string.uuid = true];
+}
+message IamAdministrationServiceReactivateUserResponse { UserRecord user = 1; bool replayed = 2; }
+
+message IamAdministrationServiceDeleteUserRequest {
+  CommandContext command = 1 [(buf.validate.field).required = true];
+  string user_id = 2 [(buf.validate.field).string.uuid = true];
+}
+message IamAdministrationServiceDeleteUserResponse { UserRecord user = 1; bool replayed = 2; }
+
+message IamAdministrationServiceRestoreUserRequest {
+  CommandContext command = 1 [(buf.validate.field).required = true];
+  string user_id = 2 [(buf.validate.field).string.uuid = true];
+}
+message IamAdministrationServiceRestoreUserResponse { UserRecord user = 1; bool replayed = 2; }
+
+message IamAdministrationServiceListOrganizationsRequest {
+  string request_id = 1 [(buf.validate.field).string.uuid = true];
+  string query = 2 [(buf.validate.field).string.max_len = 160];
+  string status = 3 [(buf.validate.field).string.max_len = 32];
+  PageInput page = 4;
+  bool include_deleted = 5;
+}
+message IamAdministrationServiceListOrganizationsResponse {
+  repeated OrganizationRecord organizations = 1;
+  PageOutput page = 2;
+}
+
+message IamAdministrationServiceGetOrganizationRequest {
+  string request_id = 1 [(buf.validate.field).string.uuid = true];
+  string organization_id = 2 [(buf.validate.field).string.uuid = true];
+  bool include_deleted = 3;
+}
+message IamAdministrationServiceGetOrganizationResponse { optional OrganizationRecord organization = 1; }
+
+message IamAdministrationServiceRevokeUserSessionsRequest {
+  CommandContext command = 1 [(buf.validate.field).required = true];
+  string user_id = 2 [(buf.validate.field).string.uuid = true];
+}
+message IamAdministrationServiceRevokeUserSessionsResponse { uint32 revoked_count = 1; bool replayed = 2; }
+
+message ListSecurityEventsRequest {
+  string request_id = 1 [(buf.validate.field).string.uuid = true];
+  optional string kind = 2 [(buf.validate.field).string.max_len = 96];
+  optional string actor_user_id = 3 [(buf.validate.field).string.uuid = true];
+  optional string target_user_id = 4 [(buf.validate.field).string.uuid = true];
+  optional string organization_id = 5 [(buf.validate.field).string.uuid = true];
+  optional string command_id = 6 [(buf.validate.field).string.uuid = true];
+  optional google.protobuf.Timestamp created_after = 7;
+  optional google.protobuf.Timestamp created_before = 8;
+  PageInput page = 9;
+}
+message ListSecurityEventsResponse { repeated SecurityEventRecord events = 1; PageOutput page = 2; }
+
+service IamAdministrationService {
+  rpc ListUsers(IamAdministrationServiceListUsersRequest) returns (IamAdministrationServiceListUsersResponse);
+  rpc GetUser(IamAdministrationServiceGetUserRequest) returns (IamAdministrationServiceGetUserResponse);
+  rpc SuspendUser(IamAdministrationServiceSuspendUserRequest) returns (IamAdministrationServiceSuspendUserResponse);
+  rpc ReactivateUser(IamAdministrationServiceReactivateUserRequest) returns (IamAdministrationServiceReactivateUserResponse);
+  rpc DeleteUser(IamAdministrationServiceDeleteUserRequest) returns (IamAdministrationServiceDeleteUserResponse);
+  rpc RestoreUser(IamAdministrationServiceRestoreUserRequest) returns (IamAdministrationServiceRestoreUserResponse);
+  rpc ListOrganizations(IamAdministrationServiceListOrganizationsRequest) returns (IamAdministrationServiceListOrganizationsResponse);
+  rpc GetOrganization(IamAdministrationServiceGetOrganizationRequest) returns (IamAdministrationServiceGetOrganizationResponse);
+  rpc RevokeUserSessions(IamAdministrationServiceRevokeUserSessionsRequest) returns (IamAdministrationServiceRevokeUserSessionsResponse);
+  rpc ListSecurityEvents(ListSecurityEventsRequest) returns (ListSecurityEventsResponse);
+}

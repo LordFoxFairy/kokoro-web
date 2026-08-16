@@ -1,0 +1,39 @@
+syntax = "proto3";
+
+package kokoro.iam.v1;
+
+import "buf/validate/validate.proto";
+import "google/protobuf/timestamp.proto";
+import "kokoro/iam/v1/types.proto";
+
+message AuthorizeRequest {
+  string request_id = 1 [(buf.validate.field).string.uuid = true];
+  string organization_id = 2 [(buf.validate.field).string.uuid = true];
+  string permission_key = 3 [(buf.validate.field).string = {pattern: "^[a-z][a-z0-9_]*:[a-z][a-z0-9_]*$", max_len: 128}];
+  optional string resource_ref = 4 [(buf.validate.field).string.max_len = 320];
+}
+message AuthorizeResponse {
+  bool allowed = 1;
+  string reason_code = 2;
+  string user_id = 3;
+  string session_id = 4;
+  string organization_id = 5;
+  repeated string role_keys = 6;
+  uint64 authorization_version = 7;
+  google.protobuf.Timestamp evaluated_at = 8;
+}
+
+message ListRoleCatalogRequest {
+  string request_id = 1 [(buf.validate.field).string.uuid = true];
+  string organization_id = 2 [(buf.validate.field).string.uuid = true];
+}
+message ListRoleCatalogResponse { repeated RoleRecord roles = 1; }
+
+message ListPermissionCatalogRequest { string request_id = 1 [(buf.validate.field).string.uuid = true]; }
+message ListPermissionCatalogResponse { repeated PermissionRecord permissions = 1; }
+
+service IamAuthorizationService {
+  rpc Authorize(AuthorizeRequest) returns (AuthorizeResponse);
+  rpc ListRoleCatalog(ListRoleCatalogRequest) returns (ListRoleCatalogResponse);
+  rpc ListPermissionCatalog(ListPermissionCatalogRequest) returns (ListPermissionCatalogResponse);
+}

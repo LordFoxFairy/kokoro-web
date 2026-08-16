@@ -41,5 +41,7 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# prisma 生成的 client（postinstall `prisma generate` 重生，不入库）
-/generated
+# Prisma client is transient; frozen IAM Protobuf output is committed.
+/generated/*
+!/generated/iam/
+!/generated/iam/**

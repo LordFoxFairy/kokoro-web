@@ -3,6 +3,7 @@ packages:
   - packages/*
 
 allowBuilds:
+  '@bufbuild/buf': true
   '@prisma/client': true
   '@prisma/engines': true
   esbuild: true

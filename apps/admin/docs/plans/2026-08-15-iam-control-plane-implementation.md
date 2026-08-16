@@ -251,14 +251,14 @@ git commit -m "test(admin): establish IAM control plane gates"
 - Produces: checked-in Protobuf-ES descriptors for all five IAM services and a verified provider
   metadata contract consumed by every server client and pair report.
 
-- [ ] **Step 1: Write failing provider/service inventory tests**
+- [x] **Step 1: Write failing provider/service inventory tests**
 
 Assert exact metadata values and generated method inventories. The Adapter inventory is exactly the
 fourteen provider methods; Administration, Organization, Authorization, and Session inventories are
 read from their accepted Proto descriptors. Assert generated source contains no sibling absolute
-path and all generated files begin with `@generated`.
+path and all generated files carry the exact `@generated` tool marker.
 
-- [ ] **Step 2: Run tests and verify RED**
+- [x] **Step 2: Run tests and verify RED**
 
 Run:
 
@@ -268,7 +268,7 @@ pnpm --filter @kokoro/admin-web test:contract -- provider-snapshot generated-ser
 
 Expected: fail because provider metadata and generated descriptors do not exist.
 
-- [ ] **Step 3: Implement the exact import and generation flow**
+- [x] **Step 3: Implement the exact import and generation flow**
 
 `provider.json` records:
 
@@ -288,7 +288,7 @@ The import script executes read-only `git show`/`git archive`, copies only the a
 computes ordered per-file hashes, and rejects any mismatch. Buf generation uses `target=ts` with
 extensionless imports and cleans `generated/iam` before output.
 
-- [ ] **Step 4: Generate and verify GREEN**
+- [x] **Step 4: Generate and verify GREEN**
 
 Run:
 
@@ -300,7 +300,7 @@ pnpm --filter @kokoro/admin-web test:contract -- provider-snapshot generated-ser
 
 Expected: deterministic diff is empty on the second generation and both contract tests pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/admin/contracts apps/admin/generated apps/admin/scripts/contracts apps/admin/package.json pnpm-lock.yaml apps/admin/test/contract
