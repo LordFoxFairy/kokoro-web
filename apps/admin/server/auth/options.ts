@@ -12,7 +12,7 @@ import { safeAuthRedirect } from "./redirect";
 
 export type AdminAuthOptionsDependencies = Readonly<{
   authAdapterClient: IamAuthAdapterClient;
-  sendVerificationRequest: SendVerificationRequest;
+  sendVerificationRequest?: SendVerificationRequest;
   logger: NonNullable<NextAuthConfig["logger"]>;
 }>;
 
@@ -32,6 +32,17 @@ export function createAdminAuthOptions(
   config: AdminRuntimeConfig,
   dependencies: AdminAuthOptionsDependencies,
 ): NextAuthConfig {
+  const emailProvider = config.smtp === null ? [] : [Nodemailer({
+    server: {
+      host: config.smtp.host,
+      port: config.smtp.port,
+      secure: config.smtp.port === 465,
+      ...(config.smtp.auth === null ? {} : { auth: { user: config.smtp.auth.user, pass: config.smtp.auth.password } }),
+    },
+    from: config.smtp.from,
+    maxAge: config.magicLinkMaxAgeSeconds,
+    ...(dependencies.sendVerificationRequest === undefined ? {} : { sendVerificationRequest: dependencies.sendVerificationRequest }),
+  })];
   return {
     secret: config.auth.secret,
     trustHost: true,
@@ -44,21 +55,7 @@ export function createAdminAuthOptions(
       verifyRequest: "/auth/verify",
       error: "/auth/verify",
     },
-    providers: [
-      Nodemailer({
-        server: {
-          host: config.smtp.host,
-          port: config.smtp.port,
-          secure: config.smtp.port === 465,
-          ...(config.smtp.auth === null
-            ? {}
-            : { auth: { user: config.smtp.auth.user, pass: config.smtp.auth.password } }),
-        },
-        from: config.smtp.from,
-        maxAge: config.magicLinkMaxAgeSeconds,
-        sendVerificationRequest: dependencies.sendVerificationRequest,
-      }),
-    ],
+    providers: emailProvider,
     callbacks: {
       signIn({ user, account, email }) {
         if (verificationRequest(email)) return true;

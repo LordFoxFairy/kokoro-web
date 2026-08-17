@@ -10,6 +10,10 @@ const emptyToUndefined = z.preprocess(
   (value) => value === "" ? undefined : value,
   z.string().optional(),
 );
+const optionalPort = z.preprocess(
+  (value) => value === "" || value === undefined ? undefined : Number(value),
+  z.number().int().min(1).max(65_535).optional(),
+);
 
 const environmentSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
@@ -19,9 +23,9 @@ const environmentSchema = z.object({
   KOKORO_IAM_BASE_URL: z.string().min(1).max(2_048),
   KOKORO_IAM_ADMIN_WEB_TOKEN_FILE: z.string().min(1).max(4_096),
   MAGIC_LINK_MAX_AGE: z.coerce.number().int().min(60).max(3_600).default(600),
-  EMAIL_FROM: z.string().trim().min(3).max(320),
-  EMAIL_SERVER_HOST: z.string().trim().min(1).max(255),
-  EMAIL_SERVER_PORT: z.coerce.number().int().min(1).max(65_535),
+  EMAIL_FROM: z.string().trim().min(3).max(320).optional(),
+  EMAIL_SERVER_HOST: z.string().trim().min(1).max(255).optional(),
+  EMAIL_SERVER_PORT: optionalPort,
   EMAIL_SERVER_USER: emptyToUndefined,
   EMAIL_SERVER_PASSWORD_FILE: emptyToUndefined,
 });
@@ -48,7 +52,7 @@ export type AdminRuntimeConfig = Readonly<{
     host: string;
     port: number;
     auth: Readonly<{ user: string; password: string }> | null;
-  }>;
+  }> | null;
 }>;
 
 function invalid(...names: string[]): never {
@@ -80,16 +84,25 @@ export function loadAdminConfig(source: NodeJS.ProcessEnv = process.env): AdminR
     return invalid(...names);
   }
   const value = parsed.data;
+  const smtpCapability = [value.EMAIL_FROM, value.EMAIL_SERVER_HOST, value.EMAIL_SERVER_PORT];
+  if (smtpCapability.some((item) => item !== undefined) && smtpCapability.some((item) => item === undefined)) {
+    return invalid("EMAIL_FROM", "EMAIL_SERVER_HOST", "EMAIL_SERVER_PORT");
+  }
+  const smtpEnabled = smtpCapability.every((item) => item !== undefined);
+  if (!smtpEnabled && (value.EMAIL_SERVER_USER !== undefined || value.EMAIL_SERVER_PASSWORD_FILE !== undefined)) {
+    return invalid("EMAIL_SERVER_USER", "EMAIL_SERVER_PASSWORD_FILE");
+  }
   if ((value.EMAIL_SERVER_USER === undefined) !== (value.EMAIL_SERVER_PASSWORD_FILE === undefined)) {
     return invalid("EMAIL_SERVER_USER", "EMAIL_SERVER_PASSWORD_FILE");
   }
 
   const authUrl = normalizedUrl(value.AUTH_URL, "AUTH_URL");
   const iamBaseUrl = normalizedUrl(value.KOKORO_IAM_BASE_URL, "KOKORO_IAM_BASE_URL");
-  if (authUrl.protocol === "http:" && (value.NODE_ENV === "production" || !isLoopback(authUrl.hostname))) {
+  if (authUrl.protocol === "http:" && !isLoopback(authUrl.hostname)) {
     return invalid("AUTH_URL");
   }
-  if (value.NODE_ENV === "production" && !value.AUTH_SECURE_COOKIES) return invalid("AUTH_SECURE_COOKIES");
+  if (authUrl.protocol === "https:" && !value.AUTH_SECURE_COOKIES) return invalid("AUTH_SECURE_COOKIES");
+  if (authUrl.protocol === "http:" && value.AUTH_SECURE_COOKIES) return invalid("AUTH_SECURE_COOKIES");
 
   const authSecret = readSecretFile(value.AUTH_SECRET_FILE, {
     label: "AUTH_SECRET_FILE",
@@ -124,11 +137,11 @@ export function loadAdminConfig(source: NodeJS.ProcessEnv = process.env): AdminR
       timeoutMs: 15_000,
     }),
     magicLinkMaxAgeSeconds: value.MAGIC_LINK_MAX_AGE,
-    smtp: Object.freeze({
-      from: value.EMAIL_FROM,
-      host: value.EMAIL_SERVER_HOST,
-      port: value.EMAIL_SERVER_PORT,
+    smtp: smtpEnabled ? Object.freeze({
+      from: value.EMAIL_FROM ?? invalid("EMAIL_FROM"),
+      host: value.EMAIL_SERVER_HOST ?? invalid("EMAIL_SERVER_HOST"),
+      port: value.EMAIL_SERVER_PORT ?? invalid("EMAIL_SERVER_PORT"),
       auth: smtpAuth,
-    }),
+    }) : null,
   });
 }

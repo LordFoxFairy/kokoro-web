@@ -14,7 +14,7 @@ const config = loadAdminConfig();
 const authAdapterClient = createIamAuthAdapterClient(createWorkloadTransport(config.iam));
 const runtime = NextAuth(createAdminAuthOptions(config, {
   authAdapterClient,
-  sendVerificationRequest: createVerificationSender(config),
+  ...(config.smtp === null ? {} : { sendVerificationRequest: createVerificationSender(config) }),
   logger: createAuthLogger(),
 }));
 

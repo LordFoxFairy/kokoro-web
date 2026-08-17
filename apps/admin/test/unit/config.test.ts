@@ -97,7 +97,18 @@ describe("strict Admin runtime configuration", () => {
     expect(loadAdminConfig(validSource({
       EMAIL_SERVER_USER: "mailer",
       EMAIL_SERVER_PASSWORD_FILE: passwordPath,
-    })).smtp.auth).toEqual({ user: "mailer", password: "P".repeat(32) });
+    })).smtp?.auth).toEqual({ user: "mailer", password: "P".repeat(32) });
+  });
+
+  it("WEB-UNIT-CONFIG-001 supports password-only mode and rejects partial SMTP capability", () => {
+    const passwordOnly = validSource();
+    delete passwordOnly.EMAIL_FROM;
+    delete passwordOnly.EMAIL_SERVER_HOST;
+    delete passwordOnly.EMAIL_SERVER_PORT;
+    expect(loadAdminConfig(passwordOnly).smtp).toBeNull();
+
+    expect(() => loadAdminConfig({ ...passwordOnly, EMAIL_FROM: "no-reply@kokoro.local" }))
+      .toThrow(/EMAIL_FROM.*EMAIL_SERVER_HOST.*EMAIL_SERVER_PORT/u);
   });
 
   it("WEB-UNIT-CONFIG-001 validates the browser origin separately from the IAM RPC endpoint", () => {
@@ -106,12 +117,15 @@ describe("strict Admin runtime configuration", () => {
     expect(loadAdminConfig(validSource({
       KOKORO_IAM_BASE_URL: "http://iam.internal:4100",
     })).iam.baseUrl).toBe("http://iam.internal:4100");
-    expect(() => loadAdminConfig(validSource({
+    expect(loadAdminConfig(validSource({
       NODE_ENV: "production",
       AUTH_URL: "http://127.0.0.1:3100",
-      AUTH_SECURE_COOKIES: "true",
-      KOKORO_IAM_BASE_URL: "https://iam.example.test",
-    }))).toThrow("AUTH_URL");
+      AUTH_SECURE_COOKIES: "false",
+      KOKORO_IAM_BASE_URL: "http://127.0.0.1:4100",
+    })).auth).toEqual(expect.objectContaining({
+      url: "http://127.0.0.1:3100",
+      secureCookies: false,
+    }));
     expect(loadAdminConfig(validSource({
       NODE_ENV: "production",
       AUTH_URL: "https://admin.example.test",
@@ -120,7 +134,7 @@ describe("strict Admin runtime configuration", () => {
     })).iam.baseUrl).toBe("http://iam.internal:4100");
   });
 
-  it("WEB-UNIT-CONFIG-001 requires HTTPS and secure cookies together in production", () => {
+  it("WEB-UNIT-CONFIG-001 keeps the browser scheme and cookie security mode aligned", () => {
     expect(() => loadAdminConfig(validSource({
       NODE_ENV: "production",
       AUTH_URL: "https://admin.example.test",
@@ -134,5 +148,11 @@ describe("strict Admin runtime configuration", () => {
       AUTH_SECURE_COOKIES: "true",
       KOKORO_IAM_BASE_URL: "https://iam.example.test",
     })).mode).toBe("production");
+
+    expect(() => loadAdminConfig(validSource({
+      NODE_ENV: "production",
+      AUTH_URL: "http://127.0.0.1:3100",
+      AUTH_SECURE_COOKIES: "true",
+    }))).toThrow("AUTH_SECURE_COOKIES");
   });
 });
