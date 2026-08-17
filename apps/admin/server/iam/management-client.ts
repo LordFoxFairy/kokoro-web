@@ -121,6 +121,7 @@ export type SecurityEventListInput = Readonly<{
   actorUserId?: string;
   targetUserId?: string;
   organizationId?: string;
+  siteId?: string;
   commandId?: string;
   createdAfter?: Date;
   createdBefore?: Date;
@@ -466,6 +467,7 @@ export function createIamManagementClient(transport: Transport): IamManagementCl
         ...(input.actorUserId === undefined ? {} : { actorUserId: input.actorUserId }),
         ...(input.targetUserId === undefined ? {} : { targetUserId: input.targetUserId }),
         ...(input.organizationId === undefined ? {} : { organizationId: input.organizationId }),
+        ...(input.siteId === undefined ? {} : { siteId: input.siteId }),
         ...(input.commandId === undefined ? {} : { commandId: input.commandId }),
         ...(input.createdAfter === undefined ? {} : { createdAfter: timestampFromDate(input.createdAfter) }),
         ...(input.createdBefore === undefined ? {} : { createdBefore: timestampFromDate(input.createdBefore) }),

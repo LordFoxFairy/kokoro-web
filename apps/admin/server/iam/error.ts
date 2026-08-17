@@ -16,6 +16,7 @@ export type IamWebError = Readonly<{
 const requestIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const fields = new Set([
   "command_id",
+  "code",
   "created_after",
   "created_before",
   "email",
@@ -29,6 +30,7 @@ const fields = new Set([
   "reason",
   "role_key",
   "session_id",
+  "site_id",
   "slug",
   "status",
   "user_id",
@@ -37,6 +39,7 @@ const fields = new Set([
 const reasonKinds: Readonly<Record<string, IamWebErrorKind>> = {
   invalid_argument: "invalid",
   unauthenticated: "unauthenticated",
+  invalid_credentials: "unauthenticated",
   workload_unauthenticated: "unauthenticated",
   permission_denied: "forbidden",
   workload_forbidden: "forbidden",
