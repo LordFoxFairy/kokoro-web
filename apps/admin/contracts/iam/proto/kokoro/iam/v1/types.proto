@@ -60,6 +60,7 @@ message SessionRecord {
   optional google.protobuf.Timestamp revoked_at = 6;
   google.protobuf.Timestamp created_at = 7;
   google.protobuf.Timestamp updated_at = 8;
+  optional string active_site_id = 9;
 }
 
 message SessionSummaryRecord {
@@ -70,6 +71,7 @@ message SessionSummaryRecord {
   optional google.protobuf.Timestamp revoked_at = 5;
   google.protobuf.Timestamp created_at = 6;
   google.protobuf.Timestamp updated_at = 7;
+  optional string active_site_id = 8;
 }
 
 message VerificationTokenRecord {
@@ -92,6 +94,30 @@ message OrganizationRecord {
 message MemberRecord {
   string id = 1;
   string organization_id = 2;
+  string user_id = 3;
+  string role_id = 4;
+  string role_key = 5;
+  string status = 6;
+  uint64 version = 7;
+  optional google.protobuf.Timestamp deleted_at = 8;
+  google.protobuf.Timestamp created_at = 9;
+  google.protobuf.Timestamp updated_at = 10;
+}
+
+message SiteRecord {
+  string id = 1;
+  string code = 2;
+  string name = 3;
+  string status = 4;
+  uint64 version = 5;
+  optional google.protobuf.Timestamp deleted_at = 6;
+  google.protobuf.Timestamp created_at = 7;
+  google.protobuf.Timestamp updated_at = 8;
+}
+
+message SiteMemberRecord {
+  string id = 1;
+  string site_id = 2;
   string user_id = 3;
   string role_id = 4;
   string role_key = 5;
@@ -134,4 +160,5 @@ message SecurityEventRecord {
   optional string command_id = 8;
   string metadata_json = 9;
   google.protobuf.Timestamp created_at = 10;
+  optional string site_id = 11;
 }

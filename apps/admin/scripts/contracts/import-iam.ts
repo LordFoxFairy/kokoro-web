@@ -6,12 +6,12 @@ import { fileURLToPath } from "node:url";
 
 const provider = {
   repository: "kokoro-iam",
-  commit: "16afccdbec9c22176f9fd493feeb0ed0d7fe3445",
-  tree: "a72b870c8e890eb63176ddb80cc34df3658a474f",
-  protoSha256: "4daad8affaa7eb36e8f587dca3a016dd080b3ca4f3e36f08a19963133a27e38a",
-  migrationSha256: "846491c5a72331a8d7aa1a2b51a153165dc636957ac1edf867e3836405f358c2",
-  catalogSha256: "e388f4a865fa98744989f3e7a6d41d2bf8e6367ae51b8eeee804c763b4bc8552",
-  acceptedRunId: "iam-20260816T111434155Z-16afccdbec9c",
+  commit: "1a78a61af19e8e8dee4dcc64f8405625f8cc561e",
+  tree: "935926ed3c1380ce55d9ec5f053c99f7fcea1a65",
+  protoSha256: "6c0e590a6474aa31e4f418805e36fb92e92a4c91fb3a3909aed09bb8e7f19538",
+  migrationSha256: "ee19a70a54dac67c4b2f17bd94b76d29ae737a1d455f6a83cf6c5b5df0b72dc1",
+  catalogSha256: "4c16742a4bcbb9731177613706507b9ae3e255b528f883dca7860504075ed4b8",
+  acceptedRunId: "iam-20260817T123842963Z-1a78a61af19e",
 } as const;
 
 const vendoredProtoPaths = [
@@ -19,8 +19,10 @@ const vendoredProtoPaths = [
   "proto/kokoro/iam/v1/administration.proto",
   "proto/kokoro/iam/v1/auth_adapter.proto",
   "proto/kokoro/iam/v1/authorization.proto",
+  "proto/kokoro/iam/v1/credential.proto",
   "proto/kokoro/iam/v1/organization.proto",
   "proto/kokoro/iam/v1/session.proto",
+  "proto/kokoro/iam/v1/site.proto",
   "proto/kokoro/iam/v1/types.proto",
 ] as const;
 

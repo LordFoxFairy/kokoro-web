@@ -81,8 +81,23 @@ message ListSecurityEventsRequest {
   optional google.protobuf.Timestamp created_after = 7;
   optional google.protobuf.Timestamp created_before = 8;
   PageInput page = 9;
+  optional string site_id = 10 [(buf.validate.field).string.uuid = true];
 }
-message ListSecurityEventsResponse { repeated SecurityEventRecord events = 1; PageOutput page = 2; }
+message SecurityEventKindCount {
+  string kind = 1;
+  uint64 count = 2;
+}
+
+message SecurityEventStatistics {
+  uint64 total = 1;
+  repeated SecurityEventKindCount by_kind = 2;
+}
+
+message ListSecurityEventsResponse {
+  repeated SecurityEventRecord events = 1;
+  PageOutput page = 2;
+  SecurityEventStatistics statistics = 3;
+}
 
 service IamAdministrationService {
   rpc ListUsers(IamAdministrationServiceListUsersRequest) returns (IamAdministrationServiceListUsersResponse);

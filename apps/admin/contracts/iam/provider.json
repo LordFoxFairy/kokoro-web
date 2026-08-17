@@ -1,11 +1,11 @@
 {
   "repository": "kokoro-iam",
-  "commit": "16afccdbec9c22176f9fd493feeb0ed0d7fe3445",
-  "tree": "a72b870c8e890eb63176ddb80cc34df3658a474f",
-  "protoSha256": "4daad8affaa7eb36e8f587dca3a016dd080b3ca4f3e36f08a19963133a27e38a",
-  "migrationSha256": "846491c5a72331a8d7aa1a2b51a153165dc636957ac1edf867e3836405f358c2",
-  "catalogSha256": "e388f4a865fa98744989f3e7a6d41d2bf8e6367ae51b8eeee804c763b4bc8552",
-  "acceptedRunId": "iam-20260816T111434155Z-16afccdbec9c",
+  "commit": "1a78a61af19e8e8dee4dcc64f8405625f8cc561e",
+  "tree": "935926ed3c1380ce55d9ec5f053c99f7fcea1a65",
+  "protoSha256": "6c0e590a6474aa31e4f418805e36fb92e92a4c91fb3a3909aed09bb8e7f19538",
+  "migrationSha256": "ee19a70a54dac67c4b2f17bd94b76d29ae737a1d455f6a83cf6c5b5df0b72dc1",
+  "catalogSha256": "4c16742a4bcbb9731177613706507b9ae3e255b528f883dca7860504075ed4b8",
+  "acceptedRunId": "iam-20260817T123842963Z-1a78a61af19e",
   "files": [
     {
       "path": "proto/kokoro/common/v1/error.proto",
@@ -13,7 +13,7 @@
     },
     {
       "path": "proto/kokoro/iam/v1/administration.proto",
-      "sha256": "e2560b49b00db5557734b2fedae3bc0aa13cec9d556d77b220b93611adf8529e"
+      "sha256": "c50d6273784b1d2289ff083284dc69fec99e25a6e37d4849d6f13ac59a703662"
     },
     {
       "path": "proto/kokoro/iam/v1/auth_adapter.proto",
@@ -21,7 +21,11 @@
     },
     {
       "path": "proto/kokoro/iam/v1/authorization.proto",
-      "sha256": "65b5b7a167045f8ecca3cae4c85648198a5974c937981ea7c9a8b625e808bad9"
+      "sha256": "7669fc373be6081fa48079ebf03715fec7afea5d65a57e548dcdd67547569cbd"
+    },
+    {
+      "path": "proto/kokoro/iam/v1/credential.proto",
+      "sha256": "8e01174ec07e1d80768210a1f3fa79c06bf321f7cd3a2ff1a1be92712b26c838"
     },
     {
       "path": "proto/kokoro/iam/v1/organization.proto",
@@ -32,8 +36,12 @@
       "sha256": "d6281d30f4730223caf9f347799f516eb6b38f137d30b78ddba26d21fc54a025"
     },
     {
+      "path": "proto/kokoro/iam/v1/site.proto",
+      "sha256": "014dd8ac24a88b4391014310b9d23fb45f300de953c24f004afae34e1b1222e7"
+    },
+    {
       "path": "proto/kokoro/iam/v1/types.proto",
-      "sha256": "c5b5b79c1863a7c19e42ddb40e81f530f4af8afe59046c28708d76f2e26abc68"
+      "sha256": "8af799b6bef387172b053f48eb3fb34679c9eac489699b0c7f78f7e790fdc224"
     }
   ]
 }

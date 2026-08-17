@@ -15,7 +15,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file kokoro/iam/v1/authorization.proto.
  */
 export const file_kokoro_iam_v1_authorization: GenFile = /*@__PURE__*/
-  fileDesc("CiFrb2tvcm8vaWFtL3YxL2F1dGhvcml6YXRpb24ucHJvdG8SDWtva29yby5pYW0udjEizgEKEEF1dGhvcml6ZVJlcXVlc3QSHAoKcmVxdWVzdF9pZBgBIAEoCUIIukgFcgOwAQESIQoPb3JnYW5pemF0aW9uX2lkGAIgASgJQgi6SAVyA7ABARJDCg5wZXJtaXNzaW9uX2tleRgDIAEoCUIrukgociYYgAEyIV5bYS16XVthLXowLTlfXSo6W2Etel1bYS16MC05X10qJBIjCgxyZXNvdXJjZV9yZWYYBCABKAlCCLpIBXIDGMACSACIAQFCDwoNX3Jlc291cmNlX3JlZiLbAQoRQXV0aG9yaXplUmVzcG9uc2USDwoHYWxsb3dlZBgBIAEoCBITCgtyZWFzb25fY29kZRgCIAEoCRIPCgd1c2VyX2lkGAMgASgJEhIKCnNlc3Npb25faWQYBCABKAkSFwoPb3JnYW5pemF0aW9uX2lkGAUgASgJEhEKCXJvbGVfa2V5cxgGIAMoCRIdChVhdXRob3JpemF0aW9uX3ZlcnNpb24YByABKAQSMAoMZXZhbHVhdGVkX2F0GAggASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCL4AQofSW5zcGVjdFVzZXJBdXRob3JpemF0aW9uUmVxdWVzdBIcCgpyZXF1ZXN0X2lkGAEgASgJQgi6SAVyA7ABARIhCg9vcmdhbml6YXRpb25faWQYAiABKAlCCLpIBXIDsAEBEhkKB3VzZXJfaWQYAyABKAlCCLpIBXIDsAEBEkMKDnBlcm1pc3Npb25fa2V5GAQgASgJQiu6SChyJhiAATIhXlthLXpdW2EtejAtOV9dKjpbYS16XVthLXowLTlfXSokEiMKDHJlc291cmNlX3JlZhgFIAEoCUIIukgFcgMYwAJIAIgBAUIPCg1fcmVzb3VyY2VfcmVmItYBCiBJbnNwZWN0VXNlckF1dGhvcml6YXRpb25SZXNwb25zZRIPCgdhbGxvd2VkGAEgASgIEhMKC3JlYXNvbl9jb2RlGAIgASgJEg8KB3VzZXJfaWQYAyABKAkSFwoPb3JnYW5pemF0aW9uX2lkGAQgASgJEhEKCXJvbGVfa2V5cxgFIAMoCRIdChVhdXRob3JpemF0aW9uX3ZlcnNpb24YBiABKAQSMAoMZXZhbHVhdGVkX2F0GAcgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCJZChZMaXN0Um9sZUNhdGFsb2dSZXF1ZXN0EhwKCnJlcXVlc3RfaWQYASABKAlCCLpIBXIDsAEBEiEKD29yZ2FuaXphdGlvbl9pZBgCIAEoCUIIukgFcgOwAQEiQwoXTGlzdFJvbGVDYXRhbG9nUmVzcG9uc2USKAoFcm9sZXMYASADKAsyGS5rb2tvcm8uaWFtLnYxLlJvbGVSZWNvcmQiPAocTGlzdFBlcm1pc3Npb25DYXRhbG9nUmVxdWVzdBIcCgpyZXF1ZXN0X2lkGAEgASgJQgi6SAVyA7ABASJVCh1MaXN0UGVybWlzc2lvbkNhdGFsb2dSZXNwb25zZRI0CgtwZXJtaXNzaW9ucxgBIAMoCzIfLmtva29yby5pYW0udjEuUGVybWlzc2lvblJlY29yZDK8AwoXSWFtQXV0aG9yaXphdGlvblNlcnZpY2USTgoJQXV0aG9yaXplEh8ua29rb3JvLmlhbS52MS5BdXRob3JpemVSZXF1ZXN0GiAua29rb3JvLmlhbS52MS5BdXRob3JpemVSZXNwb25zZRJ7ChhJbnNwZWN0VXNlckF1dGhvcml6YXRpb24SLi5rb2tvcm8uaWFtLnYxLkluc3BlY3RVc2VyQXV0aG9yaXphdGlvblJlcXVlc3QaLy5rb2tvcm8uaWFtLnYxLkluc3BlY3RVc2VyQXV0aG9yaXphdGlvblJlc3BvbnNlEmAKD0xpc3RSb2xlQ2F0YWxvZxIlLmtva29yby5pYW0udjEuTGlzdFJvbGVDYXRhbG9nUmVxdWVzdBomLmtva29yby5pYW0udjEuTGlzdFJvbGVDYXRhbG9nUmVzcG9uc2UScgoVTGlzdFBlcm1pc3Npb25DYXRhbG9nEisua29rb3JvLmlhbS52MS5MaXN0UGVybWlzc2lvbkNhdGFsb2dSZXF1ZXN0Giwua29rb3JvLmlhbS52MS5MaXN0UGVybWlzc2lvbkNhdGFsb2dSZXNwb25zZWIGcHJvdG8z", [file_buf_validate_validate, file_google_protobuf_timestamp, file_kokoro_iam_v1_types]);
+  fileDesc("CiFrb2tvcm8vaWFtL3YxL2F1dGhvcml6YXRpb24ucHJvdG8SDWtva29yby5pYW0udjEizgEKEEF1dGhvcml6ZVJlcXVlc3QSHAoKcmVxdWVzdF9pZBgBIAEoCUIIukgFcgOwAQESIQoPb3JnYW5pemF0aW9uX2lkGAIgASgJQgi6SAVyA7ABARJDCg5wZXJtaXNzaW9uX2tleRgDIAEoCUIrukgociYYgAEyIV5bYS16XVthLXowLTlfXSo6W2Etel1bYS16MC05X10qJBIjCgxyZXNvdXJjZV9yZWYYBCABKAlCCLpIBXIDGMACSACIAQFCDwoNX3Jlc291cmNlX3JlZiLbAQoRQXV0aG9yaXplUmVzcG9uc2USDwoHYWxsb3dlZBgBIAEoCBITCgtyZWFzb25fY29kZRgCIAEoCRIPCgd1c2VyX2lkGAMgASgJEhIKCnNlc3Npb25faWQYBCABKAkSFwoPb3JnYW5pemF0aW9uX2lkGAUgASgJEhEKCXJvbGVfa2V5cxgGIAMoCRIdChVhdXRob3JpemF0aW9uX3ZlcnNpb24YByABKAQSMAoMZXZhbHVhdGVkX2F0GAggASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCL4AQofSW5zcGVjdFVzZXJBdXRob3JpemF0aW9uUmVxdWVzdBIcCgpyZXF1ZXN0X2lkGAEgASgJQgi6SAVyA7ABARIhCg9vcmdhbml6YXRpb25faWQYAiABKAlCCLpIBXIDsAEBEhkKB3VzZXJfaWQYAyABKAlCCLpIBXIDsAEBEkMKDnBlcm1pc3Npb25fa2V5GAQgASgJQiu6SChyJhiAATIhXlthLXpdW2EtejAtOV9dKjpbYS16XVthLXowLTlfXSokEiMKDHJlc291cmNlX3JlZhgFIAEoCUIIukgFcgMYwAJIAIgBAUIPCg1fcmVzb3VyY2VfcmVmItYBCiBJbnNwZWN0VXNlckF1dGhvcml6YXRpb25SZXNwb25zZRIPCgdhbGxvd2VkGAEgASgIEhMKC3JlYXNvbl9jb2RlGAIgASgJEg8KB3VzZXJfaWQYAyABKAkSFwoPb3JnYW5pemF0aW9uX2lkGAQgASgJEhEKCXJvbGVfa2V5cxgFIAMoCRIdChVhdXRob3JpemF0aW9uX3ZlcnNpb24YBiABKAQSMAoMZXZhbHVhdGVkX2F0GAcgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCLKAQoUQXV0aG9yaXplU2l0ZVJlcXVlc3QSHAoKcmVxdWVzdF9pZBgBIAEoCUIIukgFcgOwAQESGQoHc2l0ZV9pZBgCIAEoCUIIukgFcgOwAQESQwoOcGVybWlzc2lvbl9rZXkYAyABKAlCK7pIKHImGIABMiFeW2Etel1bYS16MC05X10qOlthLXpdW2EtejAtOV9dKiQSIwoMcmVzb3VyY2VfcmVmGAQgASgJQgi6SAVyAxjAAkgAiAEBQg8KDV9yZXNvdXJjZV9yZWYi1wEKFUF1dGhvcml6ZVNpdGVSZXNwb25zZRIPCgdhbGxvd2VkGAEgASgIEhMKC3JlYXNvbl9jb2RlGAIgASgJEg8KB3VzZXJfaWQYAyABKAkSEgoKc2Vzc2lvbl9pZBgEIAEoCRIPCgdzaXRlX2lkGAUgASgJEhEKCXJvbGVfa2V5cxgGIAMoCRIdChVhdXRob3JpemF0aW9uX3ZlcnNpb24YByABKAQSMAoMZXZhbHVhdGVkX2F0GAggASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCL0AQojSW5zcGVjdFVzZXJTaXRlQXV0aG9yaXphdGlvblJlcXVlc3QSHAoKcmVxdWVzdF9pZBgBIAEoCUIIukgFcgOwAQESGQoHc2l0ZV9pZBgCIAEoCUIIukgFcgOwAQESGQoHdXNlcl9pZBgDIAEoCUIIukgFcgOwAQESQwoOcGVybWlzc2lvbl9rZXkYBCABKAlCK7pIKHImGIABMiFeW2Etel1bYS16MC05X10qOlthLXpdW2EtejAtOV9dKiQSIwoMcmVzb3VyY2VfcmVmGAUgASgJQgi6SAVyAxjAAkgAiAEBQg8KDV9yZXNvdXJjZV9yZWYi0gEKJEluc3BlY3RVc2VyU2l0ZUF1dGhvcml6YXRpb25SZXNwb25zZRIPCgdhbGxvd2VkGAEgASgIEhMKC3JlYXNvbl9jb2RlGAIgASgJEg8KB3VzZXJfaWQYAyABKAkSDwoHc2l0ZV9pZBgEIAEoCRIRCglyb2xlX2tleXMYBSADKAkSHQoVYXV0aG9yaXphdGlvbl92ZXJzaW9uGAYgASgEEjAKDGV2YWx1YXRlZF9hdBgHIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAiWQoWTGlzdFJvbGVDYXRhbG9nUmVxdWVzdBIcCgpyZXF1ZXN0X2lkGAEgASgJQgi6SAVyA7ABARIhCg9vcmdhbml6YXRpb25faWQYAiABKAlCCLpIBXIDsAEBIkMKF0xpc3RSb2xlQ2F0YWxvZ1Jlc3BvbnNlEigKBXJvbGVzGAEgAygLMhkua29rb3JvLmlhbS52MS5Sb2xlUmVjb3JkIjwKHExpc3RQZXJtaXNzaW9uQ2F0YWxvZ1JlcXVlc3QSHAoKcmVxdWVzdF9pZBgBIAEoCUIIukgFcgOwAQEiVQodTGlzdFBlcm1pc3Npb25DYXRhbG9nUmVzcG9uc2USNAoLcGVybWlzc2lvbnMYASADKAsyHy5rb2tvcm8uaWFtLnYxLlBlcm1pc3Npb25SZWNvcmQyogUKF0lhbUF1dGhvcml6YXRpb25TZXJ2aWNlEk4KCUF1dGhvcml6ZRIfLmtva29yby5pYW0udjEuQXV0aG9yaXplUmVxdWVzdBogLmtva29yby5pYW0udjEuQXV0aG9yaXplUmVzcG9uc2USewoYSW5zcGVjdFVzZXJBdXRob3JpemF0aW9uEi4ua29rb3JvLmlhbS52MS5JbnNwZWN0VXNlckF1dGhvcml6YXRpb25SZXF1ZXN0Gi8ua29rb3JvLmlhbS52MS5JbnNwZWN0VXNlckF1dGhvcml6YXRpb25SZXNwb25zZRJaCg1BdXRob3JpemVTaXRlEiMua29rb3JvLmlhbS52MS5BdXRob3JpemVTaXRlUmVxdWVzdBokLmtva29yby5pYW0udjEuQXV0aG9yaXplU2l0ZVJlc3BvbnNlEocBChxJbnNwZWN0VXNlclNpdGVBdXRob3JpemF0aW9uEjIua29rb3JvLmlhbS52MS5JbnNwZWN0VXNlclNpdGVBdXRob3JpemF0aW9uUmVxdWVzdBozLmtva29yby5pYW0udjEuSW5zcGVjdFVzZXJTaXRlQXV0aG9yaXphdGlvblJlc3BvbnNlEmAKD0xpc3RSb2xlQ2F0YWxvZxIlLmtva29yby5pYW0udjEuTGlzdFJvbGVDYXRhbG9nUmVxdWVzdBomLmtva29yby5pYW0udjEuTGlzdFJvbGVDYXRhbG9nUmVzcG9uc2UScgoVTGlzdFBlcm1pc3Npb25DYXRhbG9nEisua29rb3JvLmlhbS52MS5MaXN0UGVybWlzc2lvbkNhdGFsb2dSZXF1ZXN0Giwua29rb3JvLmlhbS52MS5MaXN0UGVybWlzc2lvbkNhdGFsb2dSZXNwb25zZWIGcHJvdG8z", [file_buf_validate_validate, file_google_protobuf_timestamp, file_kokoro_iam_v1_types]);
 
 /**
  * @generated from message kokoro.iam.v1.AuthorizeRequest
@@ -186,6 +186,174 @@ export const InspectUserAuthorizationResponseSchema: GenMessage<InspectUserAutho
   messageDesc(file_kokoro_iam_v1_authorization, 3);
 
 /**
+ * @generated from message kokoro.iam.v1.AuthorizeSiteRequest
+ */
+export type AuthorizeSiteRequest = Message<"kokoro.iam.v1.AuthorizeSiteRequest"> & {
+  /**
+   * @generated from field: string request_id = 1;
+   */
+  requestId: string;
+
+  /**
+   * @generated from field: string site_id = 2;
+   */
+  siteId: string;
+
+  /**
+   * @generated from field: string permission_key = 3;
+   */
+  permissionKey: string;
+
+  /**
+   * @generated from field: optional string resource_ref = 4;
+   */
+  resourceRef?: string | undefined;
+};
+
+/**
+ * Describes the message kokoro.iam.v1.AuthorizeSiteRequest.
+ * Use `create(AuthorizeSiteRequestSchema)` to create a new message.
+ */
+export const AuthorizeSiteRequestSchema: GenMessage<AuthorizeSiteRequest> = /*@__PURE__*/
+  messageDesc(file_kokoro_iam_v1_authorization, 4);
+
+/**
+ * @generated from message kokoro.iam.v1.AuthorizeSiteResponse
+ */
+export type AuthorizeSiteResponse = Message<"kokoro.iam.v1.AuthorizeSiteResponse"> & {
+  /**
+   * @generated from field: bool allowed = 1;
+   */
+  allowed: boolean;
+
+  /**
+   * @generated from field: string reason_code = 2;
+   */
+  reasonCode: string;
+
+  /**
+   * @generated from field: string user_id = 3;
+   */
+  userId: string;
+
+  /**
+   * @generated from field: string session_id = 4;
+   */
+  sessionId: string;
+
+  /**
+   * @generated from field: string site_id = 5;
+   */
+  siteId: string;
+
+  /**
+   * @generated from field: repeated string role_keys = 6;
+   */
+  roleKeys: string[];
+
+  /**
+   * @generated from field: uint64 authorization_version = 7;
+   */
+  authorizationVersion: bigint;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp evaluated_at = 8;
+   */
+  evaluatedAt?: Timestamp | undefined;
+};
+
+/**
+ * Describes the message kokoro.iam.v1.AuthorizeSiteResponse.
+ * Use `create(AuthorizeSiteResponseSchema)` to create a new message.
+ */
+export const AuthorizeSiteResponseSchema: GenMessage<AuthorizeSiteResponse> = /*@__PURE__*/
+  messageDesc(file_kokoro_iam_v1_authorization, 5);
+
+/**
+ * @generated from message kokoro.iam.v1.InspectUserSiteAuthorizationRequest
+ */
+export type InspectUserSiteAuthorizationRequest = Message<"kokoro.iam.v1.InspectUserSiteAuthorizationRequest"> & {
+  /**
+   * @generated from field: string request_id = 1;
+   */
+  requestId: string;
+
+  /**
+   * @generated from field: string site_id = 2;
+   */
+  siteId: string;
+
+  /**
+   * @generated from field: string user_id = 3;
+   */
+  userId: string;
+
+  /**
+   * @generated from field: string permission_key = 4;
+   */
+  permissionKey: string;
+
+  /**
+   * @generated from field: optional string resource_ref = 5;
+   */
+  resourceRef?: string | undefined;
+};
+
+/**
+ * Describes the message kokoro.iam.v1.InspectUserSiteAuthorizationRequest.
+ * Use `create(InspectUserSiteAuthorizationRequestSchema)` to create a new message.
+ */
+export const InspectUserSiteAuthorizationRequestSchema: GenMessage<InspectUserSiteAuthorizationRequest> = /*@__PURE__*/
+  messageDesc(file_kokoro_iam_v1_authorization, 6);
+
+/**
+ * @generated from message kokoro.iam.v1.InspectUserSiteAuthorizationResponse
+ */
+export type InspectUserSiteAuthorizationResponse = Message<"kokoro.iam.v1.InspectUserSiteAuthorizationResponse"> & {
+  /**
+   * @generated from field: bool allowed = 1;
+   */
+  allowed: boolean;
+
+  /**
+   * @generated from field: string reason_code = 2;
+   */
+  reasonCode: string;
+
+  /**
+   * @generated from field: string user_id = 3;
+   */
+  userId: string;
+
+  /**
+   * @generated from field: string site_id = 4;
+   */
+  siteId: string;
+
+  /**
+   * @generated from field: repeated string role_keys = 5;
+   */
+  roleKeys: string[];
+
+  /**
+   * @generated from field: uint64 authorization_version = 6;
+   */
+  authorizationVersion: bigint;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp evaluated_at = 7;
+   */
+  evaluatedAt?: Timestamp | undefined;
+};
+
+/**
+ * Describes the message kokoro.iam.v1.InspectUserSiteAuthorizationResponse.
+ * Use `create(InspectUserSiteAuthorizationResponseSchema)` to create a new message.
+ */
+export const InspectUserSiteAuthorizationResponseSchema: GenMessage<InspectUserSiteAuthorizationResponse> = /*@__PURE__*/
+  messageDesc(file_kokoro_iam_v1_authorization, 7);
+
+/**
  * @generated from message kokoro.iam.v1.ListRoleCatalogRequest
  */
 export type ListRoleCatalogRequest = Message<"kokoro.iam.v1.ListRoleCatalogRequest"> & {
@@ -205,7 +373,7 @@ export type ListRoleCatalogRequest = Message<"kokoro.iam.v1.ListRoleCatalogReque
  * Use `create(ListRoleCatalogRequestSchema)` to create a new message.
  */
 export const ListRoleCatalogRequestSchema: GenMessage<ListRoleCatalogRequest> = /*@__PURE__*/
-  messageDesc(file_kokoro_iam_v1_authorization, 4);
+  messageDesc(file_kokoro_iam_v1_authorization, 8);
 
 /**
  * @generated from message kokoro.iam.v1.ListRoleCatalogResponse
@@ -222,7 +390,7 @@ export type ListRoleCatalogResponse = Message<"kokoro.iam.v1.ListRoleCatalogResp
  * Use `create(ListRoleCatalogResponseSchema)` to create a new message.
  */
 export const ListRoleCatalogResponseSchema: GenMessage<ListRoleCatalogResponse> = /*@__PURE__*/
-  messageDesc(file_kokoro_iam_v1_authorization, 5);
+  messageDesc(file_kokoro_iam_v1_authorization, 9);
 
 /**
  * @generated from message kokoro.iam.v1.ListPermissionCatalogRequest
@@ -239,7 +407,7 @@ export type ListPermissionCatalogRequest = Message<"kokoro.iam.v1.ListPermission
  * Use `create(ListPermissionCatalogRequestSchema)` to create a new message.
  */
 export const ListPermissionCatalogRequestSchema: GenMessage<ListPermissionCatalogRequest> = /*@__PURE__*/
-  messageDesc(file_kokoro_iam_v1_authorization, 6);
+  messageDesc(file_kokoro_iam_v1_authorization, 10);
 
 /**
  * @generated from message kokoro.iam.v1.ListPermissionCatalogResponse
@@ -256,7 +424,7 @@ export type ListPermissionCatalogResponse = Message<"kokoro.iam.v1.ListPermissio
  * Use `create(ListPermissionCatalogResponseSchema)` to create a new message.
  */
 export const ListPermissionCatalogResponseSchema: GenMessage<ListPermissionCatalogResponse> = /*@__PURE__*/
-  messageDesc(file_kokoro_iam_v1_authorization, 7);
+  messageDesc(file_kokoro_iam_v1_authorization, 11);
 
 /**
  * @generated from service kokoro.iam.v1.IamAuthorizationService
@@ -277,6 +445,22 @@ export const IamAuthorizationService: GenService<{
     methodKind: "unary";
     input: typeof InspectUserAuthorizationRequestSchema;
     output: typeof InspectUserAuthorizationResponseSchema;
+  },
+  /**
+   * @generated from rpc kokoro.iam.v1.IamAuthorizationService.AuthorizeSite
+   */
+  authorizeSite: {
+    methodKind: "unary";
+    input: typeof AuthorizeSiteRequestSchema;
+    output: typeof AuthorizeSiteResponseSchema;
+  },
+  /**
+   * @generated from rpc kokoro.iam.v1.IamAuthorizationService.InspectUserSiteAuthorization
+   */
+  inspectUserSiteAuthorization: {
+    methodKind: "unary";
+    input: typeof InspectUserSiteAuthorizationRequestSchema;
+    output: typeof InspectUserSiteAuthorizationResponseSchema;
   },
   /**
    * @generated from rpc kokoro.iam.v1.IamAuthorizationService.ListRoleCatalog
