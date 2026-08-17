@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { UserTable } from "../../modules/iam/users/user-table";
+import { UserLifecycleControls, UserTable } from "../../modules/iam/users/user-table";
 import { LocaleProvider } from "../../i18n/context";
 
 const userId = "bce7762a-f7c7-4d22-8031-4336803038eb";
@@ -89,21 +89,17 @@ describe("IAM User management", () => {
   it("WEB-COMP-USER-001 exposes restore only for deleted records", () => {
     render(
       <LocaleProvider>
-        <UserTable
-          view={{
-            items: [{
-              id: userId,
-              email: "deleted@example.com",
-              name: "Deleted",
-              platformRole: "user",
-              status: "deleted",
-              version: "8",
-              createdAt: "2026-08-16T10:00:00.000Z",
-              updatedAt: "2026-08-16T11:00:00.000Z",
-              deletedAt: "2026-08-16T11:00:00.000Z",
-            }],
-            nextCursor: null,
-            filters: { query: "", status: "deleted", platformRole: "all", includeDeleted: true, cursor: null, limit: 25 },
+        <UserLifecycleControls
+          user={{
+            id: userId,
+            email: "deleted@example.com",
+            name: "Deleted",
+            platformRole: "user",
+            status: "deleted",
+            version: "8",
+            createdAt: "2026-08-16T10:00:00.000Z",
+            updatedAt: "2026-08-16T11:00:00.000Z",
+            deletedAt: "2026-08-16T11:00:00.000Z",
           }}
           action={async (input) => ({ status: "success", commandId: input.commandId, replayed: false })}
         />
