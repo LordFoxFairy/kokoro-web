@@ -13,7 +13,7 @@ evidence, zero retries, and an explicit status.
 | `contract` | Toolchain, frozen Proto, generated clients, imports, i18n, build, and listener boundaries | Vitest Node |
 | `integration` | Auth.js routes and Admin BFF behavior against local ConnectRPC listeners and protocol-shaped collaborators | Vitest Node |
 | `security` | Enumeration, redirects, route authorization, tenant/owner protection, headers, hostile input, and leakage | Vitest Node |
-| `pair_e2e` | Production Admin Web with the accepted IAM candidate, fresh PostgreSQL, Mailpit, and visible Chromium | Playwright + real services |
+| `pair_e2e` | Production Admin Web with the accepted IAM candidate, fresh PostgreSQL, an in-process SMTP mailbox fixture, and browser evidence | Playwright + real services |
 
 ## Commands
 
@@ -27,6 +27,7 @@ pnpm --filter @kokoro/admin-web test:security
 pnpm --filter @kokoro/admin-web verify
 pnpm --filter @kokoro/admin-web acceptance
 pnpm --filter @kokoro/admin-web acceptance:pair
+pnpm --filter @kokoro/admin-web acceptance:codex-browser
 ```
 
 ## Formal Acceptance Rules
@@ -35,10 +36,17 @@ pnpm --filter @kokoro/admin-web acceptance:pair
 - Admin repository acceptance precedes pair E2E acceptance.
 - Pair acceptance consists of two complete rounds with distinct databases, credentials, mailboxes,
   browser contexts, and evidence roots.
-- Formal pair journeys use a visible Chromium window so each business operation can be observed.
-- Every business step records local and UTC start/finish times, timezone offset, duration, screenshot,
-  trace, video, HAR, correlated Web/IAM/RPC/SQL evidence, request/command IDs, and SHA-256 values.
-- The Magic Link callback is executed in an ephemeral recording-disabled context. Its Session cookie
+- Automated pair journeys run headless with trace, video, HAR, screenshots, RPC/SQL/log correlation,
+  and zero retries.
+- Final user-visible acceptance starts the same fresh stack through `acceptance:codex-browser` and
+  executes every listed business step in the Codex in-app browser before the completion marker is
+  written and resources are cleaned.
+- Automated Playwright pair steps record local and UTC times, duration, screenshot, trace, video,
+  HAR, correlated Web/IAM/RPC/SQL evidence, request/command IDs, and SHA-256 values.
+- Visible Codex in-app-browser steps record local and UTC times, duration, one screenshot per step,
+  round process logs, secret-scan result, and ordered SHA-256 inventory. Evidence unavailable from
+  that browser mode is marked `N/A`, never reported as captured.
+- The email Magic Link callback is executed in an ephemeral recording-disabled context. Its Session cookie
   is transferred only in memory; verification URLs, tokens, and cookie values are never retained.
 - Missing evidence or a failed integrity/secret scan marks the case, round, and overall result failed.
 - Accepted artifacts and reports remain inside this repository under `reports/`; no central system

@@ -32,8 +32,10 @@ describe("Admin Web toolchain boundary", () => {
 
     expect(root.packageManager).toBe("pnpm@11.2.2");
     expect(root.engines).toEqual({ node: ">=22 <23" });
+    expect(scripts.build).toBe("next build --webpack");
     expect(Object.keys(scripts).sort()).toEqual([
       "acceptance",
+      "acceptance:codex-browser",
       "acceptance:pair",
       "build",
       "dev",
@@ -66,4 +68,14 @@ describe("Admin Web toolchain boundary", () => {
     }
     expect(devDependencies).not.toHaveProperty("@eslint/eslintrc");
   });
+
+  it("WEB-CONTRACT-TOOLS-001 keeps pair email delivery local and process-scoped", async () => {
+    const runner = await readFile(resolve(appRoot, "scripts/test/run-pair-acceptance.ts"), "utf8");
+
+    expect(runner).toContain("await startLocalMailbox()");
+    expect(runner).toContain("await mailbox.close()");
+    expect(runner).toContain("mailboxListenersReleased");
+    expect(runner).not.toMatch(/PAIR_MAILPIT_IMAGE|\bdocker\b|mailContainerName|mailpitImage|mailpitDigest/iu);
+  });
+
 });

@@ -29,7 +29,7 @@ artifact exists, the secret scan passes, and every ordered SHA-256 value verifie
 | pnpm | `PNPM_VERSION` |
 | Chromium | `CHROMIUM_VERSION` |
 | PostgreSQL | `POSTGRESQL_VERSION` |
-| Mailpit image / digest | `MAILPIT_IMAGE` / `MAILPIT_DIGEST` |
+| Local mailbox fixture | `IN_PROCESS_SMTP_API` |
 | IAM Proto SHA-256 | `IAM_PROTO_SHA256` |
 | IAM migration SHA-256 | `IAM_MIGRATION_SHA256` |
 | IAM P0 catalog SHA-256 | `IAM_CATALOG_SHA256` |
@@ -61,8 +61,11 @@ artifact exists, the secret scan passes, and every ordered SHA-256 value verifie
 ## Browser Step Ledger
 
 Each visible business state has one row. A missing expected artifact fails the step, case, round,
-and overall mark. The secret-bearing Magic Link callback runs in an ephemeral recording-disabled
-Chromium context; only its safe pre/post evidence and digests are retained.
+and overall mark. The administrator password is read from a mode-0600 fixture file and is never retained in
+screenshots, traces, reports, URLs, or logs. Password login runs in the visible browser while secret values remain
+outside the evidence set. The email callback runs in an ephemeral recording-disabled Chromium context; only its
+safe pre/post evidence and digests are retained. A mode that does not capture trace, video, HAR, RPC, or SQL marks
+that column `N/A`; it never substitutes a process log or checksum for unavailable evidence.
 
 | Case / step | Expected | Actual | Viewport | Start local / UTC | Finish local / UTC | Screenshot | Trace | Video | HAR | RPC / SQL / logs | Request / command IDs | Result |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
