@@ -26,6 +26,7 @@ export const siteFiltersSchema = z.object({
 }).strict();
 
 export const siteDetailFiltersSchema = z.object({
+  tab: z.enum(["overview", "members", "access", "audit"]).default("overview"),
   memberQuery: z.string().trim().max(320).default(""),
   includeDeletedMembers: z.boolean().default(false),
   memberCursor: z.string().max(512).nullable().default(null),
@@ -33,6 +34,11 @@ export const siteDetailFiltersSchema = z.object({
   permissionKey: sitePermissionKeySchema.nullable().default(null),
   authorizationUserId: z.string().uuid().nullable().default(null),
   resourceRef: z.string().trim().min(1).max(320).nullable().default(null),
+  auditKind: z.string().trim().regex(/^[a-z][a-z0-9_.-]*$/u).max(96).nullable().default(null),
+  auditActorUserId: z.string().uuid().nullable().default(null),
+  auditTargetUserId: z.string().uuid().nullable().default(null),
+  auditCursor: z.string().max(512).nullable().default(null),
+  auditLimit: z.number().int().min(1).max(100).default(25),
 }).strict().superRefine((value, context) => {
   if (value.permissionKey === null && (value.authorizationUserId !== null || value.resourceRef !== null)) {
     context.addIssue({ code: "custom", path: ["permissionKey"], message: "permissionKey is required" });
@@ -125,6 +131,7 @@ export type SiteAuditEventView = Readonly<{
 }>;
 export type SiteDetailView = Readonly<{
   site: SiteListItem;
+  filters: SiteDetailFilters;
   members: SiteMemberListView;
   permissionKeys: readonly string[];
   authorization: SiteAuthorizationView | null;

@@ -2,6 +2,8 @@
 
 This tree owns Admin-facing vertical slices built on the narrow `IamManagementClient`. Generated
 messages, actor tokens, Connect transports, and raw provider errors do not cross into components.
+Screens use the platform-owned `AdminPage`, `AdminTable`, and `AdminQueryFilter` wrappers over Ant
+Design Pro; IAM modules own only their validated view models, URL state, and business actions.
 
 ## Users
 
@@ -33,6 +35,18 @@ messages, actor tokens, Connect transports, and raw provider errors do not cross
   version propagation, stable identity, safe errors, and authoritative revalidation.
 - `organizations/organization-table.tsx` and `organizations/organization-detail.tsx`: creation,
   update, soft delete, restore, details, Members, and correlated events.
+
+## Sites
+
+- `sites/schema.ts`, `sites/query.ts`, and `sites/url.ts`: strict Site, SiteMember, authorization,
+  and Site-scoped SecurityEvent view models with independent list/member/audit cursor state.
+- `sites/actions.ts` and `sites/action-server.ts`: Site and SiteMember lifecycle, current Site
+  selection, stable command identity, version propagation, safe errors, and exact revalidation.
+- `sites/site-table.tsx`: server-filtered Site inventory, create, select, suspend, reactivate,
+  soft delete, restore, and cursor pagination.
+- `sites/site-detail.tsx`, `site-members.tsx`, `site-access.tsx`, and `site-audit.tsx`: fixed
+  Overview/Members/Access/Security events Tabs, complete member lifecycle, live authorization,
+  filtered Site audit statistics, and structured event details.
 
 ## Members
 
@@ -72,6 +86,8 @@ messages, actor tokens, Connect transports, and raw provider errors do not cross
   imports; shared action results and IAM enum values live in `lib/`.
 - Organization detail rejects Member or SecurityEvent records whose Organization scope differs from
   the requested record instead of relabeling or rendering them.
+- Site detail rejects SiteMember, authorization, or SecurityEvent records whose Site scope differs
+  from the requested Site instead of relabeling or rendering them.
 - Every non-add Member command carries both Member and Organization IDs; IAM verifies that scope
   transactionally before any state, receipt, or SecurityEvent mutation.
 - Access inspection requires an explicit active User, validates both User and Organization response

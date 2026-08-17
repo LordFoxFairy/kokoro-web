@@ -41,6 +41,7 @@ export function parseAuditFilters(value: SearchParams): AuditFilters {
     "actorUserId",
     "targetUserId",
     "organizationId",
+    "siteId",
     "commandId",
     "createdAfter",
     "createdBefore",
@@ -56,6 +57,7 @@ export function parseAuditFilters(value: SearchParams): AuditFilters {
     actorUserId: nullable(scalar(value.actorUserId)),
     targetUserId: nullable(scalar(value.targetUserId)),
     organizationId: nullable(scalar(value.organizationId)),
+    siteId: nullable(scalar(value.siteId)),
     commandId: nullable(scalar(value.commandId)),
     createdAfter: nullable(scalar(value.createdAfter)),
     createdBefore: nullable(scalar(value.createdBefore)),
@@ -81,6 +83,7 @@ export async function loadAudit(client: IamManagementClient, raw: SearchParams):
     ...(filters.actorUserId === null ? {} : { actorUserId: filters.actorUserId }),
     ...(filters.targetUserId === null ? {} : { targetUserId: filters.targetUserId }),
     ...(filters.organizationId === null ? {} : { organizationId: filters.organizationId }),
+    ...(filters.siteId === null ? {} : { siteId: filters.siteId }),
     ...(filters.commandId === null ? {} : { commandId: filters.commandId }),
     ...(filters.createdAfter === null ? {} : { createdAfter: new Date(filters.createdAfter) }),
     ...(filters.createdBefore === null ? {} : { createdBefore: new Date(filters.createdBefore) }),
@@ -90,6 +93,13 @@ export async function loadAudit(client: IamManagementClient, raw: SearchParams):
   return Object.freeze({
     filters,
     items: Object.freeze(result.items.map(auditEventView)),
+    statistics: Object.freeze({
+      total: result.statistics.total.toString(),
+      byKind: Object.freeze(result.statistics.byKind.map((item) => Object.freeze({
+        kind: item.kind,
+        count: item.count.toString(),
+      }))),
+    }),
     nextCursor: result.nextCursor,
   });
 }
@@ -118,6 +128,7 @@ export function auditEventView(event: AdminSecurityEvent): AuditEventView {
     actorUserId: event.actorUserId,
     targetUserId: event.targetUserId,
     organizationId: event.organizationId,
+    siteId: event.siteId,
     sessionId: event.sessionId,
     requestId: event.requestId,
     commandId: event.commandId,

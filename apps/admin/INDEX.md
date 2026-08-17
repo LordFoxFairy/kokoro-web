@@ -2,10 +2,11 @@
 
 ## Responsibility
 
-`@kokoro/admin-web` is the independently deployed IAM operations console and browser BFF. It owns
-browser authentication mechanics, presentation, server actions, generated IAM consumption, tests,
-runtime scripts, configuration examples, and acceptance evidence. IAM remains the authority for
-identity, Sessions, organizations, RBAC, command idempotency, and SecurityEvents.
+`@kokoro/admin-web` is the independently deployed Kokoro management console and browser BFF. It
+owns the platform shell, browser authentication mechanics, presentation, server actions, generated
+service consumption, tests, runtime scripts, configuration examples, and acceptance evidence. IAM
+is the first executable management module and remains the authority for identity, Sessions,
+organizations, RBAC, command idempotency, and SecurityEvents.
 
 ## Public Entries
 
@@ -14,16 +15,18 @@ identity, Sessions, organizations, RBAC, command idempotency, and SecurityEvents
 - `app/(public)`: enumeration-safe login and verification routes.
 - `app/(control)`: protected control-plane shell and business routes.
 - `server/auth/session.ts`: protected Server Component actor/session boundary.
-- `components/`: local reusable presentation components; no generated messages or tokens.
+- `components/`: thin Ant Design Pro wrappers and reusable presentation components; no generated
+  messages or tokens.
 - `modules/iam/`: executable User, Session, Organization, Member, selected-User Access, Audit, and
-  Overview slices plus the static IAM module registry; see its adjacent `INDEX.md`.
+  Site, Overview slices plus the static IAM module registry; see its adjacent `INDEX.md`.
 
 ## Collaborators
 
 - `contracts/iam/provider.json` freezes the accepted `kokoro-iam` provider identity and hashes.
 - `generated/iam` is generated only from the Admin-owned contract snapshot.
 - `@kokoro/i18n` supplies the framework-independent engine; dictionaries stay in `i18n/`.
-- Auth.js, Ant Design, and Pro Components provide authentication and console foundations.
+- Auth.js provides browser authentication. Ant Design and Pro Components provide the light,
+  compact enterprise console foundation.
 
 ## Runtime Constraints
 

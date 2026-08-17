@@ -5,6 +5,7 @@ export const auditFiltersSchema = z.object({
   actorUserId: z.string().uuid().nullable().default(null),
   targetUserId: z.string().uuid().nullable().default(null),
   organizationId: z.string().uuid().nullable().default(null),
+  siteId: z.string().uuid().nullable().default(null),
   commandId: z.string().uuid().nullable().default(null),
   createdAfter: z.string().datetime({ offset: true }).nullable().default(null),
   createdBefore: z.string().datetime({ offset: true }).nullable().default(null),
@@ -26,6 +27,7 @@ export type AuditEventView = Readonly<{
   actorUserId: string | null;
   targetUserId: string | null;
   organizationId: string | null;
+  siteId: string | null;
   sessionId: string | null;
   requestId: string;
   commandId: string | null;
@@ -35,5 +37,9 @@ export type AuditEventView = Readonly<{
 export type AuditView = Readonly<{
   filters: AuditFilters;
   items: readonly AuditEventView[];
+  statistics: Readonly<{
+    total: string;
+    byKind: readonly Readonly<{ kind: string; count: string }>[];
+  }>;
   nextCursor: string | null;
 }>;

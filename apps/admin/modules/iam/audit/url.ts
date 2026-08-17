@@ -6,6 +6,7 @@ export function auditHref(filters: AuditFilters, cursor?: string): string {
   if (filters.actorUserId !== null) params.set("actorUserId", filters.actorUserId);
   if (filters.targetUserId !== null) params.set("targetUserId", filters.targetUserId);
   if (filters.organizationId !== null) params.set("organizationId", filters.organizationId);
+  if (filters.siteId !== null) params.set("siteId", filters.siteId);
   if (filters.commandId !== null) params.set("commandId", filters.commandId);
   if (filters.createdAfter !== null) params.set("createdAfter", filters.createdAfter);
   if (filters.createdBefore !== null) params.set("createdBefore", filters.createdBefore);

@@ -49,15 +49,19 @@ export function parseSiteFilters(value: SearchParams): SiteFilters {
 
 export function parseSiteDetailFilters(value: SearchParams): SiteDetailFilters {
   const allowed = new Set([
+    "tab",
     "memberQuery", "includeDeletedMembers", "memberCursor", "memberLimit",
     "permissionKey", "authorizationUserId", "resourceRef",
+    "auditKind", "auditActorUserId", "auditTargetUserId", "auditCursor", "auditLimit",
   ]);
   if (Object.entries(value).some(([key, item]) => !allowed.has(key) || Array.isArray(item))) {
     throw new Error("invalid site detail filters");
   }
   const includeDeleted = scalar(value.includeDeletedMembers);
   const rawLimit = Number(scalar(value.memberLimit) ?? "25");
+  const rawAuditLimit = Number(scalar(value.auditLimit) ?? "25");
   const result = siteDetailFiltersSchema.safeParse({
+    tab: scalar(value.tab) ?? "overview",
     memberQuery: scalar(value.memberQuery) ?? "",
     includeDeletedMembers: includeDeleted === undefined ? false : includeDeleted === "true",
     memberCursor: nullable(scalar(value.memberCursor)),
@@ -65,6 +69,11 @@ export function parseSiteDetailFilters(value: SearchParams): SiteDetailFilters {
     permissionKey: nullable(scalar(value.permissionKey)),
     authorizationUserId: nullable(scalar(value.authorizationUserId)),
     resourceRef: nullable(scalar(value.resourceRef)),
+    auditKind: nullable(scalar(value.auditKind)),
+    auditActorUserId: nullable(scalar(value.auditActorUserId)),
+    auditTargetUserId: nullable(scalar(value.auditTargetUserId)),
+    auditCursor: nullable(scalar(value.auditCursor)),
+    auditLimit: Number.isFinite(rawAuditLimit) ? Math.min(100, Math.max(1, Math.trunc(rawAuditLimit))) : rawAuditLimit,
   });
   if (!result.success || (includeDeleted !== undefined && includeDeleted !== "true" && includeDeleted !== "false")) {
     throw new Error("invalid site detail filters");
@@ -104,7 +113,14 @@ export async function loadSiteDetail(
       requestId: randomUUID(), query: filters.memberQuery, status: "active", includeDeleted: false, limit: 25,
     }),
     client.listPermissionCatalog({ requestId: randomUUID() }),
-    client.listSecurityEvents({ requestId: randomUUID(), siteId: site.id, limit: 25 }),
+    client.listSecurityEvents({
+      requestId: randomUUID(), siteId: site.id,
+      ...(filters.auditKind === null ? {} : { kind: filters.auditKind }),
+      ...(filters.auditActorUserId === null ? {} : { actorUserId: filters.auditActorUserId }),
+      ...(filters.auditTargetUserId === null ? {} : { targetUserId: filters.auditTargetUserId }),
+      ...(filters.auditCursor === null ? {} : { cursor: filters.auditCursor }),
+      limit: filters.auditLimit,
+    }),
     loadAuthorization(client, site.id, filters),
   ]);
   if (members.items.some((member) => member.siteId !== site.id)) throw new Error("invalid site member scope");
@@ -114,6 +130,7 @@ export async function loadSiteDetail(
 
   return Object.freeze({
     site: siteView(site),
+    filters,
     members: Object.freeze({
       items: Object.freeze(members.items.map((member) => memberView(member, userLabels.get(member.userId)))),
       nextCursor: members.nextCursor,

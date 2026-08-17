@@ -324,6 +324,16 @@ button, input, textarea, select { font: inherit; }
 .section-heading p { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
 .admin-section { min-width: 0; }
 .section-extra { display: flex; gap: 8px; align-items: center; }
+.site-deleted-alert { margin-bottom: 0; }
+.site-detail-tabs { min-height: 430px; }
+.site-access-grid { display: grid; grid-template-columns: minmax(0, 3fr) minmax(240px, 1fr); gap: 16px; align-items: start; }
+.permission-key-list { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 0; }
+.permission-key-list .ant-tag { margin: 0; font-family: var(--font-mono), monospace; }
+.site-audit-kind-summary { display: flex; min-height: 40px; gap: 8px; align-items: center; overflow-x: auto; margin-bottom: 12px; }
+.site-audit-kind-summary span { display: inline-flex; flex: 0 0 auto; gap: 10px; align-items: center; padding: 6px 10px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+.site-audit-kind-summary code { font-family: var(--font-mono), monospace; font-size: 12px; }
+.site-audit-total .ant-statistic-title { font-size: 12px; }
+.site-audit-total .ant-statistic-content { font-size: 20px; }
 .command-result { margin: 8px 0 12px; }
 .member-section, .catalog-section, .decision-section { margin-top: 12px; }
 .catalog-section .section-heading h3 { margin: 0; font-size: 16px; line-height: 24px; letter-spacing: 0; }
@@ -357,6 +367,12 @@ button, input, textarea, select { font: inherit; }
   .metric-panel:last-child { border-bottom: 0; }
   .page-state { min-height: 240px; padding: 20px 12px; }
   .section-heading { align-items: stretch; flex-direction: column; }
+  .site-detail-tabs { min-height: 390px; }
+  .site-access-grid { grid-template-columns: 1fr; }
+  .site-audit-kind-summary { margin-inline: -12px; padding-inline: 12px; }
+  .site-detail-tabs .ant-tabs-nav-wrap { overflow: hidden; }
+  .site-detail-tabs .ant-tabs-tab { padding-inline: 4px; }
+  .site-detail-tabs .ant-tabs-tab + .ant-tabs-tab { margin-left: 14px; }
   .audit-statistics { flex-wrap: wrap; overflow-x: visible; }
   .audit-statistics .ant-statistic { flex: 1 1 140px; border-bottom: 1px solid var(--border); }
 }

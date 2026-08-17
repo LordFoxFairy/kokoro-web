@@ -13,6 +13,7 @@ import { createIamManagementClient } from "../../server/iam/management-client";
 const actorUserId = "bce7762a-f7c7-4d22-8031-4336803038eb";
 const targetUserId = "94944258-f6a2-4813-bd2e-3e4a38053021";
 const organizationId = "a237ca85-0634-4ce8-bd37-6d7bd90beaa8";
+const siteId = "3598c32a-c62b-4803-92c2-b5baaf507d9f";
 const commandId = "8deecb20-8d72-4b7e-a719-722a2e606728";
 const requestId = "df486566-7614-461f-a72c-1b3d4ea9e985";
 const createdAfter = "2026-08-16T12:00:00.000Z";
@@ -28,6 +29,7 @@ describe("IAM SecurityEvent audit query", () => {
           return {
             events: [event()],
             page: { nextCursor: "next/cursor" },
+            statistics: { total: BigInt(7), byKind: [{ kind: "member.changed", count: BigInt(7) }] },
           };
         },
       });
@@ -38,6 +40,7 @@ describe("IAM SecurityEvent audit query", () => {
       actorUserId,
       targetUserId,
       organizationId,
+      siteId,
       commandId,
       createdAfter,
       createdBefore,
@@ -51,6 +54,7 @@ describe("IAM SecurityEvent audit query", () => {
       actorUserId,
       targetUserId,
       organizationId,
+      siteId,
       commandId,
       page: expect.objectContaining({ cursor: "current/cursor", limit: 100 }),
     }));
@@ -65,7 +69,7 @@ describe("IAM SecurityEvent audit query", () => {
     })]);
     expect(auditHref(view.filters, "next/cursor")).toBe(
       `/audit?kind=member.changed&actorUserId=${actorUserId}&targetUserId=${targetUserId}`
-      + `&organizationId=${organizationId}&commandId=${commandId}`
+      + `&organizationId=${organizationId}&siteId=${siteId}&commandId=${commandId}`
       + `&createdAfter=${encodeURIComponent(createdAfter)}&createdBefore=${encodeURIComponent(createdBefore)}`
       + "&limit=100&cursor=next%2Fcursor",
     );
@@ -86,14 +90,13 @@ describe("IAM SecurityEvent audit query", () => {
       router.service(IamAdministrationService, {
         listSecurityEvents: (request) => {
           observedLimit = request.page?.limit;
-          return { events: [event()], page: {} };
+          return { events: [event()], page: {}, statistics: { total: BigInt(1), byKind: [] } };
         },
       });
     });
 
     const state = await loadOverview(createIamManagementClient(transport), {
       administrator: { id: actorUserId, email: "admin@example.com" },
-      actorExpiresAt: new Date(createdBefore),
     });
 
     expect(observedLimit).toBe(10);
@@ -111,6 +114,7 @@ function event() {
     actorUserId,
     targetUserId,
     organizationId,
+    siteId,
     sessionId: "e0e3e8fc-b867-45e3-bcc9-4942c1a51985",
     requestId,
     commandId,

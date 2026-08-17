@@ -29,17 +29,19 @@ describe("Kokoro Admin platform shell", () => {
       "overview",
       "users",
       "sessions",
+      "sites",
       "organizations",
       "access",
       "audit",
     ]);
-    expect(adminNavigation).toHaveLength(6);
+    expect(adminNavigation).toHaveLength(7);
     expect(adminModuleRegistry.every((module) => module.executable)).toBe(true);
     expect(adminNavigation[0]).toMatchObject({ href: "/", labelKey: "nav.overview" });
     expect(adminNavigation.map((item) => [item.href, item.groupKey])).toEqual([
       ["/", null],
       ["/users", "nav.group.identity"],
       ["/sessions", "nav.group.identity"],
+      ["/sites", "nav.group.tenant"],
       ["/organizations", "nav.group.organization"],
       ["/access", "nav.group.access"],
       ["/audit", "nav.group.access"],
@@ -55,10 +57,12 @@ describe("Kokoro Admin platform shell", () => {
     expect(screen.getByRole("link", { name: /系统概览/u })).toHaveAttribute("href", "/");
     expect(screen.getByRole("link", { name: /用户/u })).toHaveAttribute("href", "/users");
     expect(screen.getByRole("link", { name: /会话/u })).toHaveAttribute("href", "/sessions");
+    expect(screen.getByRole("link", { name: /Site/u })).toHaveAttribute("href", "/sites");
     expect(screen.getByRole("link", { name: /组织/u })).toHaveAttribute("href", "/organizations");
     expect(screen.getByRole("link", { name: /访问控制/u })).toHaveAttribute("href", "/access");
     expect(screen.getByRole("link", { name: /安全审计/u })).toHaveAttribute("href", "/audit");
     expect(screen.getByText("身份管理")).toBeInTheDocument();
+    expect(screen.getByText("租户管理")).toBeInTheDocument();
     expect(screen.getByText("组织管理")).toBeInTheDocument();
     expect(screen.getByText("权限与安全")).toBeInTheDocument();
     expect(screen.getByText("admin@example.com")).toBeInTheDocument();

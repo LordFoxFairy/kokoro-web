@@ -2,13 +2,14 @@ import {
   ApartmentOutlined,
   AuditOutlined,
   DashboardOutlined,
+  AppstoreOutlined,
   SafetyCertificateOutlined,
   TeamOutlined,
   UserSwitchOutlined,
 } from "@ant-design/icons";
 
 import type { MessageKey } from "@/i18n/messages";
-import { iamModuleRegistry, type IamModuleDescriptor } from "@/modules/iam/registry";
+import { adminModuleRegistry, type AdminIconKey } from "@/modules/registry";
 
 export type AdminNavigationItem = Readonly<{
   href: string;
@@ -17,17 +18,18 @@ export type AdminNavigationItem = Readonly<{
   icon: React.ComponentType;
 }>;
 
-const icons: Readonly<Record<IamModuleDescriptor["iconKey"], React.ComponentType>> = Object.freeze({
+const icons: Readonly<Record<AdminIconKey, React.ComponentType>> = Object.freeze({
   dashboard: DashboardOutlined,
   users: TeamOutlined,
   sessions: UserSwitchOutlined,
+  sites: AppstoreOutlined,
   organizations: ApartmentOutlined,
   access: SafetyCertificateOutlined,
   audit: AuditOutlined,
 });
 
 export const adminNavigation: readonly AdminNavigationItem[] = Object.freeze(
-  iamModuleRegistry.map((module) => Object.freeze({
+  adminModuleRegistry.map((module) => Object.freeze({
     href: module.href,
     labelKey: module.labelKey,
     groupKey: module.groupKey,
