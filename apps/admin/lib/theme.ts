@@ -1,39 +1,56 @@
-import type { ThemeConfig } from "antd";
+import { theme, type ThemeConfig } from "antd";
+
+export const ADMIN_LAYOUT = Object.freeze({
+  siderWidth: 216,
+  headerHeight: 56,
+  menuIconSize: 18,
+  commandIconSize: 16,
+  contentMaxWidth: 1600,
+});
 
 export const antdTheme: ThemeConfig = {
+  algorithm: [theme.defaultAlgorithm, theme.compactAlgorithm],
   token: {
-    colorPrimary: "#1f6b52",
-    colorInfo: "#2563a6",
-    colorSuccess: "#16794e",
-    colorWarning: "#ad6800",
-    colorError: "#b42318",
-    colorText: "#18201d",
-    colorTextSecondary: "#5f6b66",
-    colorBgLayout: "#f4f6f5",
-    colorBorderSecondary: "#e4e8e6",
+    colorPrimary: "#1677ff",
+    colorInfo: "#1677ff",
+    colorSuccess: "#16a34a",
+    colorWarning: "#d97706",
+    colorError: "#dc2626",
+    colorText: "#1f2937",
+    colorTextSecondary: "#667085",
+    colorBgLayout: "#f5f7fa",
+    colorBgContainer: "#ffffff",
+    colorBorderSecondary: "#e5e7eb",
     borderRadius: 6,
     fontSize: 14,
-    controlHeight: 34,
+    controlHeight: 32,
   },
   components: {
     Button: { borderRadius: 6 },
+    Menu: { itemHeight: 36, itemMarginBlock: 2, iconSize: ADMIN_LAYOUT.menuIconSize },
     Modal: { borderRadiusLG: 8 },
-    Table: { headerBg: "#f6f8f7", headerColor: "#34413c" },
+    Table: {
+      cellPaddingBlockSM: 8,
+      cellPaddingInlineSM: 12,
+      headerBg: "#fafafa",
+      headerColor: "#374151",
+    },
   },
 };
 
 export const proLayoutToken = {
   sider: {
-    colorMenuBackground: "#17211d",
-    colorTextMenu: "rgba(255,255,255,0.72)",
-    colorTextMenuSelected: "#ffffff",
-    colorTextMenuActive: "#ffffff",
-    colorBgMenuItemSelected: "#285d49",
-    colorTextMenuTitle: "#ffffff",
-    colorTextMenuItemHover: "#ffffff",
+    colorMenuBackground: "#ffffff",
+    colorTextMenu: "#4b5563",
+    colorTextMenuSelected: "#1677ff",
+    colorTextMenuActive: "#1677ff",
+    colorBgMenuItemSelected: "#e6f4ff",
+    colorTextMenuTitle: "#1f1f1f",
+    colorTextMenuItemHover: "#1677ff",
   },
   header: {
     colorBgHeader: "#ffffff",
-    colorHeaderTitle: "#18201d",
+    colorHeaderTitle: "#1f1f1f",
+    heightLayoutHeader: ADMIN_LAYOUT.headerHeight,
   },
 };

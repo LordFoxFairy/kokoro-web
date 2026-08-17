@@ -1,14 +1,14 @@
 "use client";
 
-import { LogoutOutlined } from "@ant-design/icons";
-import { ProLayout } from "@ant-design/pro-components";
-import { Button, Select } from "antd";
+import { GlobalOutlined, LogoutOutlined, SafetyCertificateFilled, UserOutlined } from "@ant-design/icons";
+import { ProLayout } from "@ant-design/pro-layout";
+import { Avatar, Button, Select, Space, Tooltip } from "antd";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { createElement } from "react";
 
 import { useLocale, useT } from "@/i18n/context";
-import { proLayoutToken } from "@/lib/theme";
+import { ADMIN_LAYOUT, proLayoutToken } from "@/lib/theme";
 
 import { adminNavigation } from "./navigation";
 
@@ -35,43 +35,45 @@ export function AdminShell({
   const currentPathname = pathname ?? detectedPathname;
   const t = useT();
   const { locale, setLocale } = useLocale();
-  const ungrouped = adminNavigation.filter((item) => item.groupKey === null).map((item) => ({
+  const menuItem = (item: (typeof adminNavigation)[number]) => ({
     path: item.href,
     name: t(item.labelKey),
     icon: createElement(item.icon),
-  }));
-  const identity = adminNavigation.filter((item) => item.groupKey === "nav.group.identity").map((item) => ({
-    path: item.href,
-    name: t(item.labelKey),
-    icon: createElement(item.icon),
-  }));
-  const access = adminNavigation.filter((item) => item.groupKey === "nav.group.access").map((item) => ({
-    path: item.href,
-    name: t(item.labelKey),
-    icon: createElement(item.icon),
-  }));
-  const operations = adminNavigation.filter((item) => item.groupKey === "nav.group.operations").map((item) => ({
-    path: item.href,
-    name: t(item.labelKey),
-    icon: createElement(item.icon),
-  }));
+  });
+  const groupKeys = [
+    "nav.group.identity",
+    "nav.group.tenant",
+    "nav.group.organization",
+    "nav.group.access",
+  ] as const;
+  const ungrouped = adminNavigation.filter((item) => item.groupKey === null).map(menuItem);
   const routes = [
     ...ungrouped,
-    ...(identity.length === 0 ? [] : [{ path: "/__identity", name: t("nav.group.identity"), routes: identity }]),
-    ...(access.length === 0 ? [] : [{ path: "/__access", name: t("nav.group.access"), routes: access }]),
-    ...(operations.length === 0 ? [] : [{ path: "/__operations", name: t("nav.group.operations"), routes: operations }]),
+    ...groupKeys.flatMap((groupKey) => {
+      const items = adminNavigation.filter((item) => item.groupKey === groupKey).map(menuItem);
+      return items.length === 0
+        ? []
+        : [{ path: `/__group/${groupKey}`, name: t(groupKey), routes: items }];
+    }),
   ];
+  const layoutStyle = {
+    "--admin-header-height": `${ADMIN_LAYOUT.headerHeight}px`,
+    "--admin-menu-icon-size": `${ADMIN_LAYOUT.menuIconSize}px`,
+    "--admin-command-icon-size": `${ADMIN_LAYOUT.commandIconSize}px`,
+    "--admin-content-max-width": `${ADMIN_LAYOUT.contentMaxWidth}px`,
+  } as React.CSSProperties;
 
   return (
     <ProLayout
       className="admin-shell"
-      title={t("app.name")}
-      logo={false}
+      style={layoutStyle}
+      title={`${t("app.name")} · ${t("app.product")}`}
+      logo={<span className="admin-logo-mark"><SafetyCertificateFilled /></span>}
       layout="mix"
       fixSiderbar
       fixedHeader
       breakpoint="lg"
-      siderWidth={208}
+      siderWidth={ADMIN_LAYOUT.siderWidth}
       location={{ pathname: currentPathname }}
       route={{ path: "/", routes }}
       menu={{ loading: false, defaultOpenAll: true, type: "group" }}
@@ -83,25 +85,32 @@ export function AdminShell({
       actionsRender={() => [
         <Select
           key="locale"
+          className="admin-language"
           aria-label={t("shell.language")}
           value={locale}
           onChange={setLocale}
           variant="borderless"
+          suffixIcon={<GlobalOutlined />}
           options={[
             { value: "zh", label: "中文" },
             { value: "en", label: "English" },
           ]}
         />,
-        <span key="identity" className="admin-identity" title={administrator.name ?? administrator.email}>
-          {administrator.email}
-        </span>,
+        <Space key="identity" className="admin-account" size={8}>
+          <Avatar size={28} icon={<UserOutlined />} />
+          <span className="admin-identity" title={administrator.email}>
+            {administrator.email}
+          </span>
+        </Space>,
         <form key="logout" action={signOutAction}>
-          <Button
-            aria-label={t("shell.signOut")}
-            htmlType="submit"
-            icon={<LogoutOutlined />}
-            type="text"
-          />
+          <Tooltip title={t("shell.signOut")}>
+            <Button
+              aria-label={t("shell.signOut")}
+              htmlType="submit"
+              icon={<LogoutOutlined />}
+              type="text"
+            />
+          </Tooltip>
         </form>,
       ]}
     >
