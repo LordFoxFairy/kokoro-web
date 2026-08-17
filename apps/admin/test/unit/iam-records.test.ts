@@ -6,13 +6,21 @@ import {
   OrganizationRecordSchema,
   PermissionRecordSchema,
   RoleRecordSchema,
+  SiteMemberRecordSchema,
+  SiteRecordSchema,
   UserRecordSchema,
 } from "../../generated/iam/proto/kokoro/iam/v1/types_pb";
 import {
+  AuthorizeSiteResponseSchema,
   AuthorizeResponseSchema,
+  InspectUserSiteAuthorizationResponseSchema,
   InspectUserAuthorizationResponseSchema,
 } from "../../generated/iam/proto/kokoro/iam/v1/authorization_pb";
 import {
+  siteAuthorizationFromResponse,
+  siteAuthorizationInspectionFromResponse,
+  siteFromRecord,
+  siteMemberFromRecord,
   authorizationFromResponse,
   authorizationInspectionFromResponse,
   organizationFromRecord,
@@ -75,6 +83,71 @@ describe("strict IAM domain record mapping", () => {
       updatedAt,
     });
     expect(Object.isFrozen(organization)).toBe(true);
+  });
+
+  it("WEB-UNIT-SITE-001 maps immutable Site and SiteMember records", () => {
+    const siteId = "94944258-f6a2-4813-bd2e-3e4a38053021";
+    const site = siteFromRecord(create(SiteRecordSchema, {
+      id: siteId,
+      code: "kokoro-main",
+      name: "Kokoro Main",
+      status: "active",
+      version: BigInt(3),
+      createdAt: timestampFromDate(createdAt),
+      updatedAt: timestampFromDate(updatedAt),
+    }));
+    const member = siteMemberFromRecord(create(SiteMemberRecordSchema, {
+      id: "b9d876d1-f22a-4cd6-9723-cfbd344ebccb",
+      siteId,
+      userId: "bce7762a-f7c7-4d22-8031-4336803038eb",
+      roleId: "4f7556a0-64ea-4da0-8996-d1f744035b75",
+      roleKey: "owner",
+      status: "active",
+      version: BigInt(2),
+      createdAt: timestampFromDate(createdAt),
+      updatedAt: timestampFromDate(updatedAt),
+    }));
+
+    expect(site).toMatchObject({ id: siteId, code: "kokoro-main", status: "active", version: BigInt(3) });
+    expect(member).toMatchObject({ siteId, roleKey: "owner", status: "active", version: BigInt(2) });
+    expect(Object.isFrozen(site)).toBe(true);
+    expect(Object.isFrozen(member)).toBe(true);
+  });
+
+  it("WEB-UNIT-SITE-001 preserves Site scope in live and inspected authorization", () => {
+    const siteId = "94944258-f6a2-4813-bd2e-3e4a38053021";
+    const common = {
+      allowed: true,
+      reasonCode: "allowed",
+      userId: "bce7762a-f7c7-4d22-8031-4336803038eb",
+      siteId,
+      roleKeys: ["owner"],
+      authorizationVersion: BigInt(5),
+      evaluatedAt: timestampFromDate(updatedAt),
+    };
+    const decision = siteAuthorizationFromResponse(create(AuthorizeSiteResponseSchema, {
+      ...common,
+      sessionId: "a237ca85-0634-4ce8-bd37-6d7bd90beaa8",
+    }));
+    const inspection = siteAuthorizationInspectionFromResponse(
+      create(InspectUserSiteAuthorizationResponseSchema, common),
+    );
+
+    expect(decision).toMatchObject({ siteId, sessionId: "a237ca85-0634-4ce8-bd37-6d7bd90beaa8" });
+    expect(inspection).toMatchObject({ siteId });
+    expect(inspection).not.toHaveProperty("sessionId");
+  });
+
+  it("WEB-UNIT-SITE-001 rejects malformed Site scope records", () => {
+    expect(() => siteFromRecord(create(SiteRecordSchema, {
+      id: "94944258-f6a2-4813-bd2e-3e4a38053021",
+      code: "INVALID CODE",
+      name: "Kokoro Main",
+      status: "active",
+      version: BigInt(1),
+      createdAt: timestampFromDate(createdAt),
+      updatedAt: timestampFromDate(updatedAt),
+    }))).toThrow("invalid IAM SiteRecord");
   });
 
   it("WEB-UNIT-RECORD-001 rejects missing records timestamps and unknown enums", () => {

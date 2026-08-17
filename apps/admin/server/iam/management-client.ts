@@ -7,6 +7,7 @@ import { IamAdministrationService } from "../../generated/iam/proto/kokoro/iam/v
 import { IamAuthorizationService } from "../../generated/iam/proto/kokoro/iam/v1/authorization_pb";
 import { IamOrganizationService } from "../../generated/iam/proto/kokoro/iam/v1/organization_pb";
 import { IamSessionService } from "../../generated/iam/proto/kokoro/iam/v1/session_pb";
+import { IamSiteService } from "../../generated/iam/proto/kokoro/iam/v1/site_pb";
 import {
   authorizationFromResponse,
   authorizationInspectionFromResponse,
@@ -16,6 +17,10 @@ import {
   roleFromRecord,
   securityEventFromRecord,
   sessionFromRecord,
+  siteAuthorizationFromResponse,
+  siteAuthorizationInspectionFromResponse,
+  siteFromRecord,
+  siteMemberFromRecord,
   userFromRecord,
   type AdminAuthorizationDecision,
   type AdminAuthorizationInspection,
@@ -25,10 +30,21 @@ import {
   type AdminRole,
   type AdminSecurityEvent,
   type AdminSession,
+  type AdminSite,
+  type AdminSiteAuthorizationDecision,
+  type AdminSiteAuthorizationInspection,
+  type AdminSiteMember,
   type AdminUser,
 } from "./records";
 
 export type PageResult<T> = Readonly<{ items: readonly T[]; nextCursor: string | null }>;
+export type SecurityEventStatistics = Readonly<{
+  total: bigint;
+  byKind: readonly Readonly<{ kind: string; count: bigint }>[];
+}>;
+export type SecurityEventPageResult = PageResult<AdminSecurityEvent> & Readonly<{
+  statistics: SecurityEventStatistics;
+}>;
 export type ManagementCommand = Readonly<{
   requestId: string;
   commandId: string;
@@ -57,6 +73,28 @@ export type OrganizationListInput = Readonly<{
   cursor?: string;
   limit: number;
 }>;
+export type SiteListInput = Readonly<{
+  requestId: string;
+  query: string;
+  status?: AdminSite["status"];
+  includeDeleted: boolean;
+  cursor?: string;
+  limit: number;
+}>;
+export type SiteMemberListInput = Readonly<{
+  requestId: string;
+  siteId: string;
+  includeDeleted: boolean;
+  cursor?: string;
+  limit: number;
+}>;
+export type SiteAuthorizationInput = Readonly<{
+  requestId: string;
+  siteId: string;
+  permissionKey: string;
+  resourceRef?: string;
+}>;
+export type InspectUserSiteAuthorizationInput = SiteAuthorizationInput & Readonly<{ userId: string }>;
 export type MemberListInput = Readonly<{
   requestId: string;
   organizationId: string;
@@ -98,6 +136,24 @@ export interface IamManagementClient {
   reactivateUser(command: ManagementCommand, userId: string): Promise<MutationResult<AdminUser>>;
   deleteUser(command: ManagementCommand, userId: string): Promise<MutationResult<AdminUser>>;
   restoreUser(command: ManagementCommand, userId: string): Promise<MutationResult<AdminUser>>;
+  listSites(input: SiteListInput): Promise<PageResult<AdminSite>>;
+  getSite(input: Readonly<{ requestId: string; siteId: string; includeDeleted: boolean }>): Promise<AdminSite | null>;
+  createSite(command: ManagementCommand, code: string, name: string): Promise<MutationResult<AdminSite> & Readonly<{ owner: AdminSiteMember }>>;
+  updateSite(command: ManagementCommand, siteId: string, name: string): Promise<MutationResult<AdminSite>>;
+  suspendSite(command: ManagementCommand, siteId: string): Promise<MutationResult<AdminSite>>;
+  reactivateSite(command: ManagementCommand, siteId: string): Promise<MutationResult<AdminSite>>;
+  deleteSite(command: ManagementCommand, siteId: string): Promise<MutationResult<AdminSite>>;
+  restoreSite(command: ManagementCommand, siteId: string): Promise<MutationResult<AdminSite>>;
+  listSiteMembers(input: SiteMemberListInput): Promise<PageResult<AdminSiteMember>>;
+  addSiteMember(command: ManagementCommand, siteId: string, userId: string, roleKey: string): Promise<MutationResult<AdminSiteMember>>;
+  changeSiteMemberRole(command: ManagementCommand, siteId: string, memberId: string, roleKey: string): Promise<MutationResult<AdminSiteMember>>;
+  suspendSiteMember(command: ManagementCommand, siteId: string, memberId: string): Promise<MutationResult<AdminSiteMember>>;
+  reactivateSiteMember(command: ManagementCommand, siteId: string, memberId: string): Promise<MutationResult<AdminSiteMember>>;
+  removeSiteMember(command: ManagementCommand, siteId: string, memberId: string): Promise<MutationResult<AdminSiteMember>>;
+  restoreSiteMember(command: ManagementCommand, siteId: string, memberId: string): Promise<MutationResult<AdminSiteMember>>;
+  selectSite(command: ManagementCommand, siteId: string): Promise<AdminSite>;
+  authorizeSite(input: SiteAuthorizationInput): Promise<AdminSiteAuthorizationDecision>;
+  inspectUserSiteAuthorization(input: InspectUserSiteAuthorizationInput): Promise<AdminSiteAuthorizationInspection>;
   listOrganizations(input: OrganizationListInput): Promise<PageResult<AdminOrganization>>;
   getOrganization(input: Readonly<{ requestId: string; organizationId: string; includeDeleted: boolean }>): Promise<AdminOrganization | null>;
   createOrganization(command: ManagementCommand, slug: string, name: string): Promise<MutationResult<AdminOrganization>>;
@@ -118,7 +174,7 @@ export interface IamManagementClient {
   listSessions(input: SessionListInput): Promise<PageResult<AdminSession>>;
   revokeSession(command: ManagementCommand, sessionId: string): Promise<Readonly<{ revoked: boolean; replayed: boolean }>>;
   revokeAllSessions(command: ManagementCommand, userId: string): Promise<Readonly<{ revokedCount: number; replayed: boolean }>>;
-  listSecurityEvents(input: SecurityEventListInput): Promise<PageResult<AdminSecurityEvent>>;
+  listSecurityEvents(input: SecurityEventListInput): Promise<SecurityEventPageResult>;
 }
 
 function nextCursor(value: string | undefined): string | null {
@@ -141,6 +197,7 @@ export function createIamManagementClient(transport: Transport): IamManagementCl
   const authorization = createClient(IamAuthorizationService, transport);
   const organizations = createClient(IamOrganizationService, transport);
   const sessions = createClient(IamSessionService, transport);
+  const sites = createClient(IamSiteService, transport);
 
   const client: IamManagementClient = {
     async listUsers(input) {
@@ -179,6 +236,104 @@ export function createIamManagementClient(transport: Transport): IamManagementCl
     async restoreUser(command, userId) {
       const response = await administration.restoreUser({ command: commandValue(command), userId });
       return Object.freeze({ value: userFromRecord(response.user), replayed: response.replayed });
+    },
+    async listSites(input) {
+      const response = await sites.listSites({
+        requestId: input.requestId,
+        query: input.query,
+        status: input.status ?? "",
+        includeDeleted: input.includeDeleted,
+        page: { limit: input.limit, cursor: input.cursor ?? "" },
+      });
+      return Object.freeze({
+        items: Object.freeze(response.sites.map(siteFromRecord)),
+        nextCursor: nextCursor(response.page?.nextCursor),
+      });
+    },
+    async getSite(input) {
+      const response = await sites.getSite(input);
+      return response.site === undefined ? null : siteFromRecord(response.site);
+    },
+    async createSite(command, code, name) {
+      const response = await sites.createSite({ command: commandValue(command), code, name });
+      return Object.freeze({ value: siteFromRecord(response.site), owner: siteMemberFromRecord(response.owner), replayed: response.replayed });
+    },
+    async updateSite(command, siteId, name) {
+      const response = await sites.updateSite({ command: commandValue(command), siteId, name });
+      return Object.freeze({ value: siteFromRecord(response.site), replayed: response.replayed });
+    },
+    async suspendSite(command, siteId) {
+      const response = await sites.suspendSite({ command: commandValue(command), siteId });
+      return Object.freeze({ value: siteFromRecord(response.site), replayed: response.replayed });
+    },
+    async reactivateSite(command, siteId) {
+      const response = await sites.reactivateSite({ command: commandValue(command), siteId });
+      return Object.freeze({ value: siteFromRecord(response.site), replayed: response.replayed });
+    },
+    async deleteSite(command, siteId) {
+      const response = await sites.deleteSite({ command: commandValue(command), siteId });
+      return Object.freeze({ value: siteFromRecord(response.site), replayed: response.replayed });
+    },
+    async restoreSite(command, siteId) {
+      const response = await sites.restoreSite({ command: commandValue(command), siteId });
+      return Object.freeze({ value: siteFromRecord(response.site), replayed: response.replayed });
+    },
+    async listSiteMembers(input) {
+      const response = await sites.listSiteMembers({
+        requestId: input.requestId,
+        siteId: input.siteId,
+        includeDeleted: input.includeDeleted,
+        page: { limit: input.limit, cursor: input.cursor ?? "" },
+      });
+      return Object.freeze({
+        items: Object.freeze(response.members.map(siteMemberFromRecord)),
+        nextCursor: nextCursor(response.page?.nextCursor),
+      });
+    },
+    async addSiteMember(command, siteId, userId, roleKey) {
+      const response = await sites.addSiteMember({ command: commandValue(command), siteId, userId, roleKey });
+      return Object.freeze({ value: siteMemberFromRecord(response.member), replayed: response.replayed });
+    },
+    async changeSiteMemberRole(command, siteId, memberId, roleKey) {
+      const response = await sites.changeSiteMemberRole({ command: commandValue(command), siteId, memberId, roleKey });
+      return Object.freeze({ value: siteMemberFromRecord(response.member), replayed: response.replayed });
+    },
+    async suspendSiteMember(command, siteId, memberId) {
+      const response = await sites.suspendSiteMember({ command: commandValue(command), siteId, memberId });
+      return Object.freeze({ value: siteMemberFromRecord(response.member), replayed: response.replayed });
+    },
+    async reactivateSiteMember(command, siteId, memberId) {
+      const response = await sites.reactivateSiteMember({ command: commandValue(command), siteId, memberId });
+      return Object.freeze({ value: siteMemberFromRecord(response.member), replayed: response.replayed });
+    },
+    async removeSiteMember(command, siteId, memberId) {
+      const response = await sites.removeSiteMember({ command: commandValue(command), siteId, memberId });
+      return Object.freeze({ value: siteMemberFromRecord(response.member), replayed: response.replayed });
+    },
+    async restoreSiteMember(command, siteId, memberId) {
+      const response = await sites.restoreSiteMember({ command: commandValue(command), siteId, memberId });
+      return Object.freeze({ value: siteMemberFromRecord(response.member), replayed: response.replayed });
+    },
+    async selectSite(command, siteId) {
+      const response = await sites.selectSite({ command: commandValue(command), siteId });
+      return siteFromRecord(response.site);
+    },
+    async authorizeSite(input) {
+      return siteAuthorizationFromResponse(await authorization.authorizeSite({
+        requestId: input.requestId,
+        siteId: input.siteId,
+        permissionKey: input.permissionKey,
+        ...(input.resourceRef === undefined ? {} : { resourceRef: input.resourceRef }),
+      }));
+    },
+    async inspectUserSiteAuthorization(input) {
+      return siteAuthorizationInspectionFromResponse(await authorization.inspectUserSiteAuthorization({
+        requestId: input.requestId,
+        siteId: input.siteId,
+        userId: input.userId,
+        permissionKey: input.permissionKey,
+        ...(input.resourceRef === undefined ? {} : { resourceRef: input.resourceRef }),
+      }));
     },
     async listOrganizations(input) {
       const response = await administration.listOrganizations({
@@ -316,9 +471,17 @@ export function createIamManagementClient(transport: Transport): IamManagementCl
         ...(input.createdBefore === undefined ? {} : { createdBefore: timestampFromDate(input.createdBefore) }),
         page: { limit: input.limit, cursor: input.cursor ?? "" },
       });
+      if (response.statistics === undefined) throw new Error("invalid IAM SecurityEventStatistics");
       return Object.freeze({
         items: Object.freeze(response.events.map(securityEventFromRecord)),
         nextCursor: nextCursor(response.page?.nextCursor),
+        statistics: Object.freeze({
+          total: response.statistics.total,
+          byKind: Object.freeze(response.statistics.byKind.map((item) => Object.freeze({
+            kind: item.kind,
+            count: item.count,
+          }))),
+        }),
       });
     },
   };

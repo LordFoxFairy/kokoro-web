@@ -9,10 +9,14 @@ import type {
   RoleRecord,
   SecurityEventRecord,
   SessionSummaryRecord,
+  SiteMemberRecord,
+  SiteRecord,
   UserRecord,
 } from "../../generated/iam/proto/kokoro/iam/v1/types_pb";
 import type {
+  AuthorizeSiteResponse,
   AuthorizeResponse,
+  InspectUserSiteAuthorizationResponse,
   InspectUserAuthorizationResponse,
 } from "../../generated/iam/proto/kokoro/iam/v1/authorization_pb";
 import {
@@ -47,11 +51,35 @@ export type AdminOrganization = Readonly<{
   updatedAt: Date;
 }>;
 
+export type AdminSite = Readonly<{
+  id: string;
+  code: string;
+  name: string;
+  status: "active" | "suspended" | "deleted";
+  version: bigint;
+  deletedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}>;
+
 export type AdminRoleKey = IamRoleKey;
 
 export type AdminMember = Readonly<{
   id: string;
   organizationId: string;
+  userId: string;
+  roleId: string;
+  roleKey: AdminRoleKey;
+  status: "active" | "suspended" | "deleted";
+  version: bigint;
+  deletedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}>;
+
+export type AdminSiteMember = Readonly<{
+  id: string;
+  siteId: string;
   userId: string;
   roleId: string;
   roleKey: AdminRoleKey;
@@ -106,11 +134,20 @@ export type AdminAuthorizationInspection = Readonly<{
   evaluatedAt: Date;
 }>;
 
+export type AdminSiteAuthorizationDecision = Omit<AdminAuthorizationDecision, "organizationId"> & Readonly<{
+  siteId: string;
+}>;
+
+export type AdminSiteAuthorizationInspection = Omit<AdminAuthorizationInspection, "organizationId"> & Readonly<{
+  siteId: string;
+}>;
+
 export type AdminSession = Readonly<{
   id: string;
   userId: string;
   expiresAt: Date;
   activeOrganizationId: string | null;
+  activeSiteId: string | null;
   revokedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
@@ -122,6 +159,7 @@ export type AdminSecurityEvent = Readonly<{
   actorUserId: string | null;
   targetUserId: string | null;
   organizationId: string | null;
+  siteId: string | null;
   sessionId: string | null;
   requestId: string;
   commandId: string | null;
@@ -136,6 +174,7 @@ const roleKeyPattern = /^[a-z][a-z0-9_]{0,63}$/u;
 const permissionKeyPattern = /^[a-z][a-z0-9_]*:[a-z][a-z0-9_]*$/u;
 const userStatuses = new Set(["active", "suspended", "deleted"]);
 const organizationStatuses = new Set(["active", "suspended", "deleted"]);
+const siteStatuses = new Set(["active", "suspended", "deleted"]);
 const memberStatuses = new Set(["active", "suspended", "deleted"]);
 const roleStatuses = new Set(["active", "deleted"]);
 const permissionStatuses = new Set(["active", "retired"]);
@@ -149,11 +188,15 @@ function isAdminRoleKey(value: string): value is AdminRoleKey {
 type RecordName =
   | "UserRecord"
   | "OrganizationRecord"
+  | "SiteRecord"
+  | "SiteMemberRecord"
   | "MemberRecord"
   | "RoleRecord"
   | "PermissionRecord"
   | "AuthorizeResponse"
   | "InspectUserAuthorizationResponse"
+  | "AuthorizeSiteResponse"
+  | "InspectUserSiteAuthorizationResponse"
   | "SessionSummaryRecord"
   | "SecurityEventRecord";
 
@@ -225,6 +268,28 @@ export function organizationFromRecord(record: OrganizationRecord | undefined): 
   });
 }
 
+export function siteFromRecord(record: SiteRecord | undefined): AdminSite {
+  if (
+    record === undefined
+    || !uuidPattern.test(record.id)
+    || !slugPattern.test(record.code)
+    || record.name.trim().length < 1
+    || record.name.length > 160
+    || !siteStatuses.has(record.status)
+    || record.version < BigInt(0)
+  ) return invalid("SiteRecord");
+  return Object.freeze({
+    id: record.id,
+    code: record.code,
+    name: record.name,
+    status: record.status as AdminSite["status"],
+    version: record.version,
+    deletedAt: record.deletedAt === undefined ? null : date(record.deletedAt, "SiteRecord"),
+    createdAt: date(record.createdAt, "SiteRecord"),
+    updatedAt: date(record.updatedAt, "SiteRecord"),
+  });
+}
+
 export function memberFromRecord(record: MemberRecord | undefined): AdminMember {
   if (
     record === undefined
@@ -249,6 +314,31 @@ export function memberFromRecord(record: MemberRecord | undefined): AdminMember 
     deletedAt: record.deletedAt === undefined ? null : date(record.deletedAt, "MemberRecord"),
     createdAt: date(record.createdAt, "MemberRecord"),
     updatedAt: date(record.updatedAt, "MemberRecord"),
+  });
+}
+
+export function siteMemberFromRecord(record: SiteMemberRecord | undefined): AdminSiteMember {
+  if (
+    record === undefined
+    || !uuidPattern.test(record.id)
+    || !uuidPattern.test(record.siteId)
+    || !uuidPattern.test(record.userId)
+    || !uuidPattern.test(record.roleId)
+    || !isAdminRoleKey(record.roleKey)
+    || !memberStatuses.has(record.status)
+    || record.version < BigInt(0)
+  ) return invalid("SiteMemberRecord");
+  return Object.freeze({
+    id: record.id,
+    siteId: record.siteId,
+    userId: record.userId,
+    roleId: record.roleId,
+    roleKey: record.roleKey as AdminRoleKey,
+    status: record.status as AdminSiteMember["status"],
+    version: record.version,
+    deletedAt: record.deletedAt === undefined ? null : date(record.deletedAt, "SiteMemberRecord"),
+    createdAt: date(record.createdAt, "SiteMemberRecord"),
+    updatedAt: date(record.updatedAt, "SiteMemberRecord"),
   });
 }
 
@@ -353,12 +443,61 @@ export function authorizationInspectionFromResponse(
   });
 }
 
+export function siteAuthorizationFromResponse(
+  response: AuthorizeSiteResponse | undefined,
+): AdminSiteAuthorizationDecision {
+  if (
+    response === undefined
+    || !authorizationReasons.has(response.reasonCode as AdminAuthorizationReason)
+    || !uuidPattern.test(response.userId)
+    || !uuidPattern.test(response.sessionId)
+    || !uuidPattern.test(response.siteId)
+    || response.roleKeys.some((key) => !isAdminRoleKey(key))
+    || response.authorizationVersion < BigInt(0)
+    || response.allowed !== (response.reasonCode === "allowed")
+  ) return invalid("AuthorizeSiteResponse");
+  return Object.freeze({
+    allowed: response.allowed,
+    reasonCode: response.reasonCode as AdminAuthorizationReason,
+    userId: response.userId,
+    sessionId: response.sessionId,
+    siteId: response.siteId,
+    roleKeys: Object.freeze(response.roleKeys.filter(isAdminRoleKey)),
+    authorizationVersion: response.authorizationVersion,
+    evaluatedAt: date(response.evaluatedAt, "AuthorizeSiteResponse"),
+  });
+}
+
+export function siteAuthorizationInspectionFromResponse(
+  response: InspectUserSiteAuthorizationResponse | undefined,
+): AdminSiteAuthorizationInspection {
+  if (
+    response === undefined
+    || !authorizationReasons.has(response.reasonCode as AdminAuthorizationReason)
+    || !uuidPattern.test(response.userId)
+    || !uuidPattern.test(response.siteId)
+    || response.roleKeys.some((key) => !isAdminRoleKey(key))
+    || response.authorizationVersion < BigInt(0)
+    || response.allowed !== (response.reasonCode === "allowed")
+  ) return invalid("InspectUserSiteAuthorizationResponse");
+  return Object.freeze({
+    allowed: response.allowed,
+    reasonCode: response.reasonCode as AdminAuthorizationReason,
+    userId: response.userId,
+    siteId: response.siteId,
+    roleKeys: Object.freeze(response.roleKeys.filter(isAdminRoleKey)),
+    authorizationVersion: response.authorizationVersion,
+    evaluatedAt: date(response.evaluatedAt, "InspectUserSiteAuthorizationResponse"),
+  });
+}
+
 export function sessionFromRecord(record: SessionSummaryRecord | undefined): AdminSession {
   if (
     record === undefined
     || !uuidPattern.test(record.id)
     || !uuidPattern.test(record.userId)
     || (record.activeOrganizationId !== undefined && !uuidPattern.test(record.activeOrganizationId))
+    || (record.activeSiteId !== undefined && !uuidPattern.test(record.activeSiteId))
   ) {
     return invalid("SessionSummaryRecord");
   }
@@ -367,6 +506,7 @@ export function sessionFromRecord(record: SessionSummaryRecord | undefined): Adm
     userId: record.userId,
     expiresAt: date(record.expires, "SessionSummaryRecord"),
     activeOrganizationId: record.activeOrganizationId ?? null,
+    activeSiteId: record.activeSiteId ?? null,
     revokedAt: record.revokedAt === undefined ? null : date(record.revokedAt, "SessionSummaryRecord"),
     createdAt: date(record.createdAt, "SessionSummaryRecord"),
     updatedAt: date(record.updatedAt, "SessionSummaryRecord"),
@@ -378,6 +518,7 @@ export function securityEventFromRecord(record: SecurityEventRecord | undefined)
     record?.actorUserId,
     record?.targetUserId,
     record?.organizationId,
+    record?.siteId,
     record?.sessionId,
     record?.commandId,
   ];
@@ -397,6 +538,7 @@ export function securityEventFromRecord(record: SecurityEventRecord | undefined)
     actorUserId: record.actorUserId ?? null,
     targetUserId: record.targetUserId ?? null,
     organizationId: record.organizationId ?? null,
+    siteId: record.siteId ?? null,
     sessionId: record.sessionId ?? null,
     requestId: record.requestId,
     commandId: record.commandId ?? null,
