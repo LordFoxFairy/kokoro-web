@@ -14,6 +14,11 @@ describe("Auth.js callback and return URL policy", () => {
       "/organizations/94944258-f6a2-4813-bd2e-3e4a38053021?tab=members",
       baseUrl,
     )).toBe(`${baseUrl}/organizations/94944258-f6a2-4813-bd2e-3e4a38053021?tab=members`);
+    expect(safeAuthRedirect("/sites?status=active", baseUrl)).toBe(`${baseUrl}/sites?status=active`);
+    expect(safeAuthRedirect(
+      "/sites/94944258-f6a2-4813-bd2e-3e4a38053021?tab=access",
+      baseUrl,
+    )).toBe(`${baseUrl}/sites/94944258-f6a2-4813-bd2e-3e4a38053021?tab=access`);
   });
 
   it("WEB-SEC-REDIRECT-001 rejects absolute cross-origin scheme-relative and credential URLs", () => {

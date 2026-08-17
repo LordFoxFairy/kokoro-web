@@ -4,7 +4,7 @@ import { isIP } from "node:net";
 
 const uuid = "[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}";
 const allowedPaths = new RegExp(
-  `^(?:/$|/(?:users|organizations)(?:/${uuid})?/?$|/(?:sessions|access|audit)/?$)`,
+  `^(?:/$|/(?:users|organizations|sites)(?:/${uuid})?/?$|/(?:sessions|access|audit)/?$)`,
   "u",
 );
 const encodedUnsafe = /%(?:00|2e|2f|5c)/iu;
