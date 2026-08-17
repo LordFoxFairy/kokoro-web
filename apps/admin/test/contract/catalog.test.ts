@@ -100,9 +100,9 @@ describe("Admin Web P0 catalog", () => {
       realPostgresqlRequired: true,
       realMailRequired: true,
     });
-    expect(ids).toHaveLength(63);
+    expect(ids).toHaveLength(86);
     expect(new Set(ids).size).toBe(ids.length);
-    expect(adminCases).toHaveLength(47);
+    expect(adminCases).toHaveLength(70);
     expect(adminCases.every((entry) => entry.status === "NOT_STARTED" && entry.retries === 0)).toBe(true);
     expect(pairCases.map((entry) => entry.id)).toEqual(sharedPairIds);
     expect(pairCases.every((entry) => entry.status === "NOT_STARTED")).toBe(true);

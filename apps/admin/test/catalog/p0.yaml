@@ -432,6 +432,213 @@ cases:
     testFile: test/security/audit-metadata.test.ts
     evidence: [junit, coverage]
     retries: 0
+  - id: WEB-UNIT-CREDENTIAL-001
+    category: unit
+    status: NOT_STARTED
+    title: Generated credential login response validation
+    requirements: [WEB-IAM-FR-AUTH-005, WEB-IAM-FR-RPC-001]
+    acceptance: []
+    testFile: test/unit/credential-client.test.ts
+    evidence: [junit, coverage]
+    retries: 0
+  - id: WEB-UNIT-CREDENTIAL-002
+    category: unit
+    status: NOT_STARTED
+    title: Public credential login input and result boundary
+    requirements: [WEB-IAM-FR-AUTH-005]
+    acceptance: []
+    testFile: test/unit/credential-login.test.ts
+    evidence: [junit, coverage]
+    retries: 0
+  - id: WEB-UNIT-RBAC-001
+    category: unit
+    status: NOT_STARTED
+    title: Custom Role key and cross-scope record validation
+    requirements: [WEB-IAM-FR-RBAC-001, WEB-IAM-FR-RPC-001]
+    acceptance: []
+    testFile: test/unit/iam-records.test.ts
+    evidence: [junit, coverage]
+    retries: 0
+  - id: WEB-UNIT-RPC-001
+    category: unit
+    status: NOT_STARTED
+    title: User and scoped Role generated RPC mapping
+    requirements: [WEB-IAM-FR-RPC-001, WEB-IAM-FR-USER-001, WEB-IAM-FR-RBAC-001]
+    acceptance: []
+    testFile: test/unit/management-client-rbac.test.ts
+    evidence: [junit, coverage]
+    retries: 0
+  - id: WEB-UNIT-SITE-001
+    category: unit
+    status: NOT_STARTED
+    title: Site record and authorization scope validation
+    requirements: [WEB-IAM-FR-RPC-001, WEB-IAM-FR-RBAC-001]
+    acceptance: []
+    testFile: test/unit/iam-records.test.ts
+    evidence: [junit, coverage]
+    retries: 0
+  - id: WEB-COMP-USER-002
+    category: component
+    status: NOT_STARTED
+    title: Standard User creation without password or administrator controls
+    requirements: [WEB-IAM-FR-USER-001]
+    acceptance: [WEB-IAM-ACC-USER-001]
+    testFile: test/component/users.test.tsx
+    evidence: [junit, coverage, accessibility]
+    retries: 0
+  - id: WEB-COMP-ROLE-001
+    category: component
+    status: NOT_STARTED
+    title: Organization custom Role lifecycle and permission replacement
+    requirements: [WEB-IAM-FR-RBAC-001, WEB-IAM-FR-RBAC-002]
+    acceptance: [WEB-IAM-ACC-RBAC-001]
+    testFile: test/component/roles.test.tsx
+    evidence: [junit, coverage, accessibility]
+    retries: 0
+  - id: WEB-COMP-DEVFIXTURE-001
+    category: component
+    status: NOT_STARTED
+    title: Development administrator bootstrap and password reset Drawer
+    requirements: [WEB-IAM-FR-AUTH-005, WEB-IAM-FR-MODULE-001]
+    acceptance: []
+    testFile: test/component/development-fixture.test.tsx
+    evidence: [junit, coverage, accessibility]
+    retries: 0
+  - id: WEB-COMP-SITE-002
+    category: component
+    status: NOT_STARTED
+    title: Site five-tab detail workspace
+    requirements: [WEB-IAM-FR-MODULE-001, WEB-IAM-FR-RBAC-001]
+    acceptance: []
+    testFile: test/component/sites.test.tsx
+    evidence: [junit, coverage, accessibility]
+    retries: 0
+  - id: WEB-COMP-SITE-003
+    category: component
+    status: NOT_STARTED
+    title: Site member lifecycle controls
+    requirements: [WEB-IAM-FR-MEMBER-001]
+    acceptance: [WEB-IAM-ACC-MEMBER-001]
+    testFile: test/component/sites.test.tsx
+    evidence: [junit, coverage, accessibility]
+    retries: 0
+  - id: WEB-COMP-SITE-004
+    category: component
+    status: NOT_STARTED
+    title: Site authorization inspection
+    requirements: [WEB-IAM-FR-RBAC-001]
+    acceptance: [WEB-IAM-ACC-RBAC-001]
+    testFile: test/component/sites.test.tsx
+    evidence: [junit, coverage, accessibility]
+    retries: 0
+  - id: WEB-COMP-SITE-005
+    category: component
+    status: NOT_STARTED
+    title: Site scoped audit filters statistics and detail
+    requirements: [WEB-IAM-FR-AUDIT-001]
+    acceptance: [WEB-IAM-ACC-AUDIT-001]
+    testFile: test/component/sites.test.tsx
+    evidence: [junit, coverage, accessibility]
+    retries: 0
+  - id: WEB-CONTRACT-SHELL-001
+    category: contract
+    status: NOT_STARTED
+    title: Platform product shell registry and light theme contract
+    requirements: [WEB-IAM-FR-MODULE-001, WEB-IAM-FR-I18N-001]
+    acceptance: []
+    testFile: test/contract/platform-shell.test.ts
+    evidence: [junit]
+    retries: 0
+  - id: WEB-CONTRACT-DEVFIXTURE-001
+    category: contract
+    status: NOT_STARTED
+    title: Generated development fixture RPC inventory
+    requirements: [WEB-IAM-FR-AUTH-005, WEB-IAM-FR-RPC-001]
+    acceptance: []
+    testFile: test/contract/generated-services.test.ts
+    evidence: [junit, generated-diff]
+    retries: 0
+  - id: WEB-INT-USER-002
+    category: integration
+    status: NOT_STARTED
+    title: Standard User create and versioned update RPC workflow
+    requirements: [WEB-IAM-FR-USER-001, WEB-IAM-FR-IDEM-001]
+    acceptance: [WEB-IAM-ACC-USER-001, WEB-IAM-ACC-IDEM-001]
+    testFile: test/integration/user-actions.test.ts
+    evidence: [junit, coverage, rpc]
+    retries: 0
+  - id: WEB-INT-ROLE-001
+    category: integration
+    status: NOT_STARTED
+    title: Organization custom Role CRUD and permission replacement
+    requirements: [WEB-IAM-FR-RBAC-001, WEB-IAM-FR-RBAC-002, WEB-IAM-FR-IDEM-001]
+    acceptance: [WEB-IAM-ACC-RBAC-001]
+    testFile: test/integration/organization-role-actions.test.ts
+    evidence: [junit, coverage, rpc]
+    retries: 0
+  - id: WEB-INT-SITEROLE-001
+    category: integration
+    status: NOT_STARTED
+    title: Site custom Role CRUD and permission replacement
+    requirements: [WEB-IAM-FR-RBAC-001, WEB-IAM-FR-RBAC-002, WEB-IAM-FR-IDEM-001]
+    acceptance: [WEB-IAM-ACC-RBAC-001]
+    testFile: test/integration/site-role-actions.test.ts
+    evidence: [junit, coverage, rpc]
+    retries: 0
+  - id: WEB-INT-DEVFIXTURE-001
+    category: integration
+    status: NOT_STARTED
+    title: Development administrator generated RPC workflow
+    requirements: [WEB-IAM-FR-AUTH-005, WEB-IAM-FR-RPC-001]
+    acceptance: []
+    testFile: test/integration/development-fixture-actions.test.ts
+    evidence: [junit, coverage, rpc]
+    retries: 0
+  - id: WEB-SEC-USER-002
+    category: integration
+    status: NOT_STARTED
+    title: Reject browser administrator creation fields and mismatched User scope
+    requirements: [WEB-IAM-FR-USER-001, WEB-IAM-FR-RPC-001]
+    acceptance: []
+    testFile: test/integration/user-actions.test.ts
+    evidence: [junit, coverage, rpc]
+    retries: 0
+  - id: WEB-SEC-ROLE-001
+    category: integration
+    status: NOT_STARTED
+    title: Reject built-in Organization Role mutation
+    requirements: [WEB-IAM-FR-RBAC-001]
+    acceptance: []
+    testFile: test/integration/organization-role-actions.test.ts
+    evidence: [junit, coverage, rpc]
+    retries: 0
+  - id: WEB-SEC-SITEROLE-001
+    category: integration
+    status: NOT_STARTED
+    title: Reject reserved built-in and foreign Site Role mutation
+    requirements: [WEB-IAM-FR-RBAC-001]
+    acceptance: []
+    testFile: test/integration/site-role-actions.test.ts
+    evidence: [junit, coverage, rpc]
+    retries: 0
+  - id: WEB-SEC-DEVFIXTURE-001
+    category: integration
+    status: NOT_STARTED
+    title: Disable malformed and production fixture commands
+    requirements: [WEB-IAM-FR-AUTH-005, WEB-IAM-FR-RPC-001]
+    acceptance: []
+    testFile: test/integration/development-fixture-actions.test.ts
+    evidence: [junit, coverage, rpc]
+    retries: 0
+  - id: WEB-SEC-DEVFIXTURE-002
+    category: contract
+    status: NOT_STARTED
+    title: Exclude development fixture UI and RPC markers from production bundle
+    requirements: [WEB-IAM-FR-AUTH-006, WEB-IAM-FR-MODULE-001]
+    acceptance: []
+    testFile: test/contract/build-boundary.test.ts
+    evidence: [junit, build-manifest, bundle-scan]
+    retries: 0
   - id: IAM-SEC-ENUMPASSWORD-001
     category: pair_e2e
     status: NOT_STARTED

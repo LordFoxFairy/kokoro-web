@@ -15,7 +15,7 @@ const builtInRoleId = "4f7556a0-64ea-4da0-8996-d1f744035b75";
 const requestId = "8deecb20-8d72-4b7e-a719-722a2e606728";
 
 describe("Site custom roles", () => {
-  it("WEB-INT-SITE-ROLE-001 executes custom CRUD and complete permission replacement", async () => {
+  it("WEB-INT-SITEROLE-001 executes custom CRUD and complete permission replacement", async () => {
     const calls: Array<Readonly<{ operation: string; expectedVersion?: bigint; permissions?: readonly string[] }>> = [];
     const transport = createRouterTransport((router) => router.service(IamSiteService, {
       listSiteRoles: () => ({ roles: [siteRole(roleId, "reviewer", false)] }),
@@ -51,7 +51,7 @@ describe("Site custom roles", () => {
     }
   });
 
-  it("WEB-SEC-SITE-ROLE-001 rejects reserved keys, built-in mutation and foreign scope", async () => {
+  it("WEB-SEC-SITEROLE-001 rejects reserved keys, built-in mutation and foreign scope", async () => {
     let mutationCalls = 0;
     let foreign = false;
     const transport = createRouterTransport((router) => router.service(IamSiteService, {
