@@ -28,12 +28,19 @@ export function createSiteActionHandler(dependencies: SiteActionHandlerDependenc
       const result = await execute(client, value, command);
       const targetSiteId = "siteId" in value ? value.siteId : result.value.id;
       const memberOperation = value.operation === "add-member" || "memberId" in value;
+      const invalidOwner = value.operation === "create" && (
+        !("owner" in result)
+        || typeof result.owner !== "object"
+        || result.owner === null
+        || !("siteId" in result.owner)
+        || result.owner.siteId !== targetSiteId
+      );
       if ((memberOperation && !("siteId" in result.value))
         || ("siteId" in result.value && result.value.siteId !== targetSiteId)
         || ("memberId" in value && result.value.id !== value.memberId)
         || (!memberOperation && result.value.id !== targetSiteId)
         || (value.operation === "add-member" && (!("userId" in result.value) || result.value.userId !== value.userId))
-        || ("owner" in result && result.owner.siteId !== targetSiteId)
+        || invalidOwner
         || (value.operation === "create" && (!("code" in result.value) || result.value.code !== value.code))) {
         throw new Error("invalid site command scope");
       }
