@@ -47,7 +47,7 @@ import {
 } from "../../test/pair/fixture";
 
 const execFileAsync = promisify(execFile);
-const acceptedProviderCommit = "ee61ed002101d38f8061aa29c0f89fbb48bdd6be";
+const acceptedProviderCommit = "fc88313bba9201b88af6d4fc623fcf42a7e8b0eb";
 
 const providerSchema = z.object({
   repository: z.literal("kokoro-iam"),

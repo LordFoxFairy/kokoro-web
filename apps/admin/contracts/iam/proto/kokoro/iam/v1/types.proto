@@ -140,6 +140,18 @@ message RoleRecord {
   repeated string permission_keys = 9;
 }
 
+message SiteRoleRecord {
+  string id = 1;
+  string site_id = 2;
+  string key = 3;
+  string name = 4;
+  string description = 5;
+  bool built_in = 6;
+  string status = 7;
+  uint64 version = 8;
+  repeated string permission_keys = 9;
+}
+
 message PermissionRecord {
   string id = 1;
   string key = 2;

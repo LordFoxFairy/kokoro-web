@@ -5,7 +5,7 @@
 import type { GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
 import { fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv2";
 import { file_buf_validate_validate } from "../../../buf/validate/validate_pb";
-import type { CommandContext, PageInput, PageOutput, SiteMemberRecord, SiteRecord } from "./types_pb";
+import type { CommandContext, PageInput, PageOutput, SiteMemberRecord, SiteRecord, SiteRoleRecord } from "./types_pb";
 import { file_kokoro_iam_v1_types } from "./types_pb";
 import type { Message } from "@bufbuild/protobuf";
 
@@ -13,7 +13,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file kokoro/iam/v1/site.proto.
  */
 export const file_kokoro_iam_v1_site: GenFile = /*@__PURE__*/
-  fileDesc("Chhrb2tvcm8vaWFtL3YxL3NpdGUucHJvdG8SDWtva29yby5pYW0udjEipAEKEUNyZWF0ZVNpdGVSZXF1ZXN0EjYKB2NvbW1hbmQYASABKAsyHS5rb2tvcm8uaWFtLnYxLkNvbW1hbmRDb250ZXh0Qga6SAPIAQESPQoEY29kZRgCIAEoCUIvukgscioYUDImXlthLXowLTldKD86W2EtejAtOS1dezAsNzh9W2EtejAtOV0pPyQSGAoEbmFtZRgDIAEoCUIKukgHcgUQARigASJ/ChJDcmVhdGVTaXRlUmVzcG9uc2USJwoEc2l0ZRgBIAEoCzIZLmtva29yby5pYW0udjEuU2l0ZVJlY29yZBIuCgVvd25lchgCIAEoCzIfLmtva29yby5pYW0udjEuU2l0ZU1lbWJlclJlY29yZBIQCghyZXBsYXllZBgDIAEoCCJiCg5HZXRTaXRlUmVxdWVzdBIcCgpyZXF1ZXN0X2lkGAEgASgJQgi6SAVyA7ABARIZCgdzaXRlX2lkGAIgASgJQgi6SAVyA7ABARIXCg9pbmNsdWRlX2RlbGV0ZWQYAyABKAgiSAoPR2V0U2l0ZVJlc3BvbnNlEiwKBHNpdGUYASABKAsyGS5rb2tvcm8uaWFtLnYxLlNpdGVSZWNvcmRIAIgBAUIHCgVfc2l0ZSKjAQoQTGlzdFNpdGVzUmVxdWVzdBIcCgpyZXF1ZXN0X2lkGAEgASgJQgi6SAVyA7ABARImCgRwYWdlGAIgASgLMhgua29rb3JvLmlhbS52MS5QYWdlSW5wdXQSFwoPaW5jbHVkZV9kZWxldGVkGAMgASgIEhcKBXF1ZXJ5GAQgASgJQgi6SAVyAxigARIXCgZzdGF0dXMYBSABKAlCB7pIBHICGCAiZgoRTGlzdFNpdGVzUmVzcG9uc2USKAoFc2l0ZXMYASADKAsyGS5rb2tvcm8uaWFtLnYxLlNpdGVSZWNvcmQSJwoEcGFnZRgCIAEoCzIZLmtva29yby5pYW0udjEuUGFnZU91dHB1dCKAAQoRVXBkYXRlU2l0ZVJlcXVlc3QSNgoHY29tbWFuZBgBIAEoCzIdLmtva29yby5pYW0udjEuQ29tbWFuZENvbnRleHRCBrpIA8gBARIZCgdzaXRlX2lkGAIgASgJQgi6SAVyA7ABARIYCgRuYW1lGAMgASgJQgq6SAdyBRABGKABIk8KElVwZGF0ZVNpdGVSZXNwb25zZRInCgRzaXRlGAEgASgLMhkua29rb3JvLmlhbS52MS5TaXRlUmVjb3JkEhAKCHJlcGxheWVkGAIgASgIImcKElN1c3BlbmRTaXRlUmVxdWVzdBI2Cgdjb21tYW5kGAEgASgLMh0ua29rb3JvLmlhbS52MS5Db21tYW5kQ29udGV4dEIGukgDyAEBEhkKB3NpdGVfaWQYAiABKAlCCLpIBXIDsAEBIlAKE1N1c3BlbmRTaXRlUmVzcG9uc2USJwoEc2l0ZRgBIAEoCzIZLmtva29yby5pYW0udjEuU2l0ZVJlY29yZBIQCghyZXBsYXllZBgCIAEoCCJqChVSZWFjdGl2YXRlU2l0ZVJlcXVlc3QSNgoHY29tbWFuZBgBIAEoCzIdLmtva29yby5pYW0udjEuQ29tbWFuZENvbnRleHRCBrpIA8gBARIZCgdzaXRlX2lkGAIgASgJQgi6SAVyA7ABASJTChZSZWFjdGl2YXRlU2l0ZVJlc3BvbnNlEicKBHNpdGUYASABKAsyGS5rb2tvcm8uaWFtLnYxLlNpdGVSZWNvcmQSEAoIcmVwbGF5ZWQYAiABKAgiZgoRRGVsZXRlU2l0ZVJlcXVlc3QSNgoHY29tbWFuZBgBIAEoCzIdLmtva29yby5pYW0udjEuQ29tbWFuZENvbnRleHRCBrpIA8gBARIZCgdzaXRlX2lkGAIgASgJQgi6SAVyA7ABASJPChJEZWxldGVTaXRlUmVzcG9uc2USJwoEc2l0ZRgBIAEoCzIZLmtva29yby5pYW0udjEuU2l0ZVJlY29yZBIQCghyZXBsYXllZBgCIAEoCCJnChJSZXN0b3JlU2l0ZVJlcXVlc3QSNgoHY29tbWFuZBgBIAEoCzIdLmtva29yby5pYW0udjEuQ29tbWFuZENvbnRleHRCBrpIA8gBARIZCgdzaXRlX2lkGAIgASgJQgi6SAVyA7ABASJQChNSZXN0b3JlU2l0ZVJlc3BvbnNlEicKBHNpdGUYASABKAsyGS5rb2tvcm8uaWFtLnYxLlNpdGVSZWNvcmQSEAoIcmVwbGF5ZWQYAiABKAgioQEKFEFkZFNpdGVNZW1iZXJSZXF1ZXN0EjYKB2NvbW1hbmQYASABKAsyHS5rb2tvcm8uaWFtLnYxLkNvbW1hbmRDb250ZXh0Qga6SAPIAQESGQoHc2l0ZV9pZBgCIAEoCUIIukgFcgOwAQESGQoHdXNlcl9pZBgDIAEoCUIIukgFcgOwAQESGwoIcm9sZV9rZXkYBCABKAlCCbpIBnIEEAEYQCJaChVBZGRTaXRlTWVtYmVyUmVzcG9uc2USLwoGbWVtYmVyGAEgASgLMh8ua29rb3JvLmlhbS52MS5TaXRlTWVtYmVyUmVjb3JkEhAKCHJlcGxheWVkGAIgASgIIpIBChZMaXN0U2l0ZU1lbWJlcnNSZXF1ZXN0EhwKCnJlcXVlc3RfaWQYASABKAlCCLpIBXIDsAEBEhkKB3NpdGVfaWQYAiABKAlCCLpIBXIDsAEBEiYKBHBhZ2UYAyABKAsyGC5rb2tvcm8uaWFtLnYxLlBhZ2VJbnB1dBIXCg9pbmNsdWRlX2RlbGV0ZWQYBCABKAgidAoXTGlzdFNpdGVNZW1iZXJzUmVzcG9uc2USMAoHbWVtYmVycxgBIAMoCzIfLmtva29yby5pYW0udjEuU2l0ZU1lbWJlclJlY29yZBInCgRwYWdlGAIgASgLMhkua29rb3JvLmlhbS52MS5QYWdlT3V0cHV0IqoBChtDaGFuZ2VTaXRlTWVtYmVyUm9sZVJlcXVlc3QSNgoHY29tbWFuZBgBIAEoCzIdLmtva29yby5pYW0udjEuQ29tbWFuZENvbnRleHRCBrpIA8gBARIbCgltZW1iZXJfaWQYAiABKAlCCLpIBXIDsAEBEhsKCHJvbGVfa2V5GAMgASgJQgm6SAZyBBABGEASGQoHc2l0ZV9pZBgEIAEoCUIIukgFcgOwAQEiYQocQ2hhbmdlU2l0ZU1lbWJlclJvbGVSZXNwb25zZRIvCgZtZW1iZXIYASABKAsyHy5rb2tvcm8uaWFtLnYxLlNpdGVNZW1iZXJSZWNvcmQSEAoIcmVwbGF5ZWQYAiABKAgiigEKGFN1c3BlbmRTaXRlTWVtYmVyUmVxdWVzdBI2Cgdjb21tYW5kGAEgASgLMh0ua29rb3JvLmlhbS52MS5Db21tYW5kQ29udGV4dEIGukgDyAEBEhsKCW1lbWJlcl9pZBgCIAEoCUIIukgFcgOwAQESGQoHc2l0ZV9pZBgDIAEoCUIIukgFcgOwAQEiXgoZU3VzcGVuZFNpdGVNZW1iZXJSZXNwb25zZRIvCgZtZW1iZXIYASABKAsyHy5rb2tvcm8uaWFtLnYxLlNpdGVNZW1iZXJSZWNvcmQSEAoIcmVwbGF5ZWQYAiABKAgijQEKG1JlYWN0aXZhdGVTaXRlTWVtYmVyUmVxdWVzdBI2Cgdjb21tYW5kGAEgASgLMh0ua29rb3JvLmlhbS52MS5Db21tYW5kQ29udGV4dEIGukgDyAEBEhsKCW1lbWJlcl9pZBgCIAEoCUIIukgFcgOwAQESGQoHc2l0ZV9pZBgDIAEoCUIIukgFcgOwAQEiYQocUmVhY3RpdmF0ZVNpdGVNZW1iZXJSZXNwb25zZRIvCgZtZW1iZXIYASABKAsyHy5rb2tvcm8uaWFtLnYxLlNpdGVNZW1iZXJSZWNvcmQSEAoIcmVwbGF5ZWQYAiABKAgiiQEKF1JlbW92ZVNpdGVNZW1iZXJSZXF1ZXN0EjYKB2NvbW1hbmQYASABKAsyHS5rb2tvcm8uaWFtLnYxLkNvbW1hbmRDb250ZXh0Qga6SAPIAQESGwoJbWVtYmVyX2lkGAIgASgJQgi6SAVyA7ABARIZCgdzaXRlX2lkGAMgASgJQgi6SAVyA7ABASJdChhSZW1vdmVTaXRlTWVtYmVyUmVzcG9uc2USLwoGbWVtYmVyGAEgASgLMh8ua29rb3JvLmlhbS52MS5TaXRlTWVtYmVyUmVjb3JkEhAKCHJlcGxheWVkGAIgASgIIooBChhSZXN0b3JlU2l0ZU1lbWJlclJlcXVlc3QSNgoHY29tbWFuZBgBIAEoCzIdLmtva29yby5pYW0udjEuQ29tbWFuZENvbnRleHRCBrpIA8gBARIbCgltZW1iZXJfaWQYAiABKAlCCLpIBXIDsAEBEhkKB3NpdGVfaWQYAyABKAlCCLpIBXIDsAEBIl4KGVJlc3RvcmVTaXRlTWVtYmVyUmVzcG9uc2USLwoGbWVtYmVyGAEgASgLMh8ua29rb3JvLmlhbS52MS5TaXRlTWVtYmVyUmVjb3JkEhAKCHJlcGxheWVkGAIgASgIImYKEVNlbGVjdFNpdGVSZXF1ZXN0EjYKB2NvbW1hbmQYASABKAsyHS5rb2tvcm8uaWFtLnYxLkNvbW1hbmRDb250ZXh0Qga6SAPIAQESGQoHc2l0ZV9pZBgCIAEoCUIIukgFcgOwAQEiPQoSU2VsZWN0U2l0ZVJlc3BvbnNlEicKBHNpdGUYASABKAsyGS5rb2tvcm8uaWFtLnYxLlNpdGVSZWNvcmQy1gsKDklhbVNpdGVTZXJ2aWNlElEKCkNyZWF0ZVNpdGUSIC5rb2tvcm8uaWFtLnYxLkNyZWF0ZVNpdGVSZXF1ZXN0GiEua29rb3JvLmlhbS52MS5DcmVhdGVTaXRlUmVzcG9uc2USSAoHR2V0U2l0ZRIdLmtva29yby5pYW0udjEuR2V0U2l0ZVJlcXVlc3QaHi5rb2tvcm8uaWFtLnYxLkdldFNpdGVSZXNwb25zZRJOCglMaXN0U2l0ZXMSHy5rb2tvcm8uaWFtLnYxLkxpc3RTaXRlc1JlcXVlc3QaIC5rb2tvcm8uaWFtLnYxLkxpc3RTaXRlc1Jlc3BvbnNlElEKClVwZGF0ZVNpdGUSIC5rb2tvcm8uaWFtLnYxLlVwZGF0ZVNpdGVSZXF1ZXN0GiEua29rb3JvLmlhbS52MS5VcGRhdGVTaXRlUmVzcG9uc2USVAoLU3VzcGVuZFNpdGUSIS5rb2tvcm8uaWFtLnYxLlN1c3BlbmRTaXRlUmVxdWVzdBoiLmtva29yby5pYW0udjEuU3VzcGVuZFNpdGVSZXNwb25zZRJdCg5SZWFjdGl2YXRlU2l0ZRIkLmtva29yby5pYW0udjEuUmVhY3RpdmF0ZVNpdGVSZXF1ZXN0GiUua29rb3JvLmlhbS52MS5SZWFjdGl2YXRlU2l0ZVJlc3BvbnNlElEKCkRlbGV0ZVNpdGUSIC5rb2tvcm8uaWFtLnYxLkRlbGV0ZVNpdGVSZXF1ZXN0GiEua29rb3JvLmlhbS52MS5EZWxldGVTaXRlUmVzcG9uc2USVAoLUmVzdG9yZVNpdGUSIS5rb2tvcm8uaWFtLnYxLlJlc3RvcmVTaXRlUmVxdWVzdBoiLmtva29yby5pYW0udjEuUmVzdG9yZVNpdGVSZXNwb25zZRJaCg1BZGRTaXRlTWVtYmVyEiMua29rb3JvLmlhbS52MS5BZGRTaXRlTWVtYmVyUmVxdWVzdBokLmtva29yby5pYW0udjEuQWRkU2l0ZU1lbWJlclJlc3BvbnNlEmAKD0xpc3RTaXRlTWVtYmVycxIlLmtva29yby5pYW0udjEuTGlzdFNpdGVNZW1iZXJzUmVxdWVzdBomLmtva29yby5pYW0udjEuTGlzdFNpdGVNZW1iZXJzUmVzcG9uc2USbwoUQ2hhbmdlU2l0ZU1lbWJlclJvbGUSKi5rb2tvcm8uaWFtLnYxLkNoYW5nZVNpdGVNZW1iZXJSb2xlUmVxdWVzdBorLmtva29yby5pYW0udjEuQ2hhbmdlU2l0ZU1lbWJlclJvbGVSZXNwb25zZRJmChFTdXNwZW5kU2l0ZU1lbWJlchInLmtva29yby5pYW0udjEuU3VzcGVuZFNpdGVNZW1iZXJSZXF1ZXN0Gigua29rb3JvLmlhbS52MS5TdXNwZW5kU2l0ZU1lbWJlclJlc3BvbnNlEm8KFFJlYWN0aXZhdGVTaXRlTWVtYmVyEioua29rb3JvLmlhbS52MS5SZWFjdGl2YXRlU2l0ZU1lbWJlclJlcXVlc3QaKy5rb2tvcm8uaWFtLnYxLlJlYWN0aXZhdGVTaXRlTWVtYmVyUmVzcG9uc2USYwoQUmVtb3ZlU2l0ZU1lbWJlchImLmtva29yby5pYW0udjEuUmVtb3ZlU2l0ZU1lbWJlclJlcXVlc3QaJy5rb2tvcm8uaWFtLnYxLlJlbW92ZVNpdGVNZW1iZXJSZXNwb25zZRJmChFSZXN0b3JlU2l0ZU1lbWJlchInLmtva29yby5pYW0udjEuUmVzdG9yZVNpdGVNZW1iZXJSZXF1ZXN0Gigua29rb3JvLmlhbS52MS5SZXN0b3JlU2l0ZU1lbWJlclJlc3BvbnNlElEKClNlbGVjdFNpdGUSIC5rb2tvcm8uaWFtLnYxLlNlbGVjdFNpdGVSZXF1ZXN0GiEua29rb3JvLmlhbS52MS5TZWxlY3RTaXRlUmVzcG9uc2ViBnByb3RvMw", [file_buf_validate_validate, file_kokoro_iam_v1_types]);
+  fileDesc("Chhrb2tvcm8vaWFtL3YxL3NpdGUucHJvdG8SDWtva29yby5pYW0udjEipAEKEUNyZWF0ZVNpdGVSZXF1ZXN0EjYKB2NvbW1hbmQYASABKAsyHS5rb2tvcm8uaWFtLnYxLkNvbW1hbmRDb250ZXh0Qga6SAPIAQESPQoEY29kZRgCIAEoCUIvukgscioYUDImXlthLXowLTldKD86W2EtejAtOS1dezAsNzh9W2EtejAtOV0pPyQSGAoEbmFtZRgDIAEoCUIKukgHcgUQARigASJ/ChJDcmVhdGVTaXRlUmVzcG9uc2USJwoEc2l0ZRgBIAEoCzIZLmtva29yby5pYW0udjEuU2l0ZVJlY29yZBIuCgVvd25lchgCIAEoCzIfLmtva29yby5pYW0udjEuU2l0ZU1lbWJlclJlY29yZBIQCghyZXBsYXllZBgDIAEoCCJiCg5HZXRTaXRlUmVxdWVzdBIcCgpyZXF1ZXN0X2lkGAEgASgJQgi6SAVyA7ABARIZCgdzaXRlX2lkGAIgASgJQgi6SAVyA7ABARIXCg9pbmNsdWRlX2RlbGV0ZWQYAyABKAgiSAoPR2V0U2l0ZVJlc3BvbnNlEiwKBHNpdGUYASABKAsyGS5rb2tvcm8uaWFtLnYxLlNpdGVSZWNvcmRIAIgBAUIHCgVfc2l0ZSKjAQoQTGlzdFNpdGVzUmVxdWVzdBIcCgpyZXF1ZXN0X2lkGAEgASgJQgi6SAVyA7ABARImCgRwYWdlGAIgASgLMhgua29rb3JvLmlhbS52MS5QYWdlSW5wdXQSFwoPaW5jbHVkZV9kZWxldGVkGAMgASgIEhcKBXF1ZXJ5GAQgASgJQgi6SAVyAxigARIXCgZzdGF0dXMYBSABKAlCB7pIBHICGCAiZgoRTGlzdFNpdGVzUmVzcG9uc2USKAoFc2l0ZXMYASADKAsyGS5rb2tvcm8uaWFtLnYxLlNpdGVSZWNvcmQSJwoEcGFnZRgCIAEoCzIZLmtva29yby5pYW0udjEuUGFnZU91dHB1dCKAAQoRVXBkYXRlU2l0ZVJlcXVlc3QSNgoHY29tbWFuZBgBIAEoCzIdLmtva29yby5pYW0udjEuQ29tbWFuZENvbnRleHRCBrpIA8gBARIZCgdzaXRlX2lkGAIgASgJQgi6SAVyA7ABARIYCgRuYW1lGAMgASgJQgq6SAdyBRABGKABIk8KElVwZGF0ZVNpdGVSZXNwb25zZRInCgRzaXRlGAEgASgLMhkua29rb3JvLmlhbS52MS5TaXRlUmVjb3JkEhAKCHJlcGxheWVkGAIgASgIImcKElN1c3BlbmRTaXRlUmVxdWVzdBI2Cgdjb21tYW5kGAEgASgLMh0ua29rb3JvLmlhbS52MS5Db21tYW5kQ29udGV4dEIGukgDyAEBEhkKB3NpdGVfaWQYAiABKAlCCLpIBXIDsAEBIlAKE1N1c3BlbmRTaXRlUmVzcG9uc2USJwoEc2l0ZRgBIAEoCzIZLmtva29yby5pYW0udjEuU2l0ZVJlY29yZBIQCghyZXBsYXllZBgCIAEoCCJqChVSZWFjdGl2YXRlU2l0ZVJlcXVlc3QSNgoHY29tbWFuZBgBIAEoCzIdLmtva29yby5pYW0udjEuQ29tbWFuZENvbnRleHRCBrpIA8gBARIZCgdzaXRlX2lkGAIgASgJQgi6SAVyA7ABASJTChZSZWFjdGl2YXRlU2l0ZVJlc3BvbnNlEicKBHNpdGUYASABKAsyGS5rb2tvcm8uaWFtLnYxLlNpdGVSZWNvcmQSEAoIcmVwbGF5ZWQYAiABKAgiZgoRRGVsZXRlU2l0ZVJlcXVlc3QSNgoHY29tbWFuZBgBIAEoCzIdLmtva29yby5pYW0udjEuQ29tbWFuZENvbnRleHRCBrpIA8gBARIZCgdzaXRlX2lkGAIgASgJQgi6SAVyA7ABASJPChJEZWxldGVTaXRlUmVzcG9uc2USJwoEc2l0ZRgBIAEoCzIZLmtva29yby5pYW0udjEuU2l0ZVJlY29yZBIQCghyZXBsYXllZBgCIAEoCCJnChJSZXN0b3JlU2l0ZVJlcXVlc3QSNgoHY29tbWFuZBgBIAEoCzIdLmtva29yby5pYW0udjEuQ29tbWFuZENvbnRleHRCBrpIA8gBARIZCgdzaXRlX2lkGAIgASgJQgi6SAVyA7ABASJQChNSZXN0b3JlU2l0ZVJlc3BvbnNlEicKBHNpdGUYASABKAsyGS5rb2tvcm8uaWFtLnYxLlNpdGVSZWNvcmQSEAoIcmVwbGF5ZWQYAiABKAgioQEKFEFkZFNpdGVNZW1iZXJSZXF1ZXN0EjYKB2NvbW1hbmQYASABKAsyHS5rb2tvcm8uaWFtLnYxLkNvbW1hbmRDb250ZXh0Qga6SAPIAQESGQoHc2l0ZV9pZBgCIAEoCUIIukgFcgOwAQESGQoHdXNlcl9pZBgDIAEoCUIIukgFcgOwAQESGwoIcm9sZV9rZXkYBCABKAlCCbpIBnIEEAEYQCJaChVBZGRTaXRlTWVtYmVyUmVzcG9uc2USLwoGbWVtYmVyGAEgASgLMh8ua29rb3JvLmlhbS52MS5TaXRlTWVtYmVyUmVjb3JkEhAKCHJlcGxheWVkGAIgASgIIpIBChZMaXN0U2l0ZU1lbWJlcnNSZXF1ZXN0EhwKCnJlcXVlc3RfaWQYASABKAlCCLpIBXIDsAEBEhkKB3NpdGVfaWQYAiABKAlCCLpIBXIDsAEBEiYKBHBhZ2UYAyABKAsyGC5rb2tvcm8uaWFtLnYxLlBhZ2VJbnB1dBIXCg9pbmNsdWRlX2RlbGV0ZWQYBCABKAgidAoXTGlzdFNpdGVNZW1iZXJzUmVzcG9uc2USMAoHbWVtYmVycxgBIAMoCzIfLmtva29yby5pYW0udjEuU2l0ZU1lbWJlclJlY29yZBInCgRwYWdlGAIgASgLMhkua29rb3JvLmlhbS52MS5QYWdlT3V0cHV0IqoBChtDaGFuZ2VTaXRlTWVtYmVyUm9sZVJlcXVlc3QSNgoHY29tbWFuZBgBIAEoCzIdLmtva29yby5pYW0udjEuQ29tbWFuZENvbnRleHRCBrpIA8gBARIbCgltZW1iZXJfaWQYAiABKAlCCLpIBXIDsAEBEhsKCHJvbGVfa2V5GAMgASgJQgm6SAZyBBABGEASGQoHc2l0ZV9pZBgEIAEoCUIIukgFcgOwAQEiYQocQ2hhbmdlU2l0ZU1lbWJlclJvbGVSZXNwb25zZRIvCgZtZW1iZXIYASABKAsyHy5rb2tvcm8uaWFtLnYxLlNpdGVNZW1iZXJSZWNvcmQSEAoIcmVwbGF5ZWQYAiABKAgiigEKGFN1c3BlbmRTaXRlTWVtYmVyUmVxdWVzdBI2Cgdjb21tYW5kGAEgASgLMh0ua29rb3JvLmlhbS52MS5Db21tYW5kQ29udGV4dEIGukgDyAEBEhsKCW1lbWJlcl9pZBgCIAEoCUIIukgFcgOwAQESGQoHc2l0ZV9pZBgDIAEoCUIIukgFcgOwAQEiXgoZU3VzcGVuZFNpdGVNZW1iZXJSZXNwb25zZRIvCgZtZW1iZXIYASABKAsyHy5rb2tvcm8uaWFtLnYxLlNpdGVNZW1iZXJSZWNvcmQSEAoIcmVwbGF5ZWQYAiABKAgijQEKG1JlYWN0aXZhdGVTaXRlTWVtYmVyUmVxdWVzdBI2Cgdjb21tYW5kGAEgASgLMh0ua29rb3JvLmlhbS52MS5Db21tYW5kQ29udGV4dEIGukgDyAEBEhsKCW1lbWJlcl9pZBgCIAEoCUIIukgFcgOwAQESGQoHc2l0ZV9pZBgDIAEoCUIIukgFcgOwAQEiYQocUmVhY3RpdmF0ZVNpdGVNZW1iZXJSZXNwb25zZRIvCgZtZW1iZXIYASABKAsyHy5rb2tvcm8uaWFtLnYxLlNpdGVNZW1iZXJSZWNvcmQSEAoIcmVwbGF5ZWQYAiABKAgiiQEKF1JlbW92ZVNpdGVNZW1iZXJSZXF1ZXN0EjYKB2NvbW1hbmQYASABKAsyHS5rb2tvcm8uaWFtLnYxLkNvbW1hbmRDb250ZXh0Qga6SAPIAQESGwoJbWVtYmVyX2lkGAIgASgJQgi6SAVyA7ABARIZCgdzaXRlX2lkGAMgASgJQgi6SAVyA7ABASJdChhSZW1vdmVTaXRlTWVtYmVyUmVzcG9uc2USLwoGbWVtYmVyGAEgASgLMh8ua29rb3JvLmlhbS52MS5TaXRlTWVtYmVyUmVjb3JkEhAKCHJlcGxheWVkGAIgASgIIooBChhSZXN0b3JlU2l0ZU1lbWJlclJlcXVlc3QSNgoHY29tbWFuZBgBIAEoCzIdLmtva29yby5pYW0udjEuQ29tbWFuZENvbnRleHRCBrpIA8gBARIbCgltZW1iZXJfaWQYAiABKAlCCLpIBXIDsAEBEhkKB3NpdGVfaWQYAyABKAlCCLpIBXIDsAEBIl4KGVJlc3RvcmVTaXRlTWVtYmVyUmVzcG9uc2USLwoGbWVtYmVyGAEgASgLMh8ua29rb3JvLmlhbS52MS5TaXRlTWVtYmVyUmVjb3JkEhAKCHJlcGxheWVkGAIgASgIImYKEVNlbGVjdFNpdGVSZXF1ZXN0EjYKB2NvbW1hbmQYASABKAsyHS5rb2tvcm8uaWFtLnYxLkNvbW1hbmRDb250ZXh0Qga6SAPIAQESGQoHc2l0ZV9pZBgCIAEoCUIIukgFcgOwAQEiPQoSU2VsZWN0U2l0ZVJlc3BvbnNlEicKBHNpdGUYASABKAsyGS5rb2tvcm8uaWFtLnYxLlNpdGVSZWNvcmQiaAoUTGlzdFNpdGVSb2xlc1JlcXVlc3QSHAoKcmVxdWVzdF9pZBgBIAEoCUIIukgFcgOwAQESGQoHc2l0ZV9pZBgCIAEoCUIIukgFcgOwAQESFwoPaW5jbHVkZV9kZWxldGVkGAMgASgIIkUKFUxpc3RTaXRlUm9sZXNSZXNwb25zZRIsCgVyb2xlcxgBIAMoCzIdLmtva29yby5pYW0udjEuU2l0ZVJvbGVSZWNvcmQi6wEKFUNyZWF0ZVNpdGVSb2xlUmVxdWVzdBI2Cgdjb21tYW5kGAEgASgLMh0ua29rb3JvLmlhbS52MS5Db21tYW5kQ29udGV4dEIGukgDyAEBEhkKB3NpdGVfaWQYAiABKAlCCLpIBXIDsAEBEiwKA2tleRgDIAEoCUIfukgcchoYQDIWXlthLXpdW2EtejAtOV9dezAsNjN9JBIXCgRuYW1lGAQgASgJQgm6SAZyBBABGHgSHwoLZGVzY3JpcHRpb24YBSABKAlCCrpIB3IFEAEY9AMSFwoPcGVybWlzc2lvbl9rZXlzGAYgAygJIlcKFkNyZWF0ZVNpdGVSb2xlUmVzcG9uc2USKwoEcm9sZRgBIAEoCzIdLmtva29yby5pYW0udjEuU2l0ZVJvbGVSZWNvcmQSEAoIcmVwbGF5ZWQYAiABKAgivwEKFVVwZGF0ZVNpdGVSb2xlUmVxdWVzdBI2Cgdjb21tYW5kGAEgASgLMh0ua29rb3JvLmlhbS52MS5Db21tYW5kQ29udGV4dEIGukgDyAEBEhkKB3NpdGVfaWQYAiABKAlCCLpIBXIDsAEBEhkKB3JvbGVfaWQYAyABKAlCCLpIBXIDsAEBEhcKBG5hbWUYBCABKAlCCbpIBnIEEAEYeBIfCgtkZXNjcmlwdGlvbhgFIAEoCUIKukgHcgUQARj0AyJXChZVcGRhdGVTaXRlUm9sZVJlc3BvbnNlEisKBHJvbGUYASABKAsyHS5rb2tvcm8uaWFtLnYxLlNpdGVSb2xlUmVjb3JkEhAKCHJlcGxheWVkGAIgASgIIoUBChVEZWxldGVTaXRlUm9sZVJlcXVlc3QSNgoHY29tbWFuZBgBIAEoCzIdLmtva29yby5pYW0udjEuQ29tbWFuZENvbnRleHRCBrpIA8gBARIZCgdzaXRlX2lkGAIgASgJQgi6SAVyA7ABARIZCgdyb2xlX2lkGAMgASgJQgi6SAVyA7ABASJXChZEZWxldGVTaXRlUm9sZVJlc3BvbnNlEisKBHJvbGUYASABKAsyHS5rb2tvcm8uaWFtLnYxLlNpdGVSb2xlUmVjb3JkEhAKCHJlcGxheWVkGAIgASgIIoYBChZSZXN0b3JlU2l0ZVJvbGVSZXF1ZXN0EjYKB2NvbW1hbmQYASABKAsyHS5rb2tvcm8uaWFtLnYxLkNvbW1hbmRDb250ZXh0Qga6SAPIAQESGQoHc2l0ZV9pZBgCIAEoCUIIukgFcgOwAQESGQoHcm9sZV9pZBgDIAEoCUIIukgFcgOwAQEiWAoXUmVzdG9yZVNpdGVSb2xlUmVzcG9uc2USKwoEcm9sZRgBIAEoCzIdLmtva29yby5pYW0udjEuU2l0ZVJvbGVSZWNvcmQSEAoIcmVwbGF5ZWQYAiABKAgipgEKHVNldFNpdGVSb2xlUGVybWlzc2lvbnNSZXF1ZXN0EjYKB2NvbW1hbmQYASABKAsyHS5rb2tvcm8uaWFtLnYxLkNvbW1hbmRDb250ZXh0Qga6SAPIAQESGQoHc2l0ZV9pZBgCIAEoCUIIukgFcgOwAQESGQoHcm9sZV9pZBgDIAEoCUIIukgFcgOwAQESFwoPcGVybWlzc2lvbl9rZXlzGAQgAygJIl8KHlNldFNpdGVSb2xlUGVybWlzc2lvbnNSZXNwb25zZRIrCgRyb2xlGAEgASgLMh0ua29rb3JvLmlhbS52MS5TaXRlUm9sZVJlY29yZBIQCghyZXBsYXllZBgCIAEoCDKoEAoOSWFtU2l0ZVNlcnZpY2USUQoKQ3JlYXRlU2l0ZRIgLmtva29yby5pYW0udjEuQ3JlYXRlU2l0ZVJlcXVlc3QaIS5rb2tvcm8uaWFtLnYxLkNyZWF0ZVNpdGVSZXNwb25zZRJICgdHZXRTaXRlEh0ua29rb3JvLmlhbS52MS5HZXRTaXRlUmVxdWVzdBoeLmtva29yby5pYW0udjEuR2V0U2l0ZVJlc3BvbnNlEk4KCUxpc3RTaXRlcxIfLmtva29yby5pYW0udjEuTGlzdFNpdGVzUmVxdWVzdBogLmtva29yby5pYW0udjEuTGlzdFNpdGVzUmVzcG9uc2USUQoKVXBkYXRlU2l0ZRIgLmtva29yby5pYW0udjEuVXBkYXRlU2l0ZVJlcXVlc3QaIS5rb2tvcm8uaWFtLnYxLlVwZGF0ZVNpdGVSZXNwb25zZRJUCgtTdXNwZW5kU2l0ZRIhLmtva29yby5pYW0udjEuU3VzcGVuZFNpdGVSZXF1ZXN0GiIua29rb3JvLmlhbS52MS5TdXNwZW5kU2l0ZVJlc3BvbnNlEl0KDlJlYWN0aXZhdGVTaXRlEiQua29rb3JvLmlhbS52MS5SZWFjdGl2YXRlU2l0ZVJlcXVlc3QaJS5rb2tvcm8uaWFtLnYxLlJlYWN0aXZhdGVTaXRlUmVzcG9uc2USUQoKRGVsZXRlU2l0ZRIgLmtva29yby5pYW0udjEuRGVsZXRlU2l0ZVJlcXVlc3QaIS5rb2tvcm8uaWFtLnYxLkRlbGV0ZVNpdGVSZXNwb25zZRJUCgtSZXN0b3JlU2l0ZRIhLmtva29yby5pYW0udjEuUmVzdG9yZVNpdGVSZXF1ZXN0GiIua29rb3JvLmlhbS52MS5SZXN0b3JlU2l0ZVJlc3BvbnNlEloKDUFkZFNpdGVNZW1iZXISIy5rb2tvcm8uaWFtLnYxLkFkZFNpdGVNZW1iZXJSZXF1ZXN0GiQua29rb3JvLmlhbS52MS5BZGRTaXRlTWVtYmVyUmVzcG9uc2USYAoPTGlzdFNpdGVNZW1iZXJzEiUua29rb3JvLmlhbS52MS5MaXN0U2l0ZU1lbWJlcnNSZXF1ZXN0GiYua29rb3JvLmlhbS52MS5MaXN0U2l0ZU1lbWJlcnNSZXNwb25zZRJvChRDaGFuZ2VTaXRlTWVtYmVyUm9sZRIqLmtva29yby5pYW0udjEuQ2hhbmdlU2l0ZU1lbWJlclJvbGVSZXF1ZXN0Gisua29rb3JvLmlhbS52MS5DaGFuZ2VTaXRlTWVtYmVyUm9sZVJlc3BvbnNlEmYKEVN1c3BlbmRTaXRlTWVtYmVyEicua29rb3JvLmlhbS52MS5TdXNwZW5kU2l0ZU1lbWJlclJlcXVlc3QaKC5rb2tvcm8uaWFtLnYxLlN1c3BlbmRTaXRlTWVtYmVyUmVzcG9uc2USbwoUUmVhY3RpdmF0ZVNpdGVNZW1iZXISKi5rb2tvcm8uaWFtLnYxLlJlYWN0aXZhdGVTaXRlTWVtYmVyUmVxdWVzdBorLmtva29yby5pYW0udjEuUmVhY3RpdmF0ZVNpdGVNZW1iZXJSZXNwb25zZRJjChBSZW1vdmVTaXRlTWVtYmVyEiYua29rb3JvLmlhbS52MS5SZW1vdmVTaXRlTWVtYmVyUmVxdWVzdBonLmtva29yby5pYW0udjEuUmVtb3ZlU2l0ZU1lbWJlclJlc3BvbnNlEmYKEVJlc3RvcmVTaXRlTWVtYmVyEicua29rb3JvLmlhbS52MS5SZXN0b3JlU2l0ZU1lbWJlclJlcXVlc3QaKC5rb2tvcm8uaWFtLnYxLlJlc3RvcmVTaXRlTWVtYmVyUmVzcG9uc2USUQoKU2VsZWN0U2l0ZRIgLmtva29yby5pYW0udjEuU2VsZWN0U2l0ZVJlcXVlc3QaIS5rb2tvcm8uaWFtLnYxLlNlbGVjdFNpdGVSZXNwb25zZRJaCg1MaXN0U2l0ZVJvbGVzEiMua29rb3JvLmlhbS52MS5MaXN0U2l0ZVJvbGVzUmVxdWVzdBokLmtva29yby5pYW0udjEuTGlzdFNpdGVSb2xlc1Jlc3BvbnNlEl0KDkNyZWF0ZVNpdGVSb2xlEiQua29rb3JvLmlhbS52MS5DcmVhdGVTaXRlUm9sZVJlcXVlc3QaJS5rb2tvcm8uaWFtLnYxLkNyZWF0ZVNpdGVSb2xlUmVzcG9uc2USXQoOVXBkYXRlU2l0ZVJvbGUSJC5rb2tvcm8uaWFtLnYxLlVwZGF0ZVNpdGVSb2xlUmVxdWVzdBolLmtva29yby5pYW0udjEuVXBkYXRlU2l0ZVJvbGVSZXNwb25zZRJdCg5EZWxldGVTaXRlUm9sZRIkLmtva29yby5pYW0udjEuRGVsZXRlU2l0ZVJvbGVSZXF1ZXN0GiUua29rb3JvLmlhbS52MS5EZWxldGVTaXRlUm9sZVJlc3BvbnNlEmAKD1Jlc3RvcmVTaXRlUm9sZRIlLmtva29yby5pYW0udjEuUmVzdG9yZVNpdGVSb2xlUmVxdWVzdBomLmtva29yby5pYW0udjEuUmVzdG9yZVNpdGVSb2xlUmVzcG9uc2USdQoWU2V0U2l0ZVJvbGVQZXJtaXNzaW9ucxIsLmtva29yby5pYW0udjEuU2V0U2l0ZVJvbGVQZXJtaXNzaW9uc1JlcXVlc3QaLS5rb2tvcm8uaWFtLnYxLlNldFNpdGVSb2xlUGVybWlzc2lvbnNSZXNwb25zZWIGcHJvdG8z", [file_buf_validate_validate, file_kokoro_iam_v1_types]);
 
 /**
  * @generated from message kokoro.iam.v1.CreateSiteRequest
@@ -795,6 +795,325 @@ export const SelectSiteResponseSchema: GenMessage<SelectSiteResponse> = /*@__PUR
   messageDesc(file_kokoro_iam_v1_site, 31);
 
 /**
+ * @generated from message kokoro.iam.v1.ListSiteRolesRequest
+ */
+export type ListSiteRolesRequest = Message<"kokoro.iam.v1.ListSiteRolesRequest"> & {
+  /**
+   * @generated from field: string request_id = 1;
+   */
+  requestId: string;
+
+  /**
+   * @generated from field: string site_id = 2;
+   */
+  siteId: string;
+
+  /**
+   * @generated from field: bool include_deleted = 3;
+   */
+  includeDeleted: boolean;
+};
+
+/**
+ * Describes the message kokoro.iam.v1.ListSiteRolesRequest.
+ * Use `create(ListSiteRolesRequestSchema)` to create a new message.
+ */
+export const ListSiteRolesRequestSchema: GenMessage<ListSiteRolesRequest> = /*@__PURE__*/
+  messageDesc(file_kokoro_iam_v1_site, 32);
+
+/**
+ * @generated from message kokoro.iam.v1.ListSiteRolesResponse
+ */
+export type ListSiteRolesResponse = Message<"kokoro.iam.v1.ListSiteRolesResponse"> & {
+  /**
+   * @generated from field: repeated kokoro.iam.v1.SiteRoleRecord roles = 1;
+   */
+  roles: SiteRoleRecord[];
+};
+
+/**
+ * Describes the message kokoro.iam.v1.ListSiteRolesResponse.
+ * Use `create(ListSiteRolesResponseSchema)` to create a new message.
+ */
+export const ListSiteRolesResponseSchema: GenMessage<ListSiteRolesResponse> = /*@__PURE__*/
+  messageDesc(file_kokoro_iam_v1_site, 33);
+
+/**
+ * @generated from message kokoro.iam.v1.CreateSiteRoleRequest
+ */
+export type CreateSiteRoleRequest = Message<"kokoro.iam.v1.CreateSiteRoleRequest"> & {
+  /**
+   * @generated from field: kokoro.iam.v1.CommandContext command = 1;
+   */
+  command?: CommandContext | undefined;
+
+  /**
+   * @generated from field: string site_id = 2;
+   */
+  siteId: string;
+
+  /**
+   * @generated from field: string key = 3;
+   */
+  key: string;
+
+  /**
+   * @generated from field: string name = 4;
+   */
+  name: string;
+
+  /**
+   * @generated from field: string description = 5;
+   */
+  description: string;
+
+  /**
+   * @generated from field: repeated string permission_keys = 6;
+   */
+  permissionKeys: string[];
+};
+
+/**
+ * Describes the message kokoro.iam.v1.CreateSiteRoleRequest.
+ * Use `create(CreateSiteRoleRequestSchema)` to create a new message.
+ */
+export const CreateSiteRoleRequestSchema: GenMessage<CreateSiteRoleRequest> = /*@__PURE__*/
+  messageDesc(file_kokoro_iam_v1_site, 34);
+
+/**
+ * @generated from message kokoro.iam.v1.CreateSiteRoleResponse
+ */
+export type CreateSiteRoleResponse = Message<"kokoro.iam.v1.CreateSiteRoleResponse"> & {
+  /**
+   * @generated from field: kokoro.iam.v1.SiteRoleRecord role = 1;
+   */
+  role?: SiteRoleRecord | undefined;
+
+  /**
+   * @generated from field: bool replayed = 2;
+   */
+  replayed: boolean;
+};
+
+/**
+ * Describes the message kokoro.iam.v1.CreateSiteRoleResponse.
+ * Use `create(CreateSiteRoleResponseSchema)` to create a new message.
+ */
+export const CreateSiteRoleResponseSchema: GenMessage<CreateSiteRoleResponse> = /*@__PURE__*/
+  messageDesc(file_kokoro_iam_v1_site, 35);
+
+/**
+ * @generated from message kokoro.iam.v1.UpdateSiteRoleRequest
+ */
+export type UpdateSiteRoleRequest = Message<"kokoro.iam.v1.UpdateSiteRoleRequest"> & {
+  /**
+   * @generated from field: kokoro.iam.v1.CommandContext command = 1;
+   */
+  command?: CommandContext | undefined;
+
+  /**
+   * @generated from field: string site_id = 2;
+   */
+  siteId: string;
+
+  /**
+   * @generated from field: string role_id = 3;
+   */
+  roleId: string;
+
+  /**
+   * @generated from field: string name = 4;
+   */
+  name: string;
+
+  /**
+   * @generated from field: string description = 5;
+   */
+  description: string;
+};
+
+/**
+ * Describes the message kokoro.iam.v1.UpdateSiteRoleRequest.
+ * Use `create(UpdateSiteRoleRequestSchema)` to create a new message.
+ */
+export const UpdateSiteRoleRequestSchema: GenMessage<UpdateSiteRoleRequest> = /*@__PURE__*/
+  messageDesc(file_kokoro_iam_v1_site, 36);
+
+/**
+ * @generated from message kokoro.iam.v1.UpdateSiteRoleResponse
+ */
+export type UpdateSiteRoleResponse = Message<"kokoro.iam.v1.UpdateSiteRoleResponse"> & {
+  /**
+   * @generated from field: kokoro.iam.v1.SiteRoleRecord role = 1;
+   */
+  role?: SiteRoleRecord | undefined;
+
+  /**
+   * @generated from field: bool replayed = 2;
+   */
+  replayed: boolean;
+};
+
+/**
+ * Describes the message kokoro.iam.v1.UpdateSiteRoleResponse.
+ * Use `create(UpdateSiteRoleResponseSchema)` to create a new message.
+ */
+export const UpdateSiteRoleResponseSchema: GenMessage<UpdateSiteRoleResponse> = /*@__PURE__*/
+  messageDesc(file_kokoro_iam_v1_site, 37);
+
+/**
+ * @generated from message kokoro.iam.v1.DeleteSiteRoleRequest
+ */
+export type DeleteSiteRoleRequest = Message<"kokoro.iam.v1.DeleteSiteRoleRequest"> & {
+  /**
+   * @generated from field: kokoro.iam.v1.CommandContext command = 1;
+   */
+  command?: CommandContext | undefined;
+
+  /**
+   * @generated from field: string site_id = 2;
+   */
+  siteId: string;
+
+  /**
+   * @generated from field: string role_id = 3;
+   */
+  roleId: string;
+};
+
+/**
+ * Describes the message kokoro.iam.v1.DeleteSiteRoleRequest.
+ * Use `create(DeleteSiteRoleRequestSchema)` to create a new message.
+ */
+export const DeleteSiteRoleRequestSchema: GenMessage<DeleteSiteRoleRequest> = /*@__PURE__*/
+  messageDesc(file_kokoro_iam_v1_site, 38);
+
+/**
+ * @generated from message kokoro.iam.v1.DeleteSiteRoleResponse
+ */
+export type DeleteSiteRoleResponse = Message<"kokoro.iam.v1.DeleteSiteRoleResponse"> & {
+  /**
+   * @generated from field: kokoro.iam.v1.SiteRoleRecord role = 1;
+   */
+  role?: SiteRoleRecord | undefined;
+
+  /**
+   * @generated from field: bool replayed = 2;
+   */
+  replayed: boolean;
+};
+
+/**
+ * Describes the message kokoro.iam.v1.DeleteSiteRoleResponse.
+ * Use `create(DeleteSiteRoleResponseSchema)` to create a new message.
+ */
+export const DeleteSiteRoleResponseSchema: GenMessage<DeleteSiteRoleResponse> = /*@__PURE__*/
+  messageDesc(file_kokoro_iam_v1_site, 39);
+
+/**
+ * @generated from message kokoro.iam.v1.RestoreSiteRoleRequest
+ */
+export type RestoreSiteRoleRequest = Message<"kokoro.iam.v1.RestoreSiteRoleRequest"> & {
+  /**
+   * @generated from field: kokoro.iam.v1.CommandContext command = 1;
+   */
+  command?: CommandContext | undefined;
+
+  /**
+   * @generated from field: string site_id = 2;
+   */
+  siteId: string;
+
+  /**
+   * @generated from field: string role_id = 3;
+   */
+  roleId: string;
+};
+
+/**
+ * Describes the message kokoro.iam.v1.RestoreSiteRoleRequest.
+ * Use `create(RestoreSiteRoleRequestSchema)` to create a new message.
+ */
+export const RestoreSiteRoleRequestSchema: GenMessage<RestoreSiteRoleRequest> = /*@__PURE__*/
+  messageDesc(file_kokoro_iam_v1_site, 40);
+
+/**
+ * @generated from message kokoro.iam.v1.RestoreSiteRoleResponse
+ */
+export type RestoreSiteRoleResponse = Message<"kokoro.iam.v1.RestoreSiteRoleResponse"> & {
+  /**
+   * @generated from field: kokoro.iam.v1.SiteRoleRecord role = 1;
+   */
+  role?: SiteRoleRecord | undefined;
+
+  /**
+   * @generated from field: bool replayed = 2;
+   */
+  replayed: boolean;
+};
+
+/**
+ * Describes the message kokoro.iam.v1.RestoreSiteRoleResponse.
+ * Use `create(RestoreSiteRoleResponseSchema)` to create a new message.
+ */
+export const RestoreSiteRoleResponseSchema: GenMessage<RestoreSiteRoleResponse> = /*@__PURE__*/
+  messageDesc(file_kokoro_iam_v1_site, 41);
+
+/**
+ * @generated from message kokoro.iam.v1.SetSiteRolePermissionsRequest
+ */
+export type SetSiteRolePermissionsRequest = Message<"kokoro.iam.v1.SetSiteRolePermissionsRequest"> & {
+  /**
+   * @generated from field: kokoro.iam.v1.CommandContext command = 1;
+   */
+  command?: CommandContext | undefined;
+
+  /**
+   * @generated from field: string site_id = 2;
+   */
+  siteId: string;
+
+  /**
+   * @generated from field: string role_id = 3;
+   */
+  roleId: string;
+
+  /**
+   * @generated from field: repeated string permission_keys = 4;
+   */
+  permissionKeys: string[];
+};
+
+/**
+ * Describes the message kokoro.iam.v1.SetSiteRolePermissionsRequest.
+ * Use `create(SetSiteRolePermissionsRequestSchema)` to create a new message.
+ */
+export const SetSiteRolePermissionsRequestSchema: GenMessage<SetSiteRolePermissionsRequest> = /*@__PURE__*/
+  messageDesc(file_kokoro_iam_v1_site, 42);
+
+/**
+ * @generated from message kokoro.iam.v1.SetSiteRolePermissionsResponse
+ */
+export type SetSiteRolePermissionsResponse = Message<"kokoro.iam.v1.SetSiteRolePermissionsResponse"> & {
+  /**
+   * @generated from field: kokoro.iam.v1.SiteRoleRecord role = 1;
+   */
+  role?: SiteRoleRecord | undefined;
+
+  /**
+   * @generated from field: bool replayed = 2;
+   */
+  replayed: boolean;
+};
+
+/**
+ * Describes the message kokoro.iam.v1.SetSiteRolePermissionsResponse.
+ * Use `create(SetSiteRolePermissionsResponseSchema)` to create a new message.
+ */
+export const SetSiteRolePermissionsResponseSchema: GenMessage<SetSiteRolePermissionsResponse> = /*@__PURE__*/
+  messageDesc(file_kokoro_iam_v1_site, 43);
+
+/**
  * @generated from service kokoro.iam.v1.IamSiteService
  */
 export const IamSiteService: GenService<{
@@ -925,6 +1244,54 @@ export const IamSiteService: GenService<{
     methodKind: "unary";
     input: typeof SelectSiteRequestSchema;
     output: typeof SelectSiteResponseSchema;
+  },
+  /**
+   * @generated from rpc kokoro.iam.v1.IamSiteService.ListSiteRoles
+   */
+  listSiteRoles: {
+    methodKind: "unary";
+    input: typeof ListSiteRolesRequestSchema;
+    output: typeof ListSiteRolesResponseSchema;
+  },
+  /**
+   * @generated from rpc kokoro.iam.v1.IamSiteService.CreateSiteRole
+   */
+  createSiteRole: {
+    methodKind: "unary";
+    input: typeof CreateSiteRoleRequestSchema;
+    output: typeof CreateSiteRoleResponseSchema;
+  },
+  /**
+   * @generated from rpc kokoro.iam.v1.IamSiteService.UpdateSiteRole
+   */
+  updateSiteRole: {
+    methodKind: "unary";
+    input: typeof UpdateSiteRoleRequestSchema;
+    output: typeof UpdateSiteRoleResponseSchema;
+  },
+  /**
+   * @generated from rpc kokoro.iam.v1.IamSiteService.DeleteSiteRole
+   */
+  deleteSiteRole: {
+    methodKind: "unary";
+    input: typeof DeleteSiteRoleRequestSchema;
+    output: typeof DeleteSiteRoleResponseSchema;
+  },
+  /**
+   * @generated from rpc kokoro.iam.v1.IamSiteService.RestoreSiteRole
+   */
+  restoreSiteRole: {
+    methodKind: "unary";
+    input: typeof RestoreSiteRoleRequestSchema;
+    output: typeof RestoreSiteRoleResponseSchema;
+  },
+  /**
+   * @generated from rpc kokoro.iam.v1.IamSiteService.SetSiteRolePermissions
+   */
+  setSiteRolePermissions: {
+    methodKind: "unary";
+    input: typeof SetSiteRolePermissionsRequestSchema;
+    output: typeof SetSiteRolePermissionsResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_kokoro_iam_v1_site, 0);

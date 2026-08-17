@@ -6,12 +6,12 @@ import { fileURLToPath } from "node:url";
 
 const provider = {
   repository: "kokoro-iam",
-  commit: "ee61ed002101d38f8061aa29c0f89fbb48bdd6be",
-  tree: "b551807b4a77b3c450ba7572e3fc01c9e447a970",
-  protoSha256: "6c0e590a6474aa31e4f418805e36fb92e92a4c91fb3a3909aed09bb8e7f19538",
+  commit: "fc88313bba9201b88af6d4fc623fcf42a7e8b0eb",
+  tree: "948f39850d6afda4adac3856864dc07a53f6822f",
+  protoSha256: "5db88198319f5e623ebaa87884f27a9a550a1cee902cac8d74b1d5f9092e191f",
   migrationSha256: "f9f2c8e79a332492b638287ae201fb8d96f3ae22bbc3e5e52a4b7535073c7ceb",
-  catalogSha256: "57746098d3a1a905154e5a257facd02c9ec800f028fc3e3d71f7d6ca78f04caf",
-  acceptedRunId: "iam-20260817T125825922Z-ee61ed002101",
+  catalogSha256: "729276477a79bdb2ed606eff420ee62b0855191470d93b9ac96214741448b784",
+  acceptedRunId: "iam-20260817T152719515Z-fc88313bba92",
 } as const;
 
 const vendoredProtoPaths = [
@@ -20,6 +20,7 @@ const vendoredProtoPaths = [
   "proto/kokoro/iam/v1/auth_adapter.proto",
   "proto/kokoro/iam/v1/authorization.proto",
   "proto/kokoro/iam/v1/credential.proto",
+  "proto/kokoro/iam/v1/development_fixture.proto",
   "proto/kokoro/iam/v1/organization.proto",
   "proto/kokoro/iam/v1/session.proto",
   "proto/kokoro/iam/v1/site.proto",

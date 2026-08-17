@@ -12,6 +12,7 @@ message IamAdministrationServiceListUsersRequest {
   string status = 3 [(buf.validate.field).string.max_len = 32];
   PageInput page = 4;
   bool include_deleted = 5;
+  string platform_role = 6 [(buf.validate.field).string.max_len = 32];
 }
 message IamAdministrationServiceListUsersResponse { repeated UserRecord users = 1; PageOutput page = 2; }
 
@@ -21,6 +22,23 @@ message IamAdministrationServiceGetUserRequest {
   bool include_deleted = 3;
 }
 message IamAdministrationServiceGetUserResponse { optional UserRecord user = 1; }
+
+message IamAdministrationServiceCreateUserRequest {
+  CommandContext command = 1 [(buf.validate.field).required = true];
+  string email = 2 [(buf.validate.field).string = {email: true, max_len: 320}];
+  string name = 3 [(buf.validate.field).string = {min_len: 1, max_len: 160}];
+  optional string image = 4 [(buf.validate.field).string.max_len = 2048];
+}
+message IamAdministrationServiceCreateUserResponse { UserRecord user = 1; bool replayed = 2; }
+
+message IamAdministrationServiceUpdateUserRequest {
+  CommandContext command = 1 [(buf.validate.field).required = true];
+  string user_id = 2 [(buf.validate.field).string.uuid = true];
+  string email = 3 [(buf.validate.field).string = {email: true, max_len: 320}];
+  string name = 4 [(buf.validate.field).string = {min_len: 1, max_len: 160}];
+  optional string image = 5 [(buf.validate.field).string.max_len = 2048];
+}
+message IamAdministrationServiceUpdateUserResponse { UserRecord user = 1; bool replayed = 2; }
 
 message IamAdministrationServiceSuspendUserRequest {
   CommandContext command = 1 [(buf.validate.field).required = true];
@@ -102,6 +120,8 @@ message ListSecurityEventsResponse {
 service IamAdministrationService {
   rpc ListUsers(IamAdministrationServiceListUsersRequest) returns (IamAdministrationServiceListUsersResponse);
   rpc GetUser(IamAdministrationServiceGetUserRequest) returns (IamAdministrationServiceGetUserResponse);
+  rpc CreateUser(IamAdministrationServiceCreateUserRequest) returns (IamAdministrationServiceCreateUserResponse);
+  rpc UpdateUser(IamAdministrationServiceUpdateUserRequest) returns (IamAdministrationServiceUpdateUserResponse);
   rpc SuspendUser(IamAdministrationServiceSuspendUserRequest) returns (IamAdministrationServiceSuspendUserResponse);
   rpc ReactivateUser(IamAdministrationServiceReactivateUserRequest) returns (IamAdministrationServiceReactivateUserResponse);
   rpc DeleteUser(IamAdministrationServiceDeleteUserRequest) returns (IamAdministrationServiceDeleteUserResponse);

@@ -111,6 +111,19 @@ message SelectSiteRequest {
 }
 message SelectSiteResponse { SiteRecord site = 1; }
 
+message ListSiteRolesRequest { string request_id = 1 [(buf.validate.field).string.uuid = true]; string site_id = 2 [(buf.validate.field).string.uuid = true]; bool include_deleted = 3; }
+message ListSiteRolesResponse { repeated SiteRoleRecord roles = 1; }
+message CreateSiteRoleRequest { CommandContext command = 1 [(buf.validate.field).required = true]; string site_id = 2 [(buf.validate.field).string.uuid = true]; string key = 3 [(buf.validate.field).string = {pattern: "^[a-z][a-z0-9_]{0,63}$", max_len: 64}]; string name = 4 [(buf.validate.field).string = {min_len: 1, max_len: 120}]; string description = 5 [(buf.validate.field).string = {min_len: 1, max_len: 500}]; repeated string permission_keys = 6; }
+message CreateSiteRoleResponse { SiteRoleRecord role = 1; bool replayed = 2; }
+message UpdateSiteRoleRequest { CommandContext command = 1 [(buf.validate.field).required = true]; string site_id = 2 [(buf.validate.field).string.uuid = true]; string role_id = 3 [(buf.validate.field).string.uuid = true]; string name = 4 [(buf.validate.field).string = {min_len: 1, max_len: 120}]; string description = 5 [(buf.validate.field).string = {min_len: 1, max_len: 500}]; }
+message UpdateSiteRoleResponse { SiteRoleRecord role = 1; bool replayed = 2; }
+message DeleteSiteRoleRequest { CommandContext command = 1 [(buf.validate.field).required = true]; string site_id = 2 [(buf.validate.field).string.uuid = true]; string role_id = 3 [(buf.validate.field).string.uuid = true]; }
+message DeleteSiteRoleResponse { SiteRoleRecord role = 1; bool replayed = 2; }
+message RestoreSiteRoleRequest { CommandContext command = 1 [(buf.validate.field).required = true]; string site_id = 2 [(buf.validate.field).string.uuid = true]; string role_id = 3 [(buf.validate.field).string.uuid = true]; }
+message RestoreSiteRoleResponse { SiteRoleRecord role = 1; bool replayed = 2; }
+message SetSiteRolePermissionsRequest { CommandContext command = 1 [(buf.validate.field).required = true]; string site_id = 2 [(buf.validate.field).string.uuid = true]; string role_id = 3 [(buf.validate.field).string.uuid = true]; repeated string permission_keys = 4; }
+message SetSiteRolePermissionsResponse { SiteRoleRecord role = 1; bool replayed = 2; }
+
 service IamSiteService {
   rpc CreateSite(CreateSiteRequest) returns (CreateSiteResponse);
   rpc GetSite(GetSiteRequest) returns (GetSiteResponse);
@@ -128,4 +141,10 @@ service IamSiteService {
   rpc RemoveSiteMember(RemoveSiteMemberRequest) returns (RemoveSiteMemberResponse);
   rpc RestoreSiteMember(RestoreSiteMemberRequest) returns (RestoreSiteMemberResponse);
   rpc SelectSite(SelectSiteRequest) returns (SelectSiteResponse);
+  rpc ListSiteRoles(ListSiteRolesRequest) returns (ListSiteRolesResponse);
+  rpc CreateSiteRole(CreateSiteRoleRequest) returns (CreateSiteRoleResponse);
+  rpc UpdateSiteRole(UpdateSiteRoleRequest) returns (UpdateSiteRoleResponse);
+  rpc DeleteSiteRole(DeleteSiteRoleRequest) returns (DeleteSiteRoleResponse);
+  rpc RestoreSiteRole(RestoreSiteRoleRequest) returns (RestoreSiteRoleResponse);
+  rpc SetSiteRolePermissions(SetSiteRolePermissionsRequest) returns (SetSiteRolePermissionsResponse);
 }

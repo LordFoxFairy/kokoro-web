@@ -96,6 +96,19 @@ message RestoreMemberRequest {
 }
 message RestoreMemberResponse { MemberRecord member = 1; bool replayed = 2; }
 
+message ListOrganizationRolesRequest { string request_id = 1 [(buf.validate.field).string.uuid = true]; string organization_id = 2 [(buf.validate.field).string.uuid = true]; bool include_deleted = 3; }
+message ListOrganizationRolesResponse { repeated RoleRecord roles = 1; }
+message CreateOrganizationRoleRequest { CommandContext command = 1 [(buf.validate.field).required = true]; string organization_id = 2 [(buf.validate.field).string.uuid = true]; string key = 3 [(buf.validate.field).string = {pattern: "^[a-z][a-z0-9_]{0,63}$", max_len: 64}]; string name = 4 [(buf.validate.field).string = {min_len: 1, max_len: 120}]; string description = 5 [(buf.validate.field).string = {min_len: 1, max_len: 500}]; repeated string permission_keys = 6; }
+message CreateOrganizationRoleResponse { RoleRecord role = 1; bool replayed = 2; }
+message UpdateOrganizationRoleRequest { CommandContext command = 1 [(buf.validate.field).required = true]; string organization_id = 2 [(buf.validate.field).string.uuid = true]; string role_id = 3 [(buf.validate.field).string.uuid = true]; string name = 4 [(buf.validate.field).string = {min_len: 1, max_len: 120}]; string description = 5 [(buf.validate.field).string = {min_len: 1, max_len: 500}]; }
+message UpdateOrganizationRoleResponse { RoleRecord role = 1; bool replayed = 2; }
+message DeleteOrganizationRoleRequest { CommandContext command = 1 [(buf.validate.field).required = true]; string organization_id = 2 [(buf.validate.field).string.uuid = true]; string role_id = 3 [(buf.validate.field).string.uuid = true]; }
+message DeleteOrganizationRoleResponse { RoleRecord role = 1; bool replayed = 2; }
+message RestoreOrganizationRoleRequest { CommandContext command = 1 [(buf.validate.field).required = true]; string organization_id = 2 [(buf.validate.field).string.uuid = true]; string role_id = 3 [(buf.validate.field).string.uuid = true]; }
+message RestoreOrganizationRoleResponse { RoleRecord role = 1; bool replayed = 2; }
+message SetOrganizationRolePermissionsRequest { CommandContext command = 1 [(buf.validate.field).required = true]; string organization_id = 2 [(buf.validate.field).string.uuid = true]; string role_id = 3 [(buf.validate.field).string.uuid = true]; repeated string permission_keys = 4; }
+message SetOrganizationRolePermissionsResponse { RoleRecord role = 1; bool replayed = 2; }
+
 service IamOrganizationService {
   rpc CreateOrganization(CreateOrganizationRequest) returns (CreateOrganizationResponse);
   rpc GetOrganization(GetOrganizationRequest) returns (GetOrganizationResponse);
@@ -110,4 +123,10 @@ service IamOrganizationService {
   rpc ReactivateMember(ReactivateMemberRequest) returns (ReactivateMemberResponse);
   rpc RemoveMember(RemoveMemberRequest) returns (RemoveMemberResponse);
   rpc RestoreMember(RestoreMemberRequest) returns (RestoreMemberResponse);
+  rpc ListOrganizationRoles(ListOrganizationRolesRequest) returns (ListOrganizationRolesResponse);
+  rpc CreateOrganizationRole(CreateOrganizationRoleRequest) returns (CreateOrganizationRoleResponse);
+  rpc UpdateOrganizationRole(UpdateOrganizationRoleRequest) returns (UpdateOrganizationRoleResponse);
+  rpc DeleteOrganizationRole(DeleteOrganizationRoleRequest) returns (DeleteOrganizationRoleResponse);
+  rpc RestoreOrganizationRole(RestoreOrganizationRoleRequest) returns (RestoreOrganizationRoleResponse);
+  rpc SetOrganizationRolePermissions(SetOrganizationRolePermissionsRequest) returns (SetOrganizationRolePermissionsResponse);
 }

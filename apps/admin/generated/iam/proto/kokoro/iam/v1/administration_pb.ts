@@ -15,7 +15,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file kokoro/iam/v1/administration.proto.
  */
 export const file_kokoro_iam_v1_administration: GenFile = /*@__PURE__*/
-  fileDesc("CiJrb2tvcm8vaWFtL3YxL2FkbWluaXN0cmF0aW9uLnByb3RvEg1rb2tvcm8uaWFtLnYxIrsBCihJYW1BZG1pbmlzdHJhdGlvblNlcnZpY2VMaXN0VXNlcnNSZXF1ZXN0EhwKCnJlcXVlc3RfaWQYASABKAlCCLpIBXIDsAEBEhcKBXF1ZXJ5GAIgASgJQgi6SAVyAxjAAhIXCgZzdGF0dXMYAyABKAlCB7pIBHICGCASJgoEcGFnZRgEIAEoCzIYLmtva29yby5pYW0udjEuUGFnZUlucHV0EhcKD2luY2x1ZGVfZGVsZXRlZBgFIAEoCCJ+CilJYW1BZG1pbmlzdHJhdGlvblNlcnZpY2VMaXN0VXNlcnNSZXNwb25zZRIoCgV1c2VycxgBIAMoCzIZLmtva29yby5pYW0udjEuVXNlclJlY29yZBInCgRwYWdlGAIgASgLMhkua29rb3JvLmlhbS52MS5QYWdlT3V0cHV0InoKJklhbUFkbWluaXN0cmF0aW9uU2VydmljZUdldFVzZXJSZXF1ZXN0EhwKCnJlcXVlc3RfaWQYASABKAlCCLpIBXIDsAEBEhkKB3VzZXJfaWQYAiABKAlCCLpIBXIDsAEBEhcKD2luY2x1ZGVfZGVsZXRlZBgDIAEoCCJgCidJYW1BZG1pbmlzdHJhdGlvblNlcnZpY2VHZXRVc2VyUmVzcG9uc2USLAoEdXNlchgBIAEoCzIZLmtva29yby5pYW0udjEuVXNlclJlY29yZEgAiAEBQgcKBV91c2VyIn8KKklhbUFkbWluaXN0cmF0aW9uU2VydmljZVN1c3BlbmRVc2VyUmVxdWVzdBI2Cgdjb21tYW5kGAEgASgLMh0ua29rb3JvLmlhbS52MS5Db21tYW5kQ29udGV4dEIGukgDyAEBEhkKB3VzZXJfaWQYAiABKAlCCLpIBXIDsAEBImgKK0lhbUFkbWluaXN0cmF0aW9uU2VydmljZVN1c3BlbmRVc2VyUmVzcG9uc2USJwoEdXNlchgBIAEoCzIZLmtva29yby5pYW0udjEuVXNlclJlY29yZBIQCghyZXBsYXllZBgCIAEoCCKCAQotSWFtQWRtaW5pc3RyYXRpb25TZXJ2aWNlUmVhY3RpdmF0ZVVzZXJSZXF1ZXN0EjYKB2NvbW1hbmQYASABKAsyHS5rb2tvcm8uaWFtLnYxLkNvbW1hbmRDb250ZXh0Qga6SAPIAQESGQoHdXNlcl9pZBgCIAEoCUIIukgFcgOwAQEiawouSWFtQWRtaW5pc3RyYXRpb25TZXJ2aWNlUmVhY3RpdmF0ZVVzZXJSZXNwb25zZRInCgR1c2VyGAEgASgLMhkua29rb3JvLmlhbS52MS5Vc2VyUmVjb3JkEhAKCHJlcGxheWVkGAIgASgIIn4KKUlhbUFkbWluaXN0cmF0aW9uU2VydmljZURlbGV0ZVVzZXJSZXF1ZXN0EjYKB2NvbW1hbmQYASABKAsyHS5rb2tvcm8uaWFtLnYxLkNvbW1hbmRDb250ZXh0Qga6SAPIAQESGQoHdXNlcl9pZBgCIAEoCUIIukgFcgOwAQEiZwoqSWFtQWRtaW5pc3RyYXRpb25TZXJ2aWNlRGVsZXRlVXNlclJlc3BvbnNlEicKBHVzZXIYASABKAsyGS5rb2tvcm8uaWFtLnYxLlVzZXJSZWNvcmQSEAoIcmVwbGF5ZWQYAiABKAgifwoqSWFtQWRtaW5pc3RyYXRpb25TZXJ2aWNlUmVzdG9yZVVzZXJSZXF1ZXN0EjYKB2NvbW1hbmQYASABKAsyHS5rb2tvcm8uaWFtLnYxLkNvbW1hbmRDb250ZXh0Qga6SAPIAQESGQoHdXNlcl9pZBgCIAEoCUIIukgFcgOwAQEiaAorSWFtQWRtaW5pc3RyYXRpb25TZXJ2aWNlUmVzdG9yZVVzZXJSZXNwb25zZRInCgR1c2VyGAEgASgLMhkua29rb3JvLmlhbS52MS5Vc2VyUmVjb3JkEhAKCHJlcGxheWVkGAIgASgIIsMBCjBJYW1BZG1pbmlzdHJhdGlvblNlcnZpY2VMaXN0T3JnYW5pemF0aW9uc1JlcXVlc3QSHAoKcmVxdWVzdF9pZBgBIAEoCUIIukgFcgOwAQESFwoFcXVlcnkYAiABKAlCCLpIBXIDGKABEhcKBnN0YXR1cxgDIAEoCUIHukgEcgIYIBImCgRwYWdlGAQgASgLMhgua29rb3JvLmlhbS52MS5QYWdlSW5wdXQSFwoPaW5jbHVkZV9kZWxldGVkGAUgASgIIpYBCjFJYW1BZG1pbmlzdHJhdGlvblNlcnZpY2VMaXN0T3JnYW5pemF0aW9uc1Jlc3BvbnNlEjgKDW9yZ2FuaXphdGlvbnMYASADKAsyIS5rb2tvcm8uaWFtLnYxLk9yZ2FuaXphdGlvblJlY29yZBInCgRwYWdlGAIgASgLMhkua29rb3JvLmlhbS52MS5QYWdlT3V0cHV0IooBCi5JYW1BZG1pbmlzdHJhdGlvblNlcnZpY2VHZXRPcmdhbml6YXRpb25SZXF1ZXN0EhwKCnJlcXVlc3RfaWQYASABKAlCCLpIBXIDsAEBEiEKD29yZ2FuaXphdGlvbl9pZBgCIAEoCUIIukgFcgOwAQESFwoPaW5jbHVkZV9kZWxldGVkGAMgASgIIoABCi9JYW1BZG1pbmlzdHJhdGlvblNlcnZpY2VHZXRPcmdhbml6YXRpb25SZXNwb25zZRI8Cgxvcmdhbml6YXRpb24YASABKAsyIS5rb2tvcm8uaWFtLnYxLk9yZ2FuaXphdGlvblJlY29yZEgAiAEBQg8KDV9vcmdhbml6YXRpb24ihgEKMUlhbUFkbWluaXN0cmF0aW9uU2VydmljZVJldm9rZVVzZXJTZXNzaW9uc1JlcXVlc3QSNgoHY29tbWFuZBgBIAEoCzIdLmtva29yby5pYW0udjEuQ29tbWFuZENvbnRleHRCBrpIA8gBARIZCgd1c2VyX2lkGAIgASgJQgi6SAVyA7ABASJdCjJJYW1BZG1pbmlzdHJhdGlvblNlcnZpY2VSZXZva2VVc2VyU2Vzc2lvbnNSZXNwb25zZRIVCg1yZXZva2VkX2NvdW50GAEgASgNEhAKCHJlcGxheWVkGAIgASgIIqgEChlMaXN0U2VjdXJpdHlFdmVudHNSZXF1ZXN0EhwKCnJlcXVlc3RfaWQYASABKAlCCLpIBXIDsAEBEhoKBGtpbmQYAiABKAlCB7pIBHICGGBIAIgBARIkCg1hY3Rvcl91c2VyX2lkGAMgASgJQgi6SAVyA7ABAUgBiAEBEiUKDnRhcmdldF91c2VyX2lkGAQgASgJQgi6SAVyA7ABAUgCiAEBEiYKD29yZ2FuaXphdGlvbl9pZBgFIAEoCUIIukgFcgOwAQFIA4gBARIhCgpjb21tYW5kX2lkGAYgASgJQgi6SAVyA7ABAUgEiAEBEjYKDWNyZWF0ZWRfYWZ0ZXIYByABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wSAWIAQESNwoOY3JlYXRlZF9iZWZvcmUYCCABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wSAaIAQESJgoEcGFnZRgJIAEoCzIYLmtva29yby5pYW0udjEuUGFnZUlucHV0Eh4KB3NpdGVfaWQYCiABKAlCCLpIBXIDsAEBSAeIAQFCBwoFX2tpbmRCEAoOX2FjdG9yX3VzZXJfaWRCEQoPX3RhcmdldF91c2VyX2lkQhIKEF9vcmdhbml6YXRpb25faWRCDQoLX2NvbW1hbmRfaWRCEAoOX2NyZWF0ZWRfYWZ0ZXJCEQoPX2NyZWF0ZWRfYmVmb3JlQgoKCF9zaXRlX2lkIjUKFlNlY3VyaXR5RXZlbnRLaW5kQ291bnQSDAoEa2luZBgBIAEoCRINCgVjb3VudBgCIAEoBCJgChdTZWN1cml0eUV2ZW50U3RhdGlzdGljcxINCgV0b3RhbBgBIAEoBBI2CgdieV9raW5kGAIgAygLMiUua29rb3JvLmlhbS52MS5TZWN1cml0eUV2ZW50S2luZENvdW50IrUBChpMaXN0U2VjdXJpdHlFdmVudHNSZXNwb25zZRIyCgZldmVudHMYASADKAsyIi5rb2tvcm8uaWFtLnYxLlNlY3VyaXR5RXZlbnRSZWNvcmQSJwoEcGFnZRgCIAEoCzIZLmtva29yby5pYW0udjEuUGFnZU91dHB1dBI6CgpzdGF0aXN0aWNzGAMgASgLMiYua29rb3JvLmlhbS52MS5TZWN1cml0eUV2ZW50U3RhdGlzdGljczLpCgoYSWFtQWRtaW5pc3RyYXRpb25TZXJ2aWNlEn4KCUxpc3RVc2VycxI3Lmtva29yby5pYW0udjEuSWFtQWRtaW5pc3RyYXRpb25TZXJ2aWNlTGlzdFVzZXJzUmVxdWVzdBo4Lmtva29yby5pYW0udjEuSWFtQWRtaW5pc3RyYXRpb25TZXJ2aWNlTGlzdFVzZXJzUmVzcG9uc2USeAoHR2V0VXNlchI1Lmtva29yby5pYW0udjEuSWFtQWRtaW5pc3RyYXRpb25TZXJ2aWNlR2V0VXNlclJlcXVlc3QaNi5rb2tvcm8uaWFtLnYxLklhbUFkbWluaXN0cmF0aW9uU2VydmljZUdldFVzZXJSZXNwb25zZRKEAQoLU3VzcGVuZFVzZXISOS5rb2tvcm8uaWFtLnYxLklhbUFkbWluaXN0cmF0aW9uU2VydmljZVN1c3BlbmRVc2VyUmVxdWVzdBo6Lmtva29yby5pYW0udjEuSWFtQWRtaW5pc3RyYXRpb25TZXJ2aWNlU3VzcGVuZFVzZXJSZXNwb25zZRKNAQoOUmVhY3RpdmF0ZVVzZXISPC5rb2tvcm8uaWFtLnYxLklhbUFkbWluaXN0cmF0aW9uU2VydmljZVJlYWN0aXZhdGVVc2VyUmVxdWVzdBo9Lmtva29yby5pYW0udjEuSWFtQWRtaW5pc3RyYXRpb25TZXJ2aWNlUmVhY3RpdmF0ZVVzZXJSZXNwb25zZRKBAQoKRGVsZXRlVXNlchI4Lmtva29yby5pYW0udjEuSWFtQWRtaW5pc3RyYXRpb25TZXJ2aWNlRGVsZXRlVXNlclJlcXVlc3QaOS5rb2tvcm8uaWFtLnYxLklhbUFkbWluaXN0cmF0aW9uU2VydmljZURlbGV0ZVVzZXJSZXNwb25zZRKEAQoLUmVzdG9yZVVzZXISOS5rb2tvcm8uaWFtLnYxLklhbUFkbWluaXN0cmF0aW9uU2VydmljZVJlc3RvcmVVc2VyUmVxdWVzdBo6Lmtva29yby5pYW0udjEuSWFtQWRtaW5pc3RyYXRpb25TZXJ2aWNlUmVzdG9yZVVzZXJSZXNwb25zZRKWAQoRTGlzdE9yZ2FuaXphdGlvbnMSPy5rb2tvcm8uaWFtLnYxLklhbUFkbWluaXN0cmF0aW9uU2VydmljZUxpc3RPcmdhbml6YXRpb25zUmVxdWVzdBpALmtva29yby5pYW0udjEuSWFtQWRtaW5pc3RyYXRpb25TZXJ2aWNlTGlzdE9yZ2FuaXphdGlvbnNSZXNwb25zZRKQAQoPR2V0T3JnYW5pemF0aW9uEj0ua29rb3JvLmlhbS52MS5JYW1BZG1pbmlzdHJhdGlvblNlcnZpY2VHZXRPcmdhbml6YXRpb25SZXF1ZXN0Gj4ua29rb3JvLmlhbS52MS5JYW1BZG1pbmlzdHJhdGlvblNlcnZpY2VHZXRPcmdhbml6YXRpb25SZXNwb25zZRKZAQoSUmV2b2tlVXNlclNlc3Npb25zEkAua29rb3JvLmlhbS52MS5JYW1BZG1pbmlzdHJhdGlvblNlcnZpY2VSZXZva2VVc2VyU2Vzc2lvbnNSZXF1ZXN0GkEua29rb3JvLmlhbS52MS5JYW1BZG1pbmlzdHJhdGlvblNlcnZpY2VSZXZva2VVc2VyU2Vzc2lvbnNSZXNwb25zZRJpChJMaXN0U2VjdXJpdHlFdmVudHMSKC5rb2tvcm8uaWFtLnYxLkxpc3RTZWN1cml0eUV2ZW50c1JlcXVlc3QaKS5rb2tvcm8uaWFtLnYxLkxpc3RTZWN1cml0eUV2ZW50c1Jlc3BvbnNlYgZwcm90bzM", [file_buf_validate_validate, file_google_protobuf_timestamp, file_kokoro_iam_v1_types]);
+  fileDesc("CiJrb2tvcm8vaWFtL3YxL2FkbWluaXN0cmF0aW9uLnByb3RvEg1rb2tvcm8uaWFtLnYxItsBCihJYW1BZG1pbmlzdHJhdGlvblNlcnZpY2VMaXN0VXNlcnNSZXF1ZXN0EhwKCnJlcXVlc3RfaWQYASABKAlCCLpIBXIDsAEBEhcKBXF1ZXJ5GAIgASgJQgi6SAVyAxjAAhIXCgZzdGF0dXMYAyABKAlCB7pIBHICGCASJgoEcGFnZRgEIAEoCzIYLmtva29yby5pYW0udjEuUGFnZUlucHV0EhcKD2luY2x1ZGVfZGVsZXRlZBgFIAEoCBIeCg1wbGF0Zm9ybV9yb2xlGAYgASgJQge6SARyAhggIn4KKUlhbUFkbWluaXN0cmF0aW9uU2VydmljZUxpc3RVc2Vyc1Jlc3BvbnNlEigKBXVzZXJzGAEgAygLMhkua29rb3JvLmlhbS52MS5Vc2VyUmVjb3JkEicKBHBhZ2UYAiABKAsyGS5rb2tvcm8uaWFtLnYxLlBhZ2VPdXRwdXQiegomSWFtQWRtaW5pc3RyYXRpb25TZXJ2aWNlR2V0VXNlclJlcXVlc3QSHAoKcmVxdWVzdF9pZBgBIAEoCUIIukgFcgOwAQESGQoHdXNlcl9pZBgCIAEoCUIIukgFcgOwAQESFwoPaW5jbHVkZV9kZWxldGVkGAMgASgIImAKJ0lhbUFkbWluaXN0cmF0aW9uU2VydmljZUdldFVzZXJSZXNwb25zZRIsCgR1c2VyGAEgASgLMhkua29rb3JvLmlhbS52MS5Vc2VyUmVjb3JkSACIAQFCBwoFX3VzZXIiwAEKKUlhbUFkbWluaXN0cmF0aW9uU2VydmljZUNyZWF0ZVVzZXJSZXF1ZXN0EjYKB2NvbW1hbmQYASABKAsyHS5rb2tvcm8uaWFtLnYxLkNvbW1hbmRDb250ZXh0Qga6SAPIAQESGQoFZW1haWwYAiABKAlCCrpIB3IFGMACYAESGAoEbmFtZRgDIAEoCUIKukgHcgUQARigARIcCgVpbWFnZRgEIAEoCUIIukgFcgMYgBBIAIgBAUIICgZfaW1hZ2UiZwoqSWFtQWRtaW5pc3RyYXRpb25TZXJ2aWNlQ3JlYXRlVXNlclJlc3BvbnNlEicKBHVzZXIYASABKAsyGS5rb2tvcm8uaWFtLnYxLlVzZXJSZWNvcmQSEAoIcmVwbGF5ZWQYAiABKAgi2wEKKUlhbUFkbWluaXN0cmF0aW9uU2VydmljZVVwZGF0ZVVzZXJSZXF1ZXN0EjYKB2NvbW1hbmQYASABKAsyHS5rb2tvcm8uaWFtLnYxLkNvbW1hbmRDb250ZXh0Qga6SAPIAQESGQoHdXNlcl9pZBgCIAEoCUIIukgFcgOwAQESGQoFZW1haWwYAyABKAlCCrpIB3IFGMACYAESGAoEbmFtZRgEIAEoCUIKukgHcgUQARigARIcCgVpbWFnZRgFIAEoCUIIukgFcgMYgBBIAIgBAUIICgZfaW1hZ2UiZwoqSWFtQWRtaW5pc3RyYXRpb25TZXJ2aWNlVXBkYXRlVXNlclJlc3BvbnNlEicKBHVzZXIYASABKAsyGS5rb2tvcm8uaWFtLnYxLlVzZXJSZWNvcmQSEAoIcmVwbGF5ZWQYAiABKAgifwoqSWFtQWRtaW5pc3RyYXRpb25TZXJ2aWNlU3VzcGVuZFVzZXJSZXF1ZXN0EjYKB2NvbW1hbmQYASABKAsyHS5rb2tvcm8uaWFtLnYxLkNvbW1hbmRDb250ZXh0Qga6SAPIAQESGQoHdXNlcl9pZBgCIAEoCUIIukgFcgOwAQEiaAorSWFtQWRtaW5pc3RyYXRpb25TZXJ2aWNlU3VzcGVuZFVzZXJSZXNwb25zZRInCgR1c2VyGAEgASgLMhkua29rb3JvLmlhbS52MS5Vc2VyUmVjb3JkEhAKCHJlcGxheWVkGAIgASgIIoIBCi1JYW1BZG1pbmlzdHJhdGlvblNlcnZpY2VSZWFjdGl2YXRlVXNlclJlcXVlc3QSNgoHY29tbWFuZBgBIAEoCzIdLmtva29yby5pYW0udjEuQ29tbWFuZENvbnRleHRCBrpIA8gBARIZCgd1c2VyX2lkGAIgASgJQgi6SAVyA7ABASJrCi5JYW1BZG1pbmlzdHJhdGlvblNlcnZpY2VSZWFjdGl2YXRlVXNlclJlc3BvbnNlEicKBHVzZXIYASABKAsyGS5rb2tvcm8uaWFtLnYxLlVzZXJSZWNvcmQSEAoIcmVwbGF5ZWQYAiABKAgifgopSWFtQWRtaW5pc3RyYXRpb25TZXJ2aWNlRGVsZXRlVXNlclJlcXVlc3QSNgoHY29tbWFuZBgBIAEoCzIdLmtva29yby5pYW0udjEuQ29tbWFuZENvbnRleHRCBrpIA8gBARIZCgd1c2VyX2lkGAIgASgJQgi6SAVyA7ABASJnCipJYW1BZG1pbmlzdHJhdGlvblNlcnZpY2VEZWxldGVVc2VyUmVzcG9uc2USJwoEdXNlchgBIAEoCzIZLmtva29yby5pYW0udjEuVXNlclJlY29yZBIQCghyZXBsYXllZBgCIAEoCCJ/CipJYW1BZG1pbmlzdHJhdGlvblNlcnZpY2VSZXN0b3JlVXNlclJlcXVlc3QSNgoHY29tbWFuZBgBIAEoCzIdLmtva29yby5pYW0udjEuQ29tbWFuZENvbnRleHRCBrpIA8gBARIZCgd1c2VyX2lkGAIgASgJQgi6SAVyA7ABASJoCitJYW1BZG1pbmlzdHJhdGlvblNlcnZpY2VSZXN0b3JlVXNlclJlc3BvbnNlEicKBHVzZXIYASABKAsyGS5rb2tvcm8uaWFtLnYxLlVzZXJSZWNvcmQSEAoIcmVwbGF5ZWQYAiABKAgiwwEKMElhbUFkbWluaXN0cmF0aW9uU2VydmljZUxpc3RPcmdhbml6YXRpb25zUmVxdWVzdBIcCgpyZXF1ZXN0X2lkGAEgASgJQgi6SAVyA7ABARIXCgVxdWVyeRgCIAEoCUIIukgFcgMYoAESFwoGc3RhdHVzGAMgASgJQge6SARyAhggEiYKBHBhZ2UYBCABKAsyGC5rb2tvcm8uaWFtLnYxLlBhZ2VJbnB1dBIXCg9pbmNsdWRlX2RlbGV0ZWQYBSABKAgilgEKMUlhbUFkbWluaXN0cmF0aW9uU2VydmljZUxpc3RPcmdhbml6YXRpb25zUmVzcG9uc2USOAoNb3JnYW5pemF0aW9ucxgBIAMoCzIhLmtva29yby5pYW0udjEuT3JnYW5pemF0aW9uUmVjb3JkEicKBHBhZ2UYAiABKAsyGS5rb2tvcm8uaWFtLnYxLlBhZ2VPdXRwdXQiigEKLklhbUFkbWluaXN0cmF0aW9uU2VydmljZUdldE9yZ2FuaXphdGlvblJlcXVlc3QSHAoKcmVxdWVzdF9pZBgBIAEoCUIIukgFcgOwAQESIQoPb3JnYW5pemF0aW9uX2lkGAIgASgJQgi6SAVyA7ABARIXCg9pbmNsdWRlX2RlbGV0ZWQYAyABKAgigAEKL0lhbUFkbWluaXN0cmF0aW9uU2VydmljZUdldE9yZ2FuaXphdGlvblJlc3BvbnNlEjwKDG9yZ2FuaXphdGlvbhgBIAEoCzIhLmtva29yby5pYW0udjEuT3JnYW5pemF0aW9uUmVjb3JkSACIAQFCDwoNX29yZ2FuaXphdGlvbiKGAQoxSWFtQWRtaW5pc3RyYXRpb25TZXJ2aWNlUmV2b2tlVXNlclNlc3Npb25zUmVxdWVzdBI2Cgdjb21tYW5kGAEgASgLMh0ua29rb3JvLmlhbS52MS5Db21tYW5kQ29udGV4dEIGukgDyAEBEhkKB3VzZXJfaWQYAiABKAlCCLpIBXIDsAEBIl0KMklhbUFkbWluaXN0cmF0aW9uU2VydmljZVJldm9rZVVzZXJTZXNzaW9uc1Jlc3BvbnNlEhUKDXJldm9rZWRfY291bnQYASABKA0SEAoIcmVwbGF5ZWQYAiABKAgiqAQKGUxpc3RTZWN1cml0eUV2ZW50c1JlcXVlc3QSHAoKcmVxdWVzdF9pZBgBIAEoCUIIukgFcgOwAQESGgoEa2luZBgCIAEoCUIHukgEcgIYYEgAiAEBEiQKDWFjdG9yX3VzZXJfaWQYAyABKAlCCLpIBXIDsAEBSAGIAQESJQoOdGFyZ2V0X3VzZXJfaWQYBCABKAlCCLpIBXIDsAEBSAKIAQESJgoPb3JnYW5pemF0aW9uX2lkGAUgASgJQgi6SAVyA7ABAUgDiAEBEiEKCmNvbW1hbmRfaWQYBiABKAlCCLpIBXIDsAEBSASIAQESNgoNY3JlYXRlZF9hZnRlchgHIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXBIBYgBARI3Cg5jcmVhdGVkX2JlZm9yZRgIIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXBIBogBARImCgRwYWdlGAkgASgLMhgua29rb3JvLmlhbS52MS5QYWdlSW5wdXQSHgoHc2l0ZV9pZBgKIAEoCUIIukgFcgOwAQFIB4gBAUIHCgVfa2luZEIQCg5fYWN0b3JfdXNlcl9pZEIRCg9fdGFyZ2V0X3VzZXJfaWRCEgoQX29yZ2FuaXphdGlvbl9pZEINCgtfY29tbWFuZF9pZEIQCg5fY3JlYXRlZF9hZnRlckIRCg9fY3JlYXRlZF9iZWZvcmVCCgoIX3NpdGVfaWQiNQoWU2VjdXJpdHlFdmVudEtpbmRDb3VudBIMCgRraW5kGAEgASgJEg0KBWNvdW50GAIgASgEImAKF1NlY3VyaXR5RXZlbnRTdGF0aXN0aWNzEg0KBXRvdGFsGAEgASgEEjYKB2J5X2tpbmQYAiADKAsyJS5rb2tvcm8uaWFtLnYxLlNlY3VyaXR5RXZlbnRLaW5kQ291bnQitQEKGkxpc3RTZWN1cml0eUV2ZW50c1Jlc3BvbnNlEjIKBmV2ZW50cxgBIAMoCzIiLmtva29yby5pYW0udjEuU2VjdXJpdHlFdmVudFJlY29yZBInCgRwYWdlGAIgASgLMhkua29rb3JvLmlhbS52MS5QYWdlT3V0cHV0EjoKCnN0YXRpc3RpY3MYAyABKAsyJi5rb2tvcm8uaWFtLnYxLlNlY3VyaXR5RXZlbnRTdGF0aXN0aWNzMvEMChhJYW1BZG1pbmlzdHJhdGlvblNlcnZpY2USfgoJTGlzdFVzZXJzEjcua29rb3JvLmlhbS52MS5JYW1BZG1pbmlzdHJhdGlvblNlcnZpY2VMaXN0VXNlcnNSZXF1ZXN0Gjgua29rb3JvLmlhbS52MS5JYW1BZG1pbmlzdHJhdGlvblNlcnZpY2VMaXN0VXNlcnNSZXNwb25zZRJ4CgdHZXRVc2VyEjUua29rb3JvLmlhbS52MS5JYW1BZG1pbmlzdHJhdGlvblNlcnZpY2VHZXRVc2VyUmVxdWVzdBo2Lmtva29yby5pYW0udjEuSWFtQWRtaW5pc3RyYXRpb25TZXJ2aWNlR2V0VXNlclJlc3BvbnNlEoEBCgpDcmVhdGVVc2VyEjgua29rb3JvLmlhbS52MS5JYW1BZG1pbmlzdHJhdGlvblNlcnZpY2VDcmVhdGVVc2VyUmVxdWVzdBo5Lmtva29yby5pYW0udjEuSWFtQWRtaW5pc3RyYXRpb25TZXJ2aWNlQ3JlYXRlVXNlclJlc3BvbnNlEoEBCgpVcGRhdGVVc2VyEjgua29rb3JvLmlhbS52MS5JYW1BZG1pbmlzdHJhdGlvblNlcnZpY2VVcGRhdGVVc2VyUmVxdWVzdBo5Lmtva29yby5pYW0udjEuSWFtQWRtaW5pc3RyYXRpb25TZXJ2aWNlVXBkYXRlVXNlclJlc3BvbnNlEoQBCgtTdXNwZW5kVXNlchI5Lmtva29yby5pYW0udjEuSWFtQWRtaW5pc3RyYXRpb25TZXJ2aWNlU3VzcGVuZFVzZXJSZXF1ZXN0Gjoua29rb3JvLmlhbS52MS5JYW1BZG1pbmlzdHJhdGlvblNlcnZpY2VTdXNwZW5kVXNlclJlc3BvbnNlEo0BCg5SZWFjdGl2YXRlVXNlchI8Lmtva29yby5pYW0udjEuSWFtQWRtaW5pc3RyYXRpb25TZXJ2aWNlUmVhY3RpdmF0ZVVzZXJSZXF1ZXN0Gj0ua29rb3JvLmlhbS52MS5JYW1BZG1pbmlzdHJhdGlvblNlcnZpY2VSZWFjdGl2YXRlVXNlclJlc3BvbnNlEoEBCgpEZWxldGVVc2VyEjgua29rb3JvLmlhbS52MS5JYW1BZG1pbmlzdHJhdGlvblNlcnZpY2VEZWxldGVVc2VyUmVxdWVzdBo5Lmtva29yby5pYW0udjEuSWFtQWRtaW5pc3RyYXRpb25TZXJ2aWNlRGVsZXRlVXNlclJlc3BvbnNlEoQBCgtSZXN0b3JlVXNlchI5Lmtva29yby5pYW0udjEuSWFtQWRtaW5pc3RyYXRpb25TZXJ2aWNlUmVzdG9yZVVzZXJSZXF1ZXN0Gjoua29rb3JvLmlhbS52MS5JYW1BZG1pbmlzdHJhdGlvblNlcnZpY2VSZXN0b3JlVXNlclJlc3BvbnNlEpYBChFMaXN0T3JnYW5pemF0aW9ucxI/Lmtva29yby5pYW0udjEuSWFtQWRtaW5pc3RyYXRpb25TZXJ2aWNlTGlzdE9yZ2FuaXphdGlvbnNSZXF1ZXN0GkAua29rb3JvLmlhbS52MS5JYW1BZG1pbmlzdHJhdGlvblNlcnZpY2VMaXN0T3JnYW5pemF0aW9uc1Jlc3BvbnNlEpABCg9HZXRPcmdhbml6YXRpb24SPS5rb2tvcm8uaWFtLnYxLklhbUFkbWluaXN0cmF0aW9uU2VydmljZUdldE9yZ2FuaXphdGlvblJlcXVlc3QaPi5rb2tvcm8uaWFtLnYxLklhbUFkbWluaXN0cmF0aW9uU2VydmljZUdldE9yZ2FuaXphdGlvblJlc3BvbnNlEpkBChJSZXZva2VVc2VyU2Vzc2lvbnMSQC5rb2tvcm8uaWFtLnYxLklhbUFkbWluaXN0cmF0aW9uU2VydmljZVJldm9rZVVzZXJTZXNzaW9uc1JlcXVlc3QaQS5rb2tvcm8uaWFtLnYxLklhbUFkbWluaXN0cmF0aW9uU2VydmljZVJldm9rZVVzZXJTZXNzaW9uc1Jlc3BvbnNlEmkKEkxpc3RTZWN1cml0eUV2ZW50cxIoLmtva29yby5pYW0udjEuTGlzdFNlY3VyaXR5RXZlbnRzUmVxdWVzdBopLmtva29yby5pYW0udjEuTGlzdFNlY3VyaXR5RXZlbnRzUmVzcG9uc2ViBnByb3RvMw", [file_buf_validate_validate, file_google_protobuf_timestamp, file_kokoro_iam_v1_types]);
 
 /**
  * @generated from message kokoro.iam.v1.IamAdministrationServiceListUsersRequest
@@ -45,6 +45,11 @@ export type IamAdministrationServiceListUsersRequest = Message<"kokoro.iam.v1.Ia
    * @generated from field: bool include_deleted = 5;
    */
   includeDeleted: boolean;
+
+  /**
+   * @generated from field: string platform_role = 6;
+   */
+  platformRole: string;
 };
 
 /**
@@ -121,6 +126,119 @@ export const IamAdministrationServiceGetUserResponseSchema: GenMessage<IamAdmini
   messageDesc(file_kokoro_iam_v1_administration, 3);
 
 /**
+ * @generated from message kokoro.iam.v1.IamAdministrationServiceCreateUserRequest
+ */
+export type IamAdministrationServiceCreateUserRequest = Message<"kokoro.iam.v1.IamAdministrationServiceCreateUserRequest"> & {
+  /**
+   * @generated from field: kokoro.iam.v1.CommandContext command = 1;
+   */
+  command?: CommandContext | undefined;
+
+  /**
+   * @generated from field: string email = 2;
+   */
+  email: string;
+
+  /**
+   * @generated from field: string name = 3;
+   */
+  name: string;
+
+  /**
+   * @generated from field: optional string image = 4;
+   */
+  image?: string | undefined;
+};
+
+/**
+ * Describes the message kokoro.iam.v1.IamAdministrationServiceCreateUserRequest.
+ * Use `create(IamAdministrationServiceCreateUserRequestSchema)` to create a new message.
+ */
+export const IamAdministrationServiceCreateUserRequestSchema: GenMessage<IamAdministrationServiceCreateUserRequest> = /*@__PURE__*/
+  messageDesc(file_kokoro_iam_v1_administration, 4);
+
+/**
+ * @generated from message kokoro.iam.v1.IamAdministrationServiceCreateUserResponse
+ */
+export type IamAdministrationServiceCreateUserResponse = Message<"kokoro.iam.v1.IamAdministrationServiceCreateUserResponse"> & {
+  /**
+   * @generated from field: kokoro.iam.v1.UserRecord user = 1;
+   */
+  user?: UserRecord | undefined;
+
+  /**
+   * @generated from field: bool replayed = 2;
+   */
+  replayed: boolean;
+};
+
+/**
+ * Describes the message kokoro.iam.v1.IamAdministrationServiceCreateUserResponse.
+ * Use `create(IamAdministrationServiceCreateUserResponseSchema)` to create a new message.
+ */
+export const IamAdministrationServiceCreateUserResponseSchema: GenMessage<IamAdministrationServiceCreateUserResponse> = /*@__PURE__*/
+  messageDesc(file_kokoro_iam_v1_administration, 5);
+
+/**
+ * @generated from message kokoro.iam.v1.IamAdministrationServiceUpdateUserRequest
+ */
+export type IamAdministrationServiceUpdateUserRequest = Message<"kokoro.iam.v1.IamAdministrationServiceUpdateUserRequest"> & {
+  /**
+   * @generated from field: kokoro.iam.v1.CommandContext command = 1;
+   */
+  command?: CommandContext | undefined;
+
+  /**
+   * @generated from field: string user_id = 2;
+   */
+  userId: string;
+
+  /**
+   * @generated from field: string email = 3;
+   */
+  email: string;
+
+  /**
+   * @generated from field: string name = 4;
+   */
+  name: string;
+
+  /**
+   * @generated from field: optional string image = 5;
+   */
+  image?: string | undefined;
+};
+
+/**
+ * Describes the message kokoro.iam.v1.IamAdministrationServiceUpdateUserRequest.
+ * Use `create(IamAdministrationServiceUpdateUserRequestSchema)` to create a new message.
+ */
+export const IamAdministrationServiceUpdateUserRequestSchema: GenMessage<IamAdministrationServiceUpdateUserRequest> = /*@__PURE__*/
+  messageDesc(file_kokoro_iam_v1_administration, 6);
+
+/**
+ * @generated from message kokoro.iam.v1.IamAdministrationServiceUpdateUserResponse
+ */
+export type IamAdministrationServiceUpdateUserResponse = Message<"kokoro.iam.v1.IamAdministrationServiceUpdateUserResponse"> & {
+  /**
+   * @generated from field: kokoro.iam.v1.UserRecord user = 1;
+   */
+  user?: UserRecord | undefined;
+
+  /**
+   * @generated from field: bool replayed = 2;
+   */
+  replayed: boolean;
+};
+
+/**
+ * Describes the message kokoro.iam.v1.IamAdministrationServiceUpdateUserResponse.
+ * Use `create(IamAdministrationServiceUpdateUserResponseSchema)` to create a new message.
+ */
+export const IamAdministrationServiceUpdateUserResponseSchema: GenMessage<IamAdministrationServiceUpdateUserResponse> = /*@__PURE__*/
+  messageDesc(file_kokoro_iam_v1_administration, 7);
+
+/**
  * @generated from message kokoro.iam.v1.IamAdministrationServiceSuspendUserRequest
  */
 export type IamAdministrationServiceSuspendUserRequest = Message<"kokoro.iam.v1.IamAdministrationServiceSuspendUserRequest"> & {
@@ -140,7 +258,7 @@ export type IamAdministrationServiceSuspendUserRequest = Message<"kokoro.iam.v1.
  * Use `create(IamAdministrationServiceSuspendUserRequestSchema)` to create a new message.
  */
 export const IamAdministrationServiceSuspendUserRequestSchema: GenMessage<IamAdministrationServiceSuspendUserRequest> = /*@__PURE__*/
-  messageDesc(file_kokoro_iam_v1_administration, 4);
+  messageDesc(file_kokoro_iam_v1_administration, 8);
 
 /**
  * @generated from message kokoro.iam.v1.IamAdministrationServiceSuspendUserResponse
@@ -162,7 +280,7 @@ export type IamAdministrationServiceSuspendUserResponse = Message<"kokoro.iam.v1
  * Use `create(IamAdministrationServiceSuspendUserResponseSchema)` to create a new message.
  */
 export const IamAdministrationServiceSuspendUserResponseSchema: GenMessage<IamAdministrationServiceSuspendUserResponse> = /*@__PURE__*/
-  messageDesc(file_kokoro_iam_v1_administration, 5);
+  messageDesc(file_kokoro_iam_v1_administration, 9);
 
 /**
  * @generated from message kokoro.iam.v1.IamAdministrationServiceReactivateUserRequest
@@ -184,7 +302,7 @@ export type IamAdministrationServiceReactivateUserRequest = Message<"kokoro.iam.
  * Use `create(IamAdministrationServiceReactivateUserRequestSchema)` to create a new message.
  */
 export const IamAdministrationServiceReactivateUserRequestSchema: GenMessage<IamAdministrationServiceReactivateUserRequest> = /*@__PURE__*/
-  messageDesc(file_kokoro_iam_v1_administration, 6);
+  messageDesc(file_kokoro_iam_v1_administration, 10);
 
 /**
  * @generated from message kokoro.iam.v1.IamAdministrationServiceReactivateUserResponse
@@ -206,7 +324,7 @@ export type IamAdministrationServiceReactivateUserResponse = Message<"kokoro.iam
  * Use `create(IamAdministrationServiceReactivateUserResponseSchema)` to create a new message.
  */
 export const IamAdministrationServiceReactivateUserResponseSchema: GenMessage<IamAdministrationServiceReactivateUserResponse> = /*@__PURE__*/
-  messageDesc(file_kokoro_iam_v1_administration, 7);
+  messageDesc(file_kokoro_iam_v1_administration, 11);
 
 /**
  * @generated from message kokoro.iam.v1.IamAdministrationServiceDeleteUserRequest
@@ -228,7 +346,7 @@ export type IamAdministrationServiceDeleteUserRequest = Message<"kokoro.iam.v1.I
  * Use `create(IamAdministrationServiceDeleteUserRequestSchema)` to create a new message.
  */
 export const IamAdministrationServiceDeleteUserRequestSchema: GenMessage<IamAdministrationServiceDeleteUserRequest> = /*@__PURE__*/
-  messageDesc(file_kokoro_iam_v1_administration, 8);
+  messageDesc(file_kokoro_iam_v1_administration, 12);
 
 /**
  * @generated from message kokoro.iam.v1.IamAdministrationServiceDeleteUserResponse
@@ -250,7 +368,7 @@ export type IamAdministrationServiceDeleteUserResponse = Message<"kokoro.iam.v1.
  * Use `create(IamAdministrationServiceDeleteUserResponseSchema)` to create a new message.
  */
 export const IamAdministrationServiceDeleteUserResponseSchema: GenMessage<IamAdministrationServiceDeleteUserResponse> = /*@__PURE__*/
-  messageDesc(file_kokoro_iam_v1_administration, 9);
+  messageDesc(file_kokoro_iam_v1_administration, 13);
 
 /**
  * @generated from message kokoro.iam.v1.IamAdministrationServiceRestoreUserRequest
@@ -272,7 +390,7 @@ export type IamAdministrationServiceRestoreUserRequest = Message<"kokoro.iam.v1.
  * Use `create(IamAdministrationServiceRestoreUserRequestSchema)` to create a new message.
  */
 export const IamAdministrationServiceRestoreUserRequestSchema: GenMessage<IamAdministrationServiceRestoreUserRequest> = /*@__PURE__*/
-  messageDesc(file_kokoro_iam_v1_administration, 10);
+  messageDesc(file_kokoro_iam_v1_administration, 14);
 
 /**
  * @generated from message kokoro.iam.v1.IamAdministrationServiceRestoreUserResponse
@@ -294,7 +412,7 @@ export type IamAdministrationServiceRestoreUserResponse = Message<"kokoro.iam.v1
  * Use `create(IamAdministrationServiceRestoreUserResponseSchema)` to create a new message.
  */
 export const IamAdministrationServiceRestoreUserResponseSchema: GenMessage<IamAdministrationServiceRestoreUserResponse> = /*@__PURE__*/
-  messageDesc(file_kokoro_iam_v1_administration, 11);
+  messageDesc(file_kokoro_iam_v1_administration, 15);
 
 /**
  * @generated from message kokoro.iam.v1.IamAdministrationServiceListOrganizationsRequest
@@ -331,7 +449,7 @@ export type IamAdministrationServiceListOrganizationsRequest = Message<"kokoro.i
  * Use `create(IamAdministrationServiceListOrganizationsRequestSchema)` to create a new message.
  */
 export const IamAdministrationServiceListOrganizationsRequestSchema: GenMessage<IamAdministrationServiceListOrganizationsRequest> = /*@__PURE__*/
-  messageDesc(file_kokoro_iam_v1_administration, 12);
+  messageDesc(file_kokoro_iam_v1_administration, 16);
 
 /**
  * @generated from message kokoro.iam.v1.IamAdministrationServiceListOrganizationsResponse
@@ -353,7 +471,7 @@ export type IamAdministrationServiceListOrganizationsResponse = Message<"kokoro.
  * Use `create(IamAdministrationServiceListOrganizationsResponseSchema)` to create a new message.
  */
 export const IamAdministrationServiceListOrganizationsResponseSchema: GenMessage<IamAdministrationServiceListOrganizationsResponse> = /*@__PURE__*/
-  messageDesc(file_kokoro_iam_v1_administration, 13);
+  messageDesc(file_kokoro_iam_v1_administration, 17);
 
 /**
  * @generated from message kokoro.iam.v1.IamAdministrationServiceGetOrganizationRequest
@@ -380,7 +498,7 @@ export type IamAdministrationServiceGetOrganizationRequest = Message<"kokoro.iam
  * Use `create(IamAdministrationServiceGetOrganizationRequestSchema)` to create a new message.
  */
 export const IamAdministrationServiceGetOrganizationRequestSchema: GenMessage<IamAdministrationServiceGetOrganizationRequest> = /*@__PURE__*/
-  messageDesc(file_kokoro_iam_v1_administration, 14);
+  messageDesc(file_kokoro_iam_v1_administration, 18);
 
 /**
  * @generated from message kokoro.iam.v1.IamAdministrationServiceGetOrganizationResponse
@@ -397,7 +515,7 @@ export type IamAdministrationServiceGetOrganizationResponse = Message<"kokoro.ia
  * Use `create(IamAdministrationServiceGetOrganizationResponseSchema)` to create a new message.
  */
 export const IamAdministrationServiceGetOrganizationResponseSchema: GenMessage<IamAdministrationServiceGetOrganizationResponse> = /*@__PURE__*/
-  messageDesc(file_kokoro_iam_v1_administration, 15);
+  messageDesc(file_kokoro_iam_v1_administration, 19);
 
 /**
  * @generated from message kokoro.iam.v1.IamAdministrationServiceRevokeUserSessionsRequest
@@ -419,7 +537,7 @@ export type IamAdministrationServiceRevokeUserSessionsRequest = Message<"kokoro.
  * Use `create(IamAdministrationServiceRevokeUserSessionsRequestSchema)` to create a new message.
  */
 export const IamAdministrationServiceRevokeUserSessionsRequestSchema: GenMessage<IamAdministrationServiceRevokeUserSessionsRequest> = /*@__PURE__*/
-  messageDesc(file_kokoro_iam_v1_administration, 16);
+  messageDesc(file_kokoro_iam_v1_administration, 20);
 
 /**
  * @generated from message kokoro.iam.v1.IamAdministrationServiceRevokeUserSessionsResponse
@@ -441,7 +559,7 @@ export type IamAdministrationServiceRevokeUserSessionsResponse = Message<"kokoro
  * Use `create(IamAdministrationServiceRevokeUserSessionsResponseSchema)` to create a new message.
  */
 export const IamAdministrationServiceRevokeUserSessionsResponseSchema: GenMessage<IamAdministrationServiceRevokeUserSessionsResponse> = /*@__PURE__*/
-  messageDesc(file_kokoro_iam_v1_administration, 17);
+  messageDesc(file_kokoro_iam_v1_administration, 21);
 
 /**
  * @generated from message kokoro.iam.v1.ListSecurityEventsRequest
@@ -503,7 +621,7 @@ export type ListSecurityEventsRequest = Message<"kokoro.iam.v1.ListSecurityEvent
  * Use `create(ListSecurityEventsRequestSchema)` to create a new message.
  */
 export const ListSecurityEventsRequestSchema: GenMessage<ListSecurityEventsRequest> = /*@__PURE__*/
-  messageDesc(file_kokoro_iam_v1_administration, 18);
+  messageDesc(file_kokoro_iam_v1_administration, 22);
 
 /**
  * @generated from message kokoro.iam.v1.SecurityEventKindCount
@@ -525,7 +643,7 @@ export type SecurityEventKindCount = Message<"kokoro.iam.v1.SecurityEventKindCou
  * Use `create(SecurityEventKindCountSchema)` to create a new message.
  */
 export const SecurityEventKindCountSchema: GenMessage<SecurityEventKindCount> = /*@__PURE__*/
-  messageDesc(file_kokoro_iam_v1_administration, 19);
+  messageDesc(file_kokoro_iam_v1_administration, 23);
 
 /**
  * @generated from message kokoro.iam.v1.SecurityEventStatistics
@@ -547,7 +665,7 @@ export type SecurityEventStatistics = Message<"kokoro.iam.v1.SecurityEventStatis
  * Use `create(SecurityEventStatisticsSchema)` to create a new message.
  */
 export const SecurityEventStatisticsSchema: GenMessage<SecurityEventStatistics> = /*@__PURE__*/
-  messageDesc(file_kokoro_iam_v1_administration, 20);
+  messageDesc(file_kokoro_iam_v1_administration, 24);
 
 /**
  * @generated from message kokoro.iam.v1.ListSecurityEventsResponse
@@ -574,7 +692,7 @@ export type ListSecurityEventsResponse = Message<"kokoro.iam.v1.ListSecurityEven
  * Use `create(ListSecurityEventsResponseSchema)` to create a new message.
  */
 export const ListSecurityEventsResponseSchema: GenMessage<ListSecurityEventsResponse> = /*@__PURE__*/
-  messageDesc(file_kokoro_iam_v1_administration, 21);
+  messageDesc(file_kokoro_iam_v1_administration, 25);
 
 /**
  * @generated from service kokoro.iam.v1.IamAdministrationService
@@ -595,6 +713,22 @@ export const IamAdministrationService: GenService<{
     methodKind: "unary";
     input: typeof IamAdministrationServiceGetUserRequestSchema;
     output: typeof IamAdministrationServiceGetUserResponseSchema;
+  },
+  /**
+   * @generated from rpc kokoro.iam.v1.IamAdministrationService.CreateUser
+   */
+  createUser: {
+    methodKind: "unary";
+    input: typeof IamAdministrationServiceCreateUserRequestSchema;
+    output: typeof IamAdministrationServiceCreateUserResponseSchema;
+  },
+  /**
+   * @generated from rpc kokoro.iam.v1.IamAdministrationService.UpdateUser
+   */
+  updateUser: {
+    methodKind: "unary";
+    input: typeof IamAdministrationServiceUpdateUserRequestSchema;
+    output: typeof IamAdministrationServiceUpdateUserResponseSchema;
   },
   /**
    * @generated from rpc kokoro.iam.v1.IamAdministrationService.SuspendUser
