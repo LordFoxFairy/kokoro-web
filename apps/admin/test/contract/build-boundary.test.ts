@@ -18,6 +18,8 @@ describe("Admin production build boundary", () => {
 
     const result = await scanProductionBundle(root, ["FIXTURE_SECRET"]);
 
+    expect(result.routes).toContain("/sites");
+    expect(result.routes).toContain("/sites/[siteId]");
     expect(result.routes).toEqual(expectedAdminRoutes);
     expect(result.violations).toEqual([]);
   });
@@ -38,6 +40,19 @@ describe("Admin production build boundary", () => {
       expect.stringContaining("secret value"),
       expect.stringContaining("generated IAM client chunk"),
       expect.stringContaining("secret name in client chunk"),
+    ]));
+  });
+
+  it("WEB-SEC-DEVFIXTURE-002 rejects development fixture UI or RPC markers in a production bundle", async () => {
+    const root = await fixture({
+      server: "开发管理员工具 IamDevelopmentFixtureService",
+      client: "BootstrapDevelopmentAdministrator 创建并启用",
+    });
+
+    const result = await scanProductionBundle(root, []);
+
+    expect(result.violations).toEqual(expect.arrayContaining([
+      expect.stringContaining("development fixture"),
     ]));
   });
 });

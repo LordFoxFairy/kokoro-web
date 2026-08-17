@@ -1,19 +1,30 @@
 "use client";
 
 import { EditOutlined } from "@ant-design/icons";
-import { Alert, Button, Descriptions, Input, Modal, Table } from "antd";
-import type { ColumnsType } from "antd/es/table";
+import {
+  ModalForm,
+  ProFormText,
+  ProFormTextArea,
+} from "@ant-design/pro-form";
+import { ProDescriptions } from "@ant-design/pro-descriptions";
+import type { ProColumns } from "@ant-design/pro-table";
+import { Alert, Button, Space, Tabs } from "antd";
 import { useRouter } from "next/navigation";
-import { useId, useState } from "react";
+import { useState } from "react";
 
+import { AdminTable } from "@/components/data/admin-table";
 import { StatusTag } from "@/components/data/status-tag";
 import { commandErrorKey } from "@/components/feedback/command-error";
+import { AdminPage } from "@/components/platform/admin-page";
 import { useT } from "@/i18n/context";
 import type { CommandActionResult } from "@/lib/command-result";
 
 import { MemberTable, type MemberAction } from "../members/member-table";
+import { OrganizationRoleManagement, type OrganizationRoleAction } from "../roles/role-management";
 import { organizationNameSchema, type OrganizationDetailView } from "./schema";
 import { OrganizationLifecycleControls, type OrganizationAction } from "./organization-table";
+
+type UpdateOrganizationValues = { name: string; reason: string };
 
 function OrganizationUpdateDialog({
   open,
@@ -28,93 +39,78 @@ function OrganizationUpdateDialog({
 }>): React.ReactElement {
   const t = useT();
   const router = useRouter();
-  const nameId = useId();
-  const reasonId = useId();
-  const [name, setName] = useState(view.organization.name);
-  const [reason, setReason] = useState("");
   const [commandId] = useState(() => crypto.randomUUID());
-  const [errors, setErrors] = useState({ name: false, reason: false });
-  const [pending, setPending] = useState(false);
   const [result, setResult] = useState<CommandActionResult | null>(null);
   const [lockedPayload, setLockedPayload] = useState<Readonly<{ name: string; reason: string }> | null>(null);
 
-  async function confirm(): Promise<void> {
+  async function confirm(values: UpdateOrganizationValues): Promise<boolean> {
     let payload = lockedPayload;
     if (payload === null) {
-      const invalid = {
-        name: !organizationNameSchema.safeParse(name).success,
-        reason: reason.trim().length === 0,
-      };
-      setErrors(invalid);
-      if (Object.values(invalid).some(Boolean)) return;
-      payload = Object.freeze({ name: name.trim(), reason: reason.trim() });
+      payload = Object.freeze({ name: values.name.trim(), reason: values.reason.trim() });
       setLockedPayload(payload);
     }
-    setPending(true);
-    try {
-      const response = await action({
-        operation: "update",
-        organizationId: view.organization.id,
-        name: payload.name,
-        expectedVersion: view.organization.version,
-        requestId: crypto.randomUUID(),
-        commandId,
-        reason: payload.reason,
-      });
-      setResult(response);
-      if (response.status === "success") {
-        onClose();
-        router.refresh();
-      }
-    } finally {
-      setPending(false);
+    const response = await action({
+      operation: "update",
+      organizationId: view.organization.id,
+      name: payload.name,
+      expectedVersion: view.organization.version,
+      requestId: crypto.randomUUID(),
+      commandId,
+      reason: payload.reason,
+    });
+    setResult(response);
+    if (response.status === "success") {
+      onClose();
+      router.refresh();
+      return true;
     }
+    return false;
   }
 
   return (
-    <Modal
+    <ModalForm<UpdateOrganizationValues>
       open={open}
       title={t("organization.updateTitle")}
-      onCancel={onClose}
-      destroyOnHidden
       width={520}
-      footer={[
-        <Button key="cancel" onClick={onClose} disabled={pending}>{t("command.cancel")}</Button>,
-        <Button key="update" aria-label={t("organization.confirmUpdate")} type="primary" loading={pending} onClick={confirm}>
-          {t("organization.confirmUpdate")}
-        </Button>,
-      ]}
+      initialValues={{ name: view.organization.name, reason: "" }}
+      modalProps={{ destroyOnHidden: true, onCancel: onClose }}
+      submitter={{
+        searchConfig: { submitText: t("organization.confirmUpdate"), resetText: t("command.cancel") },
+        submitButtonProps: { "aria-label": t("organization.confirmUpdate") },
+        resetButtonProps: { onClick: onClose },
+      }}
+      onFinish={confirm}
     >
-      <div className="form-stack">
-        <label htmlFor={nameId}>{t("organization.name")}</label>
-        <Input
-          id={nameId}
-          value={name}
-          disabled={lockedPayload !== null}
-          maxLength={160}
-          onChange={(event) => setName(event.target.value)}
+      <ProFormText
+        name="name"
+        label={t("organization.name")}
+        disabled={lockedPayload !== null}
+        fieldProps={{ maxLength: 160, "aria-label": t("organization.name") }}
+        rules={[
+          { required: true, message: t("organization.nameRequired") },
+          {
+            validator: async (_, value: string) => organizationNameSchema.safeParse(value).success
+              ? Promise.resolve()
+              : Promise.reject(new Error(t("organization.nameRequired"))),
+          },
+        ]}
+      />
+      <ProFormTextArea
+        name="reason"
+        label={t("command.reason")}
+        disabled={lockedPayload !== null}
+        fieldProps={{ maxLength: 500, rows: 3, "aria-label": t("command.reason") }}
+        rules={[{ required: true, whitespace: true, message: t("command.reasonRequired") }]}
+      />
+      {result?.status === "error" ? (
+        <Alert
+          type="error"
+          showIcon
+          title={`${t("action.error")} · ${t(commandErrorKey(result.kind))}`}
+          description={result.requestId.length > 0 ? result.requestId : undefined}
         />
-        {errors.name ? <span className="field-error" role="alert">{t("organization.nameRequired")}</span> : null}
-        <label htmlFor={reasonId}>{t("command.reason")}</label>
-        <Input.TextArea
-          id={reasonId}
-          value={reason}
-          disabled={lockedPayload !== null}
-          maxLength={500}
-          rows={3}
-          onChange={(event) => setReason(event.target.value)}
-        />
-        {errors.reason ? <span className="field-error" role="alert">{t("command.reasonRequired")}</span> : null}
-        {result?.status === "error" ? (
-          <Alert
-            type="error"
-            showIcon
-            title={`${t("action.error")} · ${t(commandErrorKey(result.kind))}`}
-            description={result.requestId.length > 0 ? result.requestId : undefined}
-          />
-        ) : null}
-      </div>
-    </Modal>
+      ) : null}
+    </ModalForm>
   );
 }
 
@@ -122,58 +118,84 @@ export function OrganizationDetail({
   view,
   organizationAction,
   memberAction,
+  roleAction,
 }: Readonly<{
   view: OrganizationDetailView;
   organizationAction: OrganizationAction;
   memberAction: MemberAction;
+  roleAction: OrganizationRoleAction;
 }>): React.ReactElement {
   const t = useT();
   const [updating, setUpdating] = useState(false);
-  const eventColumns: ColumnsType<OrganizationDetailView["events"][number]> = [
+  const eventColumns: ProColumns<OrganizationDetailView["events"][number]>[] = [
     { title: t("event.kind"), dataIndex: "kind" },
     { title: t("event.requestId"), dataIndex: "requestId", width: 300, className: "technical-value" },
-    { title: t("event.commandId"), dataIndex: "commandId", width: 300, className: "technical-value", render: (value: string | null) => value ?? t("common.none") },
-    { title: t("organization.createdAt"), dataIndex: "createdAt", width: 190, render: (value: string) => <time dateTime={value}>{value}</time> },
+    { title: t("event.commandId"), dataIndex: "commandId", width: 300, className: "technical-value", render: (_, event) => event.commandId ?? t("common.none") },
+    { title: t("organization.createdAt"), dataIndex: "createdAt", width: 190, render: (_, event) => <time dateTime={event.createdAt}>{event.createdAt}</time> },
   ];
 
   return (
-    <section className="data-page" aria-labelledby="organization-detail-title">
-      <header className="page-heading detail-heading">
-        <div>
-          <h1 id="organization-detail-title">{t("organization.detail")}</h1>
-          <span>{view.organization.name} · {view.organization.slug}</span>
-        </div>
-        <div>
+    <AdminPage
+      titleId="organization-detail-title"
+      title={t("organization.detail")}
+      description={`${view.organization.name} · ${view.organization.slug}`}
+      extra={(
+        <Space wrap>
           {view.organization.status === "deleted" ? null : (
             <Button icon={<EditOutlined />} onClick={() => setUpdating(true)}>{t("organization.update")}</Button>
           )}
           <OrganizationLifecycleControls organization={view.organization} action={organizationAction} />
-        </div>
-      </header>
-      <Descriptions bordered size="small" column={{ xs: 1, sm: 2, lg: 3 }}>
-        <Descriptions.Item label="ID"><code>{view.organization.id}</code></Descriptions.Item>
-        <Descriptions.Item label={t("organization.slug")}><code>{view.organization.slug}</code></Descriptions.Item>
-        <Descriptions.Item label={t("organization.name")}>{view.organization.name}</Descriptions.Item>
-        <Descriptions.Item label={t("organization.status")}><StatusTag status={view.organization.status} /></Descriptions.Item>
-        <Descriptions.Item label={t("organization.version")}><code>{view.organization.version}</code></Descriptions.Item>
-        <Descriptions.Item label={t("organization.createdAt")}><time dateTime={view.organization.createdAt}>{view.organization.createdAt}</time></Descriptions.Item>
-        <Descriptions.Item label={t("organization.updatedAt")}><time dateTime={view.organization.updatedAt}>{view.organization.updatedAt}</time></Descriptions.Item>
-      </Descriptions>
-      <MemberTable organizationId={view.organization.id} view={view.members} action={memberAction} />
-      <section className="event-section" aria-labelledby="organization-events-title">
-        <div className="section-heading"><h2 id="organization-events-title">{t("organization.events")}</h2></div>
-        <div className="data-table" role="region" aria-label={t("organization.events")} tabIndex={0}>
-          <Table
-            rowKey="id"
-            columns={eventColumns}
-            dataSource={[...view.events]}
-            pagination={false}
-            locale={{ emptyText: t("state.empty.title") }}
-            scroll={{ x: 980 }}
-          />
-        </div>
-      </section>
+        </Space>
+      )}
+    >
+      <Tabs
+        className="admin-detail-tabs"
+        items={[
+          {
+            key: "profile",
+            label: t("common.profile"),
+            children: (
+              <ProDescriptions bordered size="small" column={{ xs: 1, sm: 2, lg: 3 }}>
+                <ProDescriptions.Item label="ID"><code>{view.organization.id}</code></ProDescriptions.Item>
+                <ProDescriptions.Item label={t("organization.slug")}><code>{view.organization.slug}</code></ProDescriptions.Item>
+                <ProDescriptions.Item label={t("organization.name")}>{view.organization.name}</ProDescriptions.Item>
+                <ProDescriptions.Item label={t("organization.status")}><StatusTag status={view.organization.status} /></ProDescriptions.Item>
+                <ProDescriptions.Item label={t("organization.version")}><code>{view.organization.version}</code></ProDescriptions.Item>
+                <ProDescriptions.Item label={t("organization.createdAt")}><time dateTime={view.organization.createdAt}>{view.organization.createdAt}</time></ProDescriptions.Item>
+                <ProDescriptions.Item label={t("organization.updatedAt")}><time dateTime={view.organization.updatedAt}>{view.organization.updatedAt}</time></ProDescriptions.Item>
+              </ProDescriptions>
+            ),
+          },
+          {
+            key: "members",
+            label: t("member.title"),
+            children: <MemberTable organizationId={view.organization.id} view={view.members} action={memberAction} />,
+          },
+          {
+            key: "roles",
+            label: t("role.title"),
+            children: <OrganizationRoleManagement organizationId={view.organization.id} view={view.roles} action={roleAction} />,
+          },
+          {
+            key: "audit",
+            label: t("common.audit"),
+            children: (
+              <section className="event-section" aria-labelledby="organization-events-title">
+                <div className="section-heading"><h2 id="organization-events-title">{t("organization.events")}</h2></div>
+                <AdminTable<OrganizationDetailView["events"][number]>
+                  ariaLabel={t("organization.events")}
+                  columns={eventColumns}
+                  data={view.events}
+                  emptyText={t("state.empty.title")}
+                  rowKey="id"
+                  scrollX={980}
+                />
+              </section>
+            ),
+          },
+        ]}
+      />
       {updating ? <OrganizationUpdateDialog open view={view} action={organizationAction} onClose={() => setUpdating(false)} /> : null}
-    </section>
+    </AdminPage>
   );
 }

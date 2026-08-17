@@ -9,7 +9,8 @@ import {
 } from "@ant-design/icons";
 
 import type { MessageKey } from "@/i18n/messages";
-import { adminModuleRegistry, type AdminIconKey } from "@/modules/registry";
+import type { AdminCapability } from "@/lib/admin-capabilities";
+import { adminModuleRegistry, projectAdminModules, type AdminIconKey } from "@/modules/registry";
 
 export type AdminNavigationItem = Readonly<{
   href: string;
@@ -36,3 +37,10 @@ export const adminNavigation: readonly AdminNavigationItem[] = Object.freeze(
     icon: icons[module.iconKey],
   })),
 );
+
+export function projectAdminNavigation(
+  capabilities: readonly AdminCapability[],
+): readonly AdminNavigationItem[] {
+  const allowed = new Set(projectAdminModules(capabilities).map((module) => module.href));
+  return Object.freeze(adminNavigation.filter((item) => allowed.has(item.href)));
+}

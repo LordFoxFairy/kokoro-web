@@ -11,6 +11,9 @@ const requirements = [
   "WEB-IAM-FR-AUTH-001",
   "WEB-IAM-FR-AUTH-002",
   "WEB-IAM-FR-AUTH-003",
+  "WEB-IAM-FR-AUTH-004",
+  "WEB-IAM-FR-AUTH-005",
+  "WEB-IAM-FR-AUTH-006",
   "WEB-IAM-FR-SESSION-001",
   "WEB-IAM-FR-SESSION-002",
   "WEB-IAM-FR-USER-001",
@@ -30,6 +33,7 @@ const acceptance = [
   "WEB-IAM-ACC-AUTH-001",
   "WEB-IAM-ACC-AUTH-002",
   "WEB-IAM-ACC-AUTH-003",
+  "WEB-IAM-ACC-AUTH-004",
   "WEB-IAM-ACC-SESSION-001",
   "WEB-IAM-ACC-USER-001",
   "WEB-IAM-ACC-ORG-001",
@@ -41,16 +45,41 @@ const acceptance = [
 ] as const;
 
 const sharedPairIds = [
-  "IAM-SEC-ENUM-001",
+  "IAM-SEC-ENUMPASSWORD-001",
   "IAM-SEC-REDIRECT-001",
-  "IAM-E2E-AUTH-001",
+  "IAM-E2E-AUTHPASSWORD-001",
+  "IAM-E2E-AUTHEMAIL-001",
+  "IAM-E2E-AUTHSESSION-001",
   "IAM-E2E-SESSION-001",
   "IAM-E2E-ORG-001",
+  "IAM-E2E-SITE-001",
+  "IAM-E2E-SITEMEMBER-001",
+  "IAM-E2E-SITERBAC-001",
+  "IAM-E2E-SITEAUDIT-001",
   "IAM-E2E-MEMBER-001",
   "IAM-E2E-RBAC-001",
   "IAM-E2E-DELETE-001",
   "IAM-E2E-IDEM-001",
   "IAM-E2E-FRESH-001",
+] as const;
+
+const sharedPairFiles = [
+  "test/pair/authentication.spec.ts",
+  "test/pair/authentication.spec.ts",
+  "test/pair/authentication.spec.ts",
+  "test/pair/authentication.spec.ts",
+  "test/pair/authentication.spec.ts",
+  "test/pair/sessions.spec.ts",
+  "test/pair/organizations.spec.ts",
+  "test/pair/sites.spec.ts",
+  "test/pair/sites.spec.ts",
+  "test/pair/sites.spec.ts",
+  "test/pair/sites.spec.ts",
+  "test/pair/members-access.spec.ts",
+  "test/pair/members-access.spec.ts",
+  "test/pair/users.spec.ts",
+  "test/pair/audit-idempotency.spec.ts",
+  "test/pair/audit-idempotency.spec.ts",
 ] as const;
 
 describe("Admin Web P0 catalog", () => {
@@ -71,12 +100,13 @@ describe("Admin Web P0 catalog", () => {
       realPostgresqlRequired: true,
       realMailRequired: true,
     });
-    expect(ids).toHaveLength(54);
+    expect(ids).toHaveLength(63);
     expect(new Set(ids).size).toBe(ids.length);
-    expect(adminCases).toHaveLength(44);
+    expect(adminCases).toHaveLength(47);
     expect(adminCases.every((entry) => entry.status === "NOT_STARTED" && entry.retries === 0)).toBe(true);
     expect(pairCases.map((entry) => entry.id)).toEqual(sharedPairIds);
-    expect(pairCases.every((entry) => entry.status === "NOT_STARTED" && entry.testFile === null)).toBe(true);
+    expect(pairCases.every((entry) => entry.status === "NOT_STARTED")).toBe(true);
+    expect(pairCases.map((entry) => entry.testFile)).toEqual(sharedPairFiles);
   });
 
   it("WEB-CONTRACT-CATALOG-001 maps every product requirement and acceptance criterion", async () => {

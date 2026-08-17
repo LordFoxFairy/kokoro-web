@@ -8,21 +8,31 @@ import {
   SwapOutlined,
   UndoOutlined,
 } from "@ant-design/icons";
-import { Alert, Button, Input, Modal, Space, Table, Tag } from "antd";
-import type { ColumnsType } from "antd/es/table";
+import {
+  ModalForm,
+  ProFormCheckbox,
+  ProFormSelect,
+  ProFormText,
+  ProFormTextArea,
+} from "@ant-design/pro-form";
+import type { ProColumns } from "@ant-design/pro-table";
+import { Button, Select, Space, Tag } from "antd";
 import { useRouter } from "next/navigation";
-import { useId, useState } from "react";
+import { useState } from "react";
 
 import { CommandDialog } from "@/components/command/command-dialog";
+import { AdminTable } from "@/components/data/admin-table";
 import { CursorPagination } from "@/components/data/cursor-pagination";
 import { StatusTag } from "@/components/data/status-tag";
-import { commandErrorKey } from "@/components/feedback/command-error";
+import { CommandResult } from "@/components/feedback/command-result";
 import { PageState } from "@/components/feedback/page-state";
+import { AdminQueryFilter } from "@/components/forms/admin-query-filter";
 import { useT } from "@/i18n/context";
 import type { CommandActionResult } from "@/lib/command-result";
 
 import {
   roleKeySchema,
+  type MemberFilters,
   type MemberListItem,
   type MemberListView,
   type RoleKey,
@@ -35,22 +45,7 @@ export type MemberAction = (input: MemberCommandActionInput) => Promise<CommandA
 type MemberOperation = "change-role" | "suspend" | "reactivate" | "remove" | "restore";
 type PendingCommand = Readonly<{ operation: MemberOperation; commandId: string; roleKey?: RoleKey }>;
 type AddMemberPayload = Readonly<{ userId: string; roleKey: RoleKey; reason: string }>;
-
-function ResultAlert({ result }: Readonly<{ result: CommandActionResult | null }>): React.ReactElement | null {
-  const t = useT();
-  if (result === null) return null;
-  return result.status === "error" ? (
-    <Alert
-      className="command-result"
-      type="error"
-      showIcon
-      title={`${t("action.error")} · ${t(commandErrorKey(result.kind))}`}
-      description={result.requestId.length > 0 ? result.requestId : undefined}
-    />
-  ) : (
-    <Alert className="command-result" type="success" showIcon title={t(result.replayed ? "action.replayed" : "action.success")} />
-  );
-}
+type AddMemberValues = { userId: string; roleKey: RoleKey; reason: string };
 
 function MemberControls({
   organizationId,
@@ -111,16 +106,17 @@ function MemberControls({
     <>
       {member.status === "deleted" ? null : (
         <Space.Compact size="small">
-          <select
+          <Select<RoleKey>
             aria-label={t("member.currentRole")}
             value={roleKey}
-            onChange={(event) => {
-              const parsed = roleKeySchema.safeParse(event.target.value);
+            size="small"
+            style={{ minWidth: 132 }}
+            options={roles.map((role) => ({ value: role.key, label: role.name }))}
+            onChange={(value) => {
+              const parsed = roleKeySchema.safeParse(value);
               if (parsed.success) setRoleKey(parsed.data);
             }}
-          >
-            {roles.map((role) => <option key={role.key} value={role.key}>{role.name}</option>)}
-          </select>
+          />
           <Button
             aria-label={t("member.changeRole")}
             icon={<SwapOutlined />}
@@ -155,7 +151,7 @@ function MemberControls({
           </Button>
         ))}
       </Space>
-      {pending === null ? <ResultAlert result={result} /> : null}
+      {pending === null ? <CommandResult result={result} /> : null}
       {pending === null ? null : (
         <CommandDialog
           open
@@ -186,98 +182,81 @@ function AddMemberDialog({
 }>): React.ReactElement {
   const t = useT();
   const router = useRouter();
-  const userIdField = useId();
-  const roleField = useId();
-  const reasonField = useId();
-  const [userId, setUserId] = useState(view.userOptions[0]?.id ?? "");
-  const [roleKey, setRoleKey] = useState<RoleKey | null>(view.roleOptions[0]?.key ?? null);
-  const [reason, setReason] = useState("");
   const [commandId] = useState(() => crypto.randomUUID());
-  const [errors, setErrors] = useState({ user: false, role: false, reason: false });
-  const [pending, setPending] = useState(false);
   const [result, setResult] = useState<CommandActionResult | null>(null);
   const [lockedPayload, setLockedPayload] = useState<AddMemberPayload | null>(null);
 
-  async function confirm(): Promise<void> {
+  async function confirm(values: AddMemberValues): Promise<boolean> {
     let payload = lockedPayload;
     if (payload === null) {
-      const invalid = { user: userId.length === 0, role: roleKey === null, reason: reason.trim().length === 0 };
-      setErrors(invalid);
-      if (Object.values(invalid).some(Boolean) || roleKey === null) return;
-      payload = Object.freeze({ userId, roleKey, reason: reason.trim() });
+      payload = Object.freeze({
+        userId: values.userId,
+        roleKey: values.roleKey,
+        reason: values.reason.trim(),
+      });
       setLockedPayload(payload);
     }
-    setPending(true);
-    try {
-      const response = await action({
-        operation: "add",
-        organizationId,
-        userId: payload.userId,
-        roleKey: payload.roleKey,
-        requestId: crypto.randomUUID(),
-        commandId,
-        reason: payload.reason,
-      });
-      setResult(response);
-      if (response.status === "success") {
-        onClose();
-        router.refresh();
-      }
-    } finally {
-      setPending(false);
+    const response = await action({
+      operation: "add",
+      organizationId,
+      userId: payload.userId,
+      roleKey: payload.roleKey,
+      requestId: crypto.randomUUID(),
+      commandId,
+      reason: payload.reason,
+    });
+    setResult(response);
+    if (response.status === "success") {
+      onClose();
+      router.refresh();
+      return true;
     }
+    return false;
   }
 
   return (
-    <Modal
+    <ModalForm<AddMemberValues>
       open={open}
       title={t("member.addTitle")}
-      onCancel={onClose}
-      destroyOnHidden
       width={520}
-      footer={[
-        <Button key="cancel" onClick={onClose} disabled={pending}>{t("command.cancel")}</Button>,
-        <Button key="add" aria-label={t("member.confirmAdd")} type="primary" loading={pending} onClick={confirm}>
-          {t("member.confirmAdd")}
-        </Button>,
-      ]}
+      initialValues={{
+        userId: view.userOptions[0]?.id ?? "",
+        roleKey: view.roleOptions[0]?.key,
+        reason: "",
+      }}
+      modalProps={{ destroyOnHidden: true, onCancel: onClose }}
+      submitter={{
+        searchConfig: { submitText: t("member.confirmAdd"), resetText: t("command.cancel") },
+        submitButtonProps: { "aria-label": t("member.confirmAdd") },
+        resetButtonProps: { onClick: onClose },
+      }}
+      onFinish={confirm}
     >
-      <div className="form-stack">
-        <label htmlFor={userIdField}>{t("member.user")}</label>
-        <select id={userIdField} value={userId} disabled={lockedPayload !== null} onChange={(event) => setUserId(event.target.value)}>
-          <option value="">{t("common.none")}</option>
-          {view.userOptions.map((user) => (
-            <option key={user.id} value={user.id}>{user.email} · {user.name}</option>
-          ))}
-        </select>
-        {errors.user ? <span className="field-error" role="alert">{t("member.userRequired")}</span> : null}
-        <label htmlFor={roleField}>{t("member.role")}</label>
-        <select
-          id={roleField}
-          value={roleKey ?? ""}
-          disabled={lockedPayload !== null}
-          onChange={(event) => {
-            const parsed = roleKeySchema.safeParse(event.target.value);
-            setRoleKey(parsed.success ? parsed.data : null);
-          }}
-        >
-          <option value="">{t("common.none")}</option>
-          {view.roleOptions.map((role) => <option key={role.key} value={role.key}>{role.name}</option>)}
-        </select>
-        {errors.role ? <span className="field-error" role="alert">{t("member.roleRequired")}</span> : null}
-        <label htmlFor={reasonField}>{t("command.reason")}</label>
-        <Input.TextArea
-          id={reasonField}
-          value={reason}
-          disabled={lockedPayload !== null}
-          rows={3}
-          maxLength={500}
-          onChange={(event) => setReason(event.target.value)}
-        />
-        {errors.reason ? <span className="field-error" role="alert">{t("command.reasonRequired")}</span> : null}
-        <ResultAlert result={result} />
-      </div>
-    </Modal>
+      <ProFormSelect
+        name="userId"
+        label={t("member.user")}
+        disabled={lockedPayload !== null}
+        fieldProps={{ "aria-label": t("member.user") }}
+        rules={[{ required: true, message: t("member.userRequired") }]}
+        options={view.userOptions.map((user) => ({ value: user.id, label: `${user.email} · ${user.name}` }))}
+      />
+      <ProFormSelect
+        name="roleKey"
+        label={t("member.role")}
+        disabled={lockedPayload !== null}
+        fieldProps={{ "aria-label": t("member.role") }}
+        rules={[{ required: true, message: t("member.roleRequired") }]}
+        options={view.roleOptions.map((role) => ({ value: role.key, label: role.name }))}
+      />
+      <ProFormTextArea
+        name="reason"
+        label={t("command.reason")}
+        disabled={lockedPayload !== null}
+        fieldProps={{ rows: 3, maxLength: 500, "aria-label": t("command.reason") }}
+        rules={[{ required: true, whitespace: true, message: t("command.reasonRequired") }]}
+      />
+      <CommandResult result={result} />
+    </ModalForm>
   );
 }
 
@@ -289,11 +268,11 @@ export function MemberTable({ organizationId, view, action }: Readonly<{
   const t = useT();
   const router = useRouter();
   const [adding, setAdding] = useState(false);
-  const columns: ColumnsType<MemberListItem> = [
+  const columns: ProColumns<MemberListItem>[] = [
     { title: t("member.user"), dataIndex: "userLabel", width: 260 },
     { title: t("member.userId"), dataIndex: "userId", width: 300, className: "technical-value" },
     { title: t("member.role"), dataIndex: "roleKey", width: 130, className: "technical-value" },
-    { title: t("member.status"), dataIndex: "status", width: 110, render: (status: string) => <StatusTag status={status} /> },
+    { title: t("member.status"), dataIndex: "status", width: 110, render: (_, member) => <StatusTag status={member.status} /> },
     { title: t("member.version"), dataIndex: "version", width: 90, className: "technical-value" },
     {
       title: t("member.actions"),
@@ -302,12 +281,26 @@ export function MemberTable({ organizationId, view, action }: Readonly<{
       render: (_, member) => <MemberControls organizationId={organizationId} member={member} roles={view.roleOptions} action={action} />,
     },
   ];
-  const roleColumns: ColumnsType<RoleOption> = [
+  const roleColumns: ProColumns<RoleOption>[] = [
     { title: t("member.role"), dataIndex: "name" },
     { title: t("common.description"), dataIndex: "description" },
-    { title: t("access.rolePermissions"), dataIndex: "permissionKeys", render: (keys: readonly string[]) => keys.join(", ") },
-    { title: t("member.builtIn"), dataIndex: "builtIn", width: 130, render: (builtIn: boolean) => builtIn ? <Tag color="green">{t("member.builtIn")}</Tag> : t("common.none") },
+    { title: t("access.rolePermissions"), dataIndex: "permissionKeys", render: (_, role) => role.permissionKeys.join(", ") },
+    { title: t("member.builtIn"), dataIndex: "builtIn", width: 130, render: (_, role) => role.builtIn ? <Tag color="green">{t("member.builtIn")}</Tag> : t("common.none") },
   ];
+  const initialFilters = {
+    query: view.filters.query ?? "",
+    includeDeleted: view.filters.includeDeleted,
+  };
+
+  function navigateWithFilters(values: typeof initialFilters): void {
+    const filters: MemberFilters = {
+      ...view.filters,
+      query: values.query ?? "",
+      includeDeleted: values.includeDeleted ?? false,
+      cursor: null,
+    };
+    router.push(organizationDetailHref(organizationId, filters));
+  }
 
   return (
     <section className="member-section" aria-labelledby="members-title">
@@ -326,25 +319,29 @@ export function MemberTable({ organizationId, view, action }: Readonly<{
           {t("member.add")}
         </Button>
       </div>
-      <form className="filter-bar member-filter" method="get" action={`/organizations/${organizationId}`}>
-        <label className="filter-search">
-          <span>{t("member.searchUser")}</span>
-          <input type="search" name="memberQuery" aria-label={t("member.searchUser")} defaultValue={view.filters.query ?? ""} />
-        </label>
-        <label className="filter-checkbox">
-          <input type="checkbox" name="includeDeletedMembers" value="true" defaultChecked={view.filters.includeDeleted} />
-          <span>{t("member.includeDeleted")}</span>
-        </label>
-        <input type="hidden" name="memberLimit" value={view.filters.limit} />
-        <Button htmlType="submit">{t("member.applyFilters")}</Button>
-      </form>
-      {view.items.length === 0 ? (
-        <PageState kind={view.filters.includeDeleted ? "filtered-empty" : "empty"} />
-      ) : (
-        <div className="data-table" role="region" aria-label={t("member.title")} tabIndex={0}>
-          <Table<MemberListItem> rowKey="id" columns={columns} dataSource={[...view.items]} pagination={false} scroll={{ x: 1320 }} />
-        </div>
-      )}
+      <AdminQueryFilter
+        ariaLabel={t("member.applyFilters")}
+        initialValues={initialFilters}
+        searchText={t("member.applyFilters")}
+        resetText={t("common.reset")}
+        onSubmit={navigateWithFilters}
+        onReset={() => navigateWithFilters({ query: "", includeDeleted: false })}
+      >
+        <ProFormText
+          name="query"
+          label={t("member.searchUser")}
+          fieldProps={{ type: "search", "aria-label": t("member.searchUser") }}
+        />
+        <ProFormCheckbox name="includeDeleted">{t("member.includeDeleted")}</ProFormCheckbox>
+      </AdminQueryFilter>
+      <AdminTable<MemberListItem>
+        ariaLabel={t("member.title")}
+        columns={columns}
+        data={view.items}
+        emptyText={<PageState kind={view.filters.includeDeleted ? "filtered-empty" : "empty"} />}
+        rowKey="id"
+        scrollX={1_320}
+      />
       <CursorPagination
         canGoBack={view.filters.cursor !== null}
         nextCursor={view.nextCursor}
@@ -353,9 +350,13 @@ export function MemberTable({ organizationId, view, action }: Readonly<{
       />
       <section className="catalog-section" aria-labelledby="member-role-catalog-title">
         <div className="section-heading"><h3 id="member-role-catalog-title">{t("member.roleCatalog")}</h3></div>
-        <div className="data-table" role="region" aria-label={t("member.roleCatalog")} tabIndex={0}>
-          <Table<RoleOption> rowKey="key" columns={roleColumns} dataSource={[...view.roleOptions]} pagination={false} />
-        </div>
+        <AdminTable<RoleOption>
+          ariaLabel={t("member.roleCatalog")}
+          columns={roleColumns}
+          data={view.roleOptions}
+          emptyText={<PageState kind="empty" />}
+          rowKey="key"
+        />
       </section>
       {adding ? <AddMemberDialog open organizationId={organizationId} view={view} action={action} onClose={() => setAdding(false)} /> : null}
     </section>

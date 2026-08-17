@@ -2,6 +2,7 @@ import "server-only";
 
 import type { Transport } from "@connectrpc/connect";
 import type { Session } from "next-auth";
+import { platformAdminCapability, type AdminCapability } from "../../lib/admin-capabilities";
 
 import type { AdminRuntimeConfig } from "../config/config";
 import { createActorTransport } from "../iam/transport";
@@ -17,6 +18,7 @@ export type AdminIamActor = Readonly<{
 export type AdminSessionBoundary = Readonly<{
   requireAdminSession(): Promise<Session>;
   requireIamActor(organizationId?: string): Promise<AdminIamActor>;
+  requireAdminCapability(capability: AdminCapability): Promise<Session>;
 }>;
 
 export type AdminSessionBoundaryDependencies = Readonly<{
@@ -49,8 +51,13 @@ export function createAdminSessionBoundary(
     return validAdminSession(session) ? session : unauthenticated();
   }
 
+  async function requireAdminCapability(capability: AdminCapability): Promise<Session> {
+    if (capability !== platformAdminCapability) return unauthenticated();
+    return requireAdminSession();
+  }
+
   async function requireIamActor(organizationId?: string): Promise<AdminIamActor> {
-    const session = await requireAdminSession();
+    const session = await requireAdminCapability(platformAdminCapability);
     const token = readSessionToken(await dependencies.loadCookies(), dependencies.config.auth);
     if (token === null) return unauthenticated();
     const issued = await dependencies.sessionClient.issueAccessToken(token, organizationId);
@@ -61,5 +68,5 @@ export function createAdminSessionBoundary(
     });
   }
 
-  return Object.freeze({ requireAdminSession, requireIamActor });
+  return Object.freeze({ requireAdminSession, requireAdminCapability, requireIamActor });
 }

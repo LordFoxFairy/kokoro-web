@@ -1,13 +1,14 @@
 import { z } from "zod";
 
-import { iamRoleKeys, type IamRoleKey } from "@/lib/iam-values";
+import { iamRoleKeyPattern, type IamRoleKey } from "@/lib/iam-values";
+import type { OrganizationRoleManagementView } from "../roles/schema";
 
 export const organizationIdSchema = z.string().uuid();
 export const organizationSlugSchema = z.string().trim().regex(
   /^[a-z0-9](?:[a-z0-9-]{0,78}[a-z0-9])?$/u,
 );
 export const organizationNameSchema = z.string().trim().min(1).max(160);
-export const roleKeySchema = z.enum(iamRoleKeys);
+export const roleKeySchema = z.string().regex(iamRoleKeyPattern);
 export type RoleKey = IamRoleKey;
 const versionSchema = z.string().regex(/^(?:0|[1-9][0-9]*)$/u);
 const commandIdentity = {
@@ -112,5 +113,6 @@ export type OrganizationEventView = Readonly<{
 export type OrganizationDetailView = Readonly<{
   organization: OrganizationListItem;
   members: MemberListView;
+  roles: OrganizationRoleManagementView;
   events: readonly OrganizationEventView[];
 }>;

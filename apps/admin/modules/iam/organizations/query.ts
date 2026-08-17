@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 
 import type { IamManagementClient } from "../../../server/iam/management-client";
-import type { AdminMember, AdminOrganization, AdminRole, AdminUser } from "../../../server/iam/records";
+import type { AdminMember, AdminOrganization, AdminPermission, AdminRole, AdminUser } from "../../../server/iam/records";
 import {
   organizationFiltersSchema,
   organizationIdSchema,
@@ -85,7 +85,7 @@ export async function loadOrganizationDetail(
   if (organization === null) return null;
   if (organization.id !== organizationId.data) throw new Error("invalid organization scope");
 
-  const [memberResult, roles, users, eventResult] = await Promise.all([
+  const [memberResult, roles, users, eventResult, permissions] = await Promise.all([
     client.listMembers({
       requestId: randomUUID(),
       organizationId: organization.id,
@@ -93,7 +93,7 @@ export async function loadOrganizationDetail(
       ...(filters.memberCursor === null ? {} : { cursor: filters.memberCursor }),
       limit: filters.memberLimit,
     }),
-    client.listRoleCatalog({ requestId: randomUUID(), organizationId: organization.id }),
+    client.listOrganizationRoles({ requestId: randomUUID(), organizationId: organization.id, includeDeleted: true }),
     client.listUsers({
       requestId: randomUUID(),
       query: filters.memberQuery,
@@ -102,6 +102,7 @@ export async function loadOrganizationDetail(
       limit: 25,
     }),
     client.listSecurityEvents({ requestId: randomUUID(), organizationId: organization.id, limit: 25 }),
+    client.listPermissionCatalog({ requestId: randomUUID() }),
   ]);
   if (memberResult.items.some((member) => member.organizationId !== organization.id)) {
     throw new Error("invalid organization member scope");
@@ -128,6 +129,10 @@ export async function loadOrganizationDetail(
       filters: memberFilters,
       roleOptions: Object.freeze(roles.filter((role) => role.status === "active").map(roleView)),
       userOptions: Object.freeze(users.items.map(userOption)),
+    }),
+    roles: Object.freeze({
+      items: Object.freeze(roles.map(organizationRoleView)),
+      permissionGroups: permissionGroups(permissions),
     }),
     events: Object.freeze(eventResult.items.map((event) => Object.freeze({
       id: event.id,
@@ -196,6 +201,34 @@ function roleView(role: AdminRole): RoleOption {
     builtIn: role.builtIn,
     permissionKeys: role.permissionKeys,
   });
+}
+
+function organizationRoleView(role: AdminRole) {
+  return Object.freeze({
+    id: role.id, organizationId: role.organizationId, key: role.key, name: role.name,
+    description: role.description, builtIn: role.builtIn, status: role.status,
+    version: role.version.toString(), permissionKeys: role.permissionKeys,
+  });
+}
+
+function permissionGroups(permissions: readonly AdminPermission[]) {
+  const groups = new Map<string, AdminPermission[]>();
+  for (const permission of permissions) {
+    if (permission.status !== "active") continue;
+    const group = groups.get(permission.resource) ?? [];
+    group.push(permission);
+    groups.set(permission.resource, group);
+  }
+  return Object.freeze([...groups.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([resource, items]) => Object.freeze({
+      resource,
+      permissions: Object.freeze(items
+        .sort((left, right) => left.key.localeCompare(right.key))
+        .map((permission) => Object.freeze({
+          key: permission.key, action: permission.action, description: permission.description,
+        }))),
+    })));
 }
 
 function userOption(user: AdminUser): ActiveUserOption {

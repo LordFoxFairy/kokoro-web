@@ -24,9 +24,20 @@ describe("protected Admin route authorization", () => {
         },
       });
       await expect(boundary.requireIamActor()).rejects.toThrow("admin authentication required");
+      await expect(boundary.requireAdminCapability("platform:admin")).rejects.toThrow("admin authentication required");
     }
     expect(cookieReads).toBe(0);
     expect(exchanges).toBe(0);
+  });
+
+  it("WEB-SEC-ROUTE-001 returns the active administrator only for the declared platform capability", async () => {
+    const session = userSession("admin", "active");
+    const boundary = createAdminSessionBoundary({
+      config: config(), loadSession: async () => session,
+      loadCookies: async () => ({ get: () => undefined }),
+      sessionClient: { issueAccessToken: async () => { throw new Error("not needed"); } },
+    });
+    await expect(boundary.requireAdminCapability("platform:admin")).resolves.toBe(session);
   });
 });
 

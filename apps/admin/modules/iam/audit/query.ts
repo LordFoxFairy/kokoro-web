@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 
 import { z } from "zod";
 
-import { iamRoleKeys } from "../../../lib/iam-values";
+import { iamRoleKeyPattern } from "../../../lib/iam-values";
 import type { IamManagementClient } from "../../../server/iam/management-client";
 import type { AdminSecurityEvent } from "../../../server/iam/records";
 import {
@@ -20,7 +20,7 @@ type SearchParams = Readonly<Record<string, string | string[] | undefined>>;
 const safeMetadataSchema = z.object({
   slug: z.string().regex(/^[a-z0-9](?:[a-z0-9-]{0,78}[a-z0-9])?$/u).max(80).optional(),
   name: z.string().trim().min(1).max(160).optional(),
-  roleKey: z.enum(iamRoleKeys).optional(),
+  roleKey: z.string().regex(iamRoleKeyPattern).optional(),
   revoked: z.boolean().optional(),
   revokedCount: z.number().int().min(0).max(1_000_000).optional(),
 });

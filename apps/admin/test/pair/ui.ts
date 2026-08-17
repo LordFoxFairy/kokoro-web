@@ -56,6 +56,39 @@ export async function createOrganization(
   return id;
 }
 
+export async function createSite(
+  page: Page,
+  input: Readonly<{ code: string; name: string; reason: string }>,
+): Promise<string> {
+  await page.goto("/sites");
+  await page.getByRole("button", { name: zh["site.create"] }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel(zh["site.code"]).fill(input.code);
+  await dialog.getByLabel(zh["site.name"]).fill(input.name);
+  await dialog.getByLabel(zh["command.reason"]).fill(input.reason);
+  await dialog.getByRole("button", { name: zh["site.confirmCreate"] }).click();
+  await expect(dialog).toBeHidden();
+  await page.getByRole("link", { name: input.name }).click();
+  await expect(page.getByRole("heading", { name: input.name })).toBeVisible();
+  const id = new URL(page.url()).pathname.split("/").filter(Boolean).at(-1);
+  if (id === undefined) throw new Error("created Site route has no identity");
+  return id;
+}
+
+export async function addSiteMember(
+  page: Page,
+  input: Readonly<{ userLabel: string; roleLabel: "Owner" | "Admin" | "Member"; reason: string }>,
+): Promise<void> {
+  await page.getByRole("tab", { name: zh["site.tab.members"] }).click();
+  await page.getByRole("button", { name: zh["siteMember.add"] }).click();
+  const dialog = page.getByRole("dialog");
+  await selectAntOption(page, dialog.getByLabel(zh["siteMember.user"]), input.userLabel);
+  await selectAntOption(page, dialog.getByLabel(zh["siteMember.role"]), input.roleLabel);
+  await dialog.getByLabel(zh["command.reason"]).fill(input.reason);
+  await dialog.getByRole("button", { name: zh["siteMember.confirmAdd"] }).click();
+  await expect(dialog).toBeHidden();
+}
+
 export function tableRow(page: Page, text: string) {
   return page.getByRole("row").filter({ hasText: text }).first();
 }

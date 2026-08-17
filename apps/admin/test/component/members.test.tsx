@@ -13,6 +13,17 @@ const roles = [
   { key: "member", name: "Member", description: "Read access", builtIn: true, permissionKeys: ["organization:read"] },
 ] as const;
 
+async function selectRole(label: string): Promise<void> {
+  fireEvent.mouseDown(screen.getByRole("combobox", { name: "成员角色" }));
+  const option = await waitFor(() => {
+    const match = [...document.querySelectorAll<HTMLElement>(".ant-select-item-option")]
+      .find((item) => item.textContent?.trim() === label);
+    if (match === undefined) throw new Error(`Role option ${label} is not visible`);
+    return match;
+  });
+  fireEvent.click(option);
+}
+
 describe("IAM Member management", () => {
   it("WEB-COMP-MEMBER-001 adds an active User with a provider-owned built-in role", async () => {
     const commands: unknown[] = [];
@@ -88,7 +99,7 @@ describe("IAM Member management", () => {
       </LocaleProvider>,
     );
 
-    fireEvent.change(screen.getByRole("combobox", { name: "成员角色" }), { target: { value: "member" } });
+    await selectRole("Member");
     fireEvent.click(screen.getByRole("button", { name: "变更角色" }));
     fireEvent.change(screen.getByRole("textbox", { name: "操作原因" }), { target: { value: "Least privilege" } });
     fireEvent.click(screen.getByRole("button", { name: "确认" }));
@@ -233,8 +244,7 @@ describe("IAM Member management", () => {
       </LocaleProvider>,
     );
 
-    const role = screen.getByRole("combobox", { name: "成员角色" });
-    fireEvent.change(role, { target: { value: "member" } });
+    await selectRole("Member");
     fireEvent.click(screen.getByRole("button", { name: "变更角色" }));
     const reason = screen.getByRole("textbox", { name: "操作原因" });
     const confirm = screen.getByRole("button", { name: "确认" });
@@ -243,7 +253,7 @@ describe("IAM Member management", () => {
     await waitFor(() => expect(commands).toHaveLength(1));
 
     expect(reason).toBeDisabled();
-    fireEvent.change(role, { target: { value: "owner" } });
+    await selectRole("Owner");
     fireEvent.change(reason, { target: { value: "Changed digest" } });
     fireEvent.click(confirm);
     await waitFor(() => expect(commands).toHaveLength(2));

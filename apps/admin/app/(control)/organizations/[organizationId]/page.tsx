@@ -5,6 +5,7 @@ import { executeMemberAction } from "@/modules/iam/members/action-server";
 import { executeOrganizationAction } from "@/modules/iam/organizations/action-server";
 import { OrganizationDetail } from "@/modules/iam/organizations/organization-detail";
 import { loadOrganizationDetail } from "@/modules/iam/organizations/query";
+import { executeOrganizationRoleAction } from "@/modules/iam/roles/action-server";
 import { requireIamActor } from "@/server/auth/session";
 import { toIamWebError } from "@/server/iam/error";
 import { createIamManagementClient } from "@/server/iam/management-client";
@@ -37,6 +38,7 @@ export default async function OrganizationPage({ params, searchParams }: Organiz
       view={result}
       organizationAction={executeOrganizationAction}
       memberAction={executeMemberAction}
+      roleAction={executeOrganizationRoleAction}
     />
   );
 }

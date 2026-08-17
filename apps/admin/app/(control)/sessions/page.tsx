@@ -21,9 +21,7 @@ export default async function SessionsPage({ searchParams }: SessionsPageProps):
   return typeof result === "string" ? (
     <PageState kind={result} />
   ) : (
-    <section className="data-page">
-      <SessionTable view={result} action={executeSessionAction} />
-    </section>
+    <SessionTable view={result} action={executeSessionAction} />
   );
 }
 

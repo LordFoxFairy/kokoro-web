@@ -8,6 +8,8 @@ or `@connectrpc/connect-node`.
 - `records.ts` validates generated provider records into immutable Admin domain records.
 - `auth-adapter-client.ts` maps all fourteen Auth.js Adapter operations to generated IAM RPC methods.
 - `session-client.ts` maps the workload-only Session token exchange and validates its response.
+- `development-fixture-client.ts` maps the dev/test-only administrator bootstrap and password-reset
+  RPCs. It is loaded only by the development fixture boundary and never exposed to Client Components.
 - `management-client.ts` is the actor-only Administration/Session port for bounded reads and
   idempotent management commands. It returns immutable User, token-free Session, and safe event
   records only.

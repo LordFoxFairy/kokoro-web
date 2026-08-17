@@ -1,18 +1,46 @@
 "use client";
 
+import { LockOutlined, LoginOutlined, MailOutlined, SafetyCertificateFilled } from "@ant-design/icons";
+import { Alert, Button, Input, Segmented } from "antd";
 import Link from "next/link";
+import { useState } from "react";
+import { useFormStatus } from "react-dom";
 
 import { useT } from "@/i18n/context";
 
 export type LoginAction = (formData: FormData) => Promise<void>;
 
-export function LoginForm({ action }: Readonly<{ action: LoginAction }>): React.ReactElement {
+function SubmitButton({ mode }: Readonly<{ mode: "password" | "email" }>): React.ReactElement {
+  const { pending } = useFormStatus();
   const t = useT();
+  return (
+    <Button
+      aria-label={t(mode === "password" ? "auth.login.submit" : "auth.login.emailSubmit")}
+      block
+      htmlType="submit"
+      icon={mode === "password" ? <LoginOutlined /> : <MailOutlined />}
+      loading={pending}
+      size="large"
+      type="primary"
+    >
+      {t(mode === "password" ? "auth.login.submit" : "auth.login.emailSubmit")}
+    </Button>
+  );
+}
+
+export function LoginForm({ passwordAction, emailAction, emailEnabled = true, error = null }: Readonly<{
+  passwordAction: LoginAction;
+  emailAction: LoginAction;
+  emailEnabled?: boolean;
+  error?: string | null;
+}>): React.ReactElement {
+  const t = useT();
+  const [mode, setMode] = useState<"password" | "email">("password");
 
   return (
     <section className="auth-panel" aria-labelledby="login-heading">
       <div className="auth-brand" aria-label={`${t("app.name")} ${t("app.product")}`}>
-        <span className="auth-brand-mark" aria-hidden="true">K</span>
+        <span className="auth-brand-mark" aria-hidden="true"><SafetyCertificateFilled /></span>
         <span>
           <strong>{t("app.name")}</strong>
           <small>{t("app.product")}</small>
@@ -22,9 +50,32 @@ export function LoginForm({ action }: Readonly<{ action: LoginAction }>): React.
         <h1 id="login-heading">{t("auth.login.title")}</h1>
         <p>{t("auth.login.description")}</p>
       </div>
-      <form action={action} className="auth-form">
+      {emailEnabled ? (
+        <Segmented
+          aria-label={t("auth.login.method")}
+          block
+          className="auth-method"
+          onChange={(value) => setMode(value as "password" | "email")}
+          options={[
+            { label: t("auth.login.passwordMethod"), value: "password", icon: <LockOutlined /> },
+            { label: t("auth.login.emailMethod"), value: "email", icon: <MailOutlined /> },
+          ]}
+          value={mode}
+        />
+      ) : null}
+      {error === null ? null : (
+        <Alert
+          className="auth-error"
+          message={t(error === "unavailable" ? "auth.login.error.unavailable" : "auth.login.error.credentials")}
+          role="alert"
+          showIcon
+          type="error"
+        />
+      )}
+      <form action={mode === "password" ? passwordAction : emailAction} className="auth-form">
         <label htmlFor="admin-email">{t("auth.login.email")}</label>
-        <input
+        <Input
+          prefix={<MailOutlined aria-hidden="true" />}
           id="admin-email"
           name="email"
           type="email"
@@ -34,7 +85,25 @@ export function LoginForm({ action }: Readonly<{ action: LoginAction }>): React.
           placeholder={t("auth.login.placeholder")}
           required
         />
-        <button type="submit">{t("auth.login.submit")}</button>
+        <div className="auth-method-fields">
+          {mode === "password" ? (
+            <div className="auth-password-fields">
+            <label htmlFor="admin-password">{t("auth.login.password")}</label>
+            <Input.Password
+              prefix={<LockOutlined aria-hidden="true" />}
+              id="admin-password"
+              name="password"
+              autoComplete="current-password"
+              minLength={12}
+              maxLength={128}
+              required
+            />
+            </div>
+          ) : (
+            <p className="auth-method-description">{t("auth.login.emailDescription")}</p>
+          )}
+        </div>
+        <SubmitButton mode={mode} />
       </form>
       <p className="auth-notice">{t("auth.login.notice")}</p>
     </section>

@@ -12,6 +12,7 @@ describe("IAM URL filters and cursor pagination", () => {
     expect(parseUserFilters({})).toEqual({
       query: "",
       status: "all",
+      platformRole: "all",
       includeDeleted: false,
       cursor: null,
       limit: 25,
@@ -19,12 +20,14 @@ describe("IAM URL filters and cursor pagination", () => {
     expect(parseUserFilters({
       query: "  admin@example.com ",
       status: "deleted",
+      platformRole: "user",
       includeDeleted: "true",
       cursor: "opaque+/cursor==",
       limit: "999",
     })).toEqual({
       query: "admin@example.com",
       status: "deleted",
+      platformRole: "user",
       includeDeleted: true,
       cursor: "opaque+/cursor==",
       limit: 100,
@@ -55,13 +58,14 @@ describe("IAM URL filters and cursor pagination", () => {
     const filters = parseUserFilters({
       query: "admin",
       status: "suspended",
+      platformRole: "admin",
       includeDeleted: "true",
       cursor: "old-cursor",
     });
 
-    expect(userListHref(filters)).toBe("/users?query=admin&status=suspended&includeDeleted=true&limit=25");
+    expect(userListHref(filters)).toBe("/users?query=admin&status=suspended&platformRole=admin&includeDeleted=true&limit=25");
     expect(userListHref(filters, "new/cursor")).toBe(
-      "/users?query=admin&status=suspended&includeDeleted=true&limit=25&cursor=new%2Fcursor",
+      "/users?query=admin&status=suspended&platformRole=admin&includeDeleted=true&limit=25&cursor=new%2Fcursor",
     );
     expect(sessionListHref(parseSessionFilters({ userId: firstUserId }), "session/cursor"))
       .toBe(`/sessions?userId=${firstUserId}&limit=25&cursor=session%2Fcursor`);
@@ -78,6 +82,7 @@ describe("IAM URL filters and cursor pagination", () => {
 
   it("WEB-UNIT-PAGE-001 rejects malformed filters instead of forwarding them to IAM", () => {
     expect(() => parseUserFilters({ status: "banned" })).toThrow("invalid user filters");
+    expect(() => parseUserFilters({ platformRole: "owner" })).toThrow("invalid user filters");
     expect(() => parseUserFilters({ status: ["active", "deleted"] })).toThrow("invalid user filters");
     expect(() => parseUserFilters({ cursor: "x".repeat(513) })).toThrow("invalid user filters");
     expect(() => parseSessionFilters({ userId: "not-a-uuid" })).toThrow("invalid session filters");

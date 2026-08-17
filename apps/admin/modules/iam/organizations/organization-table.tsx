@@ -1,17 +1,27 @@
 "use client";
 
 import { DeleteOutlined, PlusOutlined, UndoOutlined } from "@ant-design/icons";
-import { Alert, Button, Input, Modal, Table } from "antd";
-import type { ColumnsType } from "antd/es/table";
+import {
+  ModalForm,
+  ProFormCheckbox,
+  ProFormSelect,
+  ProFormText,
+  ProFormTextArea,
+} from "@ant-design/pro-form";
+import type { ProColumns } from "@ant-design/pro-table";
+import { Button } from "antd";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useId, useState } from "react";
+import { useState } from "react";
 
 import { CommandDialog } from "@/components/command/command-dialog";
+import { AdminTable } from "@/components/data/admin-table";
 import { CursorPagination } from "@/components/data/cursor-pagination";
 import { StatusTag } from "@/components/data/status-tag";
-import { commandErrorKey } from "@/components/feedback/command-error";
+import { CommandResult } from "@/components/feedback/command-result";
 import { PageState } from "@/components/feedback/page-state";
+import { AdminQueryFilter } from "@/components/forms/admin-query-filter";
+import { AdminPage } from "@/components/platform/admin-page";
 import { useT } from "@/i18n/context";
 import type { CommandActionResult } from "@/lib/command-result";
 
@@ -19,6 +29,7 @@ import {
   organizationNameSchema,
   organizationSlugSchema,
   type OrganizationCommandActionInput,
+  type OrganizationFilters,
   type OrganizationListItem,
   type OrganizationListView,
 } from "./schema";
@@ -27,27 +38,7 @@ import { organizationListHref } from "./url";
 export type OrganizationAction = (input: OrganizationCommandActionInput) => Promise<CommandActionResult>;
 type LifecycleOperation = "delete" | "restore";
 type CreateOrganizationPayload = Readonly<{ slug: string; name: string; reason: string }>;
-
-function CommandResult({ result }: Readonly<{ result: CommandActionResult | null }>): React.ReactElement | null {
-  const t = useT();
-  if (result === null) return null;
-  return result.status === "error" ? (
-    <Alert
-      className="command-result"
-      type="error"
-      showIcon
-      title={`${t("action.error")} · ${t(commandErrorKey(result.kind))}`}
-      description={result.requestId.length > 0 ? result.requestId : undefined}
-    />
-  ) : (
-    <Alert
-      className="command-result"
-      type="success"
-      showIcon
-      title={t(result.replayed ? "action.replayed" : "action.success")}
-    />
-  );
-}
+type CreateOrganizationValues = { slug: string; name: string; reason: string };
 
 export function OrganizationLifecycleControls({
   organization,
@@ -114,110 +105,88 @@ function OrganizationCreateDialog({
 }: Readonly<{ open: boolean; action: OrganizationAction; onClose(): void }>): React.ReactElement {
   const t = useT();
   const router = useRouter();
-  const slugId = useId();
-  const nameId = useId();
-  const reasonId = useId();
-  const [slug, setSlug] = useState("");
-  const [name, setName] = useState("");
-  const [reason, setReason] = useState("");
   const [commandId] = useState(() => crypto.randomUUID());
-  const [errors, setErrors] = useState<Readonly<{ slug: boolean; name: boolean; reason: boolean }>>({
-    slug: false,
-    name: false,
-    reason: false,
-  });
-  const [pending, setPending] = useState(false);
   const [result, setResult] = useState<CommandActionResult | null>(null);
   const [lockedPayload, setLockedPayload] = useState<CreateOrganizationPayload | null>(null);
 
-  async function confirm(): Promise<void> {
+  async function confirm(values: CreateOrganizationValues): Promise<boolean> {
     let payload = lockedPayload;
     if (payload === null) {
-      const invalid = {
-        slug: !organizationSlugSchema.safeParse(slug).success,
-        name: !organizationNameSchema.safeParse(name).success,
-        reason: reason.trim().length === 0,
-      };
-      setErrors(invalid);
-      if (Object.values(invalid).some(Boolean)) return;
-      payload = Object.freeze({ slug: slug.trim(), name: name.trim(), reason: reason.trim() });
+      payload = Object.freeze({
+        slug: values.slug.trim(),
+        name: values.name.trim(),
+        reason: values.reason.trim(),
+      });
       setLockedPayload(payload);
     }
-    setPending(true);
-    try {
-      const response = await action({
-        operation: "create",
-        slug: payload.slug,
-        name: payload.name,
-        reason: payload.reason,
-        requestId: crypto.randomUUID(),
-        commandId,
-      });
-      setResult(response);
-      if (response.status === "success") {
-        onClose();
-        router.refresh();
-      }
-    } finally {
-      setPending(false);
+    const response = await action({
+      operation: "create",
+      slug: payload.slug,
+      name: payload.name,
+      reason: payload.reason,
+      requestId: crypto.randomUUID(),
+      commandId,
+    });
+    setResult(response);
+    if (response.status === "success") {
+      onClose();
+      router.refresh();
+      return true;
     }
+    return false;
   }
 
   return (
-    <Modal
+    <ModalForm<CreateOrganizationValues>
       open={open}
       title={t("organization.createTitle")}
-      onCancel={onClose}
-      destroyOnHidden
       width={520}
-      footer={[
-        <Button key="cancel" onClick={onClose} disabled={pending}>{t("command.cancel")}</Button>,
-        <Button
-          key="create"
-          aria-label={t("organization.confirmCreate")}
-          type="primary"
-          loading={pending}
-          onClick={confirm}
-        >
-          {t("organization.confirmCreate")}
-        </Button>,
-      ]}
+      initialValues={{ slug: "", name: "", reason: "" }}
+      modalProps={{ destroyOnHidden: true, onCancel: onClose }}
+      submitter={{
+        searchConfig: { submitText: t("organization.confirmCreate"), resetText: t("command.cancel") },
+        submitButtonProps: { "aria-label": t("organization.confirmCreate") },
+        resetButtonProps: { onClick: onClose },
+      }}
+      onFinish={confirm}
     >
-      <div className="form-stack">
-        <label htmlFor={slugId}>{t("organization.slug")}</label>
-        <Input
-          id={slugId}
-          value={slug}
-          disabled={lockedPayload !== null}
-          maxLength={80}
-          status={errors.slug ? "error" : undefined}
-          onChange={(event) => setSlug(event.target.value)}
-        />
-        {errors.slug ? <span className="field-error" role="alert">{t("organization.slugInvalid")}</span> : null}
-        <label htmlFor={nameId}>{t("organization.name")}</label>
-        <Input
-          id={nameId}
-          value={name}
-          disabled={lockedPayload !== null}
-          maxLength={160}
-          status={errors.name ? "error" : undefined}
-          onChange={(event) => setName(event.target.value)}
-        />
-        {errors.name ? <span className="field-error" role="alert">{t("organization.nameRequired")}</span> : null}
-        <label htmlFor={reasonId}>{t("command.reason")}</label>
-        <Input.TextArea
-          id={reasonId}
-          value={reason}
-          disabled={lockedPayload !== null}
-          maxLength={500}
-          rows={3}
-          status={errors.reason ? "error" : undefined}
-          onChange={(event) => setReason(event.target.value)}
-        />
-        {errors.reason ? <span className="field-error" role="alert">{t("command.reasonRequired")}</span> : null}
-        <CommandResult result={result} />
-      </div>
-    </Modal>
+      <ProFormText
+        name="slug"
+        label={t("organization.slug")}
+        disabled={lockedPayload !== null}
+        fieldProps={{ maxLength: 80, "aria-label": t("organization.slug") }}
+        rules={[
+          { required: true, message: t("organization.slugInvalid") },
+          {
+            validator: async (_, value: string) => organizationSlugSchema.safeParse(value).success
+              ? Promise.resolve()
+              : Promise.reject(new Error(t("organization.slugInvalid"))),
+          },
+        ]}
+      />
+      <ProFormText
+        name="name"
+        label={t("organization.name")}
+        disabled={lockedPayload !== null}
+        fieldProps={{ maxLength: 160, "aria-label": t("organization.name") }}
+        rules={[
+          { required: true, message: t("organization.nameRequired") },
+          {
+            validator: async (_, value: string) => organizationNameSchema.safeParse(value).success
+              ? Promise.resolve()
+              : Promise.reject(new Error(t("organization.nameRequired"))),
+          },
+        ]}
+      />
+      <ProFormTextArea
+        name="reason"
+        label={t("command.reason")}
+        disabled={lockedPayload !== null}
+        fieldProps={{ maxLength: 500, rows: 3, "aria-label": t("command.reason") }}
+        rules={[{ required: true, whitespace: true, message: t("command.reasonRequired") }]}
+      />
+      <CommandResult result={result} />
+    </ModalForm>
   );
 }
 
@@ -228,16 +197,16 @@ export function OrganizationTable({ view, action }: Readonly<{
   const t = useT();
   const router = useRouter();
   const [creating, setCreating] = useState(false);
-  const columns: ColumnsType<OrganizationListItem> = [
+  const columns: ProColumns<OrganizationListItem>[] = [
     {
       title: t("organization.name"),
       dataIndex: "name",
       render: (_, organization) => <Link href={`/organizations/${organization.id}`}>{organization.name}</Link>,
     },
     { title: t("organization.slug"), dataIndex: "slug", className: "technical-value" },
-    { title: t("organization.status"), dataIndex: "status", width: 110, render: (status: string) => <StatusTag status={status} /> },
+    { title: t("organization.status"), dataIndex: "status", width: 110, render: (_, organization) => <StatusTag status={organization.status} /> },
     { title: t("organization.version"), dataIndex: "version", width: 90, className: "technical-value" },
-    { title: t("organization.createdAt"), dataIndex: "createdAt", width: 190, render: (value: string) => <time dateTime={value}>{value}</time> },
+    { title: t("organization.createdAt"), dataIndex: "createdAt", width: 190, render: (_, organization) => <time dateTime={organization.createdAt}>{organization.createdAt}</time> },
     {
       title: t("organization.actions"),
       key: "actions",
@@ -246,46 +215,68 @@ export function OrganizationTable({ view, action }: Readonly<{
     },
   ];
   const filtered = view.filters.query.length > 0 || view.filters.status !== "all" || view.filters.includeDeleted;
+  const initialFilters = {
+    query: view.filters.query,
+    status: view.filters.status,
+    includeDeleted: view.filters.includeDeleted,
+  };
+
+  function navigateWithFilters(values: typeof initialFilters): void {
+    const filters: OrganizationFilters = {
+      ...view.filters,
+      query: values.query ?? "",
+      status: values.status ?? "all",
+      includeDeleted: values.includeDeleted ?? false,
+      cursor: null,
+    };
+    router.push(organizationListHref(filters));
+  }
 
   return (
-    <section className="data-page" aria-labelledby="organizations-title">
-      <header className="page-heading detail-heading">
-        <div>
-          <h1 id="organizations-title">{t("organization.title")}</h1>
-          <span>{t("organization.description")}</span>
-        </div>
+    <AdminPage
+      titleId="organizations-title"
+      title={t("organization.title")}
+      description={t("organization.description")}
+      extra={(
         <Button aria-label={t("organization.create")} type="primary" icon={<PlusOutlined />} onClick={() => setCreating(true)}>
           {t("organization.create")}
         </Button>
-      </header>
-      <form className="filter-bar" method="get" action="/organizations">
-        <label className="filter-search">
-          <span>{t("organization.search")}</span>
-          <input type="search" name="query" aria-label={t("organization.search")} defaultValue={view.filters.query} />
-        </label>
-        <label>
-          <span>{t("organization.filterStatus")}</span>
-          <select name="status" aria-label={t("organization.filterStatus")} defaultValue={view.filters.status}>
-            <option value="all">{t("common.all")}</option>
-            <option value="active">{t("status.active")}</option>
-            <option value="suspended">{t("status.suspended")}</option>
-            <option value="deleted">{t("status.deleted")}</option>
-          </select>
-        </label>
-        <label className="filter-checkbox">
-          <input type="checkbox" name="includeDeleted" value="true" defaultChecked={view.filters.includeDeleted} />
-          <span>{t("organization.includeDeleted")}</span>
-        </label>
-        <input type="hidden" name="limit" value={view.filters.limit} />
-        <Button htmlType="submit" type="primary">{t("organization.applyFilters")}</Button>
-      </form>
-      {view.items.length === 0 ? (
-        <PageState kind={filtered ? "filtered-empty" : "empty"} />
-      ) : (
-        <div className="data-table" role="region" aria-label={t("organization.title")} tabIndex={0}>
-          <Table<OrganizationListItem> rowKey="id" columns={columns} dataSource={[...view.items]} pagination={false} scroll={{ x: 980 }} />
-        </div>
       )}
+    >
+      <AdminQueryFilter
+        ariaLabel={t("organization.applyFilters")}
+        initialValues={initialFilters}
+        searchText={t("organization.applyFilters")}
+        resetText={t("common.reset")}
+        onSubmit={navigateWithFilters}
+        onReset={() => navigateWithFilters({ query: "", status: "all", includeDeleted: false })}
+      >
+        <ProFormText
+          name="query"
+          label={t("organization.search")}
+          fieldProps={{ type: "search", "aria-label": t("organization.search") }}
+        />
+        <ProFormSelect
+          name="status"
+          label={t("organization.filterStatus")}
+          fieldProps={{ "aria-label": t("organization.filterStatus") }}
+          options={[
+            { value: "all", label: t("common.all") },
+            { value: "active", label: t("status.active") },
+            { value: "suspended", label: t("status.suspended") },
+            { value: "deleted", label: t("status.deleted") },
+          ]}
+        />
+        <ProFormCheckbox name="includeDeleted">{t("organization.includeDeleted")}</ProFormCheckbox>
+      </AdminQueryFilter>
+      <AdminTable<OrganizationListItem>
+        ariaLabel={t("organization.title")}
+        columns={columns}
+        data={view.items}
+        emptyText={<PageState kind={filtered ? "filtered-empty" : "empty"} />}
+        rowKey="id"
+        scrollX={980}
+      />
       <CursorPagination
         canGoBack={view.filters.cursor !== null}
         nextCursor={view.nextCursor}
@@ -293,6 +284,6 @@ export function OrganizationTable({ view, action }: Readonly<{
         onNext={(cursor) => router.push(organizationListHref(view.filters, cursor))}
       />
       {creating ? <OrganizationCreateDialog open action={action} onClose={() => setCreating(false)} /> : null}
-    </section>
+    </AdminPage>
   );
 }

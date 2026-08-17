@@ -9,8 +9,9 @@ import { createElement } from "react";
 
 import { useLocale, useT } from "@/i18n/context";
 import { ADMIN_LAYOUT, proLayoutToken } from "@/lib/theme";
+import type { AdminCapability } from "@/lib/admin-capabilities";
 
-import { adminNavigation } from "./navigation";
+import { projectAdminNavigation } from "./navigation";
 
 export type SafeAdministrator = Readonly<{
   id: string;
@@ -23,6 +24,7 @@ export type AdminShellProps = Readonly<{
   children: React.ReactNode;
   pathname?: string;
   signOutAction: () => Promise<void>;
+  capabilities: readonly AdminCapability[];
 }>;
 
 export function AdminShell({
@@ -30,12 +32,14 @@ export function AdminShell({
   children,
   pathname,
   signOutAction,
+  capabilities,
 }: AdminShellProps): React.ReactElement {
   const detectedPathname = usePathname();
   const currentPathname = pathname ?? detectedPathname;
   const t = useT();
   const { locale, setLocale } = useLocale();
-  const menuItem = (item: (typeof adminNavigation)[number]) => ({
+  const navigation = projectAdminNavigation(capabilities);
+  const menuItem = (item: (typeof navigation)[number]) => ({
     path: item.href,
     name: t(item.labelKey),
     icon: createElement(item.icon),
@@ -46,11 +50,11 @@ export function AdminShell({
     "nav.group.organization",
     "nav.group.access",
   ] as const;
-  const ungrouped = adminNavigation.filter((item) => item.groupKey === null).map(menuItem);
+  const ungrouped = navigation.filter((item) => item.groupKey === null).map(menuItem);
   const routes = [
     ...ungrouped,
     ...groupKeys.flatMap((groupKey) => {
-      const items = adminNavigation.filter((item) => item.groupKey === groupKey).map(menuItem);
+      const items = navigation.filter((item) => item.groupKey === groupKey).map(menuItem);
       return items.length === 0
         ? []
         : [{ path: `/__group/${groupKey}`, name: t(groupKey), routes: items }];

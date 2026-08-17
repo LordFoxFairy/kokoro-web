@@ -13,10 +13,20 @@ const caseSchema = z.object({
   title: z.string().trim().min(1).max(240),
   requirements: z.array(z.string().regex(/^WEB-IAM-FR-[A-Z0-9]+-[0-9]{3}$/u)),
   acceptance: z.array(z.string().regex(/^WEB-IAM-ACC-[A-Z]+-[0-9]{3}$/u)),
-  testFile: z.string().regex(/\.test\.tsx?$/u).nullable(),
+  testFile: z.string().regex(/\.(?:test|spec)\.tsx?$/u).nullable(),
   evidence: z.array(z.string().trim().min(1).max(64)).min(1),
   retries: z.literal(0),
-}).strict();
+}).strict().superRefine((value, context) => {
+  const pairSpec = value.testFile?.endsWith(".spec.ts") === true || value.testFile?.endsWith(".spec.tsx") === true;
+  const repositoryTest = value.testFile?.endsWith(".test.ts") === true || value.testFile?.endsWith(".test.tsx") === true;
+  if (value.category === "pair_e2e" ? !pairSpec : !repositoryTest) {
+    context.addIssue({
+      code: "custom",
+      path: ["testFile"],
+      message: value.category === "pair_e2e" ? "pair case requires a Playwright spec" : "repository case requires a Vitest test",
+    });
+  }
+});
 
 const catalogSchema = z.object({
   schemaVersion: z.literal(1),

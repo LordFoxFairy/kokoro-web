@@ -218,6 +218,7 @@ describe("IAM Organization management", () => {
           view={{
             organization,
             members: { items: [], nextCursor: null, filters: { includeDeleted: false, cursor: null, limit: 25 }, roleOptions: [], userOptions: [] },
+            roles: { items: [], permissionGroups: [] },
             events: [],
           }}
           organizationAction={async (input) => {
@@ -227,6 +228,7 @@ describe("IAM Organization management", () => {
               : { status: "success", commandId: input.commandId, replayed: true };
           }}
           memberAction={async (input) => ({ status: "success", commandId: input.commandId, replayed: false })}
+          roleAction={async (input) => ({ status: "success", commandId: input.commandId, replayed: false })}
         />
       </LocaleProvider>,
     );

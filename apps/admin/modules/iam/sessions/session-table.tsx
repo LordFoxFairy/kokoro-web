@@ -1,16 +1,19 @@
 "use client";
 
 import { StopOutlined } from "@ant-design/icons";
-import { Alert, Button, Table } from "antd";
-import type { ColumnsType } from "antd/es/table";
+import type { ProColumns } from "@ant-design/pro-table";
+import { Button } from "antd";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { CommandDialog } from "@/components/command/command-dialog";
+import { AdminTable } from "@/components/data/admin-table";
 import { CursorPagination } from "@/components/data/cursor-pagination";
 import { StatusTag } from "@/components/data/status-tag";
-import { commandErrorKey } from "@/components/feedback/command-error";
+import { CommandResult } from "@/components/feedback/command-result";
 import { PageState } from "@/components/feedback/page-state";
+import { AdminPage } from "@/components/platform/admin-page";
+import { AdminSection } from "@/components/platform/admin-section";
 import { useT } from "@/i18n/context";
 import type { CommandActionResult } from "@/lib/command-result";
 
@@ -22,9 +25,10 @@ type PendingSessionCommand =
   | Readonly<{ operation: "revoke"; session: SessionListItem; commandId: string }>
   | Readonly<{ operation: "revoke-all"; userId: string; commandId: string }>;
 
-export function SessionTable({ view, action }: Readonly<{
+export function SessionTable({ view, action, embedded = false }: Readonly<{
   view: SessionListView;
   action: SessionAction;
+  embedded?: boolean;
 }>): React.ReactElement {
   const t = useT();
   const router = useRouter();
@@ -49,12 +53,12 @@ export function SessionTable({ view, action }: Readonly<{
     }
   }
 
-  const columns: ColumnsType<SessionListItem> = [
+  const columns: ProColumns<SessionListItem>[] = [
     { title: t("session.id"), dataIndex: "id", width: 300, className: "technical-value" },
     { title: t("session.userId"), dataIndex: "userId", width: 300, className: "technical-value" },
-    { title: t("session.status"), dataIndex: "status", width: 110, render: (status: string) => <StatusTag status={status} /> },
-    { title: t("session.organization"), dataIndex: "activeOrganizationId", width: 300, render: (value: string | null) => value ?? t("common.none") },
-    { title: t("session.expiresAt"), dataIndex: "expiresAt", width: 190, render: (value: string) => <time dateTime={value}>{value}</time> },
+    { title: t("session.status"), dataIndex: "status", width: 110, render: (_, session) => <StatusTag status={session.status} /> },
+    { title: t("session.organization"), dataIndex: "activeOrganizationId", width: 300, render: (_, session) => session.activeOrganizationId ?? t("common.none") },
+    { title: t("session.expiresAt"), dataIndex: "expiresAt", width: 190, render: (_, session) => <time dateTime={session.expiresAt}>{session.expiresAt}</time> },
     {
       title: t("session.actions"),
       key: "actions",
@@ -77,57 +81,64 @@ export function SessionTable({ view, action }: Readonly<{
     },
   ];
 
-  return (
-    <section className="session-section" aria-labelledby="sessions-title">
-      <div className="section-heading">
-        <div>
-          <h2 id="sessions-title">{t("session.title")}</h2>
-          <p>{t("session.description")}</p>
-        </div>
-        {view.filters.userId === null ? null : (
-          <Button
-            aria-label={t("session.revokeAll")}
-            danger
-            icon={<StopOutlined />}
-            onClick={() => {
-              setResult(null);
-              setPending({ operation: "revoke-all", userId: view.filters.userId ?? "", commandId: crypto.randomUUID() });
-            }}
-          >
-            {t("session.revokeAll")}
-          </Button>
-        )}
-      </div>
-      {pending === null && result?.status === "error" ? (
-        <Alert
-          className="command-result"
-          type="error"
-          showIcon
-          title={`${t("action.error")} · ${t(commandErrorKey(result.kind))}`}
-          description={result.requestId.length > 0 ? result.requestId : undefined}
-        />
-      ) : null}
-      {pending === null && result?.status === "success" ? (
-        <Alert
-          className="command-result"
-          type="success"
-          showIcon
-          title={t(result.replayed ? "action.replayed" : "action.success")}
-        />
-      ) : null}
-      {view.items.length === 0 ? (
-        <PageState kind="empty" />
-      ) : (
-        <div className="data-table" role="region" aria-label={t("session.title")} tabIndex={0}>
-          <Table<SessionListItem> rowKey="id" columns={columns} dataSource={[...view.items]} pagination={false} scroll={{ x: 1180 }} />
-        </div>
-      )}
+  const revokeAll = view.filters.userId === null ? null : (
+    <Button
+      aria-label={t("session.revokeAll")}
+      danger
+      icon={<StopOutlined />}
+      onClick={() => {
+        setResult(null);
+        setPending({ operation: "revoke-all", userId: view.filters.userId ?? "", commandId: crypto.randomUUID() });
+      }}
+    >
+      {t("session.revokeAll")}
+    </Button>
+  );
+
+  const body = (
+    <>
+      {pending === null ? <CommandResult result={result} /> : null}
+      <AdminTable<SessionListItem>
+        ariaLabel={t("session.title")}
+        columns={columns}
+        data={view.items}
+        emptyText={<PageState kind="empty" />}
+        rowKey="id"
+        scrollX={1_180}
+      />
       <CursorPagination
         canGoBack={view.filters.cursor !== null}
         nextCursor={view.nextCursor}
         onPrevious={() => router.back()}
         onNext={(cursor) => router.push(sessionListHref(view.filters, cursor))}
       />
+    </>
+  );
+
+  const content = embedded ? (
+    <AdminSection
+      className="session-section"
+      titleId="sessions-title"
+      title={t("session.title")}
+      description={t("session.description")}
+      extra={revokeAll ?? undefined}
+    >
+      {body}
+    </AdminSection>
+  ) : (
+    <AdminPage
+      titleId="sessions-title"
+      title={t("session.title")}
+      description={t("session.description")}
+      extra={revokeAll}
+    >
+      {body}
+    </AdminPage>
+  );
+
+  return (
+    <>
+      {content}
       {pending === null ? null : (
         <CommandDialog
           open
@@ -139,6 +150,6 @@ export function SessionTable({ view, action }: Readonly<{
           onConfirm={confirm}
         />
       )}
-    </section>
+    </>
   );
 }

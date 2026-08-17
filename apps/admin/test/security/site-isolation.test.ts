@@ -65,6 +65,7 @@ describe("IAM Site isolation", () => {
       router.service(IamSiteService, {
         getSite: () => ({ site: site(scope === "site" ? foreignSiteId : siteId) }),
         listSiteMembers: () => ({ members: scope === "member" ? [member(foreignSiteId)] : [], page: {} }),
+        listSiteRoles: () => ({ roles: [] }),
       });
       router.service(IamAdministrationService, {
         listUsers: () => ({ users: [], page: {} }),

@@ -13,7 +13,6 @@ async function loadPageState(): Promise<OverviewState> {
         email: actor.session.user.email,
         id: actor.session.user.id,
       },
-      actorExpiresAt: actor.expiresAt,
     });
   } catch (error) {
     if (error instanceof Error && error.message.startsWith("invalid ")) return { status: "malformed" };

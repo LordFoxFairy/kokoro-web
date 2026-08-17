@@ -1,26 +1,30 @@
 "use client";
 
-import { DeleteOutlined, PauseCircleOutlined, PlayCircleOutlined, UndoOutlined } from "@ant-design/icons";
-import { Alert, Button, Space, Table } from "antd";
-import type { ColumnsType } from "antd/es/table";
+import { DeleteOutlined, PauseCircleOutlined, PlayCircleOutlined, PlusOutlined, UndoOutlined } from "@ant-design/icons";
+import { ModalForm, ProFormCheckbox, ProFormSelect, ProFormText, ProFormTextArea } from "@ant-design/pro-form";
+import type { ProColumns } from "@ant-design/pro-table";
+import { Button, Space } from "antd";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { CommandDialog } from "@/components/command/command-dialog";
+import { AdminTable } from "@/components/data/admin-table";
 import { CursorPagination } from "@/components/data/cursor-pagination";
 import { StatusTag } from "@/components/data/status-tag";
-import { commandErrorKey } from "@/components/feedback/command-error";
+import { CommandResult } from "@/components/feedback/command-result";
 import { PageState } from "@/components/feedback/page-state";
+import { AdminQueryFilter } from "@/components/forms/admin-query-filter";
+import { AdminPage } from "@/components/platform/admin-page";
 import { useT } from "@/i18n/context";
 import type { MessageKey } from "@/i18n/messages";
 import type { CommandActionResult } from "@/lib/command-result";
 
-import type { UserCommandActionInput, UserListItem, UserListView } from "./schema";
+import { userEmailSchema, userImageSchema, userNameSchema, type UserCommandActionInput, type UserFilters, type UserListItem, type UserListView } from "./schema";
 import { userListHref } from "./url";
 
 export type UserAction = (input: UserCommandActionInput) => Promise<CommandActionResult>;
-type Operation = UserCommandActionInput["operation"];
+type Operation = "suspend" | "reactivate" | "delete" | "restore";
 type PendingCommand = Readonly<{ operation: Operation; user: UserListItem; commandId: string }>;
 
 const operationCopy: Readonly<Record<Operation, Readonly<{
@@ -34,6 +38,59 @@ const operationCopy: Readonly<Record<Operation, Readonly<{
   delete: { label: "user.delete", title: "user.deleteTitle", danger: true, icon: <DeleteOutlined /> },
   restore: { label: "user.restore", title: "user.restoreTitle", danger: false, icon: <UndoOutlined /> },
 };
+
+type UserEditorValues = { email: string; name: string; image?: string; reason: string };
+
+export function UserEditorDialog({ user, action, onClose }: Readonly<{
+  user?: UserListItem;
+  action: UserAction;
+  onClose(): void;
+}>): React.ReactElement {
+  const t = useT();
+  const router = useRouter();
+  const [commandId] = useState(() => crypto.randomUUID());
+  const [result, setResult] = useState<CommandActionResult | null>(null);
+  const [locked, setLocked] = useState<Readonly<UserEditorValues> | null>(null);
+  const updating = user !== undefined;
+
+  async function submit(values: UserEditorValues): Promise<boolean> {
+    let payload = locked;
+    if (payload === null) {
+      payload = Object.freeze({ email: values.email.trim(), name: values.name.trim(), image: values.image?.trim() ?? "", reason: values.reason.trim() });
+      setLocked(payload);
+    }
+    const identity = { requestId: crypto.randomUUID(), commandId, reason: payload.reason };
+    const response = await action(updating
+      ? { operation: "update", userId: user.id, email: payload.email, name: payload.name, image: payload.image, expectedVersion: user.version, ...identity }
+      : { operation: "create", email: payload.email, name: payload.name, image: payload.image, ...identity });
+    setResult(response);
+    if (response.status !== "success") return false;
+    onClose();
+    router.refresh();
+    return true;
+  }
+
+  return (
+    <ModalForm<UserEditorValues>
+      open
+      title={t(updating ? "user.updateTitle" : "user.createTitle")}
+      width={520}
+      initialValues={{ email: user?.email ?? "", name: user?.name ?? "", image: user?.image ?? "", reason: "" }}
+      modalProps={{ destroyOnHidden: true, onCancel: onClose }}
+      submitter={{
+        searchConfig: { submitText: t(updating ? "user.confirmUpdate" : "user.confirmCreate"), resetText: t("command.cancel") },
+        resetButtonProps: { onClick: onClose },
+      }}
+      onFinish={submit}
+    >
+      <ProFormText name="email" label={t("user.email")} disabled={locked !== null} fieldProps={{ maxLength: 320, "aria-label": t("user.email") }} rules={[{ required: true, message: t("user.emailInvalid") }, { validator: async (_, value: string) => userEmailSchema.safeParse(value).success ? Promise.resolve() : Promise.reject(new Error(t("user.emailInvalid"))) }]} />
+      <ProFormText name="name" label={t("user.name")} disabled={locked !== null} fieldProps={{ maxLength: 160, "aria-label": t("user.name") }} rules={[{ required: true, message: t("user.nameRequired") }, { validator: async (_, value: string) => userNameSchema.safeParse(value).success ? Promise.resolve() : Promise.reject(new Error(t("user.nameRequired"))) }]} />
+      <ProFormText name="image" label={t("user.image")} disabled={locked !== null} fieldProps={{ maxLength: 2048, "aria-label": t("user.image") }} rules={[{ validator: async (_, value: string) => userImageSchema.safeParse(value ?? "").success ? Promise.resolve() : Promise.reject(new Error(t("user.imageInvalid"))) }]} />
+      <ProFormTextArea name="reason" label={t("command.reason")} disabled={locked !== null} fieldProps={{ maxLength: 500, rows: 3, "aria-label": t("command.reason") }} rules={[{ required: true, whitespace: true, message: t("command.reasonRequired") }]} />
+      <CommandResult result={result} />
+    </ModalForm>
+  );
+}
 
 export function UserLifecycleControls({ user, action }: Readonly<{
   user: UserListItem;
@@ -87,23 +144,7 @@ export function UserLifecycleControls({ user, action }: Readonly<{
           );
         })}
       </Space>
-      {pending === null && result?.status === "error" ? (
-        <Alert
-          className="command-result"
-          type="error"
-          showIcon
-          title={`${t("action.error")} · ${t(commandErrorKey(result.kind))}`}
-          description={result.requestId.length > 0 ? result.requestId : undefined}
-        />
-      ) : null}
-      {pending === null && result?.status === "success" ? (
-        <Alert
-          className="command-result"
-          type="success"
-          showIcon
-          title={t(result.replayed ? "action.replayed" : "action.success")}
-        />
-      ) : null}
+      {pending === null ? <CommandResult result={result} /> : null}
       {pending === null ? null : (
         <CommandDialog
           open
@@ -125,7 +166,8 @@ export function UserTable({ view, action }: Readonly<{
 }>): React.ReactElement {
   const t = useT();
   const router = useRouter();
-  const columns: ColumnsType<UserListItem> = [
+  const [creating, setCreating] = useState(false);
+  const columns: ProColumns<UserListItem>[] = [
     {
       title: t("user.email"),
       dataIndex: "email",
@@ -133,9 +175,9 @@ export function UserTable({ view, action }: Readonly<{
     },
     { title: t("user.name"), dataIndex: "name" },
     { title: t("user.role"), dataIndex: "platformRole", width: 120 },
-    { title: t("user.status"), dataIndex: "status", width: 110, render: (status: string) => <StatusTag status={status} /> },
+    { title: t("user.status"), dataIndex: "status", width: 110, render: (_, user) => <StatusTag status={user.status} /> },
     { title: t("user.version"), dataIndex: "version", width: 90, className: "technical-value" },
-    { title: t("user.createdAt"), dataIndex: "createdAt", width: 190, render: (value: string) => <time dateTime={value}>{value}</time> },
+    { title: t("user.createdAt"), dataIndex: "createdAt", width: 190, render: (_, user) => <time dateTime={user.createdAt}>{user.createdAt}</time> },
     {
       title: t("user.actions"),
       key: "actions",
@@ -143,52 +185,70 @@ export function UserTable({ view, action }: Readonly<{
       render: (_, user) => <UserLifecycleControls user={user} action={action} />,
     },
   ];
-  const filtered = view.filters.query.length > 0 || view.filters.status !== "all" || view.filters.includeDeleted;
+  const filtered = view.filters.query.length > 0 || view.filters.status !== "all" || view.filters.platformRole !== "all" || view.filters.includeDeleted;
+  const initialFilters = {
+    query: view.filters.query,
+    status: view.filters.status,
+    platformRole: view.filters.platformRole,
+    includeDeleted: view.filters.includeDeleted,
+  };
+
+  function navigateWithFilters(values: typeof initialFilters): void {
+    const filters: UserFilters = {
+      ...view.filters,
+      query: values.query ?? "",
+      status: values.status ?? "all",
+      platformRole: values.platformRole ?? "all",
+      includeDeleted: values.includeDeleted ?? false,
+      cursor: null,
+    };
+    router.push(userListHref(filters));
+  }
 
   return (
-    <section className="data-page" aria-labelledby="users-title">
-      <header className="page-heading">
-        <h1 id="users-title">{t("user.title")}</h1>
-        <span>{t("user.description")}</span>
-      </header>
-      <form className="filter-bar" method="get" action="/users">
-        <label className="filter-search">
-          <span>{t("user.search")}</span>
-          <input type="search" name="query" aria-label={t("user.search")} defaultValue={view.filters.query} />
-        </label>
-        <label>
-          <span>{t("user.filterStatus")}</span>
-          <select
-            name="status"
-            aria-label={t("user.filterStatus")}
-            defaultValue={view.filters.status}
-          >
-            <option value="all">{t("common.all")}</option>
-            <option value="active">{t("status.active")}</option>
-            <option value="suspended">{t("status.suspended")}</option>
-            <option value="deleted">{t("status.deleted")}</option>
-          </select>
-        </label>
-        <label className="filter-checkbox">
-          <input type="checkbox" name="includeDeleted" value="true" defaultChecked={view.filters.includeDeleted} />
-          <span>{t("user.includeDeleted")}</span>
-        </label>
-        <input type="hidden" name="limit" value={view.filters.limit} />
-        <Button htmlType="submit" type="primary">{t("user.applyFilters")}</Button>
-      </form>
-      {view.items.length === 0 ? (
-        <PageState kind={filtered ? "filtered-empty" : "empty"} />
-      ) : (
-        <div className="data-table" role="region" aria-label={t("user.title")} tabIndex={0}>
-          <Table<UserListItem> rowKey="id" columns={columns} dataSource={[...view.items]} pagination={false} scroll={{ x: 980 }} />
-        </div>
-      )}
+    <AdminPage titleId="users-title" title={t("user.title")} description={t("user.description")} extra={<Button aria-label={t("user.create")} type="primary" icon={<PlusOutlined />} onClick={() => setCreating(true)}>{t("user.create")}</Button>}>
+      <AdminQueryFilter
+        ariaLabel={t("user.applyFilters")}
+        initialValues={initialFilters}
+        searchText={t("user.applyFilters")}
+        resetText={t("common.reset")}
+        onSubmit={navigateWithFilters}
+        onReset={() => navigateWithFilters({ query: "", status: "all", platformRole: "all", includeDeleted: false })}
+      >
+        <ProFormText
+          name="query"
+          label={t("user.search")}
+          fieldProps={{ type: "search", "aria-label": t("user.search") }}
+        />
+        <ProFormSelect
+          name="status"
+          label={t("user.filterStatus")}
+          fieldProps={{ "aria-label": t("user.filterStatus") }}
+          options={[
+            { value: "all", label: t("common.all") },
+            { value: "active", label: t("status.active") },
+            { value: "suspended", label: t("status.suspended") },
+            { value: "deleted", label: t("status.deleted") },
+          ]}
+        />
+        <ProFormSelect name="platformRole" label={t("user.filterRole")} fieldProps={{ "aria-label": t("user.filterRole") }} options={[{ value: "all", label: t("common.all") }, { value: "user", label: t("user.roleUser") }, { value: "admin", label: t("user.roleAdmin") }]} />
+        <ProFormCheckbox name="includeDeleted">{t("user.includeDeleted")}</ProFormCheckbox>
+      </AdminQueryFilter>
+      <AdminTable<UserListItem>
+        ariaLabel={t("user.title")}
+        columns={columns}
+        data={view.items}
+        emptyText={<PageState kind={filtered ? "filtered-empty" : "empty"} />}
+        rowKey="id"
+        scrollX={980}
+      />
       <CursorPagination
         canGoBack={view.filters.cursor !== null}
         nextCursor={view.nextCursor}
         onPrevious={() => router.back()}
         onNext={(cursor) => router.push(userListHref(view.filters, cursor))}
       />
-    </section>
+      {creating ? <UserEditorDialog action={action} onClose={() => setCreating(false)} /> : null}
+    </AdminPage>
   );
 }

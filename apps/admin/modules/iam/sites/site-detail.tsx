@@ -16,6 +16,7 @@ import { siteDetailFiltersSchema, siteNameSchema, type SiteDetailView } from "./
 import { SiteAccess } from "./site-access";
 import { SiteAudit } from "./site-audit";
 import { SiteMembers } from "./site-members";
+import { SiteRoles, type SiteRoleAction } from "./site-roles";
 import { SiteLifecycleControls, type SiteAction } from "./site-table";
 import { siteDetailHref } from "./url";
 
@@ -35,13 +36,14 @@ function UpdateSiteDialog({ view, action, onClose }: Readonly<{ view: SiteDetail
   </ModalForm>;
 }
 
-export function SiteDetail({ view, action }: Readonly<{ view: SiteDetailView; action: SiteAction }>): React.ReactElement {
+export function SiteDetail({ view, action, roleAction }: Readonly<{ view: SiteDetailView; action: SiteAction; roleAction: SiteRoleAction }>): React.ReactElement {
   const t = useT(); const router = useRouter(); const [updating, setUpdating] = useState(false); const deleted = view.site.status === "deleted";
   return <AdminPage titleId="site-detail-title" title={view.site.name} description={`${t("site.detail")} · ${view.site.code}`} extra={<Space wrap>{deleted ? null : <Button icon={<EditOutlined />} onClick={() => setUpdating(true)}>{t("site.update")}</Button>}<SiteLifecycleControls site={view.site} action={action} includeSelect /></Space>}>
     {deleted ? <Alert className="site-deleted-alert" type="warning" showIcon title={t("site.deletedNotice")} description={t("site.deletedDescription")} /> : null}
     <Tabs className="admin-detail-tabs site-detail-tabs" activeKey={view.filters.tab} destroyOnHidden={false} onChange={(tab) => { const parsed = siteDetailFiltersSchema.shape.tab.safeParse(tab); if (parsed.success) router.push(siteDetailHref(view.site.id, { ...view.filters, tab: parsed.data })); }} items={[
       { key: "overview", label: t("site.tab.overview"), children: <ProDescriptions bordered size="small" column={{ xs: 1, sm: 2, lg: 3 }}><ProDescriptions.Item label="ID"><code>{view.site.id}</code></ProDescriptions.Item><ProDescriptions.Item label={t("site.code")}><code>{view.site.code}</code></ProDescriptions.Item><ProDescriptions.Item label={t("site.name")}>{view.site.name}</ProDescriptions.Item><ProDescriptions.Item label={t("site.status")}><StatusTag status={view.site.status} /></ProDescriptions.Item><ProDescriptions.Item label={t("site.version")}><code>{view.site.version}</code></ProDescriptions.Item><ProDescriptions.Item label={t("site.createdAt")}><time dateTime={view.site.createdAt}>{view.site.createdAt}</time></ProDescriptions.Item><ProDescriptions.Item label={t("site.updatedAt")}><time dateTime={view.site.updatedAt}>{view.site.updatedAt}</time></ProDescriptions.Item></ProDescriptions> },
       { key: "members", label: t("site.tab.members"), children: <SiteMembers siteId={view.site.id} view={view.members} filters={view.filters} action={action} /> },
+      { key: "roles", label: t("site.tab.roles"), children: <SiteRoles siteId={view.site.id} view={view.roles} action={roleAction} /> },
       { key: "access", label: t("site.tab.access"), children: <SiteAccess siteId={view.site.id} permissionKeys={view.permissionKeys} members={view.members} filters={view.filters} authorization={view.authorization} /> },
       { key: "audit", label: t("site.tab.audit"), children: <SiteAudit siteId={view.site.id} audit={view.audit} filters={view.filters} /> },
     ]} />

@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 
 import { PageState, type PageStateKind } from "@/components/feedback/page-state";
 import { executeSiteAction } from "@/modules/iam/sites/action-server";
+import { executeSiteRoleAction } from "@/modules/iam/sites/role-action-server";
 import { SiteDetail } from "@/modules/iam/sites/site-detail";
 import { loadSiteDetail } from "@/modules/iam/sites/query";
 import { requireIamActor } from "@/server/auth/session";
@@ -25,7 +26,7 @@ export default async function SitePage({ params, searchParams }: Props): Promise
     result = pageState(error);
   }
   if (result === null) notFound();
-  return typeof result === "string" ? <PageState kind={result} /> : <SiteDetail view={result} action={executeSiteAction} />;
+  return typeof result === "string" ? <PageState kind={result} /> : <SiteDetail view={result} action={executeSiteAction} roleAction={executeSiteRoleAction} />;
 }
 
 function pageState(error: unknown): PageStateKind {

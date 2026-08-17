@@ -1,5 +1,6 @@
 "use client";
 
+import { CheckOutlined, CloseOutlined, DeleteOutlined } from "@ant-design/icons";
 import { Alert, Button, Input, Modal } from "antd";
 import { useId, useState } from "react";
 
@@ -58,7 +59,7 @@ export function CommandDialog({
       destroyOnHidden
       width={480}
       footer={[
-        <Button key="cancel" aria-label={t("command.cancel")} onClick={onCancel} disabled={pending}>
+        <Button key="cancel" aria-label={t("command.cancel")} icon={<CloseOutlined />} onClick={onCancel} disabled={pending}>
           {t("command.cancel")}
         </Button>,
         <Button
@@ -66,6 +67,7 @@ export function CommandDialog({
           aria-label={t("command.confirm")}
           type="primary"
           danger={danger}
+          icon={danger ? <DeleteOutlined /> : <CheckOutlined />}
           loading={pending}
           onClick={confirm}
         >

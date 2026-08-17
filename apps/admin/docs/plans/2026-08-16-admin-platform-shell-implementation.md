@@ -4,7 +4,7 @@
 
 **Goal:** 将现有 IAM 运营控制台改造成默认浅色的 Kokoro 整体管理后台壳层，同时保持所有 IAM 业务逻辑、ConnectRPC 和 Auth.js 行为不变。
 
-**Architecture:** `apps/admin/modules/registry.ts` 拥有平台模块描述和可执行导航，IAM registry 只提供当前模块。`AdminShell`、Ant Design token 和 CSS 共同实现浅色平台壳层。自动化浏览器回归默认 headless，最终可见验收由 Codex 内置浏览器完成。
+**Architecture:** `apps/admin/modules/registry.ts` 拥有平台模块描述和可执行导航，IAM registry 只提供当前模块。界面直接采用 Ant Design Pro 的 `ProLayout`、`PageContainer`、`ProTable`、`QueryFilter/ProForm`、`ModalForm` 和 `ProDescriptions`；Kokoro 只维护薄 wrapper、语义 token 和业务动作。自动化浏览器回归默认 headless，最终可见验收由 Codex 内置浏览器完成。
 
 **Tech Stack:** Next.js 16.2.6, React 19.2.4, TypeScript 5.9.3, Ant Design 6.5.0, Pro Components 2.8.10, Vitest 4.1.10, Playwright 1.51.1, Auth.js 5 beta, ConnectRPC 2.1.2.
 
@@ -131,11 +131,12 @@ git add apps/admin/modules apps/admin/components/shell/navigation.ts apps/admin/
 git commit -m "refactor(admin): separate platform and IAM registries"
 ```
 
-### Task 3: Light Theme And Global Shell
+### Task 3: Ant Design Pro Light Shell
 
 **Files:**
 - Modify: `apps/admin/lib/theme.ts`
 - Modify: `apps/admin/components/shell/admin-shell.tsx`
+- Create: `apps/admin/components/platform/admin-page.tsx`
 - Modify: `apps/admin/app/globals.css`
 - Modify: `apps/admin/test/component/admin-shell.test.tsx`
 - Modify: `apps/admin/test/component/login.test.tsx`
@@ -149,7 +150,7 @@ git commit -m "refactor(admin): separate platform and IAM registries"
 
 ```ts
 expect(proLayoutToken.sider.colorMenuBackground).toBe("#ffffff");
-expect(proLayoutToken.sider.colorBgMenuItemSelected).toBe("#eaf1ff");
+expect(proLayoutToken.sider.colorBgMenuItemSelected).toBe("#e6f4ff");
 expect(screen.getByText("管理后台")).toBeVisible();
 expect(screen.getByRole("navigation", { name: "主导航" })).toBeVisible();
 ```
@@ -160,7 +161,7 @@ Run: `pnpm --filter @kokoro/admin-web exec vitest run test/component/admin-shell
 
 - [ ] **Step 3: Replace theme tokens**
 
-Use the exact palette from `admin-platform-shell-technical-design.md`: cool-gray canvas, white surfaces, blue primary/active navigation, green success, amber warning and red danger. Remove dark rail tokens.
+Use Ant Design's default light algorithm and the exact semantic palette from `admin-platform-shell-technical-design.md`. Remove dark rail tokens; do not duplicate component CSS already owned by Ant Design Pro.
 
 - [ ] **Step 4: Implement the light ProLayout shell**
 
@@ -183,7 +184,58 @@ git add apps/admin/lib/theme.ts apps/admin/components/shell/admin-shell.tsx apps
 git commit -m "feat(admin): apply light management shell"
 ```
 
-### Task 4: Responsive And Accessibility Closure
+### Task 4: ProTable, QueryFilter And ProDescriptions Migration
+
+**Files:**
+- Create: `apps/admin/components/data/admin-table.tsx`
+- Create: `apps/admin/components/forms/admin-query-filter.tsx`
+- Modify: `apps/admin/modules/iam/users/user-table.tsx`
+- Modify: `apps/admin/modules/iam/sessions/session-table.tsx`
+- Modify: `apps/admin/modules/iam/organizations/organization-table.tsx`
+- Modify: `apps/admin/modules/iam/organizations/organization-detail.tsx`
+- Modify: `apps/admin/modules/iam/members/member-table.tsx`
+- Modify: `apps/admin/modules/iam/access/access-catalog.tsx`
+- Modify: `apps/admin/modules/iam/audit/event-table.tsx`
+- Modify: `apps/admin/app/globals.css`
+- Modify: `apps/admin/test/component/admin-shell.test.tsx`
+- Modify: `apps/admin/test/component/users.test.tsx`
+- Modify: `apps/admin/test/component/organizations.test.tsx`
+- Modify: `apps/admin/test/pair/audit-idempotency.spec.ts`
+
+**Interfaces:**
+- Consumes: existing validated view models, Server Actions and URL builders.
+- Produces: shared ProTable density/toolbar behavior, ProForm-based URL filters, ModalForm commands and ProDescriptions details.
+
+- [ ] **Step 1: Add failing standard-component assertions**
+
+Assert list pages render ProTable/QueryFilter semantics, detail pages render ProDescriptions, and business action controls remain reachable.
+
+- [ ] **Step 2: Run targeted component tests and verify RED**
+
+Run: `pnpm --filter @kokoro/admin-web exec vitest run test/component/admin-shell.test.tsx test/component/users.test.tsx test/component/organizations.test.tsx`
+
+- [ ] **Step 3: Implement thin shared wrappers**
+
+`AdminTable` fixes `size="small"`, disables unneeded default tools, preserves server-owned pagination, and keeps row actions. `AdminQueryFilter` maps ProForm values into existing URL query builders without fetching data in the browser.
+
+- [ ] **Step 4: Migrate IAM screens**
+
+Replace repeated Ant `Table`, native filter forms and `Descriptions` with Pro Components while preserving every existing action callback and view model.
+
+- [ ] **Step 5: Run component and accessibility gates**
+
+Run: `pnpm --filter @kokoro/admin-web test:component`
+
+Run: `pnpm --filter @kokoro/admin-web test:security`
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add apps/admin/components apps/admin/modules/iam apps/admin/app/globals.css apps/admin/test/component
+git commit -m "refactor(admin): standardize IAM screens on Pro Components"
+```
+
+### Task 5: Responsive And Accessibility Closure
 
 **Files:**
 - Modify: `apps/admin/app/globals.css`
@@ -192,36 +244,12 @@ git commit -m "feat(admin): apply light management shell"
 - Modify: `apps/admin/test/component/organizations.test.tsx`
 - Modify: `apps/admin/test/pair/audit-idempotency.spec.ts`
 
-**Interfaces:**
-- Consumes: existing shell and business components.
-- Produces: stable layouts at 1440x1000, 1024x768 and 360x800.
+- [ ] Add 360px tests for shell collapse, QueryFilter one-column layout, ProTable region overflow and visible page commands.
+- [ ] Implement only the layout constraints not already owned by Pro Components.
+- [ ] Run component/security tests, typecheck and lint.
+- [ ] Commit with `fix(admin): close responsive Pro shell states`.
 
-- [ ] **Step 1: Add failing 360px assertions**
-
-Assert page commands wrap, identity text hides, filter controls become one column, buttons remain visible and the document width does not exceed the viewport.
-
-- [ ] **Step 2: Run targeted component tests and verify RED**
-
-Run: `pnpm --filter @kokoro/admin-web exec vitest run test/component/admin-shell.test.tsx test/component/users.test.tsx test/component/organizations.test.tsx`
-
-- [ ] **Step 3: Implement responsive constraints**
-
-Use fixed icon-button dimensions, `minmax(0, 1fr)`, `overflow-wrap:anywhere`, table-region overflow and 760px breakpoints. Do not scale font size with viewport width.
-
-- [ ] **Step 4: Run component and accessibility gates**
-
-Run: `pnpm --filter @kokoro/admin-web test:component`
-
-Run: `pnpm --filter @kokoro/admin-web test:security`
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add apps/admin/app/globals.css apps/admin/test/component apps/admin/test/pair/audit-idempotency.spec.ts
-git commit -m "fix(admin): close responsive shell states"
-```
-
-### Task 5: Browser Harness Correction
+### Task 6: Browser Harness Correction
 
 **Files:**
 - Modify: `apps/admin/playwright.config.ts`
@@ -270,7 +298,7 @@ git add apps/admin/playwright.config.ts apps/admin/scripts/test/run-pair-accepta
 git commit -m "test(admin): support Codex browser acceptance"
 ```
 
-### Task 6: Repository And Codex In-App Browser Acceptance
+### Task 7: Repository And Codex In-App Browser Acceptance
 
 **Files:**
 - Create: `apps/admin/reports/pairs/iam/<run-id>/report.md`
@@ -280,7 +308,7 @@ git commit -m "test(admin): support Codex browser acceptance"
 - Modify: `apps/admin/reports/pairs/iam/README.md`
 
 **Interfaces:**
-- Consumes: clean Admin candidate, frozen IAM commit, fresh PostgreSQL, Mailpit and Codex in-app browser.
+- Consumes: clean Admin candidate, frozen IAM commit, fresh PostgreSQL, an in-process local SMTP mailbox and Codex in-app browser.
 - Produces: classified repository report and visible end-to-end acceptance evidence.
 
 - [ ] **Step 1: Run the full repository gate**
@@ -291,11 +319,12 @@ Expected: unit/component/contract/integration/security, typecheck, lint, build a
 
 - [ ] **Step 2: Start the fresh acceptance stack**
 
-Run `acceptance:pair -- --serve-for-codex-browser` with `PAIR_IAM_SOURCE_REPO`, `PAIR_POSTGRES_OWNER_URL` and `PAIR_MAILPIT_IMAGE` supplied through Env.
+Run `acceptance:pair -- --serve-for-codex-browser` with `PAIR_IAM_SOURCE_REPO` and
+`PAIR_POSTGRES_OWNER_URL` supplied through Env. The runner owns the ephemeral local mailbox fixture.
 
 - [ ] **Step 3: Execute all business journeys in Codex in-app browser**
 
-Use the in-app browser to request/consume Magic Link, reload/logout/revoke Session, manage User and Organization lifecycles, manage Member roles/status, prove RBAC allow/deny/cross-organization denial, double-submit idempotency and inspect audit continuity.
+Use the in-app browser to sign in with the SQL-bootstrapped administrator password, reload/logout/revoke Session, manage User and Organization lifecycles, manage Member roles/status, prove RBAC allow/deny/cross-organization denial, double-submit idempotency and inspect audit continuity.
 
 - [ ] **Step 4: Capture classified visual evidence**
 
@@ -303,7 +332,7 @@ At each step record local/UTC start/finish, expected/actual, screenshot path and
 
 - [ ] **Step 5: Stop the stack and verify cleanup**
 
-Expected: exact Admin/IAM PIDs gone, Mailpit container removed, database/role dropped and IAM worktree removed.
+Expected: exact Admin/IAM PIDs gone, both local mailbox listeners released, database/role dropped and IAM worktree removed.
 
 - [ ] **Step 6: Inspect and archive**
 

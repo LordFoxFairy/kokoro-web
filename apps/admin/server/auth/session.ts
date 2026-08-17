@@ -17,4 +17,5 @@ const boundary = createAdminSessionBoundary({
 });
 
 export const requireAdminSession = boundary.requireAdminSession;
+export const requireAdminCapability = boundary.requireAdminCapability;
 export const requireIamActor = boundary.requireIamActor;

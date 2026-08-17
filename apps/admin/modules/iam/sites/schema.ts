@@ -1,13 +1,13 @@
 import { z } from "zod";
 
-import { iamRoleKeys, type IamRoleKey } from "../../../lib/iam-values";
+import { iamRoleKeyPattern, type IamRoleKey } from "../../../lib/iam-values";
 
 export const siteIdSchema = z.string().uuid();
 export const siteCodeSchema = z.string().trim().regex(/^[a-z0-9](?:[a-z0-9-]{0,78}[a-z0-9])?$/u);
 export const siteNameSchema = z.string().trim().min(1).max(160);
-export const siteRoleKeySchema = z.enum(iamRoleKeys);
+export const siteRoleKeySchema = z.string().regex(iamRoleKeyPattern);
 export const sitePermissionKeySchema = z.string().trim()
-  .regex(/^(?:site|site_member):[a-z][a-z0-9_]*$/u)
+  .regex(/^(?:site|site_member|site_role):[a-z][a-z0-9_]*$/u)
   .max(128);
 const versionSchema = z.string().regex(/^(?:0|[1-9][0-9]*)$/u);
 const commandIdentity = {
@@ -26,7 +26,7 @@ export const siteFiltersSchema = z.object({
 }).strict();
 
 export const siteDetailFiltersSchema = z.object({
-  tab: z.enum(["overview", "members", "access", "audit"]).default("overview"),
+  tab: z.enum(["overview", "members", "roles", "access", "audit"]).default("overview"),
   memberQuery: z.string().trim().max(320).default(""),
   includeDeletedMembers: z.boolean().default(false),
   memberCursor: z.string().max(512).nullable().default(null),
@@ -90,6 +90,18 @@ export type SiteListView = Readonly<{
   filters: SiteFilters;
 }>;
 export type SiteRoleOption = Readonly<{ key: IamRoleKey; label: string }>;
+export type SiteRoleItem = Readonly<{
+  id: string; siteId: string; key: IamRoleKey; name: string; description: string; builtIn: boolean;
+  status: "active" | "deleted"; version: string; permissionKeys: readonly string[];
+}>;
+export type SitePermissionGroup = Readonly<{
+  resource: string;
+  permissions: readonly Readonly<{ key: string; action: string; description: string }>[];
+}>;
+export type SiteRoleManagementView = Readonly<{
+  items: readonly SiteRoleItem[];
+  permissionGroups: readonly SitePermissionGroup[];
+}>;
 export type SiteUserOption = Readonly<{ id: string; email: string; name: string }>;
 export type SiteMemberListItem = Readonly<{
   id: string;
@@ -133,6 +145,7 @@ export type SiteDetailView = Readonly<{
   site: SiteListItem;
   filters: SiteDetailFilters;
   members: SiteMemberListView;
+  roles: SiteRoleManagementView;
   permissionKeys: readonly string[];
   authorization: SiteAuthorizationView | null;
   audit: Readonly<{
@@ -141,3 +154,19 @@ export type SiteDetailView = Readonly<{
     statistics: Readonly<{ total: string; byKind: readonly Readonly<{ kind: string; count: string }>[] }>;
   }>;
 }>;
+
+const permissionKeysSchema = z.array(sitePermissionKeySchema).max(512)
+  .transform((values) => [...new Set(values)].sort());
+const roleIdentity = { siteId: siteIdSchema, ...commandIdentity };
+const customRoleKeySchema = siteRoleKeySchema.refine(
+  (key) => !["owner", "admin", "member"].includes(key),
+  "built-in role key is reserved",
+);
+
+export const siteRoleCommandInputSchema = z.discriminatedUnion("operation", [
+  z.object({ operation: z.literal("create"), key: customRoleKeySchema, name: z.string().trim().min(1).max(120), description: z.string().trim().min(1).max(500), permissionKeys: permissionKeysSchema, ...roleIdentity }).strict(),
+  z.object({ operation: z.literal("update"), roleId: z.string().uuid(), name: z.string().trim().min(1).max(120), description: z.string().trim().min(1).max(500), expectedVersion: versionSchema, ...roleIdentity }).strict(),
+  z.object({ operation: z.enum(["delete", "restore"]), roleId: z.string().uuid(), expectedVersion: versionSchema, ...roleIdentity }).strict(),
+  z.object({ operation: z.literal("set-permissions"), roleId: z.string().uuid(), expectedVersion: versionSchema, permissionKeys: permissionKeysSchema, ...roleIdentity }).strict(),
+]);
+export type SiteRoleCommandActionInput = z.input<typeof siteRoleCommandInputSchema>;

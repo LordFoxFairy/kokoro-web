@@ -18,6 +18,7 @@ describe("Kokoro Admin platform shell", () => {
             name: "Admin",
           }}
           pathname="/"
+          capabilities={["platform:admin"]}
           signOutAction={async () => {}}
         >
           <h1>Overview content</h1>
@@ -69,5 +70,22 @@ describe("Kokoro Admin platform shell", () => {
     expect(screen.getByRole("combobox", { name: "语言" }).closest(".ant-select")).toHaveClass("admin-language");
     expect(screen.getByRole("button", { name: "退出登录" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Overview content" })).toBeInTheDocument();
+  });
+
+  it("WEB-COMP-SHELL-001 renders no management navigation without the required capability", () => {
+    render(
+      <LocaleProvider>
+        <AdminShell
+          administrator={{ id: "bce7762a-f7c7-4d22-8031-4336803038eb", email: "user@example.com" }}
+          capabilities={[]}
+          pathname="/"
+          signOutAction={async () => {}}
+        >
+          <h1>Forbidden projection</h1>
+        </AdminShell>
+      </LocaleProvider>,
+    );
+    expect(screen.queryByRole("link", { name: /系统概览/u })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /用户/u })).not.toBeInTheDocument();
   });
 });

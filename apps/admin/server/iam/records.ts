@@ -11,6 +11,7 @@ import type {
   SessionSummaryRecord,
   SiteMemberRecord,
   SiteRecord,
+  SiteRoleRecord,
   UserRecord,
 } from "../../generated/iam/proto/kokoro/iam/v1/types_pb";
 import type {
@@ -21,9 +22,8 @@ import type {
 } from "../../generated/iam/proto/kokoro/iam/v1/authorization_pb";
 import {
   iamAuthorizationReasons,
-  iamRoleKeys,
+  isIamRoleKey,
   type IamAuthorizationReason,
-  type IamRoleKey,
 } from "../../lib/iam-values";
 
 export type AdminUser = Readonly<{
@@ -62,7 +62,7 @@ export type AdminSite = Readonly<{
   updatedAt: Date;
 }>;
 
-export type AdminRoleKey = IamRoleKey;
+export type AdminRoleKey = string;
 
 export type AdminMember = Readonly<{
   id: string;
@@ -93,6 +93,18 @@ export type AdminSiteMember = Readonly<{
 export type AdminRole = Readonly<{
   id: string;
   organizationId: string;
+  key: AdminRoleKey;
+  name: string;
+  description: string;
+  builtIn: boolean;
+  status: "active" | "deleted";
+  version: bigint;
+  permissionKeys: readonly string[];
+}>;
+
+export type AdminSiteRole = Readonly<{
+  id: string;
+  siteId: string;
   key: AdminRoleKey;
   name: string;
   description: string;
@@ -178,11 +190,10 @@ const siteStatuses = new Set(["active", "suspended", "deleted"]);
 const memberStatuses = new Set(["active", "suspended", "deleted"]);
 const roleStatuses = new Set(["active", "deleted"]);
 const permissionStatuses = new Set(["active", "retired"]);
-const roleKeys = new Set<string>(iamRoleKeys);
 const authorizationReasons = new Set<AdminAuthorizationReason>(iamAuthorizationReasons);
 
 function isAdminRoleKey(value: string): value is AdminRoleKey {
-  return roleKeys.has(value);
+  return isIamRoleKey(value);
 }
 
 type RecordName =
@@ -192,6 +203,7 @@ type RecordName =
   | "SiteMemberRecord"
   | "MemberRecord"
   | "RoleRecord"
+  | "SiteRoleRecord"
   | "PermissionRecord"
   | "AuthorizeResponse"
   | "InspectUserAuthorizationResponse"
@@ -290,7 +302,10 @@ export function siteFromRecord(record: SiteRecord | undefined): AdminSite {
   });
 }
 
-export function memberFromRecord(record: MemberRecord | undefined): AdminMember {
+export function memberFromRecord(record: MemberRecord | undefined, expectedOrganizationId?: string): AdminMember {
+  if (record !== undefined && expectedOrganizationId !== undefined && record.organizationId !== expectedOrganizationId) {
+    throw new Error("invalid organization member scope");
+  }
   if (
     record === undefined
     || !uuidPattern.test(record.id)
@@ -317,7 +332,10 @@ export function memberFromRecord(record: MemberRecord | undefined): AdminMember 
   });
 }
 
-export function siteMemberFromRecord(record: SiteMemberRecord | undefined): AdminSiteMember {
+export function siteMemberFromRecord(record: SiteMemberRecord | undefined, expectedSiteId?: string): AdminSiteMember {
+  if (record !== undefined && expectedSiteId !== undefined && record.siteId !== expectedSiteId) {
+    throw new Error("invalid site member scope");
+  }
   if (
     record === undefined
     || !uuidPattern.test(record.id)
@@ -342,7 +360,10 @@ export function siteMemberFromRecord(record: SiteMemberRecord | undefined): Admi
   });
 }
 
-export function roleFromRecord(record: RoleRecord | undefined): AdminRole {
+export function roleFromRecord(record: RoleRecord | undefined, expectedOrganizationId?: string): AdminRole {
+  if (record !== undefined && expectedOrganizationId !== undefined && record.organizationId !== expectedOrganizationId) {
+    throw new Error("invalid organization role scope");
+  }
   if (
     record === undefined
     || !uuidPattern.test(record.id)
@@ -365,6 +386,35 @@ export function roleFromRecord(record: RoleRecord | undefined): AdminRole {
     description: record.description,
     builtIn: record.builtIn,
     status: record.status as AdminRole["status"],
+    version: record.version,
+    permissionKeys: Object.freeze([...record.permissionKeys]),
+  });
+}
+
+export function siteRoleFromRecord(record: SiteRoleRecord | undefined, expectedSiteId?: string): AdminSiteRole {
+  if (record !== undefined && expectedSiteId !== undefined && record.siteId !== expectedSiteId) {
+    throw new Error("invalid site role scope");
+  }
+  if (
+    record === undefined
+    || !uuidPattern.test(record.id)
+    || !uuidPattern.test(record.siteId)
+    || !isAdminRoleKey(record.key)
+    || record.name.trim().length < 1
+    || record.name.length > 160
+    || record.description.length > 1_000
+    || !roleStatuses.has(record.status)
+    || record.version < BigInt(0)
+    || record.permissionKeys.some((key) => !permissionKeyPattern.test(key) || key.length > 128)
+  ) return invalid("SiteRoleRecord");
+  return Object.freeze({
+    id: record.id,
+    siteId: record.siteId,
+    key: record.key,
+    name: record.name,
+    description: record.description,
+    builtIn: record.builtIn,
+    status: record.status as AdminSiteRole["status"],
     version: record.version,
     permissionKeys: Object.freeze([...record.permissionKeys]),
   });

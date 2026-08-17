@@ -13,6 +13,8 @@ export const expectedAdminRoutes = Object.freeze([
   "/organizations",
   "/organizations/[organizationId]",
   "/sessions",
+  "/sites",
+  "/sites/[siteId]",
   "/users",
   "/users/[userId]",
 ]);
@@ -29,6 +31,7 @@ const databaseAuthority = /(?:@prisma|PrismaClient|DATABASE_URL|(?:from|join)\s+
 const siblingPath = /(?:\/Users\/[^\s"']+\/kokoro-iam\/|\.\.\/kokoro-iam\/)/u;
 const generatedClient = /(?:generated\/iam|kokoro\.iam\.v1)/u;
 const clientSecretName = /(?:AUTH_SECRET_FILE|EMAIL_SERVER_PASSWORD_FILE|KOKORO_IAM_ADMIN_WEB_TOKEN_FILE)/u;
+const developmentFixture = /(?:开发管理员工具|创建并启用|IamDevelopmentFixtureService|BootstrapDevelopmentAdministrator)/u;
 
 export async function scanProductionBundle(
   appRoot: string,
@@ -57,6 +60,7 @@ export async function scanProductionBundle(
     const isClient = relative.startsWith(`static${path.sep}`);
     if (databaseAuthority.test(source)) violations.push(`${relative}: database authority`);
     if (siblingPath.test(source)) violations.push(`${relative}: sibling path`);
+    if (developmentFixture.test(source)) violations.push(`${relative}: development fixture`);
     for (const value of forbiddenValues.filter((candidate) => candidate.length > 0)) {
       if (source.includes(value)) violations.push(`${relative}: secret value`);
     }

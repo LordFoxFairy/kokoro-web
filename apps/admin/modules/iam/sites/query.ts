@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 
 import type { IamManagementClient } from "../../../server/iam/management-client";
 import type {
-  AdminSite, AdminSiteAuthorizationDecision, AdminSiteAuthorizationInspection, AdminSiteMember,
+  AdminPermission, AdminSite, AdminSiteAuthorizationDecision, AdminSiteAuthorizationInspection, AdminSiteMember, AdminSiteRole,
 } from "../../../server/iam/records";
 import {
   siteDetailFiltersSchema, siteFiltersSchema, siteIdSchema,
@@ -13,12 +13,6 @@ import {
 } from "./schema";
 
 type SearchParams = Readonly<Record<string, string | string[] | undefined>>;
-const roleOptions = Object.freeze([
-  Object.freeze({ key: "owner" as const, label: "Owner" }),
-  Object.freeze({ key: "admin" as const, label: "Admin" }),
-  Object.freeze({ key: "member" as const, label: "Member" }),
-]);
-
 function scalar(value: string | string[] | undefined): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
@@ -104,7 +98,7 @@ export async function loadSiteDetail(
   if (site === null) return null;
   if (site.id !== parsedSiteId.data) throw new Error("invalid site scope");
 
-  const [members, users, permissions, audit, authorization] = await Promise.all([
+  const [members, users, roles, permissions, audit, authorization] = await Promise.all([
     client.listSiteMembers({
       requestId: randomUUID(), siteId: site.id, includeDeleted: filters.includeDeletedMembers,
       ...(filters.memberCursor === null ? {} : { cursor: filters.memberCursor }), limit: filters.memberLimit,
@@ -112,6 +106,7 @@ export async function loadSiteDetail(
     client.listUsers({
       requestId: randomUUID(), query: filters.memberQuery, status: "active", includeDeleted: false, limit: 25,
     }),
+    client.listSiteRoles({ requestId: randomUUID(), siteId: site.id, includeDeleted: true }),
     client.listPermissionCatalog({ requestId: randomUUID() }),
     client.listSecurityEvents({
       requestId: randomUUID(), siteId: site.id,
@@ -124,6 +119,7 @@ export async function loadSiteDetail(
     loadAuthorization(client, site.id, filters),
   ]);
   if (members.items.some((member) => member.siteId !== site.id)) throw new Error("invalid site member scope");
+  if (roles.some((role) => role.siteId !== site.id)) throw new Error("invalid site role scope");
   if (audit.items.some((event) => event.siteId !== site.id)) throw new Error("invalid site event scope");
   if (authorization !== null && authorization.siteId !== site.id) throw new Error("invalid site authorization scope");
   const userLabels = new Map(users.items.map((user) => [user.id, user.email]));
@@ -138,11 +134,17 @@ export async function loadSiteDetail(
         memberQuery: filters.memberQuery, includeDeletedMembers: filters.includeDeletedMembers,
         memberCursor: filters.memberCursor, memberLimit: filters.memberLimit,
       }),
-      roleOptions,
+      roleOptions: Object.freeze(roles
+        .filter((role) => role.status === "active")
+        .map((role) => Object.freeze({ key: role.key, label: role.name }))),
       userOptions: Object.freeze(users.items.map((user) => Object.freeze({ id: user.id, email: user.email, name: user.name }))),
     }),
+    roles: Object.freeze({
+      items: Object.freeze(roles.map(roleView)),
+      permissionGroups: permissionGroups(permissions),
+    }),
     permissionKeys: Object.freeze(permissions
-      .filter((permission) => permission.status === "active" && ["site", "site_member"].includes(permission.resource))
+      .filter((permission) => permission.status === "active" && ["site", "site_member", "site_role"].includes(permission.resource))
       .map((permission) => permission.key)),
     authorization: authorization === null ? null : authorizationView(authorization),
     audit: Object.freeze({
@@ -157,6 +159,26 @@ export async function loadSiteDetail(
       }),
     }),
   });
+}
+
+function roleView(role: AdminSiteRole) {
+  return Object.freeze({
+    id: role.id, siteId: role.siteId, key: role.key, name: role.name, description: role.description,
+    builtIn: role.builtIn, status: role.status, version: role.version.toString(), permissionKeys: role.permissionKeys,
+  });
+}
+
+function permissionGroups(permissions: readonly AdminPermission[]) {
+  const groups = new Map<string, Array<Readonly<{ key: string; action: string; description: string }>>>();
+  for (const permission of permissions) {
+    if (permission.status !== "active" || !["site", "site_member", "site_role"].includes(permission.resource)) continue;
+    const values = groups.get(permission.resource) ?? [];
+    values.push(Object.freeze({ key: permission.key, action: permission.action, description: permission.description }));
+    groups.set(permission.resource, values);
+  }
+  return Object.freeze([...groups.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([resource, values]) => Object.freeze({
+    resource, permissions: Object.freeze(values.sort((left, right) => left.key.localeCompare(right.key))),
+  })));
 }
 
 async function loadAuthorization(client: IamManagementClient, siteId: string, filters: SiteDetailFilters) {

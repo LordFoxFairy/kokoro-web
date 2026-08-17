@@ -14,7 +14,7 @@ function scalar(value: string | string[] | undefined): string | undefined {
 }
 
 export function parseUserFilters(value: SearchParams): UserFilters {
-  const allowed = new Set(["query", "status", "includeDeleted", "cursor", "limit"]);
+  const allowed = new Set(["query", "status", "platformRole", "includeDeleted", "cursor", "limit"]);
   if (Object.entries(value).some(([key, item]) => !allowed.has(key) || Array.isArray(item))) {
     throw new Error("invalid user filters");
   }
@@ -25,6 +25,7 @@ export function parseUserFilters(value: SearchParams): UserFilters {
   const result = userFiltersSchema.safeParse({
     query: scalar(value.query) ?? "",
     status,
+    platformRole: scalar(value.platformRole) ?? "all",
     includeDeleted: includeDeleted === undefined ? false : includeDeleted === "true",
     cursor: cursor === undefined || cursor.length === 0 ? null : cursor,
     limit: Number.isFinite(rawLimit) ? Math.min(100, Math.max(1, Math.trunc(rawLimit))) : rawLimit,
@@ -41,6 +42,7 @@ export async function loadUsers(client: IamManagementClient, raw: SearchParams):
     requestId: randomUUID(),
     query: filters.query,
     ...(filters.status === "all" ? {} : { status: filters.status }),
+    ...(filters.platformRole === "all" ? {} : { platformRole: filters.platformRole }),
     includeDeleted: filters.includeDeleted || filters.status === "deleted",
     ...(filters.cursor === null ? {} : { cursor: filters.cursor }),
     limit: filters.limit,
@@ -78,6 +80,7 @@ function userView(user: AdminUser): UserListItem {
     id: user.id,
     email: user.email,
     name: user.name,
+    image: user.image,
     platformRole: user.platformRole,
     status: user.status,
     version: user.version.toString(),

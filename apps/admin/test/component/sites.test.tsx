@@ -24,6 +24,7 @@ const members = {
   userOptions: [{ id: userId, email: "admin@example.com", name: "Admin" }],
 };
 const audit = { items: [{ id: "3598c32a-c62b-4803-92c2-b5baaf507d9f", kind: "site.created", actorUserId: userId, targetUserId: null, siteId, requestId: "8deecb20-8d72-4b7e-a719-722a2e606728", commandId: "df486566-7614-461f-a72c-1b3d4ea9e985", createdAt: site.createdAt }], nextCursor: null, statistics: { total: "1", byKind: [{ kind: "site.created", count: "1" }] } };
+const roles = { items: [], permissionGroups: [] };
 
 describe("IAM Site management", () => {
   it("WEB-COMP-SITE-001 submits Site creation and authoritative lifecycle commands", async () => {
@@ -66,6 +67,7 @@ describe("IAM Site management", () => {
             site,
             filters,
             members,
+            roles,
             permissionKeys: ["site:read", "site_member:update"],
             authorization: { allowed: true, reasonCode: "role_grant", userId, siteId, roleKeys: ["owner"], authorizationVersion: "9", evaluatedAt: site.updatedAt },
             audit,
@@ -74,11 +76,12 @@ describe("IAM Site management", () => {
             commands.push(input);
             return { status: "success", commandId: input.commandId, replayed: false };
           }}
+          roleAction={async (input) => ({ status: "success", commandId: input.commandId, replayed: false })}
         />
       </LocaleProvider>,
     );
 
-    expect(screen.getAllByRole("tab")).toHaveLength(4);
+    expect(screen.getAllByRole("tab")).toHaveLength(5);
     expect(screen.getByRole("tab", { name: "概览" })).toHaveAttribute("aria-selected", "true");
     expect(commands).toHaveLength(0);
   });

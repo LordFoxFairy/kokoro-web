@@ -434,6 +434,40 @@ The public Session includes safe `id`, `email`, `name`, `platformRole`, and `sta
 the opaque Session token or IAM actor JWT. `requireIamActor()` reads the explicit cookie server-side,
 calls `IssueAccessToken`, and returns an actor transport/client bundle for one server operation.
 
+#### Authentication alignment amendment (2026-08-17)
+
+Task 4 originally described the Adapter/Magic Link path but did not separate administrator account
+supply, password sign-in, public registration, and Session authority. The accepted implementation
+must retain both first-class sign-in methods:
+
+1. IAM bootstrap/reset and the production-disabled dev fixture supply administrator accounts.
+2. Auth.js Credentials delegates email/account plus password verification to IAM Credential RPC.
+3. Auth.js Nodemailer delegates token persistence to the IAM Adapter and delivery to configured SMTP.
+4. Both paths create the same IAM database Session and use the same route guard, logout, revocation,
+   and RBAC checks.
+5. Admin exposes no public registration. Missing SMTP hides only the email choice.
+
+Do not delete Nodemailer, the local mailbox fixture, `/auth/verify`, or email Pair tests when adding password UI. Do not
+model the dev fixture as an Auth.js provider.
+
+#### Task 4A: Close multi-method administrator authentication
+
+- [ ] Add a password/email segmented choice to `/login`; render email only when SMTP capability is
+  configured and keep the password path independent of mail availability.
+- [ ] Route email submission through Auth.js Nodemailer and retain password verification through the
+  narrow IAM Credential RPC boundary.
+- [ ] Add component/integration/security coverage for both choices, uniform failures, configuration
+  capability, safe redirects, and production-disabled development tooling.
+- [ ] Replace the ambiguous authentication Pair entries with distinct executable cases:
+  `IAM-SEC-ENUMPASSWORD-001`, `IAM-E2E-AUTHPASSWORD-001`,
+  `IAM-E2E-AUTHEMAIL-001`, `IAM-E2E-AUTHSESSION-001`, and
+  `IAM-SEC-REDIRECT-001`.
+- [ ] Execute real SMTP request/delivery/callback/replay and password login in two fresh automated
+  rounds, then repeat all P0 business steps visibly in the Codex in-app browser.
+- [ ] Publish the classified report only after catalog, screenshots, timestamps, integrity scan, and
+  evidence-mode claims agree. A password-only acceptance run is historical baseline evidence, not
+  multi-method closure.
+
 Expose narrow Adapter/Session ports rather than generated clients:
 
 ```ts
@@ -851,7 +885,7 @@ git commit -m "test(admin): record repository acceptance evidence"
 **Files:**
 - Create: `apps/admin/playwright.config.ts`
 - Create: `apps/admin/test/pair/evidence.ts`
-- Create: `apps/admin/test/pair/mailpit.ts`
+- Create: `apps/admin/test/pair/local-mailbox.ts`
 - Create: `apps/admin/test/pair/fixture.ts`
 - Create: `apps/admin/test/pair/evidence.test.ts`
 - Create: `apps/admin/test/pair/fixture.test.ts`
@@ -867,7 +901,7 @@ git commit -m "test(admin): record repository acceptance evidence"
 
 **Interfaces:**
 - Consumes: exact accepted IAM candidate, accepted Admin Web repository candidate, PostgreSQL,
-  Mailpit, production Admin Web, Chromium.
+  an in-process local SMTP mailbox, production Admin Web, Chromium.
 - Produces: two fresh round manifests, complete browser artifacts, combined pair report/checksums,
   and `PRODUCT_PAIR_DECISION=PASS` only when every shared case passes twice.
 
@@ -889,9 +923,9 @@ pnpm --filter @kokoro/admin-web exec vitest run test/pair/evidence.test.ts test/
 - [ ] **Step 3: Implement fixture supervision and secret-safe evidence**
 
 The runner starts IAM at the frozen commit, migrates a new database, generates exact-0600 secrets,
-bootstraps one platform admin through the isolated owner connection, starts
-`axllent/mailpit:v1.30.6` and production Admin Web, waits on readiness conditions, and starts
-Chromium. It records the resolved Mailpit image digest and Chromium version in the manifest. It
+bootstraps one platform admin through the isolated owner connection, starts an in-process local SMTP
+mailbox and production Admin Web, waits on readiness conditions, and starts Chromium. It records the
+mailbox listener identity and Chromium version in the manifest. It
 transfers the callback Session cookie only in memory and scans retained text/JSON/HAR/trace archives
 for all generated secret values before hashing.
 

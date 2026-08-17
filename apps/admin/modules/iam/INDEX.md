@@ -56,6 +56,15 @@ Design Pro; IAM modules own only their validated view models, URL state, and bus
 - `members/member-table.tsx`: active User selection, provider Role options, complete lifecycle
   controls, deleted discovery, command recovery, and Role catalog presentation.
 
+## Organization Roles
+
+- `roles/schema.ts`: strict custom Role lifecycle and complete Permission-replacement inputs plus
+  serializable, resource-grouped views.
+- `roles/actions.ts` and `roles/action-server.ts`: authoritative preflight, built-in rejection,
+  generated RPC commands, response correlation, and exact Organization-detail revalidation.
+- `roles/role-management.tsx`: built-in read-only rows, custom lifecycle controls, and grouped
+  complete Permission replacement inside the Organization Roles Tab.
+
 ## Access
 
 - `access/schema.ts` and `access/url.ts`: strict searchable Organization and User selection state

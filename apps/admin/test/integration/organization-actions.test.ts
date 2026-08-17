@@ -104,7 +104,7 @@ describe("IAM Organization queries and server actions", () => {
         },
         listSecurityEvents: (request) => {
           observed.push({ method: "listSecurityEvents", ...request });
-          return { events: [securityEvent()], page: { nextCursor: "" } };
+          return { events: [securityEvent()], page: { nextCursor: "" }, statistics: { total: BigInt(1), byKind: [] } };
         },
       });
       router.service(IamOrganizationService, {
@@ -116,12 +116,13 @@ describe("IAM Organization queries and server actions", () => {
           observed.push({ method: "listMembers", ...request });
           return { members: [member()], page: { nextCursor: "" } };
         },
-      });
-      router.service(IamAuthorizationService, {
-        listRoleCatalog: (request) => {
-          observed.push({ method: "listRoleCatalog", ...request });
+        listOrganizationRoles: (request) => {
+          observed.push({ method: "listOrganizationRoles", ...request });
           return { roles: [role()] };
         },
+      });
+      router.service(IamAuthorizationService, {
+        listPermissionCatalog: () => ({ permissions: [] }),
       });
     });
     const client = createIamManagementClient(transport);
@@ -163,7 +164,7 @@ describe("IAM Organization queries and server actions", () => {
       expect.objectContaining({ method: "getOrganization", organizationId, includeDeleted: true }),
       expect.objectContaining({ method: "listMembers", organizationId, includeDeleted: true }),
       expect.objectContaining({ method: "listUsers", query: "admin@example.com", status: "active", includeDeleted: false }),
-      expect.objectContaining({ method: "listRoleCatalog", organizationId }),
+      expect.objectContaining({ method: "listOrganizationRoles", organizationId, includeDeleted: true }),
       expect.objectContaining({ method: "listSecurityEvents", organizationId }),
     ]));
   });

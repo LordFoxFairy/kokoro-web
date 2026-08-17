@@ -23,13 +23,20 @@ export function createUserActionHandler(dependencies: UserActionHandlerDependenc
       requestId: value.requestId,
       commandId: value.commandId,
       reason: value.reason,
-      expectedVersion: value.expectedVersion,
+      ...(value.operation === "create" ? {} : { expectedVersion: value.expectedVersion }),
     });
     try {
       const client = await dependencies.loadClient();
-      const result = await execute(client, value.operation, command, value.userId);
+      const result = await execute(client, value, command);
+      if (value.operation === "create") {
+        if (result.value.email !== value.email || result.value.platformRole !== "user") {
+          throw new Error("invalid created user scope");
+        }
+      } else if (result.value.id !== value.userId || ((value.operation === "update") && result.value.email !== value.email)) {
+        throw new Error("invalid user command scope");
+      }
       dependencies.revalidatePath("/users");
-      dependencies.revalidatePath(`/users/${value.userId}`);
+      dependencies.revalidatePath(`/users/${result.value.id}`);
       return Object.freeze({ status: "success", commandId: value.commandId, replayed: result.replayed });
     } catch (error) {
       return commandError(value.commandId, toIamWebError(error));
@@ -39,20 +46,27 @@ export function createUserActionHandler(dependencies: UserActionHandlerDependenc
 
 async function execute(
   client: IamManagementClient,
-  operation: "suspend" | "reactivate" | "delete" | "restore",
+  value: ReturnType<typeof userCommandInputSchema.parse>,
   command: ReturnType<typeof parseCommandContext>,
-  userId: string,
 ) {
-  switch (operation) {
+  switch (value.operation) {
+    case "create":
+      return client.createUser(command, value.email, value.name, normalizeImage(value.image));
+    case "update":
+      return client.updateUser(command, value.userId, value.email, value.name, normalizeImage(value.image));
     case "suspend":
-      return client.suspendUser(command, userId);
+      return client.suspendUser(command, value.userId);
     case "reactivate":
-      return client.reactivateUser(command, userId);
+      return client.reactivateUser(command, value.userId);
     case "delete":
-      return client.deleteUser(command, userId);
+      return client.deleteUser(command, value.userId);
     case "restore":
-      return client.restoreUser(command, userId);
+      return client.restoreUser(command, value.userId);
   }
+}
+
+function normalizeImage(value: string | undefined): string | undefined {
+  return value === undefined || value.length === 0 ? undefined : value;
 }
 
 function safeId(input: unknown, key: string): string {

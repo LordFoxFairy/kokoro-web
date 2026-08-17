@@ -52,7 +52,7 @@ The first implementation task replaces the stale bridge and removes `@eslint/esl
 flowchart LR
   O["Platform administrator"] -->|HTTPS| B["Chromium"]
   B -->|Auth.js routes, RSC, server actions| W["Admin Web / Next.js Node BFF"]
-  W -->|SMTP| M["Mail provider or Mailpit fixture"]
+  W -->|SMTP| M["Mail provider or local mailbox fixture"]
   W -->|Connect HTTP/1.1\nworkload + actor headers| I["kokoro-iam"]
   I --> P[("IAM PostgreSQL")]
   W -. "public readiness/JWKS" .-> I
@@ -168,6 +168,14 @@ public exports. Generated files are committed and never manually edited.
 migration SHA-256, IAM P0 catalog SHA-256, accepted run ID, and an ordered SHA-256 entry for each
 vendored Proto file. It contains no sibling absolute path.
 
+The current accepted provider is commit `fc88313bba9201b88af6d4fc623fcf42a7e8b0eb`, tree
+`948f39850d6afda4adac3856864dc07a53f6822f`, acceptance run
+`iam-20260817T152719515Z-fc88313bba92`. Its administration surface adds User create/update, while
+the Organization and Site services each add list/create/update/delete/restore custom Role and set
+Role-permissions methods. `IamDevelopmentFixtureService` adds administrator bootstrap/reset for
+dev/test only; production does not mount its UI or action boundary. The checked-in generated
+service inventory is the consumer allowlist.
+
 `scripts/contracts/import-iam.ts` is an explicit maintainer command. It receives an IAM repository
 path, verifies that the requested commit exists and is cleanly readable through `git show/archive`,
 copies only `proto/kokoro/common/v1/error.proto` and `proto/kokoro/iam/v1/*.proto`, computes hashes,
@@ -189,6 +197,20 @@ The generated layer is a transport contract. UI components import local domain v
 never generated messages directly.
 
 ## 7. Auth.js Architecture
+
+Authentication is deliberately split into account supply, sign-in, and Session authority:
+
+| Concern | Implementation | Production exposure |
+| --- | --- | --- |
+| Administrator supply | IAM `admin:bootstrap` and `admin:reset-password` commands | Operator command only |
+| Development fixture | Explicitly enabled development/test account tool | Disabled in production |
+| Password sign-in | Auth.js Credentials entry delegates to IAM Credential RPC | `/login` password choice |
+| Email sign-in | Auth.js Nodemailer entry and IAM Adapter | `/login` email choice when SMTP is configured |
+| Browser Session | IAM Adapter database Session and one opaque HttpOnly cookie | Shared by both methods |
+
+Admin has no public registration route. A development fixture creates an account; it is not a third
+provider. Password and email sign-in converge before authorization: both resolve the same IAM User,
+create the same Session type, and pass through the same active-user and `platform_role=admin` checks.
 
 ### 7.1 Configuration
 
@@ -226,7 +248,18 @@ callbacks therefore fail closed without a Web-side alternate User store.
 Adapter output augments the Auth.js User/Session types with `id`, `platformRole`, and current status.
 No provider token or opaque Session token is added to the public Auth.js Session object.
 
-### 7.3 Enumeration-safe Magic Link flow
+### 7.3 Enumeration-safe password flow
+
+The Credentials provider accepts email/account plus password, applies the same origin and safe-return
+policy as other login entries, and calls the generated IAM Credential RPC through a narrow
+`CredentialClient`. IAM owns password hashing, verification, status checks, and platform-role
+eligibility. On success Auth.js persists a normal IAM Session; no JWT compatibility Session exists.
+
+Every public credential failure maps to one stable error code and localized message. Detailed IAM
+error causes remain server-side and may be recorded in authorized audit data without leaking account
+existence or status.
+
+### 7.4 Enumeration-safe Magic Link flow
 
 The login server action validates only the public email shape, calls Auth.js, and always redirects to
 the same verification page for accepted request syntax. It does not pre-query IAM and branch public
@@ -238,7 +271,12 @@ Callback, expiry, replay, and provider errors render one public-safe state. Auth
 evidence retains internal reason codes. Redirect targets are relative allowlisted paths; absolute,
 scheme-relative, encoded, and cross-origin values are rejected.
 
-### 7.4 Session cookie and actor exchange
+Email configuration is a capability gate. When SMTP is absent, Auth.js does not register or render
+the email choice and password sign-in remains operational. Pair tests use an in-process local SMTP
+mailbox with a read-only HTTP inspection API;
+production never logs a verification URL as a delivery substitute.
+
+### 7.5 Session cookie and actor exchange
 
 Auth.js uses an explicitly configured opaque database-session cookie:
 
@@ -465,7 +503,7 @@ EMAIL_SERVER_PORT
 ```
 
 `EMAIL_SERVER_USER` and `EMAIL_SERVER_PASSWORD_FILE` are an optional pair: both are present for an
-authenticated SMTP provider and both are absent for the isolated Mailpit fixture.
+authenticated SMTP provider and both are absent for the isolated local mailbox fixture.
 
 `AUTH_SECRET_FILE`, IAM credential, and a configured SMTP password file are absolute normalized
 regular files, owned by the runtime user/root, with exact mode `0600`. Values never appear in error
@@ -489,6 +527,20 @@ HTTP is loopback-only.
   database URLs, workload credentials in Client Components, wildcard rewrites, and sibling imports.
 
 ## 17. Observability
+
+### Organization custom Roles
+
+- `ListOrganizationRoles(include_deleted=true)` is the only Role source for Organization details
+  and Member assignment. Deleted custom Roles remain visible for restore; Member selectors receive
+  active Roles only.
+- `modules/iam/roles` owns strict command schemas, Server Actions, and the Roles Tab. Existing-Role
+  commands carry `expected_version`; every command carries stable request/command identity and reason.
+- Permission replacement submits a deduplicated, sorted complete key set. The UI groups the active
+  Permission catalog by resource and never infers available permissions from an existing Role.
+- Built-in Roles expose no UI write command, and the Server Action reads the authoritative Role and
+  rejects built-in targets before mutation. IAM remains the final enforcement boundary.
+- Successful mutations revalidate only the current Organization detail. Returned Organization ID,
+  Role ID, built-in flag, and replacement permission set are correlated before revalidation.
 
 Structured Web logs contain local/UTC timestamp, request ID, route/action, IAM service/method, result
 kind, duration, command ID, and safe entity IDs. They omit email on public enumeration paths and omit
@@ -516,7 +568,7 @@ criterion maps to executable cases.
 | contract | Provider metadata, deterministic generation, service/method inventory, Adapter completeness, forbidden imports/dependencies, i18n completeness. |
 | integration | Real Next.js server, generated Connect router/listener or exact IAM listener as cataloged, Auth.js route/session/action behavior. |
 | security | Enumeration, redirect, CSRF/origin, secret scan, unauthorized route, tenant, replay, malformed input, headers. |
-| pair E2E | Production build/start, exact IAM candidate, fresh PostgreSQL, Mailpit, Chromium, full evidence. |
+| pair E2E | Production build/start, exact IAM candidate, fresh PostgreSQL, local SMTP mailbox fixture, Chromium, full evidence. |
 
 No P0 test uses `skip`, `todo`, `.only`, retry, silent catch, mocked PostgreSQL result, or a manually
 constructed Magic Link callback.
@@ -547,8 +599,9 @@ JUnit, coverage, runtime HTTP evidence, manifest, report, and SHA-256 checksums.
 run may be copied verbatim to `reports/accepted/<run-id>`.
 
 `scripts/test/run-pair-acceptance.ts` supervises two rounds. Each round creates a detached IAM
-worktree at the frozen candidate, fresh database, distinct credentials/secrets, isolated Mailpit,
-production-built Admin Web, and fresh Chromium context. It consumes the link from Mailpit's real API.
+worktree at the frozen candidate, fresh database, distinct credentials/secrets, an isolated in-process
+SMTP mailbox, production-built Admin Web, and fresh Chromium context. It consumes the delivered message
+through the fixture's read-only API.
 
 Every Playwright business step calls an evidence helper that records case/step, expected/actual,
 local/UTC start and finish, timezone offset, screenshot, trace/video/HAR references, request/command
@@ -558,7 +611,7 @@ acceptance. Cleanup is exact-ID scoped and always runs; evidence is retained.
 Magic Link callback capture uses a deliberate secret boundary:
 
 1. The login-request context records its request/response trace and HAR, then stops recording.
-2. The runner reads the real Mailpit message, records message/timestamp and SHA-256 digests, and keeps
+2. The runner reads the real SMTP-delivered message, records message/timestamp and SHA-256 digests, and keeps
    the callback URL/token only in memory.
 3. A fresh ephemeral Chromium context with trace/HAR/storage-state output disabled navigates the
    exact emitted link and completes the real Auth.js callback.
@@ -598,7 +651,7 @@ Initial implementation pins:
 | TypeScript | 5.9.3 |
 | Vitest / coverage | 4.1.10 |
 | Playwright | 1.51.1 |
-| Mailpit container | `axllent/mailpit:v1.30.6` |
+| Local mailbox fixture | `smtp-server@3.19.3` + `mailparser@3.9.15` |
 
 The migration does not upgrade NextAuth/Next/React/Ant Design at the same time. Caret ranges in
 Admin Web are replaced by exact pins; the repository lockfile remains authoritative. Dependencies

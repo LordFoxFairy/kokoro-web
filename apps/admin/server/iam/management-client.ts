@@ -21,6 +21,7 @@ import {
   siteAuthorizationInspectionFromResponse,
   siteFromRecord,
   siteMemberFromRecord,
+  siteRoleFromRecord,
   userFromRecord,
   type AdminAuthorizationDecision,
   type AdminAuthorizationInspection,
@@ -34,6 +35,7 @@ import {
   type AdminSiteAuthorizationDecision,
   type AdminSiteAuthorizationInspection,
   type AdminSiteMember,
+  type AdminSiteRole,
   type AdminUser,
 } from "./records";
 
@@ -55,6 +57,7 @@ export type UserListInput = Readonly<{
   requestId: string;
   query: string;
   status?: AdminUser["status"];
+  platformRole?: AdminUser["platformRole"];
   includeDeleted: boolean;
   cursor?: string;
   limit: number;
@@ -133,6 +136,8 @@ export type MutationResult<T> = Readonly<{ value: T; replayed: boolean }>;
 export interface IamManagementClient {
   listUsers(input: UserListInput): Promise<PageResult<AdminUser>>;
   getUser(input: Readonly<{ requestId: string; userId: string; includeDeleted: boolean }>): Promise<AdminUser | null>;
+  createUser(command: ManagementCommand, email: string, name: string, image?: string): Promise<MutationResult<AdminUser>>;
+  updateUser(command: ManagementCommand, userId: string, email: string, name: string, image?: string): Promise<MutationResult<AdminUser>>;
   suspendUser(command: ManagementCommand, userId: string): Promise<MutationResult<AdminUser>>;
   reactivateUser(command: ManagementCommand, userId: string): Promise<MutationResult<AdminUser>>;
   deleteUser(command: ManagementCommand, userId: string): Promise<MutationResult<AdminUser>>;
@@ -152,6 +157,12 @@ export interface IamManagementClient {
   reactivateSiteMember(command: ManagementCommand, siteId: string, memberId: string): Promise<MutationResult<AdminSiteMember>>;
   removeSiteMember(command: ManagementCommand, siteId: string, memberId: string): Promise<MutationResult<AdminSiteMember>>;
   restoreSiteMember(command: ManagementCommand, siteId: string, memberId: string): Promise<MutationResult<AdminSiteMember>>;
+  listSiteRoles(input: Readonly<{ requestId: string; siteId: string; includeDeleted: boolean }>): Promise<readonly AdminSiteRole[]>;
+  createSiteRole(command: ManagementCommand, siteId: string, key: string, name: string, description: string, permissionKeys: readonly string[]): Promise<MutationResult<AdminSiteRole>>;
+  updateSiteRole(command: ManagementCommand, siteId: string, roleId: string, name: string, description: string): Promise<MutationResult<AdminSiteRole>>;
+  deleteSiteRole(command: ManagementCommand, siteId: string, roleId: string): Promise<MutationResult<AdminSiteRole>>;
+  restoreSiteRole(command: ManagementCommand, siteId: string, roleId: string): Promise<MutationResult<AdminSiteRole>>;
+  setSiteRolePermissions(command: ManagementCommand, siteId: string, roleId: string, permissionKeys: readonly string[]): Promise<MutationResult<AdminSiteRole>>;
   selectSite(command: ManagementCommand, siteId: string): Promise<AdminSite>;
   authorizeSite(input: SiteAuthorizationInput): Promise<AdminSiteAuthorizationDecision>;
   inspectUserSiteAuthorization(input: InspectUserSiteAuthorizationInput): Promise<AdminSiteAuthorizationInspection>;
@@ -168,6 +179,12 @@ export interface IamManagementClient {
   reactivateMember(command: ManagementCommand, organizationId: string, memberId: string): Promise<MutationResult<AdminMember>>;
   removeMember(command: ManagementCommand, organizationId: string, memberId: string): Promise<MutationResult<AdminMember>>;
   restoreMember(command: ManagementCommand, organizationId: string, memberId: string): Promise<MutationResult<AdminMember>>;
+  listOrganizationRoles(input: Readonly<{ requestId: string; organizationId: string; includeDeleted: boolean }>): Promise<readonly AdminRole[]>;
+  createOrganizationRole(command: ManagementCommand, organizationId: string, key: string, name: string, description: string, permissionKeys: readonly string[]): Promise<MutationResult<AdminRole>>;
+  updateOrganizationRole(command: ManagementCommand, organizationId: string, roleId: string, name: string, description: string): Promise<MutationResult<AdminRole>>;
+  deleteOrganizationRole(command: ManagementCommand, organizationId: string, roleId: string): Promise<MutationResult<AdminRole>>;
+  restoreOrganizationRole(command: ManagementCommand, organizationId: string, roleId: string): Promise<MutationResult<AdminRole>>;
+  setOrganizationRolePermissions(command: ManagementCommand, organizationId: string, roleId: string, permissionKeys: readonly string[]): Promise<MutationResult<AdminRole>>;
   listRoleCatalog(input: Readonly<{ requestId: string; organizationId: string }>): Promise<readonly AdminRole[]>;
   listPermissionCatalog(input: Readonly<{ requestId: string }>): Promise<readonly AdminPermission[]>;
   authorize(input: AuthorizeInput): Promise<AdminAuthorizationDecision>;
@@ -206,6 +223,7 @@ export function createIamManagementClient(transport: Transport): IamManagementCl
         requestId: input.requestId,
         query: input.query,
         status: input.status ?? "",
+        platformRole: input.platformRole ?? "",
         includeDeleted: input.includeDeleted,
         page: { limit: input.limit, cursor: input.cursor ?? "" },
       });
@@ -221,6 +239,14 @@ export function createIamManagementClient(transport: Transport): IamManagementCl
         includeDeleted: input.includeDeleted,
       });
       return response.user === undefined ? null : userFromRecord(response.user);
+    },
+    async createUser(command, email, name, image) {
+      const response = await administration.createUser({ command: commandValue(command), email, name, ...(image === undefined ? {} : { image }) });
+      return Object.freeze({ value: userFromRecord(response.user), replayed: response.replayed });
+    },
+    async updateUser(command, userId, email, name, image) {
+      const response = await administration.updateUser({ command: commandValue(command), userId, email, name, ...(image === undefined ? {} : { image }) });
+      return Object.freeze({ value: userFromRecord(response.user), replayed: response.replayed });
     },
     async suspendUser(command, userId) {
       const response = await administration.suspendUser({ command: commandValue(command), userId });
@@ -257,7 +283,8 @@ export function createIamManagementClient(transport: Transport): IamManagementCl
     },
     async createSite(command, code, name) {
       const response = await sites.createSite({ command: commandValue(command), code, name });
-      return Object.freeze({ value: siteFromRecord(response.site), owner: siteMemberFromRecord(response.owner), replayed: response.replayed });
+      const site = siteFromRecord(response.site);
+      return Object.freeze({ value: site, owner: siteMemberFromRecord(response.owner, site.id), replayed: response.replayed });
     },
     async updateSite(command, siteId, name) {
       const response = await sites.updateSite({ command: commandValue(command), siteId, name });
@@ -287,33 +314,57 @@ export function createIamManagementClient(transport: Transport): IamManagementCl
         page: { limit: input.limit, cursor: input.cursor ?? "" },
       });
       return Object.freeze({
-        items: Object.freeze(response.members.map(siteMemberFromRecord)),
+        items: Object.freeze(response.members.map((record) => siteMemberFromRecord(record, input.siteId))),
         nextCursor: nextCursor(response.page?.nextCursor),
       });
     },
     async addSiteMember(command, siteId, userId, roleKey) {
       const response = await sites.addSiteMember({ command: commandValue(command), siteId, userId, roleKey });
-      return Object.freeze({ value: siteMemberFromRecord(response.member), replayed: response.replayed });
+      return Object.freeze({ value: siteMemberFromRecord(response.member, siteId), replayed: response.replayed });
     },
     async changeSiteMemberRole(command, siteId, memberId, roleKey) {
       const response = await sites.changeSiteMemberRole({ command: commandValue(command), siteId, memberId, roleKey });
-      return Object.freeze({ value: siteMemberFromRecord(response.member), replayed: response.replayed });
+      return Object.freeze({ value: siteMemberFromRecord(response.member, siteId), replayed: response.replayed });
     },
     async suspendSiteMember(command, siteId, memberId) {
       const response = await sites.suspendSiteMember({ command: commandValue(command), siteId, memberId });
-      return Object.freeze({ value: siteMemberFromRecord(response.member), replayed: response.replayed });
+      return Object.freeze({ value: siteMemberFromRecord(response.member, siteId), replayed: response.replayed });
     },
     async reactivateSiteMember(command, siteId, memberId) {
       const response = await sites.reactivateSiteMember({ command: commandValue(command), siteId, memberId });
-      return Object.freeze({ value: siteMemberFromRecord(response.member), replayed: response.replayed });
+      return Object.freeze({ value: siteMemberFromRecord(response.member, siteId), replayed: response.replayed });
     },
     async removeSiteMember(command, siteId, memberId) {
       const response = await sites.removeSiteMember({ command: commandValue(command), siteId, memberId });
-      return Object.freeze({ value: siteMemberFromRecord(response.member), replayed: response.replayed });
+      return Object.freeze({ value: siteMemberFromRecord(response.member, siteId), replayed: response.replayed });
     },
     async restoreSiteMember(command, siteId, memberId) {
       const response = await sites.restoreSiteMember({ command: commandValue(command), siteId, memberId });
-      return Object.freeze({ value: siteMemberFromRecord(response.member), replayed: response.replayed });
+      return Object.freeze({ value: siteMemberFromRecord(response.member, siteId), replayed: response.replayed });
+    },
+    async listSiteRoles(input) {
+      const response = await sites.listSiteRoles(input);
+      return Object.freeze(response.roles.map((record) => siteRoleFromRecord(record, input.siteId)));
+    },
+    async createSiteRole(command, siteId, key, name, description, permissionKeys) {
+      const response = await sites.createSiteRole({ command: commandValue(command), siteId, key, name, description, permissionKeys: [...permissionKeys] });
+      return Object.freeze({ value: siteRoleFromRecord(response.role, siteId), replayed: response.replayed });
+    },
+    async updateSiteRole(command, siteId, roleId, name, description) {
+      const response = await sites.updateSiteRole({ command: commandValue(command), siteId, roleId, name, description });
+      return Object.freeze({ value: siteRoleFromRecord(response.role, siteId), replayed: response.replayed });
+    },
+    async deleteSiteRole(command, siteId, roleId) {
+      const response = await sites.deleteSiteRole({ command: commandValue(command), siteId, roleId });
+      return Object.freeze({ value: siteRoleFromRecord(response.role, siteId), replayed: response.replayed });
+    },
+    async restoreSiteRole(command, siteId, roleId) {
+      const response = await sites.restoreSiteRole({ command: commandValue(command), siteId, roleId });
+      return Object.freeze({ value: siteRoleFromRecord(response.role, siteId), replayed: response.replayed });
+    },
+    async setSiteRolePermissions(command, siteId, roleId, permissionKeys) {
+      const response = await sites.setSiteRolePermissions({ command: commandValue(command), siteId, roleId, permissionKeys: [...permissionKeys] });
+      return Object.freeze({ value: siteRoleFromRecord(response.role, siteId), replayed: response.replayed });
     },
     async selectSite(command, siteId) {
       const response = await sites.selectSite({ command: commandValue(command), siteId });
@@ -381,7 +432,7 @@ export function createIamManagementClient(transport: Transport): IamManagementCl
         page: { limit: input.limit, cursor: input.cursor ?? "" },
       });
       return Object.freeze({
-        items: Object.freeze(response.members.map(memberFromRecord)),
+        items: Object.freeze(response.members.map((record) => memberFromRecord(record, input.organizationId))),
         nextCursor: nextCursor(response.page?.nextCursor),
       });
     },
@@ -392,31 +443,55 @@ export function createIamManagementClient(transport: Transport): IamManagementCl
         userId,
         roleKey,
       });
-      return Object.freeze({ value: memberFromRecord(response.member), replayed: response.replayed });
+      return Object.freeze({ value: memberFromRecord(response.member, organizationId), replayed: response.replayed });
     },
     async changeMemberRole(command, organizationId, memberId, roleKey) {
       const response = await organizations.changeMemberRole({ command: commandValue(command), memberId, roleKey, organizationId });
-      return Object.freeze({ value: memberFromRecord(response.member), replayed: response.replayed });
+      return Object.freeze({ value: memberFromRecord(response.member, organizationId), replayed: response.replayed });
     },
     async suspendMember(command, organizationId, memberId) {
       const response = await organizations.suspendMember({ command: commandValue(command), memberId, organizationId });
-      return Object.freeze({ value: memberFromRecord(response.member), replayed: response.replayed });
+      return Object.freeze({ value: memberFromRecord(response.member, organizationId), replayed: response.replayed });
     },
     async reactivateMember(command, organizationId, memberId) {
       const response = await organizations.reactivateMember({ command: commandValue(command), memberId, organizationId });
-      return Object.freeze({ value: memberFromRecord(response.member), replayed: response.replayed });
+      return Object.freeze({ value: memberFromRecord(response.member, organizationId), replayed: response.replayed });
     },
     async removeMember(command, organizationId, memberId) {
       const response = await organizations.removeMember({ command: commandValue(command), memberId, organizationId });
-      return Object.freeze({ value: memberFromRecord(response.member), replayed: response.replayed });
+      return Object.freeze({ value: memberFromRecord(response.member, organizationId), replayed: response.replayed });
     },
     async restoreMember(command, organizationId, memberId) {
       const response = await organizations.restoreMember({ command: commandValue(command), memberId, organizationId });
-      return Object.freeze({ value: memberFromRecord(response.member), replayed: response.replayed });
+      return Object.freeze({ value: memberFromRecord(response.member, organizationId), replayed: response.replayed });
+    },
+    async listOrganizationRoles(input) {
+      const response = await organizations.listOrganizationRoles(input);
+      return Object.freeze(response.roles.map((record) => roleFromRecord(record, input.organizationId)));
+    },
+    async createOrganizationRole(command, organizationId, key, name, description, permissionKeys) {
+      const response = await organizations.createOrganizationRole({ command: commandValue(command), organizationId, key, name, description, permissionKeys: [...permissionKeys] });
+      return Object.freeze({ value: roleFromRecord(response.role, organizationId), replayed: response.replayed });
+    },
+    async updateOrganizationRole(command, organizationId, roleId, name, description) {
+      const response = await organizations.updateOrganizationRole({ command: commandValue(command), organizationId, roleId, name, description });
+      return Object.freeze({ value: roleFromRecord(response.role, organizationId), replayed: response.replayed });
+    },
+    async deleteOrganizationRole(command, organizationId, roleId) {
+      const response = await organizations.deleteOrganizationRole({ command: commandValue(command), organizationId, roleId });
+      return Object.freeze({ value: roleFromRecord(response.role, organizationId), replayed: response.replayed });
+    },
+    async restoreOrganizationRole(command, organizationId, roleId) {
+      const response = await organizations.restoreOrganizationRole({ command: commandValue(command), organizationId, roleId });
+      return Object.freeze({ value: roleFromRecord(response.role, organizationId), replayed: response.replayed });
+    },
+    async setOrganizationRolePermissions(command, organizationId, roleId, permissionKeys) {
+      const response = await organizations.setOrganizationRolePermissions({ command: commandValue(command), organizationId, roleId, permissionKeys: [...permissionKeys] });
+      return Object.freeze({ value: roleFromRecord(response.role, organizationId), replayed: response.replayed });
     },
     async listRoleCatalog(input) {
       const response = await authorization.listRoleCatalog(input);
-      return Object.freeze(response.roles.map(roleFromRecord));
+      return Object.freeze(response.roles.map((record) => roleFromRecord(record)));
     },
     async listPermissionCatalog(input) {
       const response = await authorization.listPermissionCatalog(input);

@@ -1,12 +1,12 @@
 # PRD-001: IAM Administration Control Plane
 
-Status: approved direction; technical design and implementation pending.
+Status: implemented baseline; multi-method authentication alignment in progress.
 
 ## 1. Product Summary
 
 Kokoro Admin Web is the independently deployed operations console and browser BFF for Kokoro. Its
 first clean release provides a complete management surface for the accepted `kokoro-iam` service:
-Magic Link authentication, user and session administration, organizations and members, live RBAC,
+password and email Magic Link authentication, user and session administration, organizations and members, live RBAC,
 soft deletion and restore, and security audit review.
 
 The release keeps the repository's mature Next.js, Auth.js, Ant Design, and Pro Components
@@ -49,8 +49,9 @@ compatibility debt. The first release therefore makes a hard cut to the IAM-back
 - Adding Keycloak, Better Auth, Refine, React Admin, AdminJS, or a second administration framework.
 - Supporting the old OperatorAccount/Prisma, gateway rewrite, proxy-secret, or JWT-session model.
 - Preserving legacy URLs, payloads, route aliases, hidden navigation, or compatibility adapters.
-- Managing custom Role or Permission definitions; the accepted IAM contract exposes catalog reads
-  and Member role changes, not custom catalog mutation.
+- Managing the global Permission catalog or built-in Role definitions. IAM owns those immutable
+  definitions; Admin Web may manage Organization- and Site-scoped custom Roles and their permission
+  bindings through the accepted generated RPC contract.
 - Rebuilding unrelated credit, payment, model, site, hub, or approval management before those
   provider repositories publish approved generated contracts.
 - Moving browser tests or shared system tests into IAM or the parent workspace.
@@ -81,7 +82,8 @@ protected route. Public login-request results do not reveal account existence or
 
 | Concern | Authority |
 |---|---|
-| Browser cookies, CSRF, callback and redirect validation | Admin Web through Auth.js |
+| Browser cookies, CSRF, provider callbacks and redirect validation | Admin Web through Auth.js |
+| Password credential verification | IAM Credential RPC |
 | Email delivery and mail fixture | Admin Web |
 | User, Account, Session and VerificationToken persistence | IAM |
 | Platform role, organizations, members, roles and permissions | IAM |
@@ -114,7 +116,7 @@ The first release uses one quiet, work-focused Admin Web shell with these routes
 
 | Route | Purpose |
 |---|---|
-| `/login` | Request an Auth.js Magic Link with enumeration-safe public feedback. |
+| `/login` | Choose password or email Magic Link sign-in with enumeration-safe public feedback. |
 | `/auth/verify` | Uniform delivery/callback guidance without identity disclosure. |
 | `/` | IAM operational overview and recent security activity. |
 | `/users` | Search and filter active, suspended, and deleted Users. |
@@ -132,7 +134,25 @@ pagination, and repeated operator actions.
 
 ## 9. Primary Journeys
 
-### 9.1 Magic Link login
+### 9.1 Administrator account supply
+
+Admin Web has no public administrator registration. Production administrators are created through
+the IAM bootstrap command and have passwords rotated through the IAM reset-password command.
+Development and test may use an explicitly enabled account fixture/tool. Account supply does not
+create a new authentication provider and is never exposed in production UI.
+
+### 9.2 Password login
+
+1. The operator selects password sign-in and submits email/account plus password from `/login`.
+2. Auth.js applies CSRF and return-URL policy, then delegates credential verification to the IAM
+   Credential RPC.
+3. A successful result creates an ordinary IAM database Session and the configured opaque HttpOnly
+   Session cookie.
+4. Protected routes resolve the Session through IAM and recheck active platform-administrator state.
+5. Unknown, suspended, deleted, non-admin, passwordless, and incorrect-password attempts return the
+   same public failure state.
+
+### 9.3 Email Magic Link login
 
 1. The operator submits an email from `/login`.
 2. Auth.js validates origin, CSRF state, and redirect targets.
@@ -147,7 +167,10 @@ pagination, and repeated operator actions.
 Unknown, suspended, deleted, and active login requests expose the same public response structure and
 timing class. Detailed reasons remain in authorized security events and structured server logs.
 
-### 9.2 User lifecycle and sessions
+The email choice is rendered only when SMTP capability is configured. Its absence does not disable
+password login, and production never substitutes console delivery for email.
+
+### 9.4 User lifecycle and sessions
 
 1. The administrator searches or filters Users and opens a detail route.
 2. The detail shows authoritative IAM state, active/deleted status, paginated Sessions, and related
@@ -159,7 +182,7 @@ timing class. Detailed reasons remain in authorized security events and structur
 5. The page reloads authoritative RPC state and displays correlated SecurityEvents.
 6. Revoked or deleted identities lose access on the next server interaction.
 
-### 9.3 Organization lifecycle
+### 9.5 Organization lifecycle
 
 1. The administrator creates an Organization with validated name and slug.
 2. IAM creates the Organization and built-in role catalog and assigns the owner according to its
@@ -168,7 +191,7 @@ timing class. Detailed reasons remain in authorized security events and structur
 4. Deleted Organizations are excluded by default and visible only through an explicit status filter.
 5. Restore reuses the same identifier; conflicts are shown without generating another record.
 
-### 9.4 Membership and RBAC
+### 9.6 Membership and RBAC
 
 1. The administrator opens an Organization and adds an active User as a Member with a built-in role.
 2. Role changes, suspension, reactivation, removal, and restore go through IAM commands.
@@ -180,7 +203,7 @@ timing class. Detailed reasons remain in authorized security events and structur
    No permission decision is cached as Web authority, and the administrator Session is not the
    inspected subject.
 
-### 9.5 Audit review
+### 9.7 Audit review
 
 1. The administrator filters SecurityEvents by kind, actor, target User, Organization, command ID,
    and time range.
@@ -193,8 +216,11 @@ timing class. Detailed reasons remain in authorized security events and structur
 | ID | Requirement |
 |---|---|
 | `WEB-IAM-FR-AUTH-001` | Admin Web implements every Auth.js Adapter method required by the accepted IAM AuthAdapterService. |
-| `WEB-IAM-FR-AUTH-002` | Magic Link requests, callback, expiry, replay, origin, and redirect handling use Auth.js and a real mail provider/fixture. |
-| `WEB-IAM-FR-AUTH-003` | Unknown, suspended, deleted, and active login requests have indistinguishable public results. |
+| `WEB-IAM-FR-AUTH-002` | Password sign-in delegates verification to IAM Credential RPC and creates an ordinary IAM database Session. |
+| `WEB-IAM-FR-AUTH-003` | Magic Link requests, callback, expiry, replay, origin, and redirect handling use Auth.js and a real mail provider/fixture. |
+| `WEB-IAM-FR-AUTH-004` | Public failures do not distinguish unknown, suspended, deleted, non-admin, passwordless, invalid-password, or unusable-link identities. |
+| `WEB-IAM-FR-AUTH-005` | `/login` exposes password and, when SMTP is configured, email as explicit choices; Admin has no public registration. |
+| `WEB-IAM-FR-AUTH-006` | Production administrator supply and password recovery use IAM-owned bootstrap/reset commands; dev/test fixtures are production-disabled. |
 | `WEB-IAM-FR-SESSION-001` | Auth.js uses IAM database Sessions, and every protected request revalidates current IAM state. |
 | `WEB-IAM-FR-SESSION-002` | Operators can list, revoke one, revoke all, reload, and log out without exposing raw session tokens. |
 | `WEB-IAM-FR-USER-001` | Operators can list, search, filter, inspect, suspend, reactivate, soft delete, and restore Users. |
@@ -246,8 +272,8 @@ timing class. Detailed reasons remain in authorized security events and structur
 
 - Workload credentials and IAM actor JWTs are server-only and loaded through strict configuration.
 - Admin Web has no runtime database dependency or `DATABASE_URL` setting.
-- Authentication and authorization fail closed when IAM, mail, configuration, or verification is
-  unavailable.
+- Authentication and authorization fail closed when their required capability is unavailable. Mail
+  unavailability disables only email sign-in; password sign-in remains available when IAM is healthy.
 - Trusted-host and callback/return URL allowlists are explicit; open redirects are rejected.
 - CSP, clickjacking, content-type, referrer, and permissions headers remain enabled and are tested.
 - Browser errors contain safe codes and request IDs, never raw upstream messages or secret-bearing
@@ -308,9 +334,10 @@ or retried during formal acceptance.
 
 | ID | Criterion | Shared pair case |
 |---|---|---|
-| `WEB-IAM-ACC-AUTH-001` | Request and consume one real Magic Link, create an IAM Session, reload, and reject replay. | `IAM-E2E-AUTH-001` |
-| `WEB-IAM-ACC-AUTH-002` | Active, unknown, suspended, and deleted login requests have uniform public results. | `IAM-SEC-ENUM-001` |
-| `WEB-IAM-ACC-AUTH-003` | Untrusted callback and return URLs are rejected without navigation. | `IAM-SEC-REDIRECT-001` |
+| `WEB-IAM-ACC-AUTH-001` | Sign in with a bootstrap administrator password, create an IAM Session, reload, log out, and reject invalid/inactive identities uniformly. | `IAM-E2E-AUTHPASSWORD-001`, `IAM-SEC-ENUMPASSWORD-001` |
+| `WEB-IAM-ACC-AUTH-002` | Request and consume one real Magic Link through the local SMTP mailbox fixture, create an IAM Session, reload, log out, and reject replay. | `IAM-E2E-AUTHEMAIL-001` |
+| `WEB-IAM-ACC-AUTH-003` | Both methods resolve the same IAM User and obey the same Session revocation and platform-role checks. | `IAM-E2E-AUTHSESSION-001` |
+| `WEB-IAM-ACC-AUTH-004` | Unsafe return/callback URLs are rejected for both sign-in entries. | `IAM-SEC-REDIRECT-001` |
 | `WEB-IAM-ACC-SESSION-001` | Reload restores an active session; logout and administrator revocation invalidate existing cookies. | `IAM-E2E-SESSION-001` |
 | `WEB-IAM-ACC-USER-001` | Search, inspect, suspend, reactivate, delete, restore, and revoke sessions through visible UI state. | `IAM-E2E-DELETE-001` |
 | `WEB-IAM-ACC-ORG-001` | Create, update, reload, delete, find-deleted, and restore one Organization. | `IAM-E2E-ORG-001` |

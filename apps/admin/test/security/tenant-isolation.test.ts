@@ -110,6 +110,7 @@ describe("IAM tenant isolation", () => {
             createdAt: timestampFromDate(now),
           })] : [],
           page: { nextCursor: "" },
+          statistics: { total: BigInt(scope === "event" ? 1 : 0), byKind: [] },
         }),
       });
       router.service(IamOrganizationService, {
@@ -128,6 +129,7 @@ describe("IAM tenant isolation", () => {
           })] : [],
           page: { nextCursor: "" },
         }),
+        listOrganizationRoles: () => ({ roles: scope === "role" ? [foreignRole()] : [] }),
       });
       router.service(IamAuthorizationService, {
         listRoleCatalog: () => ({ roles: scope === "role" ? [foreignRole()] : [] }),

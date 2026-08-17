@@ -13,7 +13,7 @@ cases:
     category: unit
     status: NOT_STARTED
     title: Strict runtime configuration and paired SMTP authentication
-    requirements: [WEB-IAM-FR-AUTH-002, WEB-IAM-FR-SESSION-001]
+    requirements: [WEB-IAM-FR-AUTH-002, WEB-IAM-FR-AUTH-003, WEB-IAM-FR-SESSION-001]
     acceptance: []
     testFile: test/unit/config.test.ts
     evidence: [junit, coverage]
@@ -85,7 +85,7 @@ cases:
     category: component
     status: NOT_STARTED
     title: Login and uniform verification states
-    requirements: [WEB-IAM-FR-AUTH-002, WEB-IAM-FR-AUTH-003, WEB-IAM-FR-I18N-001]
+    requirements: [WEB-IAM-FR-AUTH-002, WEB-IAM-FR-AUTH-003, WEB-IAM-FR-AUTH-005, WEB-IAM-FR-I18N-001]
     acceptance: [WEB-IAM-ACC-AUTH-001, WEB-IAM-ACC-AUTH-002]
     testFile: test/component/login.test.tsx
     evidence: [junit, coverage, accessibility]
@@ -165,10 +165,19 @@ cases:
   - id: WEB-COMP-AUDIT-001
     category: component
     status: NOT_STARTED
-    title: SecurityEvent filters pagination and correlation
+    title: Global SecurityEvent filters statistics pagination correlation and detail Drawer
     requirements: [WEB-IAM-FR-AUDIT-001]
     acceptance: [WEB-IAM-ACC-AUDIT-001]
     testFile: test/component/audit.test.tsx
+    evidence: [junit, coverage, accessibility]
+    retries: 0
+  - id: WEB-COMP-SITE-001
+    category: component
+    status: NOT_STARTED
+    title: Site lifecycle four-tab detail members authorization and scoped audit
+    requirements: [WEB-IAM-FR-MEMBER-001, WEB-IAM-FR-RBAC-001, WEB-IAM-FR-AUDIT-001, WEB-IAM-FR-DELETE-001]
+    acceptance: [WEB-IAM-ACC-MEMBER-001, WEB-IAM-ACC-RBAC-001, WEB-IAM-ACC-AUDIT-001]
+    testFile: test/component/sites.test.tsx
     evidence: [junit, coverage, accessibility]
     retries: 0
   - id: WEB-COMP-A11Y-001
@@ -220,7 +229,7 @@ cases:
     category: contract
     status: NOT_STARTED
     title: Server-only IAM and zero database boundary
-    requirements: [WEB-IAM-FR-RPC-001, WEB-IAM-FR-MODULE-001]
+    requirements: [WEB-IAM-FR-AUTH-006, WEB-IAM-FR-RPC-001, WEB-IAM-FR-MODULE-001]
     acceptance: []
     testFile: test/contract/server-boundary.test.ts
     evidence: [junit, source-boundary]
@@ -238,7 +247,7 @@ cases:
     category: contract
     status: NOT_STARTED
     title: Production bundle route and import boundary
-    requirements: [WEB-IAM-FR-RPC-001, WEB-IAM-FR-MODULE-001]
+    requirements: [WEB-IAM-FR-AUTH-006, WEB-IAM-FR-RPC-001, WEB-IAM-FR-MODULE-001]
     acceptance: []
     testFile: test/contract/build-boundary.test.ts
     evidence: [junit, build-manifest, bundle-scan]
@@ -256,8 +265,8 @@ cases:
     category: integration
     status: NOT_STARTED
     title: Real Auth.js request and callback route behavior
-    requirements: [WEB-IAM-FR-AUTH-001, WEB-IAM-FR-AUTH-002]
-    acceptance: [WEB-IAM-ACC-AUTH-001]
+    requirements: [WEB-IAM-FR-AUTH-001, WEB-IAM-FR-AUTH-003]
+    acceptance: [WEB-IAM-ACC-AUTH-002]
     testFile: test/integration/auth-routes.test.ts
     evidence: [junit, coverage, http, rpc]
     retries: 0
@@ -315,6 +324,15 @@ cases:
     testFile: test/integration/audit-query.test.ts
     evidence: [junit, coverage, rpc]
     retries: 0
+  - id: WEB-INT-SITE-001
+    category: integration
+    status: NOT_STARTED
+    title: Site list detail lifecycle member authorization and audit RPC vertical slice
+    requirements: [WEB-IAM-FR-MEMBER-001, WEB-IAM-FR-RBAC-001, WEB-IAM-FR-IDEM-001, WEB-IAM-FR-AUDIT-001, WEB-IAM-FR-DELETE-001]
+    acceptance: [WEB-IAM-ACC-MEMBER-001, WEB-IAM-ACC-RBAC-001, WEB-IAM-ACC-IDEM-001, WEB-IAM-ACC-AUDIT-001]
+    testFile: test/integration/site-actions.test.ts
+    evidence: [junit, coverage, rpc]
+    retries: 0
   - id: WEB-INT-SMOKE-001
     category: integration
     status: NOT_STARTED
@@ -328,8 +346,8 @@ cases:
     category: security
     status: NOT_STARTED
     title: Login-request enumeration resistance
-    requirements: [WEB-IAM-FR-AUTH-003]
-    acceptance: [WEB-IAM-ACC-AUTH-002]
+    requirements: [WEB-IAM-FR-AUTH-004]
+    acceptance: [WEB-IAM-ACC-AUTH-001, WEB-IAM-ACC-AUTH-002]
     testFile: test/security/enumeration.test.ts
     evidence: [junit, http, rpc, logs]
     retries: 0
@@ -337,8 +355,8 @@ cases:
     category: security
     status: NOT_STARTED
     title: Callback and return URL rejection
-    requirements: [WEB-IAM-FR-AUTH-002]
-    acceptance: [WEB-IAM-ACC-AUTH-003]
+    requirements: [WEB-IAM-FR-AUTH-002, WEB-IAM-FR-AUTH-003]
+    acceptance: [WEB-IAM-ACC-AUTH-004]
     testFile: test/security/redirect-policy.test.ts
     evidence: [junit, http]
     retries: 0
@@ -367,6 +385,15 @@ cases:
     requirements: [WEB-IAM-FR-RBAC-002]
     acceptance: [WEB-IAM-ACC-RBAC-001]
     testFile: test/security/tenant-isolation.test.ts
+    evidence: [junit, rpc]
+    retries: 0
+  - id: WEB-SEC-SITE-001
+    category: security
+    status: NOT_STARTED
+    title: Cross-Site response record and authorization nondisclosure
+    requirements: [WEB-IAM-FR-RBAC-002]
+    acceptance: [WEB-IAM-ACC-RBAC-001]
+    testFile: test/security/site-isolation.test.ts
     evidence: [junit, rpc]
     retries: 0
   - id: WEB-SEC-OWNER-001
@@ -405,31 +432,49 @@ cases:
     testFile: test/security/audit-metadata.test.ts
     evidence: [junit, coverage]
     retries: 0
-  - id: IAM-SEC-ENUM-001
+  - id: IAM-SEC-ENUMPASSWORD-001
     category: pair_e2e
     status: NOT_STARTED
-    title: Uniform active unknown suspended and deleted login requests
-    requirements: [WEB-IAM-FR-AUTH-003]
-    acceptance: [WEB-IAM-ACC-AUTH-002]
-    testFile: null
+    title: Uniform active unknown suspended and deleted password login requests
+    requirements: [WEB-IAM-FR-AUTH-002, WEB-IAM-FR-AUTH-004]
+    acceptance: [WEB-IAM-ACC-AUTH-001]
+    testFile: test/pair/authentication.spec.ts
     evidence: [screenshot, trace, har, rpc, logs]
     retries: 0
   - id: IAM-SEC-REDIRECT-001
     category: pair_e2e
     status: NOT_STARTED
-    title: Reject untrusted Magic Link callback and return URLs
-    requirements: [WEB-IAM-FR-AUTH-002]
-    acceptance: [WEB-IAM-ACC-AUTH-003]
-    testFile: null
+    title: Reject untrusted administrator login return URLs
+    requirements: [WEB-IAM-FR-AUTH-002, WEB-IAM-FR-AUTH-003]
+    acceptance: [WEB-IAM-ACC-AUTH-004]
+    testFile: test/pair/authentication.spec.ts
     evidence: [screenshot, trace, har]
     retries: 0
-  - id: IAM-E2E-AUTH-001
+  - id: IAM-E2E-AUTHPASSWORD-001
     category: pair_e2e
     status: NOT_STARTED
-    title: Request consume and replay real Magic Link
+    title: SQL-bootstrap administrator password login and Session restore
     requirements: [WEB-IAM-FR-AUTH-001, WEB-IAM-FR-AUTH-002]
     acceptance: [WEB-IAM-ACC-AUTH-001]
-    testFile: null
+    testFile: test/pair/authentication.spec.ts
+    evidence: [screenshot, trace, video, har, rpc, sql, logs]
+    retries: 0
+  - id: IAM-E2E-AUTHEMAIL-001
+    category: pair_e2e
+    status: NOT_STARTED
+    title: Real email request delivery callback replay rejection and Session restore
+    requirements: [WEB-IAM-FR-AUTH-001, WEB-IAM-FR-AUTH-003, WEB-IAM-FR-AUTH-004, WEB-IAM-FR-AUTH-005]
+    acceptance: [WEB-IAM-ACC-AUTH-002]
+    testFile: test/pair/authentication.spec.ts
+    evidence: [screenshot, trace, video, har, rpc, sql, logs]
+    retries: 0
+  - id: IAM-E2E-AUTHSESSION-001
+    category: pair_e2e
+    status: NOT_STARTED
+    title: Password and email authentication share IAM Session authorization and revocation
+    requirements: [WEB-IAM-FR-AUTH-002, WEB-IAM-FR-AUTH-003, WEB-IAM-FR-SESSION-001]
+    acceptance: [WEB-IAM-ACC-AUTH-003]
+    testFile: test/pair/authentication.spec.ts
     evidence: [screenshot, trace, video, har, rpc, sql, logs]
     retries: 0
   - id: IAM-E2E-SESSION-001
@@ -438,7 +483,7 @@ cases:
     title: Reload logout and administrator Session revocation
     requirements: [WEB-IAM-FR-SESSION-001, WEB-IAM-FR-SESSION-002]
     acceptance: [WEB-IAM-ACC-SESSION-001]
-    testFile: null
+    testFile: test/pair/sessions.spec.ts
     evidence: [screenshot, trace, video, har, rpc, sql, logs]
     retries: 0
   - id: IAM-E2E-ORG-001
@@ -447,7 +492,43 @@ cases:
     title: Complete Organization lifecycle through Admin Web
     requirements: [WEB-IAM-FR-ORG-001, WEB-IAM-FR-DELETE-001]
     acceptance: [WEB-IAM-ACC-ORG-001]
-    testFile: null
+    testFile: test/pair/organizations.spec.ts
+    evidence: [screenshot, trace, video, har, rpc, sql, logs]
+    retries: 0
+  - id: IAM-E2E-SITE-001
+    category: pair_e2e
+    status: NOT_STARTED
+    title: Complete Site create update select suspend reactivate delete and restore lifecycle
+    requirements: [WEB-IAM-FR-IDEM-001, WEB-IAM-FR-DELETE-001]
+    acceptance: [WEB-IAM-ACC-IDEM-001]
+    testFile: test/pair/sites.spec.ts
+    evidence: [screenshot, trace, video, har, rpc, sql, logs]
+    retries: 0
+  - id: IAM-E2E-SITEMEMBER-001
+    category: pair_e2e
+    status: NOT_STARTED
+    title: Complete Site Member lifecycle role change and last-owner protection
+    requirements: [WEB-IAM-FR-MEMBER-001, WEB-IAM-FR-RBAC-002]
+    acceptance: [WEB-IAM-ACC-MEMBER-001]
+    testFile: test/pair/sites.spec.ts
+    evidence: [screenshot, trace, video, har, rpc, sql, logs]
+    retries: 0
+  - id: IAM-E2E-SITERBAC-001
+    category: pair_e2e
+    status: NOT_STARTED
+    title: Site-scoped authorization allow deny revoke and cross-Site denial
+    requirements: [WEB-IAM-FR-RBAC-001, WEB-IAM-FR-RBAC-002]
+    acceptance: [WEB-IAM-ACC-RBAC-001]
+    testFile: test/pair/sites.spec.ts
+    evidence: [screenshot, trace, video, har, rpc, sql, logs]
+    retries: 0
+  - id: IAM-E2E-SITEAUDIT-001
+    category: pair_e2e
+    status: NOT_STARTED
+    title: Site-scoped audit and global audit filters statistics and detail Drawer
+    requirements: [WEB-IAM-FR-AUDIT-001]
+    acceptance: [WEB-IAM-ACC-AUDIT-001]
+    testFile: test/pair/sites.spec.ts
     evidence: [screenshot, trace, video, har, rpc, sql, logs]
     retries: 0
   - id: IAM-E2E-MEMBER-001
@@ -456,7 +537,7 @@ cases:
     title: Complete Member lifecycle and last-owner protection
     requirements: [WEB-IAM-FR-MEMBER-001, WEB-IAM-FR-RBAC-002]
     acceptance: [WEB-IAM-ACC-MEMBER-001]
-    testFile: null
+    testFile: test/pair/members-access.spec.ts
     evidence: [screenshot, trace, video, har, rpc, sql, logs]
     retries: 0
   - id: IAM-E2E-RBAC-001
@@ -465,7 +546,7 @@ cases:
     title: Grant allow revoke deny and cross-organization denial
     requirements: [WEB-IAM-FR-RBAC-001, WEB-IAM-FR-RBAC-002]
     acceptance: [WEB-IAM-ACC-RBAC-001]
-    testFile: null
+    testFile: test/pair/members-access.spec.ts
     evidence: [screenshot, trace, video, har, rpc, sql, logs]
     retries: 0
   - id: IAM-E2E-DELETE-001
@@ -474,7 +555,7 @@ cases:
     title: User and Organization delete restore and audit continuity
     requirements: [WEB-IAM-FR-USER-001, WEB-IAM-FR-DELETE-001, WEB-IAM-FR-AUDIT-001]
     acceptance: [WEB-IAM-ACC-USER-001, WEB-IAM-ACC-AUDIT-001]
-    testFile: null
+    testFile: test/pair/users.spec.ts
     evidence: [screenshot, trace, video, har, rpc, sql, logs]
     retries: 0
   - id: IAM-E2E-IDEM-001
@@ -483,7 +564,7 @@ cases:
     title: Double-submit one command and recover one durable result
     requirements: [WEB-IAM-FR-IDEM-001]
     acceptance: [WEB-IAM-ACC-IDEM-001]
-    testFile: null
+    testFile: test/pair/audit-idempotency.spec.ts
     evidence: [screenshot, trace, video, har, rpc, sql, logs]
     retries: 0
   - id: IAM-E2E-FRESH-001
@@ -492,6 +573,6 @@ cases:
     title: Two independent fresh Chromium rounds
     requirements: [WEB-IAM-FR-RPC-001, WEB-IAM-FR-MODULE-001, WEB-IAM-FR-I18N-001]
     acceptance: [WEB-IAM-ACC-FRESH-001]
-    testFile: null
+    testFile: test/pair/audit-idempotency.spec.ts
     evidence: [manifest, report, checksums]
     retries: 0

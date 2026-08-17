@@ -10,12 +10,14 @@ import {
   SecurityEventRecordSchema,
   SiteMemberRecordSchema,
   SiteRecordSchema,
+  SiteRoleRecordSchema,
   UserRecordSchema,
   type CommandContext,
 } from "../../generated/iam/proto/kokoro/iam/v1/types_pb";
 import { createSiteActionHandler } from "../../modules/iam/sites/actions";
 import { loadSiteDetail, loadSites, parseSiteDetailFilters, parseSiteFilters } from "../../modules/iam/sites/query";
 import type { SiteCommandActionInput } from "../../modules/iam/sites/schema";
+import { siteDetailHref } from "../../modules/iam/sites/url";
 import { createIamManagementClient } from "../../server/iam/management-client";
 
 const siteId = "94944258-f6a2-4813-bd2e-3e4a38053021";
@@ -35,6 +37,17 @@ describe("IAM Site server vertical slice", () => {
     expect(() => parseSiteDetailFilters({ resourceRef: "workspace:primary" })).toThrow("invalid site detail filters");
   });
 
+  it("WEB-INT-SITE-001 preserves the active detail Tab and independent member/audit cursors", () => {
+    const filters = parseSiteDetailFilters({
+      tab: "audit", memberCursor: "member/cursor", auditCursor: "audit/cursor", auditLimit: "50",
+    });
+    const url = new URL(siteDetailHref(siteId, filters), "http://localhost");
+    expect(url.pathname).toBe(`/sites/${siteId}`);
+    expect(Object.fromEntries(url.searchParams)).toMatchObject({
+      tab: "audit", memberCursor: "member/cursor", auditCursor: "audit/cursor", auditLimit: "50",
+    });
+  });
+
   it("WEB-INT-SITE-001 composes list/detail, scoped members, authorization and Site audit", async () => {
     const observed: Array<Record<string, unknown>> = [];
     const transport = createRouterTransport((router) => {
@@ -50,6 +63,10 @@ describe("IAM Site server vertical slice", () => {
         listSiteMembers: (request) => {
           observed.push({ method: "listSiteMembers", ...request });
           return { members: [member("active", "owner")], page: { nextCursor: "member/cursor" } };
+        },
+        listSiteRoles: (request) => {
+          observed.push({ method: "listSiteRoles", ...request });
+          return { roles: [siteRole("owner", true), siteRole("admin", true), siteRole("member", true)] };
         },
       });
       router.service(IamAdministrationService, {
@@ -88,8 +105,11 @@ describe("IAM Site server vertical slice", () => {
       query: " kokoro ", status: "deleted", includeDeleted: "true", cursor: "opaque/cursor", limit: "999",
     });
     const detail = await loadSiteDetail(client, siteId, {
+      tab: "audit",
       memberQuery: " owner@example.com ", includeDeletedMembers: "true",
       permissionKey: "site:delete", authorizationUserId: userId, resourceRef: "workspace:primary",
+      auditKind: "site.deleted", auditActorUserId: userId, auditTargetUserId: userId,
+      auditCursor: "audit/cursor", auditLimit: "50",
     });
 
     expect(list).toMatchObject({
@@ -99,6 +119,7 @@ describe("IAM Site server vertical slice", () => {
     });
     expect(detail).toMatchObject({
       site: { id: siteId, code: "kokoro-main", status: "deleted" },
+      filters: { tab: "audit", auditKind: "site.deleted", auditCursor: "audit/cursor", auditLimit: 50 },
       members: {
         items: [{ id: memberId, siteId, userLabel: "owner@example.com", roleKey: "owner" }],
         nextCursor: "member/cursor",
@@ -111,8 +132,12 @@ describe("IAM Site server vertical slice", () => {
       expect.objectContaining({ method: "listSites", query: "kokoro", status: "deleted", includeDeleted: true }),
       expect.objectContaining({ method: "getSite", siteId, includeDeleted: true }),
       expect.objectContaining({ method: "listSiteMembers", siteId, includeDeleted: true }),
+      expect.objectContaining({ method: "listSiteRoles", siteId, includeDeleted: true }),
       expect.objectContaining({ method: "listUsers", query: "owner@example.com", status: "active" }),
-      expect.objectContaining({ method: "listSecurityEvents", siteId }),
+      expect.objectContaining({
+        method: "listSecurityEvents", siteId, kind: "site.deleted", actorUserId: userId,
+        targetUserId: userId, page: expect.objectContaining({ cursor: "audit/cursor", limit: 50 }),
+      }),
       expect.objectContaining({
         method: "inspectUserSiteAuthorization", siteId, userId, permissionKey: "site:delete",
         resourceRef: "workspace:primary",
@@ -229,6 +254,13 @@ function member(status: "active" | "suspended" | "deleted", roleKey: string) {
     id: memberId, siteId, userId, roleId: "4f7556a0-64ea-4da0-8996-d1f744035b75", roleKey,
     status, version: BigInt(3), ...(status === "deleted" ? { deletedAt: timestampFromDate(now) } : {}),
     createdAt: timestampFromDate(now), updatedAt: timestampFromDate(now),
+  });
+}
+
+function siteRole(key: string, builtIn: boolean) {
+  return create(SiteRoleRecordSchema, {
+    id: crypto.randomUUID(), siteId, key, name: key, description: `${key} role`, builtIn,
+    status: "active", version: BigInt(1), permissionKeys: ["site:read"],
   });
 }
 

@@ -165,16 +165,18 @@ async function captureRuntimeEvidence(input: Readonly<{
   requestId: string | null;
   commandId: string | null;
 }>> {
-  const [iamSource, adminStdout, adminStderr, users, sessions, organizations, members, receipts, events] = await Promise.all([
+  const [iamSource, adminStdout, adminStderr, users, sessions, organizations, members, sites, siteMembers, receipts, events] = await Promise.all([
     logLines(input.state.iamLogPath),
     logLines(input.state.adminStdoutPath),
     logLines(input.state.adminStderrPath),
     input.pool.query(`SELECT id, email, name, platform_role, status, version::text, deleted_at, created_at, updated_at FROM public.iam_user ORDER BY created_at, id`),
-    input.pool.query(`SELECT id, user_id, active_organization_id, expires, revoked_at, revoke_reason, created_at, updated_at FROM public.iam_session ORDER BY created_at, id`),
+    input.pool.query(`SELECT id, user_id, active_organization_id, active_site_id, expires, revoked_at, revoke_reason, created_at, updated_at FROM public.iam_session ORDER BY created_at, id`),
     input.pool.query(`SELECT id, slug, name, status, version::text, deleted_at, created_at, updated_at FROM public.iam_organization ORDER BY created_at, id`),
     input.pool.query(`SELECT m.id, m.organization_id, m.user_id, r.key AS role_key, m.status, m.version::text, m.deleted_at, m.created_at, m.updated_at FROM public.iam_member m LEFT JOIN public.iam_role r ON r.id = m.role_id ORDER BY m.created_at, m.id`),
+    input.pool.query(`SELECT id, code, name, status, version::text, deleted_at, created_at, updated_at FROM public.iam_site ORDER BY created_at, id`),
+    input.pool.query(`SELECT m.id, m.site_id, m.user_id, r.key AS role_key, m.status, m.version::text, m.deleted_at, m.created_at, m.updated_at FROM public.iam_site_member m LEFT JOIN public.iam_site_role r ON r.id = m.role_id ORDER BY m.created_at, m.id`),
     input.pool.query(`SELECT command_id, kind, status, result_ref, error_code, claimed_at, completed_at, updated_at FROM public.iam_command_receipt ORDER BY claimed_at, command_id`),
-    input.pool.query(`SELECT id, kind, actor_user_id, target_user_id, organization_id, session_id, request_id, command_id, metadata, created_at FROM public.iam_security_event ORDER BY created_at, id`),
+    input.pool.query(`SELECT id, kind, actor_user_id, target_user_id, organization_id, site_id, session_id, request_id, command_id, metadata, created_at FROM public.iam_security_event ORDER BY created_at, id`),
   ]);
   const lower = input.startedEpochMs - 500;
   const upper = input.finishedEpochMs + 1_000;
@@ -198,11 +200,13 @@ async function captureRuntimeEvidence(input: Readonly<{
   await Promise.all([
     writeJson(rpcPath, { window: { lowerEpochMs: lower, upperEpochMs: upper }, records: rpcRecords }),
     writeJson(sqlPath, {
-      allowlist: ["iam_user", "iam_session", "iam_organization", "iam_member+iam_role", "iam_command_receipt", "iam_security_event"],
+      allowlist: ["iam_user", "iam_session", "iam_organization", "iam_member+iam_role", "iam_site", "iam_site_member+iam_site_role", "iam_command_receipt", "iam_security_event"],
       users: users.rows,
       sessions: sessions.rows,
       organizations: organizations.rows,
       members: members.rows,
+      sites: sites.rows,
+      siteMembers: siteMembers.rows,
       commandReceipts: receipts.rows,
       securityEvents: events.rows,
     }),

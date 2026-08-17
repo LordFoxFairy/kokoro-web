@@ -21,6 +21,61 @@ const commandId = "94944258-f6a2-4813-bd2e-3e4a38053021";
 const now = new Date("2026-08-16T10:00:00.000Z");
 
 describe("IAM User server actions", () => {
+  it("WEB-INT-USER-002 creates only a standard User and updates the exact versioned User scope", async () => {
+    const calls: unknown[] = [];
+    const revalidated: string[] = [];
+    const transport = createRouterTransport((router) => {
+      router.service(IamAdministrationService, {
+        createUser: (request) => {
+          calls.push(request);
+          return { user: standardUser(request.email, request.name), replayed: false };
+        },
+        updateUser: (request) => {
+          calls.push(request);
+          return { user: standardUser(request.email, request.name), replayed: false };
+        },
+      });
+    });
+    const handle = createUserActionHandler({
+      loadClient: async () => createIamManagementClient(transport),
+      revalidatePath: (path) => revalidated.push(path),
+    });
+
+    expect(await handle({ operation: "create", email: "new@example.com", name: "New User", image: "", requestId, commandId, reason: "Provision account" }))
+      .toEqual({ status: "success", commandId, replayed: false });
+    expect(await handle({ operation: "update", userId, email: "updated@example.com", name: "Updated User", image: "https://example.com/avatar.png", expectedVersion: "7", requestId, commandId, reason: "Correct profile" }))
+      .toEqual({ status: "success", commandId, replayed: false });
+
+    expect(calls).toHaveLength(2);
+    expect(calls[0]).toMatchObject({ email: "new@example.com", name: "New User", command: { commandId, reason: "Provision account" } });
+    expect(calls[0]).not.toHaveProperty("password");
+    expect(calls[0]).not.toHaveProperty("platformRole");
+    expect(calls[1]).toMatchObject({ userId, email: "updated@example.com", image: "https://example.com/avatar.png", command: { expectedVersion: BigInt(7) } });
+    expect(revalidated).toEqual(["/users", `/users/${userId}`, "/users", `/users/${userId}`]);
+  });
+
+  it("WEB-SEC-USER-002 rejects browser-supplied administrator fields and mismatched RPC scope", async () => {
+    let calls = 0;
+    const revalidated: string[] = [];
+    const transport = createRouterTransport((router) => {
+      router.service(IamAdministrationService, {
+        createUser: () => {
+          calls += 1;
+          return { user: user("active"), replayed: false };
+        },
+      });
+    });
+    const handle = createUserActionHandler({ loadClient: async () => createIamManagementClient(transport), revalidatePath: (path) => revalidated.push(path) });
+
+    const injected = await handle({ operation: "create", email: "new@example.com", name: "New User", requestId, commandId, reason: "Provision", platformRole: "admin" } as never);
+    expect(injected).toMatchObject({ status: "error", kind: "invalid", commandId });
+    expect(calls).toBe(0);
+
+    const mismatch = await handle({ operation: "create", email: "new@example.com", name: "New User", requestId, commandId, reason: "Provision" });
+    expect(mismatch).toMatchObject({ status: "error", kind: "internal", commandId });
+    expect(revalidated).toEqual([]);
+  });
+
   it("WEB-INT-USER-001 executes every lifecycle command with expected version and stable replay identity", async () => {
     const calls: Array<Readonly<{ operation: string; commandId: string; expectedVersion?: bigint }>> = [];
     const events: Array<ReturnType<typeof securityEvent>> = [];
@@ -31,7 +86,7 @@ describe("IAM User server actions", () => {
         reactivateUser: (request) => mutation("reactivate", "active", request.command),
         deleteUser: (request) => mutation("delete", "deleted", request.command),
         restoreUser: (request) => mutation("restore", "active", request.command),
-        listSecurityEvents: () => ({ events, page: { nextCursor: "" } }),
+        listSecurityEvents: () => ({ events, page: { nextCursor: "" }, statistics: { total: BigInt(events.length), byKind: [] } }),
       });
     });
     const revalidated: string[] = [];
@@ -90,7 +145,7 @@ describe("IAM User server actions", () => {
           includeDeleted.push(request.includeDeleted);
           return request.userId === missingId ? {} : { user: user("deleted") };
         },
-        listSecurityEvents: () => ({ events: [], page: { nextCursor: "" } }),
+        listSecurityEvents: () => ({ events: [], page: { nextCursor: "" }, statistics: { total: BigInt(0), byKind: [] } }),
       });
       router.service(IamSessionService, {
         listSessions: () => ({ sessions: [], page: { nextCursor: "" } }),
@@ -154,6 +209,19 @@ function user(status: "active" | "suspended" | "deleted") {
     status,
     version: BigInt(8),
     ...(status === "deleted" ? { deletedAt: timestampFromDate(now) } : {}),
+    createdAt: timestampFromDate(now),
+    updatedAt: timestampFromDate(now),
+  });
+}
+
+function standardUser(email: string, name: string) {
+  return create(UserRecordSchema, {
+    id: userId,
+    email,
+    name,
+    platformRole: "user",
+    status: "active",
+    version: BigInt(8),
     createdAt: timestampFromDate(now),
     updatedAt: timestampFromDate(now),
   });

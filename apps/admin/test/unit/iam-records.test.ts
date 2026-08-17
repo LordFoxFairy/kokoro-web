@@ -8,6 +8,7 @@ import {
   RoleRecordSchema,
   SiteMemberRecordSchema,
   SiteRecordSchema,
+  SiteRoleRecordSchema,
   UserRecordSchema,
 } from "../../generated/iam/proto/kokoro/iam/v1/types_pb";
 import {
@@ -21,6 +22,7 @@ import {
   siteAuthorizationInspectionFromResponse,
   siteFromRecord,
   siteMemberFromRecord,
+  siteRoleFromRecord,
   authorizationFromResponse,
   authorizationInspectionFromResponse,
   organizationFromRecord,
@@ -112,6 +114,44 @@ describe("strict IAM domain record mapping", () => {
     expect(member).toMatchObject({ siteId, roleKey: "owner", status: "active", version: BigInt(2) });
     expect(Object.isFrozen(site)).toBe(true);
     expect(Object.isFrozen(member)).toBe(true);
+  });
+
+  it("WEB-UNIT-RBAC-001 accepts custom role keys and enforces Organization and Site scope", () => {
+    const organizationId = "94944258-f6a2-4813-bd2e-3e4a38053021";
+    const siteId = "b9d876d1-f22a-4cd6-9723-cfbd344ebccb";
+    const organizationRole = roleFromRecord(create(RoleRecordSchema, {
+      id: "4f7556a0-64ea-4da0-8996-d1f744035b75",
+      organizationId,
+      key: "billing_reviewer",
+      name: "Billing reviewer",
+      description: "Reviews invoices.",
+      status: "active",
+      version: BigInt(1),
+      permissionKeys: ["billing:read"],
+    }), organizationId);
+    const siteRole = siteRoleFromRecord(create(SiteRoleRecordSchema, {
+      id: "a237ca85-0634-4ce8-bd37-6d7bd90beaa8",
+      siteId,
+      key: "content_editor",
+      name: "Content editor",
+      description: "Edits Site content.",
+      status: "active",
+      version: BigInt(2),
+      permissionKeys: ["site:update"],
+    }), siteId);
+
+    expect(organizationRole.key).toBe("billing_reviewer");
+    expect(siteRole).toMatchObject({ siteId, key: "content_editor" });
+    expect(() => roleFromRecord(create(RoleRecordSchema, {
+      ...organizationRole,
+      permissionKeys: [...organizationRole.permissionKeys],
+    }), siteId))
+      .toThrow("invalid organization role scope");
+    expect(() => siteRoleFromRecord(create(SiteRoleRecordSchema, {
+      ...siteRole,
+      siteId,
+      permissionKeys: [...siteRole.permissionKeys],
+    }), organizationId)).toThrow("invalid site role scope");
   });
 
   it("WEB-UNIT-SITE-001 preserves Site scope in live and inspected authorization", () => {
@@ -212,11 +252,11 @@ describe("strict IAM domain record mapping", () => {
     expect(inspection).not.toHaveProperty("sessionId");
   });
 
-  it("WEB-UNIT-RECORD-001 rejects unknown Role keys and inconsistent authorization decisions", () => {
+  it("WEB-UNIT-RECORD-001 rejects malformed Role keys and inconsistent authorization decisions", () => {
     expect(() => roleFromRecord(create(RoleRecordSchema, {
       id: "4f7556a0-64ea-4da0-8996-d1f744035b75",
       organizationId: "94944258-f6a2-4813-bd2e-3e4a38053021",
-      key: "viewer",
+      key: "Invalid-Viewer",
       name: "Viewer",
       description: "Read access",
       builtIn: true,
