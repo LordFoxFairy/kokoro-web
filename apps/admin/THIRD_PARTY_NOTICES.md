@@ -1,8 +1,9 @@
 # Third-party notices
 
-## shadcn-admin theme tokens
+## shadcn-admin theme tokens and primitive components
 
-The semantic theme tokens in `src/styles/theme.css` are derived from
+The semantic theme tokens in `src/styles/theme.css` and the primitive
+components in `src/components/ui`, `src/components`, and `src/hooks` are derived from
 [`satnaing/shadcn-admin`](https://github.com/satnaing/shadcn-admin) at commit
 [`e16c87f213a5ba5e45964e9b67c792105ec74d26`](https://github.com/satnaing/shadcn-admin/commit/e16c87f213a5ba5e45964e9b67c792105ec74d26).
 
