@@ -1,22 +1,37 @@
-"use client";
+import { useLayout } from '@/context/layout-provider'
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarHeader,
+  SidebarRail,
+} from '@/components/ui/sidebar'
+// import { AppTitle } from './app-title'
+import { sidebarData } from './data/sidebar-data'
+import { NavGroup } from './nav-group'
+import { NavUser } from './nav-user'
+import { TeamSwitcher } from './team-switcher'
 
-import { Shield } from "lucide-react";
+export function AppSidebar() {
+  const { collapsible, variant } = useLayout()
+  return (
+    <Sidebar collapsible={collapsible} variant={variant}>
+      <SidebarHeader>
+        <TeamSwitcher teams={sidebarData.teams} />
 
-import { useLayout } from "@/context/layout-provider";
-import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarRail } from "@/components/ui/sidebar";
-
-import { NavGroup } from "./nav-group";
-import { NavUser } from "./nav-user";
-import { navigationForCapabilities } from "./sidebar-data";
-
-export function AppSidebar({ capabilities = new Set<string>() }: { capabilities?: ReadonlySet<string> }) {
-  const { collapsible } = useLayout();
-  return <Sidebar collapsible={collapsible}>
-    <SidebarHeader>
-      <div className="flex h-10 items-center gap-2 px-2 text-sm font-semibold"><Shield className="size-4" /><span>Kokoro</span></div>
-    </SidebarHeader>
-    <SidebarContent>{navigationForCapabilities(capabilities).map((group) => <NavGroup key={group.title} {...group} />)}</SidebarContent>
-    <SidebarFooter><NavUser /></SidebarFooter>
-    <SidebarRail />
-  </Sidebar>;
+        {/* Replace <TeamSwitch /> with the following <AppTitle />
+         /* if you want to use the normal app title instead of TeamSwitch dropdown */}
+        {/* <AppTitle /> */}
+      </SidebarHeader>
+      <SidebarContent>
+        {sidebarData.navGroups.map((props) => (
+          <NavGroup key={props.title} {...props} />
+        ))}
+      </SidebarContent>
+      <SidebarFooter>
+        <NavUser user={sidebarData.user} />
+      </SidebarFooter>
+      <SidebarRail />
+    </Sidebar>
+  )
 }

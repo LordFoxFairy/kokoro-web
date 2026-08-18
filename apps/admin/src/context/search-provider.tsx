@@ -1,35 +1,46 @@
-"use client";
+import { createContext, useContext, useEffect, useState } from 'react'
+import { CommandMenu } from '@/components/command-menu'
 
-import * as React from "react";
-
-import { CommandMenu } from "@/components/command-menu";
-
-type SearchContextValue = {
-  open: boolean;
-  setOpen: React.Dispatch<React.SetStateAction<boolean>>;
-};
-
-const SearchContext = React.createContext<SearchContextValue | null>(null);
-
-export function SearchProvider({ children }: { children: React.ReactNode }) {
-  const [open, setOpen] = React.useState(false);
-
-  React.useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key.toLowerCase() === "k" && (event.metaKey || event.ctrlKey)) {
-        event.preventDefault();
-        setOpen((current) => !current);
-      }
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, []);
-
-  return <SearchContext value={{ open, setOpen }}>{children}<CommandMenu /></SearchContext>;
+type SearchContextType = {
+  open: boolean
+  setOpen: React.Dispatch<React.SetStateAction<boolean>>
 }
 
-export function useSearch() {
-  const context = React.useContext(SearchContext);
-  if (!context) throw new Error("useSearch must be used within SearchProvider");
-  return context;
+const SearchContext = createContext<SearchContextType | null>(null)
+
+type SearchProviderProps = {
+  children: React.ReactNode
+}
+
+export function SearchProvider({ children }: SearchProviderProps) {
+  const [open, setOpen] = useState(false)
+
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => {
+      if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault()
+        setOpen((open) => !open)
+      }
+    }
+    document.addEventListener('keydown', down)
+    return () => document.removeEventListener('keydown', down)
+  }, [])
+
+  return (
+    <SearchContext value={{ open, setOpen }}>
+      {children}
+      <CommandMenu />
+    </SearchContext>
+  )
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export const useSearch = () => {
+  const searchContext = useContext(SearchContext)
+
+  if (!searchContext) {
+    throw new Error('useSearch has to be used within SearchProvider')
+  }
+
+  return searchContext
 }

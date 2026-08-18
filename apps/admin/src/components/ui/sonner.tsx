@@ -1,12 +1,12 @@
-import { useTheme } from 'next-themes'
-import { Toaster as Sonner, type ToasterProps } from 'sonner'
+import { Toaster as Sonner, ToasterProps } from 'sonner'
+import { useTheme } from '@/context/theme-provider'
 
 export function Toaster({ ...props }: ToasterProps) {
-  const { resolvedTheme = 'system' } = useTheme()
+  const { theme = 'system' } = useTheme()
 
   return (
     <Sonner
-      theme={resolvedTheme as ToasterProps['theme']}
+      theme={theme as ToasterProps['theme']}
       className='toaster group [&_div[data-content]]:w-full'
       style={
         {

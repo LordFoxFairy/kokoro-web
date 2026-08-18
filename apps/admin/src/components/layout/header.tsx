@@ -1,18 +1,50 @@
-"use client";
+import { useEffect, useState } from 'react'
+import { cn } from '@/lib/utils'
+import { Separator } from '@/components/ui/separator'
+import { SidebarTrigger } from '@/components/ui/sidebar'
 
-import { Search } from "lucide-react";
+type HeaderProps = React.HTMLAttributes<HTMLElement> & {
+  fixed?: boolean
+  ref?: React.Ref<HTMLElement>
+}
 
-import { useSearch } from "@/context/search-provider";
-import { Button } from "@/components/ui/button";
-import { SidebarTrigger } from "@/components/ui/sidebar";
-import { ThemeSwitch } from "@/components/theme-switch";
+export function Header({ className, fixed, children, ...props }: HeaderProps) {
+  const [offset, setOffset] = useState(0)
 
-export function Header() {
-  const { setOpen } = useSearch();
-  return <header className="sticky top-0 z-20 flex h-14 shrink-0 items-center gap-2 border-b bg-background px-4">
-    <SidebarTrigger />
-    <div className="min-w-0 flex-1 text-sm font-medium">Management</div>
-    <Button variant="outline" size="sm" className="gap-2" onClick={() => setOpen(true)}><Search /> <span>Search</span><kbd className="hidden text-xs text-muted-foreground sm:inline">Ctrl K</kbd></Button>
-    <ThemeSwitch />
-  </header>;
+  useEffect(() => {
+    const onScroll = () => {
+      setOffset(document.body.scrollTop || document.documentElement.scrollTop)
+    }
+
+    // Add scroll listener to the body
+    document.addEventListener('scroll', onScroll, { passive: true })
+
+    // Clean up the event listener on unmount
+    return () => document.removeEventListener('scroll', onScroll)
+  }, [])
+
+  return (
+    <header
+      className={cn(
+        'z-50 h-16',
+        fixed && 'header-fixed peer/header sticky top-0 w-[inherit]',
+        offset > 10 && fixed ? 'shadow' : 'shadow-none',
+        className
+      )}
+      {...props}
+    >
+      <div
+        className={cn(
+          'relative flex h-full items-center gap-3 p-4 sm:gap-4',
+          offset > 10 &&
+            fixed &&
+            'after:absolute after:inset-0 after:-z-10 after:bg-background/20 after:backdrop-blur-lg'
+        )}
+      >
+        <SidebarTrigger variant='outline' className='max-md:scale-125' />
+        <Separator orientation='vertical' className='h-6' />
+        {children}
+      </div>
+    </header>
+  )
 }

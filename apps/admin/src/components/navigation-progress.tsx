@@ -1,19 +1,25 @@
-"use client";
-
-import { useEffect, useState } from "react";
+import { useEffect, useRef } from 'react'
+import { useRouterState } from '@tanstack/react-router'
+import LoadingBar, { type LoadingBarRef } from 'react-top-loading-bar'
 
 export function NavigationProgress() {
-  const [visible, setVisible] = useState(false);
+  const ref = useRef<LoadingBarRef>(null)
+  const state = useRouterState()
+
   useEffect(() => {
-    let timer: number | undefined;
-    const onNavigation = (event: MouseEvent) => {
-      const link = (event.target as Element | null)?.closest("a[href]");
-      if (!link || link.getAttribute("target") || event.metaKey || event.ctrlKey) return;
-      setVisible(true);
-      timer = window.setTimeout(() => setVisible(false), 600);
-    };
-    document.addEventListener("click", onNavigation);
-    return () => { document.removeEventListener("click", onNavigation); if (timer) window.clearTimeout(timer); };
-  }, []);
-  return <div aria-hidden="true" className="fixed inset-x-0 top-0 z-50 h-0.5 bg-primary transition-opacity" data-visible={visible} style={{ opacity: visible ? 1 : 0 }} />;
+    if (state.status === 'pending') {
+      ref.current?.continuousStart()
+    } else {
+      ref.current?.complete()
+    }
+  }, [state.status])
+
+  return (
+    <LoadingBar
+      color='var(--muted-foreground)'
+      ref={ref}
+      shadow={true}
+      height={2}
+    />
+  )
 }
