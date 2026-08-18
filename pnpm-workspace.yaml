@@ -3,7 +3,7 @@ packages:
   - packages/*
 
 allowBuilds:
-  '@bufbuild/buf': true
+  '@bufbuild/buf': set this to true or false
   esbuild: true
   sharp: true
   unrs-resolver: true
@@ -11,4 +11,3 @@ allowBuilds:
 peerDependencyRules:
   allowedVersions:
     antd: '6'
-    nodemailer: '9'

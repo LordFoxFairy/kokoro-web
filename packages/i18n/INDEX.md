@@ -16,8 +16,7 @@
 
 ## 消费方
 
-- `@kokoro/admin-web`：`i18n/` 注入完整 zh/en 词典与 React 绑定
-  （`LocaleProvider`/`useT`）。
+当前消费方由各应用清单记录。新应用接入时必须在自己的边界内提供词典和框架绑定。
 
 ## 扩展规则
 

@@ -1,6 +1,6 @@
 // 解析层：委派共享引擎 @kokoro/i18n（泛型于本 app 的 Locale/MessageKey 与词典）。
 // 公共面 negotiateLocale/resolveMessage 签名不变——42 处 useT/MessageKey 消费方零改动。
-// 协商/三层 fallback/{插值} 逻辑收归 @kokoro/i18n 单一实现，与 admin-web 共用同一引擎。
+// 协商/三层 fallback/{插值} 逻辑收归 @kokoro/i18n 单一实现，供仓内应用复用。
 
 import { createI18n } from "@kokoro/i18n"
 

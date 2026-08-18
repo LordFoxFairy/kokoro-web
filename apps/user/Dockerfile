@@ -1,6 +1,6 @@
 # @kokoro/web-user 生产镜像（Next.js standalone,pnpm monorepo）。
 # 构建上下文 = kokoro-web workspace 根（需 pnpm-workspace.yaml + packages/*）。
-# 过滤安装只取 web-user 子树（--filter ...），避开 apps/admin 的 prisma postinstall。
+# 过滤安装只取 web-user 子树（--filter ...）。
 # 服务端 env（KOKORO_SESSION_BASE_URL / KOKORO_WEB_SESSION_SECRET 等）运行时注入,不烘焙。
 FROM node:22-bookworm-slim AS deps
 WORKDIR /app
@@ -10,11 +10,9 @@ ENV npm_config_fetch_retries=6 \
     npm_config_fetch_retry_mintimeout=10000 \
     npm_config_fetch_retry_maxtimeout=120000 \
     npm_config_network_concurrency=4
-# workspace 清单 + 锁 + .npmrc(node-linker=isolated)先拷,供过滤安装。全员 package.json 满足
-# frozen 一致性,但 --filter @kokoro/web-user... 只装 user 及其依赖(不装 admin,不跑 prisma postinstall)。
+# workspace 清单 + 锁 + .npmrc(node-linker=isolated)先拷，供过滤安装。
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 COPY apps/user/package.json ./apps/user/
-COPY apps/admin/package.json ./apps/admin/
 COPY packages/tsconfig/package.json ./packages/tsconfig/
 COPY packages/i18n/package.json ./packages/i18n/
 RUN pnpm install --frozen-lockfile --filter @kokoro/web-user...
@@ -26,7 +24,7 @@ RUN corepack enable && corepack prepare pnpm@11.2.2 --activate
 COPY --from=deps /app ./
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
-# 关 pnpm11 运行前 deps 校验：deps 阶段是 --filter 过滤安装（未装 admin），全量校验会误判不一致。
+# 关 pnpm11 运行前 deps 校验：deps 阶段是 --filter 过滤安装，全量校验会误判不一致。
 ENV pnpm_config_verify_deps_before_run=false
 # standalone 产物落 apps/user/.next/standalone（monorepo 布局：内含 node_modules + apps/user/server.js）。
 RUN pnpm --filter @kokoro/web-user build

@@ -1,9 +1,0 @@
-syntax = "proto3";
-
-package kokoro.common.v1;
-
-message ErrorDetail {
-  string reason = 1;
-  string request_id = 2;
-  string field = 3;
-}

@@ -1,5 +1,5 @@
 // 共享 i18n 窄包引擎：无第三方库、无 DOM/React，纯 key→string 表 + {插值} + 语言协商。
-// 各消费方（admin-web / 未来其它面）注入自己的 locale 集、源词典与增量覆盖，得到一个 translate 函数。
+// 各消费方注入自己的 locale 集、源词典与增量覆盖，得到一个 translate 函数。
 // 三层 fallback 恒不裸露 key：override[locale] → source（源语言全量）→ key 本身。
 //
 // 单文件 barrel：消费方既有以 TS 源码打包（Next transpilePackages，webpack 不改写 NodeNext 的

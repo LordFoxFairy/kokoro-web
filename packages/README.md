@@ -1,19 +1,18 @@
 # packages/
 
-Kokoro web monorepo 的共享包。被 `apps/user`（面向用户）与 `apps/admin`（后台管理，后续迁入）消费，
-收敛两 app 的重复实现，是"一个 web 子仓、方便管理"的落点。
+Kokoro web monorepo 的共享包。共享能力只有在至少两个应用稳定消费后才进入这里。
 
 ## 现有
 
 - **`@kokoro/tsconfig`** — 共享 TypeScript 基线（`base.json`）。app 各自 `extends`，只保留 app 专属
   （`paths` / Next `plugins` / test `types` / `include`）。已被 `apps/user` 消费。
 
-## 规划（随 admin 迁入 apps/admin 时落地——届时两个消费者都在，共享才有意义）
+## 规划
 
 - **`@kokoro/web-i18n`** — 通用 i18n 引擎（`LocaleProvider` / `useT` / 协商 / 插值），泛型于各 app 的
   消息字典。收编现状"三套 i18n"（apps/user 自造 + admin 的 `@kokoro/i18n` + admin lib/i18n）。
   需泛型化引擎 + rewire ~42 处 `@/i18n` 引用，独立一 phase 做。
-- **`@kokoro/web-ui`** — 共享设计件（两 app 均用 antd：user antd6 / admin antd5，先对齐版本再抽）。
+- **`@kokoro/web-ui`** — 仅在多个应用采用相同 shadcn/ui 契约后抽取稳定设计件。
 - **`@kokoro/eslint-config`** — 共享 lint 规则。
 
 ## 边界

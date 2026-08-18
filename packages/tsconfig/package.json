@@ -2,7 +2,7 @@
   "name": "@kokoro/tsconfig",
   "version": "0.1.0",
   "private": true,
-  "description": "Kokoro web monorepo 共享 TypeScript 基线配置。apps/user、apps/admin 各自 extends base.json，只保留 app 专属(paths/plugins/types/include)。",
+  "description": "Kokoro web monorepo 共享 TypeScript 基线配置，各应用只保留自身专属配置。",
   "files": [
     "base.json"
   ]
