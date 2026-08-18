@@ -7,10 +7,17 @@
 
 ## 1. 测试边界
 
-当前阶段以版本化 API 契约 fixture 独立验证 Admin，不要求 IAM 进程或 IAM 数据库参与：
+当前阶段只以临时的 provisional view-model fixture 验证前端视图模型和纯函数边界，不要求 IAM
+进程或 IAM 数据库参与。它不是版本化 API 契约 fixture，也不证明生成类型或 wire contract 一致：
 
 ```text
-Browser -> Admin Next.js BFF -> contract fixture
+Unit tests -> provisional view-model fixture
+```
+
+页面实现后、真实 IAM 联调前，才进入使用生成类型的版本化 API 契约 fixture 阶段：
+
+```text
+Browser -> Admin Next.js BFF -> generated-contract fixture
 ```
 
 最终验收必须切换为真实链路：
@@ -19,9 +26,12 @@ Browser -> Admin Next.js BFF -> contract fixture
 Browser -> Admin Next.js BFF -> server-only Connect-ES client -> IAM gRPC -> PostgreSQL
 ```
 
-- fixture 与真实 IAM 必须使用同一生成类型、字段语义、错误码和权限码。
-- fixture 只模拟契约响应，不复制 IAM 授权、生命周期或事务规则。
-- fixture 通过不代表产品验收通过；真实 IAM 两轮 E2E 通过后才能申请 `ACCEPTED`。
+- 当前 provisional view-model fixture 使用 `kokoro.admin.fixture.v1`，不得表述为 IAM Protobuf
+  契约或生成客户端的替代品。
+- 后续 generated-contract fixture 与真实 IAM 必须使用同一生成类型、字段语义、错误码和权限码。
+- fixture 只模拟预置响应，不复制 IAM 授权、生命周期或事务规则。
+- provisional view-model fixture 或后续 generated-contract fixture 通过均不代表产品验收通过；真实 IAM
+  两轮 E2E 通过后才能申请 `ACCEPTED`。
 - 前端测试不直接读取或写入 IAM 数据库。SQL 只用于最终验收后的结果核验。
 - 每个测试由 Admin 子仓库维护，不在父仓库建立集中测试仓库。
 
@@ -40,13 +50,29 @@ Browser -> Admin Next.js BFF -> server-only Connect-ES client -> IAM gRPC -> Pos
 ### 3.1 单元测试
 
 - [ ] Zod 边界 schema：合法数据、缺字段、额外字段、错误枚举、空值和超界值。
-- [ ] URL 查询状态：筛选、排序、分页、详情 Tab 和返回路径可稳定序列化。
+- [x] URL 查询状态：用户、Organization、Site、角色、权限诊断、会话和审计的已支持筛选、排序与
+      scope 可稳定解析、序列化和 round-trip；非法值、默认值、重复参数及不透明分页 token 有单元断言。
+- [ ] URL 查询状态：页码/游标导航、详情 Tab 和返回路径可稳定序列化并在页面中回读。
+- [x] 路由 registry 纯函数覆盖 Dashboard、全部顶层管理路由、用户/Organization/Site 详情路由、
+      静态 breadcrumb 元数据与未知路由；尚未覆盖实际 App Router 页面或 breadcrumb 组件。
 - [ ] 日期、数量、状态、标识符和错误码展示函数。
-- [ ] 权限投影函数只控制前端可见性，不产生新的授权结论。
+- [x] provisional view-model error 到 `error/forbidden/not-found` 页面状态的纯函数映射覆盖全部当前
+      错误码、requestId、字段错误和 retryable 元数据，且移除后端消息；页面状态 dispatcher 另行覆盖
+      `loading/ready/empty/error/forbidden/not-found/partial` 七态。
+- [x] 权限投影纯函数按显式 capability key 控制导航可见性；空能力、`allOf`、`anyOf`、组合条件和
+      缺失能力均有单元断言，权限诊断 fixture 只返回预置结果而不在前端求值策略。
 - [ ] DataTable 列定义、选择、批量操作资格和页码边界。
 - [ ] 表单 schema、默认值、字段关联、提交转换和服务端错误映射。
+- [x] provisional Session view model 严格解析用户、到期时间、capability 和 scope，拒绝未知字段、
+      Token/凭据字段、非法 scope 与非法到期时间。
+- [x] 登录回跳纯函数只接受同源 HTTP/HTTPS 目标并降为相对路径；公开登录错误映射不泄露账号状态或
+      后端消息。
 - [ ] Auth.js Session 映射、未登录重定向和退出后的状态清理。
-- [ ] fixture 必须符合生成契约，不允许任意对象或 `any` 绕过验证。
+- [x] provisional view-model fixture client 的固定时钟/requestId、查询、筛选、排序、分页 token、
+      详情、结构化错误、取消信号和预置权限诊断行为有单元断言。
+- [x] 数据源选择纯函数只在显式选择且为 development/test 时允许 provisional view-model fixture；
+      production、未配置 RPC 和未知数据源均稳定拒绝。
+- [ ] generated-contract fixture 必须符合生成契约，不允许任意对象或 `any` 绕过验证。
 
 ### 3.2 组件测试
 
@@ -65,7 +91,8 @@ Browser -> Admin Next.js BFF -> server-only Connect-ES client -> IAM gRPC -> Pos
 - [ ] Admin 只导入生成的 ConnectRPC 类型和客户端，不手写重复 DTO。
 - [ ] 每个 query/mutation 的请求字段、响应字段、分页游标和枚举均校验。
 - [ ] 错误码映射覆盖 unauthenticated、permission denied、not found、conflict、invalid argument、rate limited 和 unavailable。
-- [ ] fixture 与当前契约版本建立版本锁定；契约变更必须使不兼容 fixture 测试失败。
+- [ ] generated-contract fixture 与当前契约版本建立版本锁定；契约变更必须使不兼容 fixture 测试
+      失败。当前 `kokoro.admin.fixture.v1` provisional view-model fixture 不计为此项证据。
 - [ ] BFF 不向浏览器暴露 IAM 地址、内部 Token、Cookie 内容或服务端堆栈。
 - [ ] 最终联调对每个 Admin 调用验证生成客户端、真实 IAM 响应和运行时 schema 一致。
 
@@ -82,10 +109,14 @@ Browser -> Admin Next.js BFF -> server-only Connect-ES client -> IAM gRPC -> Pos
 
 ### 3.5 静态与构建门禁
 
-- [ ] TypeScript 严格类型检查通过，无新增 `any`、无宽泛边界对象。
-- [ ] ESLint 通过，警告按失败处理。
-- [ ] 单元和组件测试全量通过并输出机器可读报告。
-- [ ] Next.js production build 通过。
+- [x] 已记录自动化批次的 TypeScript `tsc --noEmit` 严格类型检查通过。
+- [ ] 完成源码边界审计，确认无新增显式/隐式 `any` 和宽泛边界对象。
+- [x] 已记录自动化批次的 ESLint 通过且为 0 warnings。
+- [ ] 本清单定义的单元和组件测试范围全部实现并全量通过。
+- [x] 当前已实现单元测试在本批次记录中 13 files、179 tests 全部通过，且
+      `skip/todo/retry = 0/0/0`；这不代表本清单要求的单元测试范围或任何组件测试已完成。
+- [ ] 为全量单元和组件测试配置并保存机器可读报告。
+- [x] 已记录自动化批次的 Next.js 16 production build 通过。
 - [ ] 依赖扫描确认不存在 Ant Design、ProComponents、Clerk 和旧 Admin 兼容依赖。
 - [ ] 源码扫描确认不存在 Demo、mock product data、旧 Admin 路径和手写契约 DTO。
 - [ ] 生成客户端可从固定契约输入重新生成，工作树无未说明生成差异。
