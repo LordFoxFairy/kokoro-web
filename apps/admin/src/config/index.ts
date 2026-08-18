@@ -10,3 +10,9 @@ export {
   type NavItem,
   type NavItemId,
 } from './nav'
+export {
+  ADMIN_ROUTES,
+  matchAdminRoute,
+  type AdminRoute,
+  type BreadcrumbItem,
+} from './routes'

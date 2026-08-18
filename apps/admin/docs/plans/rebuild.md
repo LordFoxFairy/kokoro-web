@@ -13,6 +13,7 @@
 
 ## 阶段 2：共享前端基建
 
+- [x] 建立路由 registry、breadcrumb、统一页面状态和 production fixture 门禁。
 - [ ] 用官方原语组合 Sidebar、Header、Breadcrumb、主题和移动导航。
 - [ ] 建立 DataTable、筛选、游标分页、列设置和批量操作组合。
 - [ ] 建立 Field、FormDialog、ConfirmAction、Empty、Error、Forbidden 和 Skeleton 模式。
