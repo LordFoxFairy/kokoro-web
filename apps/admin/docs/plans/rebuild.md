@@ -20,6 +20,22 @@
 - [ ] 保证 Sidebar、Header、搜索、主题、DataTable、Dialog、Sheet 和响应式行为与上游一致。
 - [ ] 模板页面源码保留；没有真实业务的页面从生产导航移除。
 
+### 阶段 2 执行切片
+
+1. **Next 双跑**：保留可运行的 Vite 基线，新增 Next 根布局、Providers 和薄页面；首个
+   Next 页面必须直接装配现有 `Dashboard`、`AuthenticatedLayout` 和全部上游样式。
+2. **导航边界**：以 `next/link`、`usePathname`、`useSearchParams` 和 `useRouter` 建立窄接口，
+   再机械替换共享布局与 feature 中的 TanStack Router 调用，不建立兼容整个旧 Router 的假 API。
+3. **视觉门禁**：在 `1440x1000`、`1024x768`、`390x844` 下比较 Vite 与 Next，覆盖侧栏、
+   移动抽屉、搜索、主题、字体、RTL、弹窗、下拉菜单、表格和键盘焦点。
+4. **认证替换**：视觉与路由行为通过后，以 Auth.js 服务端 Session 替换 Clerk 和认证 store；
+   认证状态不得重新落入另一套客户端权威 store。
+5. **切换运行时**：Next 构建、回归测试与浏览器对比全部通过后，才移除 Vite、TanStack Router、
+   Clerk 的生产运行职责；被替换的每个上游文件必须在 manifest 中登记分类、替代位置和理由。
+
+以下实现直接阻断：新增平行 Shell、DataTable 或 UI 原语；为 Server Component 复制一套组件；
+删除上游测试换取构建通过；给整个 `src` 粗暴添加 `'use client'`；未登记便删除任何上游文件。
+
 ## 阶段 3：前端契约
 
 - [ ] 定义版本化 Admin API interface、错误码、能力、游标和 view model。

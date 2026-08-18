@@ -132,7 +132,8 @@
       "path": "eslint.config.js",
       "mode": "100644",
       "blob": "64698731ff709c65f78d60310f2092d8b5288571",
-      "classification": "unchanged"
+      "classification": "adapted",
+      "reason": "Exclude the additive Next.js build output from source linting."
     },
     {
       "path": "index.html",
@@ -157,7 +158,7 @@
       "mode": "100644",
       "blob": "344a66eb7a244b05960d4f7f2e670ac6dc25787c",
       "classification": "adapted",
-      "reason": "Expose the Kokoro upstream audit command while retaining the upstream package baseline."
+      "reason": "Expose the audit and additive Next.js 16 App Router commands while retaining the Vite baseline."
     },
     {
       "path": "pnpm-lock.yaml",
@@ -1640,7 +1641,8 @@
       "path": "vite.config.ts",
       "mode": "100644",
       "blob": "a835b994862fdf3e110162f15fd5b92220800cbc",
-      "classification": "unchanged"
+      "classification": "adapted",
+      "reason": "Bind local development and browser tests to IPv4 loopback for deterministic sandbox execution."
     }
   ],
   "additions": [
@@ -1653,6 +1655,71 @@
       "path": "scripts/upstream-audit.mjs",
       "classification": "audit",
       "reason": "Kokoro-owned executable gate for the frozen upstream baseline."
+    },
+    {
+      "path": "next.config.ts",
+      "classification": "framework",
+      "reason": "Next.js 16 App Router configuration for the additive framework adaptation."
+    },
+    {
+      "path": "postcss.config.mjs",
+      "classification": "framework",
+      "reason": "Tailwind CSS 4 PostCSS integration for the Next.js runtime."
+    },
+    {
+      "path": "tsconfig.next.json",
+      "classification": "framework",
+      "reason": "Isolated TypeScript configuration for the additive Next.js runtime."
+    },
+    {
+      "path": "src/app/layout.tsx",
+      "classification": "framework",
+      "reason": "Next.js App Router document shell loading the unchanged upstream styles."
+    },
+    {
+      "path": "src/app/page.tsx",
+      "classification": "framework",
+      "reason": "Next.js dashboard route entry."
+    },
+    {
+      "path": "src/app/runtime/admin-dashboard.tsx",
+      "classification": "framework",
+      "reason": "Client runtime bridge that directly composes the unchanged upstream authenticated layout and dashboard."
+    },
+    {
+      "path": "src/lib/navigation/index.ts",
+      "classification": "framework",
+      "reason": "Public entry for the narrow Next.js navigation boundary."
+    },
+    {
+      "path": "src/lib/navigation/core.ts",
+      "classification": "framework",
+      "reason": "Keeps navigation decisions framework-independent and testable without loading the Next.js runtime into Vite tests."
+    },
+    {
+      "path": "src/lib/navigation/link.tsx",
+      "classification": "framework",
+      "reason": "Maps the existing to-based link contract to Next.js Link without duplicating UI components."
+    },
+    {
+      "path": "src/lib/navigation/navigate.ts",
+      "classification": "framework",
+      "reason": "Provides the minimal push, replace, back and refresh operations required by Admin features."
+    },
+    {
+      "path": "src/lib/navigation/navigation.test.tsx",
+      "classification": "test",
+      "reason": "Locks the behavior of the narrow Next.js navigation boundary."
+    },
+    {
+      "path": "src/lib/navigation/use-path.ts",
+      "classification": "framework",
+      "reason": "Exposes the current Next.js pathname through a stable narrow hook."
+    },
+    {
+      "path": "src/lib/navigation/use-search.ts",
+      "classification": "framework",
+      "reason": "Exposes the current read-only Next.js URL search parameters through a stable narrow hook."
     }
   ]
 }
