@@ -46,7 +46,7 @@ Admin 业务已经完成。
 
 ## 边界纠正
 
-- 手写类型版本已明确为 `kokoro.admin.fixture.v1`，不再冒充 IAM Protobuf 契约版本。
+- 手写类型版本已明确为 `kokoro.admin.fixture.v2`，不再冒充 IAM Protobuf 契约版本。
 - `lib/contracts` 已改为 `lib/view-models`；生产 wire types 仍必须由 Protobuf-ES 生成。
 - 权限诊断只返回预置的允许/拒绝场景，未知组合返回错误，不根据 capability key 本地计算授权。
 - 正式 RPC 缺口记录在 `docs/architecture/contract-gaps.md`。

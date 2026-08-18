@@ -66,16 +66,6 @@ export type FixtureScenarioConfig = Readonly<{
   operations: Readonly<Partial<Record<FixtureOperation, FixtureScenario>>>
 }>
 
-export type FixtureDashboardSection = 'metrics' | 'recentAudit'
-
-export type FixturePartialMetadata = Readonly<{
-  kind: 'partial'
-  missingSections: readonly FixtureDashboardSection[]
-}>
-
-export type FixturePartialDashboardResult = DataResult<DashboardSummary> &
-  Readonly<{ fixtureScenario: FixturePartialMetadata }>
-
 export type FixtureScenarioErrorCode = 'INVALID_FIXTURE_SCENARIO'
 
 export class FixtureScenarioConfigurationError extends Error {
@@ -265,10 +255,13 @@ class ScenarioFixtureAdminDataClient implements AdminDataClient {
     const scenario = this.scenario('getDashboard')
     if (scenario === 'partial') {
       const complete = await this.base.getDashboard(scope, context)
-      const partial: FixturePartialDashboardResult = {
+      const partial: DataResult<DashboardSummary> = {
         ...complete,
-        data: { ...complete.data, recentAudit: [] },
-        fixtureScenario: { kind: 'partial', missingSections: ['recentAudit'] },
+        data: {
+          ...complete.data,
+          sections: { ...complete.data.sections, recentAudit: 'unavailable' },
+          recentAudit: [],
+        },
       }
       return partial
     }
@@ -278,6 +271,7 @@ class ScenarioFixtureAdminDataClient implements AdminDataClient {
       () => this.base.getDashboard(scope, context),
       () => ({
         generatedAt: FIXTURE_NOW,
+        sections: { metrics: 'ready', recentAudit: 'ready' },
         metrics: [],
         recentAudit: [],
       })
@@ -445,30 +439,4 @@ export function createScenarioFixtureAdminDataClient(
     )
   }
   return new ScenarioFixtureAdminDataClient(base, { operations })
-}
-
-export function isFixturePartialDashboardResult(
-  result: DataResult<DashboardSummary>
-): result is FixturePartialDashboardResult {
-  const candidate = result as DataResult<DashboardSummary> & {
-    readonly fixtureScenario?: unknown
-  }
-  if (
-    typeof candidate.fixtureScenario !== 'object' ||
-    candidate.fixtureScenario === null ||
-    !('kind' in candidate.fixtureScenario) ||
-    candidate.fixtureScenario.kind !== 'partial' ||
-    !('missingSections' in candidate.fixtureScenario) ||
-    !Array.isArray(candidate.fixtureScenario.missingSections)
-  ) {
-    return false
-  }
-  const sections = candidate.fixtureScenario.missingSections
-  return (
-    sections.length > 0 &&
-    new Set(sections).size === sections.length &&
-    sections.every(
-      (section) => section === 'metrics' || section === 'recentAudit'
-    )
-  )
 }

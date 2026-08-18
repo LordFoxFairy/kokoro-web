@@ -1,4 +1,4 @@
-export const ADMIN_FIXTURE_SCHEMA_VERSION = 'kokoro.admin.fixture.v1' as const
+export const ADMIN_FIXTURE_SCHEMA_VERSION = 'kokoro.admin.fixture.v2' as const
 
 export type AdminFixtureSchemaVersion = typeof ADMIN_FIXTURE_SCHEMA_VERSION
 

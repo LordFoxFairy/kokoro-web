@@ -12,6 +12,10 @@ export type DashboardMetric = {
 
 export type DashboardSummary = {
   readonly generatedAt: Instant
+  readonly sections: Readonly<{
+    metrics: 'ready' | 'unavailable'
+    recentAudit: 'ready' | 'unavailable'
+  }>
   readonly metrics: readonly DashboardMetric[]
   readonly recentAudit: readonly AuditEvent[]
 }

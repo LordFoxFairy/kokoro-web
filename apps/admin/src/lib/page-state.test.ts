@@ -9,7 +9,7 @@ import {
 import type { AdminError, AdminErrorCode } from './view-models'
 
 const codes = [
-  ['UNAUTHENTICATED', 'error', false],
+  ['UNAUTHENTICATED', 'unauthenticated', false],
   ['PERMISSION_DENIED', 'forbidden', false],
   ['INVALID_ARGUMENT', 'error', false],
   ['NOT_FOUND', 'not-found', false],
@@ -93,12 +93,13 @@ describe('page state lifecycle', () => {
     })
   })
 
-  it('exhaustively dispatches all seven states', () => {
+  it('exhaustively dispatches all eight states', () => {
     const handlers = {
       loading: () => 'loading',
       ready: (data: string) => `ready:${data}`,
       empty: () => 'empty',
       error: () => 'error',
+      unauthenticated: () => 'unauthenticated',
       forbidden: () => 'forbidden',
       'not-found': () => 'not-found',
       partial: (data: string) => `partial:${data}`,
@@ -109,6 +110,7 @@ describe('page state lifecycle', () => {
       { status: 'ready', data: 'data' },
       { status: 'empty' },
       error,
+      pageStateFromError(adminError('UNAUTHENTICATED'), 'fallback'),
       pageStateFromError(adminError('PERMISSION_DENIED'), 'fallback'),
       pageStateFromError(adminError('NOT_FOUND'), 'fallback'),
       partialPageState('cached', adminError('UNAVAILABLE')),
@@ -119,6 +121,7 @@ describe('page state lifecycle', () => {
       'ready:data',
       'empty',
       'error',
+      'unauthenticated',
       'forbidden',
       'not-found',
       'partial:cached',

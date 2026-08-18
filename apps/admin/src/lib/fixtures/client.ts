@@ -213,7 +213,10 @@ export class FixtureAdminDataClient implements AdminDataClient {
     )
   }
 
-  async getDashboard(_scope: Scope, context?: RequestContext) {
+  async getDashboard(
+    _scope: Scope,
+    context?: RequestContext
+  ): Promise<DataResult<DashboardSummary>> {
     const metrics: DashboardSummary['metrics'] = [
       {
         key: 'users',
@@ -248,14 +251,13 @@ export class FixtureAdminDataClient implements AdminDataClient {
         targetPath: '/audit?outcome=denied%2Cfailure',
       },
     ]
-    return this.result(
-      {
-        generatedAt: FIXTURE_NOW,
-        metrics,
-        recentAudit: fixtureAudit.slice(0, 3),
-      },
-      context
-    )
+    const dashboard: DashboardSummary = {
+      generatedAt: FIXTURE_NOW,
+      sections: { metrics: 'ready', recentAudit: 'ready' },
+      metrics,
+      recentAudit: fixtureAudit.slice(0, 3),
+    }
+    return this.result(dashboard, context)
   }
 
   async listUsers(request?: StatusPageRequest, context?: RequestContext) {

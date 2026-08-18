@@ -6,7 +6,6 @@ import { FixtureAdminDataClient } from './client'
 import {
   createScenarioFixtureAdminDataClient,
   FixtureScenarioConfigurationError,
-  isFixturePartialDashboardResult,
 } from './scenario'
 
 const platformScope = { type: 'platform' } as const
@@ -149,52 +148,12 @@ describe('ScenarioFixtureAdminDataClient', () => {
     expect(response).toMatchObject({
       requestId: 'req_dashboard_partial',
       schemaVersion: ADMIN_FIXTURE_SCHEMA_VERSION,
-      data: { recentAudit: [] },
-      fixtureScenario: {
-        kind: 'partial',
-        missingSections: ['recentAudit'],
+      data: {
+        sections: { metrics: 'ready', recentAudit: 'unavailable' },
+        recentAudit: [],
       },
     })
     expect(response.data.metrics).not.toHaveLength(0)
-    expect(isFixturePartialDashboardResult(response)).toBe(true)
-    if (isFixturePartialDashboardResult(response)) {
-      expect(response.fixtureScenario.missingSections).toEqual(['recentAudit'])
-    }
-  })
-
-  it('does not narrow malformed partial metadata', async () => {
-    const base = await new FixtureAdminDataClient().getDashboard(platformScope)
-
-    expect(
-      isFixturePartialDashboardResult({
-        ...base,
-        fixtureScenario: { kind: 'partial' },
-      } as never)
-    ).toBe(false)
-    expect(
-      isFixturePartialDashboardResult({
-        ...base,
-        fixtureScenario: {
-          kind: 'partial',
-          missingSections: ['unknown'],
-        },
-      } as never)
-    ).toBe(false)
-    expect(
-      isFixturePartialDashboardResult({
-        ...base,
-        fixtureScenario: { kind: 'partial', missingSections: [] },
-      } as never)
-    ).toBe(false)
-    expect(
-      isFixturePartialDashboardResult({
-        ...base,
-        fixtureScenario: {
-          kind: 'partial',
-          missingSections: ['recentAudit', 'recentAudit'],
-        },
-      } as never)
-    ).toBe(false)
   })
 
   it('does not reinterpret access checks or other request inputs as scenario selectors', async () => {

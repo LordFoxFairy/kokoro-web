@@ -26,7 +26,7 @@ Browser -> Admin Next.js BFF -> generated-contract fixture
 Browser -> Admin Next.js BFF -> server-only Connect-ES client -> IAM gRPC -> PostgreSQL
 ```
 
-- 当前 provisional view-model fixture 使用 `kokoro.admin.fixture.v1`，不得表述为 IAM Protobuf
+- 当前 provisional view-model fixture 使用 `kokoro.admin.fixture.v2`，不得表述为 IAM Protobuf
   契约或生成客户端的替代品。
 - 后续 generated-contract fixture 与真实 IAM 必须使用同一生成类型、字段语义、错误码和权限码。
 - fixture 只模拟预置响应，不复制 IAM 授权、生命周期或事务规则。
@@ -59,9 +59,10 @@ Browser -> Admin Next.js BFF -> server-only Connect-ES client -> IAM gRPC -> Pos
       静态 breadcrumb 元数据与未知路由；尚未覆盖实际 App Router 页面或 breadcrumb 组件。
 - [x] 日期、相对时间、数量、状态和标识符展示函数使用显式 locale/timeZone/now，严格拒绝非法
       公历日期、负数/非整数数量与未知状态，服务端与浏览器不依赖各自默认环境。
-- [x] provisional view-model error 到 `error/forbidden/not-found` 页面状态的纯函数映射覆盖全部当前
-      错误码、requestId、字段错误和 retryable 元数据，且移除后端消息；页面状态 dispatcher 另行覆盖
-      `loading/ready/empty/error/forbidden/not-found/partial` 七态。
+- [x] provisional view-model error 到 `error/unauthenticated/forbidden/not-found` 页面状态的纯函数
+      映射覆盖全部当前错误码、requestId、字段错误和 retryable 元数据，且移除后端消息；页面状态
+      dispatcher 另行覆盖
+      `loading/ready/empty/error/unauthenticated/forbidden/not-found/partial` 八态。
 - [x] 权限投影纯函数按显式 capability key 控制导航可见性；空能力、`allOf`、`anyOf`、组合条件和
       缺失能力均有单元断言，权限诊断 fixture 只返回预置结果而不在前端求值策略。
 - [x] 通用 capability rule 供导航与命令复用，稀疏/畸形/访问器输入均 fail closed，不推导角色、
@@ -85,6 +86,15 @@ Browser -> Admin Next.js BFF -> server-only Connect-ES client -> IAM gRPC -> Pos
       详情、结构化错误、取消信号和预置权限诊断行为有单元断言。
 - [x] development/test fixture 场景按 operation 显式注入 ready/empty/forbidden/not-found/unavailable/
       partial，经 runtime-branded AdminEnv 与中央 data-source 门禁创建；production 和畸形配置 fail fast。
+- [x] Dashboard loader 透传 scope/request context，区分 ready、初始 empty、契约声明的 section partial
+      和结构化错误；partial 由共享 Dashboard view model 表达，不依赖 fixture 私有元数据。
+- [x] 用户、Organization、Site 目录 loader 将已支持查询、显式状态、排序、不透明 pageToken 和
+      pageSize 投影为 provisional 请求；不复制 IAM 生命周期规则，不在前端补做 Organization/Site
+      关系筛选，并显式拒绝当前契约无法表达的筛选。
+- [x] 目录 loader 仅将无筛选首个空页映射为页面 empty；筛选或分页后的零结果保留 ready 空 Page，
+      供后续 DataTable 呈现“无匹配结果”及分页边界。
+- [x] 用户、Organization、Site 详情 loader 精确调用对应 client method，opaque entity ID 原样传给
+      权威后端，并覆盖结构化错误、未知错误 requestId 与独立 unauthenticated 页面状态。
 - [x] 数据源选择纯函数只在显式选择且为 development/test 时允许 provisional view-model fixture；
       production、未配置 RPC 和未知数据源均稳定拒绝。
 - [ ] generated-contract fixture 必须符合生成契约，不允许任意对象或 `any` 绕过验证。
@@ -109,7 +119,7 @@ Browser -> Admin Next.js BFF -> server-only Connect-ES client -> IAM gRPC -> Pos
       organization/site 严格隔离，拒绝敏感字段、getter、稀疏数组、循环和畸形运行时输入。
 - [ ] 错误码映射覆盖 unauthenticated、permission denied、not found、conflict、invalid argument、rate limited 和 unavailable。
 - [ ] generated-contract fixture 与当前契约版本建立版本锁定；契约变更必须使不兼容 fixture 测试
-      失败。当前 `kokoro.admin.fixture.v1` provisional view-model fixture 不计为此项证据。
+      失败。当前 `kokoro.admin.fixture.v2` provisional view-model fixture 不计为此项证据。
 - [ ] BFF 不向浏览器暴露 IAM 地址、内部 Token、Cookie 内容或服务端堆栈。
 - [ ] 最终联调对每个 Admin 调用验证生成客户端、真实 IAM 响应和运行时 schema 一致。
 
@@ -130,7 +140,7 @@ Browser -> Admin Next.js BFF -> server-only Connect-ES client -> IAM gRPC -> Pos
 - [ ] 完成源码边界审计，确认无新增显式/隐式 `any` 和宽泛边界对象。
 - [x] 已记录自动化批次的 ESLint 通过且为 0 warnings。
 - [ ] 本清单定义的单元和组件测试范围全部实现并全量通过。
-- [x] 当前已实现单元测试在本批次记录中 22 files、361 tests 全部通过，且
+- [x] 当前已实现单元测试在页面 loader 批次记录中 25 files、387 tests 全部通过，且
       `skip/todo/retry = 0/0/0`；这不代表本清单要求的单元测试范围或任何组件测试已完成。
 - [ ] 为全量单元和组件测试配置并保存机器可读报告。
 - [x] 已记录自动化批次的 Next.js 16 production build 通过。

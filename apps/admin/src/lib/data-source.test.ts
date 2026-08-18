@@ -22,7 +22,7 @@ describe('createAdminDataClient', () => {
       )
 
       await expect(client.getCurrentIdentity()).resolves.toMatchObject({
-        schemaVersion: 'kokoro.admin.fixture.v1',
+        schemaVersion: 'kokoro.admin.fixture.v2',
       })
     }
   )

@@ -19,6 +19,7 @@ export type PageState<T> =
   | { readonly status: 'ready'; readonly data: T }
   | { readonly status: 'empty' }
   | { readonly status: 'error'; readonly error: PageError }
+  | { readonly status: 'unauthenticated'; readonly error: PageError }
   | { readonly status: 'forbidden'; readonly error: PageError }
   | { readonly status: 'not-found'; readonly error: PageError }
   | {
@@ -32,6 +33,7 @@ export type PageStateHandlers<T, Result> = {
   readonly ready: (data: T) => Result
   readonly empty: () => Result
   readonly error: (error: PageError) => Result
+  readonly unauthenticated: (error: PageError) => Result
   readonly forbidden: (error: PageError) => Result
   readonly 'not-found': (error: PageError) => Result
   readonly partial: (data: T, error: PageError) => Result
@@ -85,11 +87,12 @@ export function pageStateFromError<T>(
       })
 
   switch (pageError.code) {
+    case 'UNAUTHENTICATED':
+      return { status: 'unauthenticated', error: pageError }
     case 'PERMISSION_DENIED':
       return { status: 'forbidden', error: pageError }
     case 'NOT_FOUND':
       return { status: 'not-found', error: pageError }
-    case 'UNAUTHENTICATED':
     case 'INVALID_ARGUMENT':
     case 'ALREADY_EXISTS':
     case 'FAILED_PRECONDITION':
@@ -120,6 +123,8 @@ export function matchPageState<T, Result>(
       return handlers.empty()
     case 'error':
       return handlers.error(state.error)
+    case 'unauthenticated':
+      return handlers.unauthenticated(state.error)
     case 'forbidden':
       return handlers.forbidden(state.error)
     case 'not-found':
