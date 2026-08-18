@@ -1,5 +1,7 @@
-import { AdminDashboard } from './runtime/admin-dashboard'
-
 export default function Page() {
-  return <AdminDashboard />
+  return (
+    <main>
+      <h1>Kokoro Admin</h1>
+    </main>
+  )
 }

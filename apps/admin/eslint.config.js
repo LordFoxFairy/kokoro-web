@@ -2,12 +2,11 @@ import globals from 'globals'
 import js from '@eslint/js'
 import pluginQuery from '@tanstack/eslint-plugin-query'
 import reactHooks from 'eslint-plugin-react-hooks'
-import reactRefresh from 'eslint-plugin-react-refresh'
 import { defineConfig } from 'eslint/config'
 import tseslint from 'typescript-eslint'
 
 export default defineConfig(
-  { ignores: ['.next', 'dist', 'src/components/ui'] },
+  { ignores: ['.next', 'node_modules'] },
   {
     extends: [
       js.configs.recommended,
@@ -21,14 +20,9 @@ export default defineConfig(
     },
     plugins: {
       'react-hooks': reactHooks,
-      'react-refresh': reactRefresh,
     },
     rules: {
       ...reactHooks.configs.recommended.rules,
-      'react-refresh/only-export-components': [
-        'warn',
-        { allowConstantExport: true },
-      ],
       'no-console': 'error',
       'no-unused-vars': 'off',
       '@typescript-eslint/no-unused-vars': [
@@ -43,7 +37,6 @@ export default defineConfig(
           ignoreRestSiblings: true,
         },
       ],
-      // Enforce type-only imports for TypeScript types
       '@typescript-eslint/consistent-type-imports': [
         'error',
         {
@@ -52,14 +45,7 @@ export default defineConfig(
           disallowTypeAnnotations: false,
         },
       ],
-      // Prevent duplicate imports from the same module
       'no-duplicate-imports': 'error',
-    },
-  },
-  {
-    files: ['src/app/**/*.{ts,tsx}'],
-    rules: {
-      'react-refresh/only-export-components': 'off',
     },
   }
 )

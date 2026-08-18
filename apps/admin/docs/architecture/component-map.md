@@ -19,18 +19,10 @@ shadcn/ui primitives
 不得为了统一命名而包装每个 Button、Input 或 Badge。只有语义稳定且在两个以上 feature 重复的组合
 才能进入共享层。
 
-## 2. 上游能力映射
+## 2. 官方原语来源
 
-| `shadcn-admin` 能力 | 新位置 | 适配边界 |
-|---|---|---|
-| Sidebar / NavGroup / NavUser | `components/layout` | TanStack Router link 改为 Next Link；菜单受页面能力投影控制 |
-| Header / TopNav / ProfileDropdown | `components/layout` | 身份来自 Auth.js Session；不使用 Clerk |
-| ThemeSwitch / ConfigDrawer | `components/layout` | 保留主题与布局偏好；默认浅色，不引入产品 Demo 设置 |
-| DataTable / Toolbar / ViewOptions | `components/data-table` | 支持服务端游标分页、URL 筛选和权限化批量操作 |
-| ConfirmDialog | `components/feedback` | 统一危险级别、对象名称、pending 与 API 错误反馈 |
-| Tasks 表格交互模式 | 共享表格模式 | 迁移能力，不迁移 Tasks 页面和假数据 |
-| Users Dialog / Action patterns | 领域表单参考 | 用 IAM 契约字段重写，不沿用 Demo schema |
-| Chats 双栏与滚动模式 | 不进入当前产品导航 | 未来真实业务出现时再从固定上游提交选择性迁入 |
+Sidebar、Breadcrumb、Table、Dialog、Sheet、DropdownMenu、Command、Field、Empty、Skeleton、Badge、
+Tooltip 和 Sonner 均从官方 shadcn/ui Registry 按需生成。组合组件不得复制 Registry 原语职责。
 
 ## 3. 共享组件矩阵
 

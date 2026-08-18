@@ -16,7 +16,7 @@ Browser -> Admin Next.js BFF -> contract fixture
 最终验收必须切换为真实链路：
 
 ```text
-Browser -> Admin Next.js BFF -> generated ConnectRPC -> IAM -> PostgreSQL
+Browser -> Admin Next.js BFF -> server-only Connect-ES client -> IAM gRPC -> PostgreSQL
 ```
 
 - fixture 与真实 IAM 必须使用同一生成类型、字段语义、错误码和权限码。
@@ -231,4 +231,3 @@ Browser -> Admin Next.js BFF -> generated ConnectRPC -> IAM -> PostgreSQL
 - [ ] 记录缺陷及修复提交，并链接修复后的完整重跑证据。
 - [ ] 明确 Round 1 与 Round 2 的 fresh fixture 标识和独立执行时间。
 - [ ] 全部门禁通过后才把报告整体状态改为 `ACCEPTED`。
-

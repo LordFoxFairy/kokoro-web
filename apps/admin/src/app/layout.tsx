@@ -1,9 +1,9 @@
-import '@/styles/index.css'
 import type { Metadata } from 'next'
+import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'Kokoro Admin',
-  description: 'Kokoro administration workspace',
+  title: 'Kokoro',
+  description: 'Kokoro administration console',
 }
 
 export default function RootLayout({
@@ -12,7 +12,7 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang='en' suppressHydrationWarning>
+    <html lang='zh-CN'>
       <body>{children}</body>
     </html>
   )

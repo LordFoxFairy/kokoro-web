@@ -10,7 +10,7 @@ Admin 是独立的前端应用及其 BFF，负责管理界面的信息架构、�
 ```text
 Browser
   -> Next.js Admin（页面、Auth.js、BFF）
-  -> 版本化 API 契约（generated ConnectRPC）
+  -> 版本化 Protobuf/Buf 契约（Connect-ES + connect-node gRPC transport）
   -> IAM
 ```
 
@@ -22,7 +22,7 @@ Admin 的路由、菜单、布局、组件或文案。任一方内部重构，�
 | 层级 | 固定选型 |
 |---|---|
 | 应用框架 | Next.js 16 App Router |
-| 视觉底座 | `satnaing/shadcn-admin` 2.2.1，提交 `e16c87f213a5ba5e45964e9b67c792105ec74d26` |
+| 视觉底座 | 官方 shadcn/ui CLI 与 Registry |
 | UI | shadcn/ui + Radix UI |
 | 样式 | Tailwind CSS 4 |
 | 图标 | Lucide React |
@@ -30,49 +30,39 @@ Admin 的路由、菜单、布局、组件或文案。任一方内部重构，�
 | 表单 | React Hook Form + Zod |
 | 认证 | Auth.js |
 | 客户端服务状态 | TanStack Query，仅用于需要交互缓存的查询和 mutation |
-| 后端调用 | Protobuf 生成的 ConnectRPC 客户端 |
+| 后端调用 | Protobuf-ES 生成描述符 + Connect-ES 客户端 + connect-node gRPC transport |
 | 测试 | Vitest、Testing Library、Playwright |
 
-Ant Design、ProComponents、Clerk、旧 Admin UI 和旧兼容路径不得重新引入。
+第三方后台模板、旧 Admin UI 和旧兼容路径不得重新引入。
 
-## 3. 上游迁入、适配与删除
+## 3. 官方组件治理
 
-迁入遵守上游 MIT 许可证并保留版权声明。迁入的是经过审计的源码和交互模式，不是截图复刻。
-
-| 上游能力 | 处理 | Kokoro 规则 |
+| 能力 | 来源 | Kokoro 规则 |
 |---|---|---|
-| App shell、Sidebar、Header | 迁入并适配 | 保留视觉密度、响应式收起和移动端导航；路由改为 App Router |
-| 主题、颜色变量、暗色模式 | 迁入并适配 | 以 shadcn CSS variables 与 Tailwind 4 为唯一 Token 来源；默认浅色 |
-| DataTable、Toolbar、分页与列可见性 | 迁入并抽为共享组合组件 | 数据和分页改为 API 契约驱动，不携带 Demo 数据 |
-| Dialog、Sheet、Dropdown、Command | 迁入 | 保留 Radix 可访问性语义；领域组件通过组合使用 |
-| React Hook Form + Zod 表单模式 | 迁入 | 前端 schema 只校验输入形状和交互约束，不复制后端领域裁决 |
-| feature 目录组织 | 迁入并适配 | 每个 IAM 管理能力拥有独立 feature；跨 feature 稳定模式才进入共享层 |
-| Lucide 图标与 Tooltip 模式 | 迁入 | 禁止重复手写已有图标；陌生图标操作必须提供名称 |
-| Vite | 删除 | 由 Next.js 16 构建与运行 |
-| TanStack Router | 删除 | 由 App Router 文件路由和布局负责导航 |
-| Clerk | 删除 | 由 Auth.js 服务端会话负责认证 |
-| Zustand 认证状态 | 删除 | 身份权威来自 Auth.js Session；局部 UI 状态按需使用 React 状态 |
-| Tasks、Chats、Apps、用户 Demo | 删除产品页面 | 可复用其通用交互模式，不展示无 API、无权限定义的示例业务 |
-| Mock 领域数据 | 删除产品依赖 | 开发和测试仅通过明确的契约 fixture 注入 |
+| Sidebar、Header、Dialog、Sheet、Command | 官方 shadcn/ui Registry | 通过 CLI 按需生成并保留可访问性结构 |
+| 主题与颜色 | shadcn semantic tokens + Tailwind CSS 4 | 默认浅色；不在页面散落原始颜色 |
+| DataTable | 官方 Table 原语 + TanStack Table | 形成一个契约驱动的共享组合，不携带示例数据 |
+| 表单 | 官方 Field 原语 + React Hook Form + Zod | 只校验输入形状和交互约束，不复制后端裁决 |
+| 图标 | Lucide | 使用图标库已有图标；陌生图标操作提供 Tooltip |
 
-上游升级按固定提交进行差异审计：先比较上游变更，再选择性迁入共享底座，最后运行视觉、可访问性、
-类型、构建和 E2E 回归。业务 feature 不直接依赖上游私有路径，避免升级扩散。
+组件增加或升级必须先通过官方 CLI 查看文档和 diff。页面只组合已登记原语；稳定且跨两个以上
+feature 重复的模式才提升到共享组件。项目不保留第三方模板、框架适配器或示例页面。
 
 ## 4. 目标目录
 
 ```text
 apps/admin/
-  app/
+  src/app/
     (auth)/                 # 登录等未认证页面
     (console)/              # 认证后的管理路由与共享 shell
     api/auth/[...nextauth]/ # Auth.js Route Handler
     layout.tsx
-  components/
+  src/components/
     ui/                     # shadcn/ui 生成组件，仅做底层原语
     layout/                 # shell、sidebar、header、breadcrumbs
     data-table/             # 通用表格组合能力
     feedback/               # loading、empty、error、result
-  features/
+  src/features/
     dashboard/
     users/
     organizations/
@@ -82,7 +72,7 @@ apps/admin/
     permissions/
     sessions/
     audit/
-  lib/
+  src/lib/
     auth/                   # Auth.js 配置、session schema、route guard
     api/                    # BFF 调用入口、错误映射、分页适配
     contracts/              # 生成客户端公开入口与边界校验
@@ -117,16 +107,16 @@ Auth.js 负责登录流程、HttpOnly Cookie、Session 建立、续期与退出�
 - 浏览器不得获得 IAM 内部地址、服务凭证、签名密钥或生成客户端的服务端 transport。
 - Session 中只保存 UI 和 API 调用需要的最小身份信息；外部输入在 Auth.js 边界用 Zod 校验。
 
-## 7. Fixture 边界
+## 7. Fixture client 边界
 
 Fixture 用于 IAM 尚未联调时独立开发 Admin，不是第二套业务实现。
 
-- fixture 必须实现与真实客户端相同的前端 port，并以契约版本分目录。
+- fixture client 必须实现与真实客户端相同的前端接口，并以契约版本分目录。
 - fixture 数据只能从 `lib/fixtures` 注入，禁止散落在页面和组件中。
 - production build 不得选择 fixture transport；环境 schema 在启动时拒绝该组合。
 - fixture 覆盖成功、空、分页、禁止访问、校验错误、冲突和服务失败等边界。
 - fixture 不定义新的字段、权限码或状态；契约没有的内容不能由前端自行补造。
-- 接入 generated ConnectRPC 时替换 port 实现，不修改 feature 组件和页面语义。
+- 接入服务端 Connect-ES client 时替换数据实现，不修改 feature 组件和页面语义。
 
 ## 8. 演进和质量门禁
 

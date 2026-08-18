@@ -7,8 +7,9 @@
 
 ```text
 IAM versioned Protobuf
-  -> pinned schema revision
-  -> generated ConnectRPC TypeScript client
+  -> pinned Buf schema revision
+  -> Protobuf-ES generated schema and service descriptors
+  -> Connect-ES server-only client over connect-node gRPC transport
   -> Admin server-side API port
   -> feature
 ```
@@ -18,8 +19,9 @@ Admin 只升级明确固定的契约版本。契约变更先在 IAM 发布，再
 
 ## 2. 前端 API port
 
-feature 不直接创建 transport，也不依赖 ConnectRPC 的底层细节。`lib/api` 暴露按领域划分的窄接口，
-真实实现调用 generated client，fixture 实现用于 dev/test。两种实现必须通过同一组 contract tests。
+feature 不直接创建 transport，也不依赖 Connect-ES 的底层细节。`lib/api` 暴露按领域划分的窄接口，
+真实实现调用服务端 Connect-ES client，fixture client 用于 dev/test。两种实现必须通过同一组
+contract tests。
 
 port 负责：
 
@@ -121,7 +123,10 @@ API 返回稳定的能力标识和适用 scope。Admin 使用能力标识决定�
 
 ## 8. 安全与可观测性
 
-- generated ConnectRPC transport 只在服务端创建，IAM 地址和服务凭证只存在于服务端环境。
+- Connect-ES transport 只在服务端创建，通过 `connect-node` 的原生 gRPC/HTTP2 transport 调用 IAM；
+  IAM 地址和服务凭证只存在于服务端环境。
+- 浏览器不加载 generated service descriptor、Connect transport 或 IAM 客户端；浏览器只调用 Admin
+  同源 Route Handler 或 Server Action。
 - 浏览器到 Admin 使用同源请求、Auth.js Cookie 和 CSRF 防护；禁止把内部 bearer token 写入
   `localStorage`、URL 或客户端日志。
 - Admin 生成或传递 request ID，并在安全错误页和测试证据中关联；不得记录密码、Session token、
