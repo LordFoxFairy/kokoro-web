@@ -95,6 +95,12 @@ Browser -> Admin Next.js BFF -> server-only Connect-ES client -> IAM gRPC -> Pos
       供后续 DataTable 呈现“无匹配结果”及分页边界。
 - [x] 用户、Organization、Site 详情 loader 精确调用对应 client method，opaque entity ID 原样传给
       权威后端，并覆盖结构化错误、未知错误 requestId 与独立 unauthenticated 页面状态。
+- [x] 当前身份与 scope capability loader 精确调用对应 client method；platform、Organization、Site
+      scope 原样传递，空 capability 投影保持 ready，不在前端推导授权结论。
+- [x] 权限目录 loader 只读取权威目录，未选择 scope 和权威空目录使用 empty；不计算权限闭包、
+      父子关系或可分配规则。
+- [x] Session 与审计详情 loader 将 opaque ID 原样传给精确 client method，并覆盖 ready、404、
+      unauthenticated、未知错误和稳定 requestId。
 - [x] 角色 loader 仅在 scope 完整时请求数据，将 scope、query 与 opaque pageToken/pageSize 原样投影；
       `includeDeleted` 在 provisional schema v2 无对应字段时显式拒绝，不在前端模拟删除项语义。
 - [x] 成员 loader 将权威 scope 与 query/sort/opaque pageToken/pageSize 原样投影，区分初始 empty 与
@@ -148,7 +154,7 @@ Browser -> Admin Next.js BFF -> server-only Connect-ES client -> IAM gRPC -> Pos
 - [ ] 完成源码边界审计，确认无新增显式/隐式 `any` 和宽泛边界对象。
 - [x] 已记录自动化批次的 ESLint 通过且为 0 warnings。
 - [ ] 本清单定义的单元和组件测试范围全部实现并全量通过。
-- [x] 当前已实现单元测试在访问与安全 loader 批次记录中 29 files、410 tests 全部通过，且
+- [x] 当前已实现单元测试在核心读取 loader 批次记录中 32 files、431 tests 全部通过，且
       `skip/todo/retry = 0/0/0`；这不代表本清单要求的单元测试范围或任何组件测试已完成。
 - [ ] 为全量单元和组件测试配置并保存机器可读报告。
 - [x] 已记录自动化批次的 Next.js 16 production build 通过。
