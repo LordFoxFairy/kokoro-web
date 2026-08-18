@@ -72,11 +72,13 @@ describe('FixtureAdminDataClient', () => {
       pageToken: first.data.nextPageToken,
     })
 
-    expect(first.data).toEqual({
-      items: fixtureUsers.slice(0, 2),
-      nextPageToken: `fixture:${ADMIN_FIXTURE_SCHEMA_VERSION}:users:2`,
-      totalCount: fixtureUsers.length,
-    })
+    expect(first.data.items).toEqual(fixtureUsers.slice(0, 2))
+    expect(first.data.nextPageToken).toMatch(
+      new RegExp(
+        `^fixture:${ADMIN_FIXTURE_SCHEMA_VERSION}:users:[0-9a-f]{16}:2$`
+      )
+    )
+    expect(first.data.totalCount).toBe(fixtureUsers.length)
     expect(second.data).toEqual({
       items: fixtureUsers.slice(2, 4),
       nextPageToken: undefined,
@@ -91,6 +93,32 @@ describe('FixtureAdminDataClient', () => {
       businessCode: 'INVALID_PAGE_TOKEN',
     })
   })
+
+  it.each([
+    ['query', { query: 'Ada', pageSize: 2 }],
+    [
+      'sort',
+      {
+        pageSize: 2,
+        sort: { field: 'displayName', direction: 'asc' as const },
+      },
+    ],
+    ['page size', { pageSize: 3 }],
+    ['status', { pageSize: 2, statuses: ['suspended' as const] }],
+  ])(
+    'rejects a page token reused across a different %s',
+    async (_label, request) => {
+      const client = new FixtureAdminDataClient()
+      const first = await client.listUsers({ pageSize: 2 })
+
+      await expect(
+        client.listUsers({ ...request, pageToken: first.data.nextPageToken })
+      ).rejects.toMatchObject({
+        code: 'INVALID_ARGUMENT',
+        businessCode: 'INVALID_PAGE_TOKEN',
+      })
+    }
+  )
 
   it('filters lists by query, status, scope, and domain-specific fields', async () => {
     const client = new FixtureAdminDataClient()

@@ -52,7 +52,9 @@ Browser -> Admin Next.js BFF -> server-only Connect-ES client -> IAM gRPC -> Pos
 - [ ] Zod 边界 schema：合法数据、缺字段、额外字段、错误枚举、空值和超界值。
 - [x] URL 查询状态：用户、Organization、Site、角色、权限诊断、会话和审计的已支持筛选、排序与
       scope 可稳定解析、序列化和 round-trip；非法值、默认值、重复参数及不透明分页 token 有单元断言。
-- [ ] URL 查询状态：页码/游标导航、详情 Tab 和返回路径可稳定序列化并在页面中回读。
+- [x] URL 查询状态：目录 pageToken/pageSize、详情 Tab 和安全返回路径可稳定解析、序列化及
+      round-trip；pageToken 绑定 query/filter/sort/scope/pageSize，禁止跨查询复用。
+- [ ] URL 查询状态已在真实 App Router 页面中回读，并驱动 TanStack Table 与服务端请求。
 - [x] 路由 registry 纯函数覆盖 Dashboard、全部顶层管理路由、用户/Organization/Site 详情路由、
       静态 breadcrumb 元数据与未知路由；尚未覆盖实际 App Router 页面或 breadcrumb 组件。
 - [x] 日期、相对时间、数量、状态和标识符展示函数使用显式 locale/timeZone/now，严格拒绝非法
@@ -70,6 +72,8 @@ Browser -> Admin Next.js BFF -> server-only Connect-ES client -> IAM gRPC -> Pos
 - [ ] 表单 schema、默认值、字段关联、提交转换和服务端错误映射。
 - [x] 通用表单纯状态模型覆盖编辑、提交、成功、冲突、禁止、字段/表单错误、输入保留和乱序响应；
       尚未覆盖具体页面 Zod schema、RHF 组件和提交转换。
+- [x] 危险操作确认纯状态模型强制有效对象上下文及 reason/精确文本之一，提交期间冻结输入，revision
+      拒绝乱序结果；尚未覆盖 shadcn Dialog、焦点恢复和真实 mutation。
 - [x] provisional Session view model 严格解析用户、到期时间、capability 和 scope，拒绝未知字段、
       Token/凭据字段、非法 scope 与非法到期时间。
 - [x] 登录回跳纯函数只接受同源 HTTP/HTTPS 目标并降为相对路径；公开登录错误映射不泄露账号状态或
@@ -79,6 +83,8 @@ Browser -> Admin Next.js BFF -> server-only Connect-ES client -> IAM gRPC -> Pos
       路由继承，并明确不替代 Auth.js Route Handler 或 IAM RPC 最终授权。
 - [x] provisional view-model fixture client 的固定时钟/requestId、查询、筛选、排序、分页 token、
       详情、结构化错误、取消信号和预置权限诊断行为有单元断言。
+- [x] development/test fixture 场景按 operation 显式注入 ready/empty/forbidden/not-found/unavailable/
+      partial，经 runtime-branded AdminEnv 与中央 data-source 门禁创建；production 和畸形配置 fail fast。
 - [x] 数据源选择纯函数只在显式选择且为 development/test 时允许 provisional view-model fixture；
       production、未配置 RPC 和未知数据源均稳定拒绝。
 - [ ] generated-contract fixture 必须符合生成契约，不允许任意对象或 `any` 绕过验证。
@@ -124,7 +130,7 @@ Browser -> Admin Next.js BFF -> server-only Connect-ES client -> IAM gRPC -> Pos
 - [ ] 完成源码边界审计，确认无新增显式/隐式 `any` 和宽泛边界对象。
 - [x] 已记录自动化批次的 ESLint 通过且为 0 warnings。
 - [ ] 本清单定义的单元和组件测试范围全部实现并全量通过。
-- [x] 当前已实现单元测试在本批次记录中 19 files、281 tests 全部通过，且
+- [x] 当前已实现单元测试在本批次记录中 22 files、361 tests 全部通过，且
       `skip/todo/retry = 0/0/0`；这不代表本清单要求的单元测试范围或任何组件测试已完成。
 - [ ] 为全量单元和组件测试配置并保存机器可读报告。
 - [x] 已记录自动化批次的 Next.js 16 production build 通过。

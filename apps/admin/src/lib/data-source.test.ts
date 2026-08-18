@@ -3,15 +3,23 @@ import {
   AdminDataSourceConfigurationError,
   createAdminDataClient,
 } from './data-source'
+import { parseAdminEnv, type AdminEnv } from './env'
+
+function fixtureEnv(nodeEnv: 'development' | 'test') {
+  return parseAdminEnv({
+    NODE_ENV: nodeEnv,
+    NEXT_PUBLIC_APP_URL: 'http://127.0.0.1:3100',
+    ADMIN_DATA_SOURCE: 'fixture',
+  })
+}
 
 describe('createAdminDataClient', () => {
   it.each(['development', 'test'])(
     'creates a fixture client only when explicitly selected in %s',
     async (nodeEnv) => {
-      const client = createAdminDataClient({
-        ADMIN_DATA_SOURCE: 'fixture',
-        NODE_ENV: nodeEnv,
-      })
+      const client = createAdminDataClient(
+        fixtureEnv(nodeEnv as 'development' | 'test')
+      )
 
       await expect(client.getCurrentIdentity()).resolves.toMatchObject({
         schemaVersion: 'kokoro.admin.fixture.v1',
@@ -19,45 +27,31 @@ describe('createAdminDataClient', () => {
     }
   )
 
-  it.each([undefined, '', 'production', 'staging'])(
-    'rejects fixture data when NODE_ENV is %s',
-    (nodeEnv) => {
-      expectConfigurationError(
-        () =>
-          createAdminDataClient({
-            ADMIN_DATA_SOURCE: 'fixture',
-            NODE_ENV: nodeEnv,
-          }),
-        'FIXTURE_NOT_ALLOWED',
-        'ADMIN_DATA_SOURCE=fixture is only allowed when NODE_ENV is development or test'
-      )
-    }
-  )
+  it('reports the unimplemented RPC source as NOT_CONFIGURED', () => {
+    const env = parseAdminEnv({
+      NODE_ENV: 'production',
+      NEXT_PUBLIC_APP_URL: 'https://admin.example.test',
+      ADMIN_DATA_SOURCE: 'rpc',
+      AUTH_SECRET: 'a-production-secret-with-32-characters',
+      IAM_RPC_URL: 'https://iam.example.test',
+    })
+    expectConfigurationError(
+      () => createAdminDataClient(env),
+      'NOT_CONFIGURED',
+      'Admin RPC data source is NOT_CONFIGURED'
+    )
+  })
 
-  it.each([undefined, '', 'rpc'])(
-    'reports the unimplemented RPC source as NOT_CONFIGURED for %s',
-    (dataSource) => {
-      expectConfigurationError(
-        () =>
-          createAdminDataClient({
-            ADMIN_DATA_SOURCE: dataSource,
-            NODE_ENV: 'production',
-          }),
-        'NOT_CONFIGURED',
-        'Admin RPC data source is NOT_CONFIGURED'
-      )
-    }
-  )
-
-  it('rejects unknown data sources without falling back to fixtures', () => {
+  it('rejects a structurally valid but unbranded environment', () => {
     expectConfigurationError(
       () =>
         createAdminDataClient({
-          ADMIN_DATA_SOURCE: 'preview',
           NODE_ENV: 'development',
-        }),
+          NEXT_PUBLIC_APP_URL: 'http://127.0.0.1:3100',
+          ADMIN_DATA_SOURCE: 'fixture',
+        } as AdminEnv),
       'INVALID_DATA_SOURCE',
-      'Unsupported ADMIN_DATA_SOURCE: preview'
+      'Admin data source requires parseAdminEnv output'
     )
   })
 })

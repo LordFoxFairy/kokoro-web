@@ -1,9 +1,13 @@
+import { isParsedAdminEnv, type AdminEnv } from './env'
 import { createFixtureAdminDataClient } from './fixtures'
+import {
+  createScenarioFixtureAdminDataClient,
+  type FixtureScenarioConfig,
+} from './fixtures/scenario'
 import type { AdminDataClient } from './view-models'
 
-export type AdminDataSourceEnvironment = Readonly<{
-  ADMIN_DATA_SOURCE?: string
-  NODE_ENV?: string
+export type AdminDataClientOptions = Readonly<{
+  fixtureScenarios?: FixtureScenarioConfig['operations']
 }>
 
 export type AdminDataSourceErrorCode =
@@ -21,8 +25,15 @@ export class AdminDataSourceConfigurationError extends Error {
 
 /** Selects an Admin data client without reading ambient process state. */
 export function createAdminDataClient(
-  env: AdminDataSourceEnvironment
+  env: AdminEnv,
+  options: AdminDataClientOptions = {}
 ): AdminDataClient {
+  if (!isParsedAdminEnv(env)) {
+    throw new AdminDataSourceConfigurationError(
+      'INVALID_DATA_SOURCE',
+      'Admin data source requires parseAdminEnv output'
+    )
+  }
   const dataSource = env.ADMIN_DATA_SOURCE
 
   if (dataSource === 'fixture') {
@@ -33,18 +44,18 @@ export function createAdminDataClient(
       )
     }
 
-    return createFixtureAdminDataClient()
-  }
-
-  if (dataSource === undefined || dataSource === '' || dataSource === 'rpc') {
-    throw new AdminDataSourceConfigurationError(
-      'NOT_CONFIGURED',
-      'Admin RPC data source is NOT_CONFIGURED'
-    )
+    const fixture = createFixtureAdminDataClient()
+    return options.fixtureScenarios
+      ? createScenarioFixtureAdminDataClient(
+          env,
+          options.fixtureScenarios,
+          fixture
+        )
+      : fixture
   }
 
   throw new AdminDataSourceConfigurationError(
-    'INVALID_DATA_SOURCE',
-    `Unsupported ADMIN_DATA_SOURCE: ${dataSource}`
+    'NOT_CONFIGURED',
+    'Admin RPC data source is NOT_CONFIGURED'
   )
 }

@@ -141,6 +141,15 @@ describe('parseAdminEnv', () => {
       })
     ).toEqual(baseEnv)
   })
+
+  it('returns a frozen, runtime-branded configuration', async () => {
+    const { isParsedAdminEnv } = await import('./env')
+    const parsed = parseAdminEnv(baseEnv)
+
+    expect(isParsedAdminEnv(parsed)).toBe(true)
+    expect(isParsedAdminEnv({ ...parsed })).toBe(false)
+    expect(Object.isFrozen(parsed)).toBe(true)
+  })
 })
 
 describe('pickPublicAdminEnv', () => {

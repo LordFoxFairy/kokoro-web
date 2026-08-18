@@ -17,6 +17,8 @@ describe('directory search state', () => {
       sort: 'updatedAt',
       dir: 'desc',
       includeDeleted: false,
+      pageToken: '',
+      pageSize: 20,
     })
   })
 
@@ -28,6 +30,8 @@ describe('directory search state', () => {
         sort: ['name', 'createdAt'],
         dir: ['asc', 'desc'],
         includeDeleted: ['true', 'false'],
+        pageToken: ['opaque+/==:token', 'ignored'],
+        pageSize: ['50', '100'],
         organizationId: ['org_aurora', 'org_ignored'],
       })
     ).toEqual({
@@ -36,6 +40,8 @@ describe('directory search state', () => {
       sort: 'name',
       dir: 'asc',
       includeDeleted: true,
+      pageToken: 'opaque+/==:token',
+      pageSize: 50,
       organizationId: 'org_aurora',
     })
   })
@@ -48,7 +54,7 @@ describe('directory search state', () => {
         dir: 'sideways',
         includeDeleted: '1',
         organizationId: 'not-valid-for-this-resource',
-        pageToken: 'opaque-token-is-not-search-state',
+        pageSize: '999',
       })
     ).toEqual({
       q: '',
@@ -56,7 +62,29 @@ describe('directory search state', () => {
       sort: 'updatedAt',
       dir: 'desc',
       includeDeleted: false,
+      pageToken: '',
+      pageSize: 20,
     })
+  })
+
+  it.each([
+    String.raw`opaque\token`,
+    'opaque\u0000token',
+    'opaque\u001ftoken',
+    'opaque\u007ftoken',
+    'x'.repeat(513),
+  ])('drops an unsafe page token: %j', (pageToken) => {
+    expect(parseDirectorySearch('users', { pageToken }).pageToken).toBe('')
+  })
+
+  it('preserves an opaque page token without interpreting it', () => {
+    const pageToken = 'v1.eyJvZmZzZXQiOjIwfQ==:opaque+/'
+    const parsed = parseDirectorySearch('users', { pageToken })
+
+    expect(parsed.pageToken).toBe(pageToken)
+    expect(serializeDirectorySearch('users', parsed).get('pageToken')).toBe(
+      pageToken
+    )
   })
 
   it('roundtrips every supported resource state', () => {
@@ -69,6 +97,8 @@ describe('directory search state', () => {
           sort: 'email',
           dir: 'asc',
           includeDeleted: true,
+          pageToken: 'user-page+/==',
+          pageSize: 100,
         },
       ],
       [
@@ -79,6 +109,8 @@ describe('directory search state', () => {
           sort: 'slug',
           dir: 'asc',
           includeDeleted: false,
+          pageToken: '',
+          pageSize: 25,
         },
       ],
       [
@@ -89,6 +121,8 @@ describe('directory search state', () => {
           sort: 'createdAt',
           dir: 'desc',
           includeDeleted: true,
+          pageToken: 'site-page+/==',
+          pageSize: 10,
           organizationId: 'org_aurora',
         },
       ],
@@ -105,7 +139,7 @@ describe('directory search state', () => {
     }
   })
 
-  it('emits a stable short URL without defaults or opaque page tokens', () => {
+  it('emits a stable short URL without default pagination values', () => {
     expect(
       serializeDirectorySearch('users', {
         q: '',
@@ -113,6 +147,8 @@ describe('directory search state', () => {
         sort: 'updatedAt',
         dir: 'desc',
         includeDeleted: false,
+        pageToken: '',
+        pageSize: 20,
       }).toString()
     ).toBe('')
 
@@ -123,10 +159,12 @@ describe('directory search state', () => {
         sort: 'name',
         dir: 'asc',
         includeDeleted: true,
+        pageToken: 'next+/==',
+        pageSize: 50,
         organizationId: 'org_aurora',
       }).toString()
     ).toBe(
-      'q=console&status=active&sort=name&dir=asc&includeDeleted=true&organizationId=org_aurora'
+      'q=console&status=active&sort=name&dir=asc&includeDeleted=true&pageToken=next%2B%2F%3D%3D&pageSize=50&organizationId=org_aurora'
     )
   })
 })

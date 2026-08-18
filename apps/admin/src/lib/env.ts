@@ -66,12 +66,30 @@ const adminEnvSchema = z
   })
 
 export type AdminEnvInput = Readonly<Record<string, string | undefined>>
-export type AdminEnv = z.infer<typeof adminEnvSchema>
+const ADMIN_ENV_BRAND = Symbol('kokoro.admin.parsed-env')
+
+export type AdminEnv = z.infer<typeof adminEnvSchema> &
+  Readonly<{ [ADMIN_ENV_BRAND]: true }>
 export type PublicAdminEnv = Readonly<{ appUrl: string }>
 
 /** Parses an explicit environment input without consulting ambient process state. */
 export function parseAdminEnv(input: AdminEnvInput): AdminEnv {
-  return adminEnvSchema.parse(input)
+  const parsed = adminEnvSchema.parse(input)
+  Object.defineProperty(parsed, ADMIN_ENV_BRAND, {
+    configurable: false,
+    enumerable: false,
+    value: true,
+    writable: false,
+  })
+  return Object.freeze(parsed) as AdminEnv
+}
+
+export function isParsedAdminEnv(value: unknown): value is AdminEnv {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    Object.getOwnPropertyDescriptor(value, ADMIN_ENV_BRAND)?.value === true
+  )
 }
 
 /** Projects the sole browser-safe setting; server endpoints and secrets stay private. */

@@ -35,6 +35,33 @@ const MAX_PAGE_SIZE = 100
 type Searchable<T> = (item: T) => string
 type SortValue<T> = (item: T) => string | number
 
+function signatureHash(value: string): string {
+  let left = 0x811c9dc5
+  let right = 0x9e3779b9
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index)
+    left = Math.imul(left ^ code, 0x01000193)
+    right = Math.imul(right ^ code, 0x85ebca6b)
+  }
+  return `${(left >>> 0).toString(16).padStart(8, '0')}${(right >>> 0)
+    .toString(16)
+    .padStart(8, '0')}`
+}
+
+function paginationSignature(
+  domain: string,
+  request: PageRequest | undefined,
+  filters: Readonly<Record<string, unknown>> = {}
+): string {
+  const normalized = JSON.stringify({
+    filters,
+    pageSize: request?.pageSize ?? DEFAULT_PAGE_SIZE,
+    query: request?.query?.trim().toLocaleLowerCase() ?? '',
+    sort: request?.sort ? [request.sort.field, request.sort.direction] : null,
+  })
+  return `${domain}:${signatureHash(normalized)}`
+}
+
 function scopeKey(scope: Scope): string {
   return scope.type === 'platform' ? 'platform' : `${scope.type}:${scope.id}`
 }
@@ -236,7 +263,9 @@ export class FixtureAdminDataClient implements AdminDataClient {
     const page = paginate(
       withStatuses(fixtureUsers, request),
       request,
-      'users',
+      paginationSignature('users', request, {
+        statuses: [...(request?.statuses ?? [])].sort(),
+      }),
       requestId,
       (user) => `${user.id} ${user.displayName} ${user.email}`,
       {
@@ -266,7 +295,9 @@ export class FixtureAdminDataClient implements AdminDataClient {
     const page = paginate(
       withStatuses(fixtureOrganizations, request),
       request,
-      'organizations',
+      paginationSignature('organizations', request, {
+        statuses: [...(request?.statuses ?? [])].sort(),
+      }),
       requestId,
       (organization) =>
         `${organization.id} ${organization.name} ${organization.slug}`,
@@ -294,7 +325,9 @@ export class FixtureAdminDataClient implements AdminDataClient {
     const page = paginate(
       withStatuses(fixtureSites, request),
       request,
-      'sites',
+      paginationSignature('sites', request, {
+        statuses: [...(request?.statuses ?? [])].sort(),
+      }),
       requestId,
       (site) => `${site.id} ${site.name} ${site.slug} ${site.organizationId}`,
       {
@@ -324,7 +357,7 @@ export class FixtureAdminDataClient implements AdminDataClient {
     const page = paginate(
       source,
       request,
-      `members:${scopeKey(request.scope)}`,
+      paginationSignature(`members:${scopeKey(request.scope)}`, request),
       requestId,
       (member) => `${member.id} ${member.userId} ${member.roleIds.join(' ')}`,
       {
@@ -348,7 +381,7 @@ export class FixtureAdminDataClient implements AdminDataClient {
     const page = paginate(
       source,
       request,
-      `roles:${scopeKey(request.scope)}`,
+      paginationSignature(`roles:${scopeKey(request.scope)}`, request),
       requestId,
       (role) => `${role.id} ${role.name} ${role.description ?? ''}`,
       {
@@ -384,7 +417,10 @@ export class FixtureAdminDataClient implements AdminDataClient {
     const page = paginate(
       source,
       request,
-      'sessions',
+      paginationSignature('sessions', request, {
+        statuses: [...(request?.statuses ?? [])].sort(),
+        userId: request?.userId ?? '',
+      }),
       requestId,
       (session) =>
         `${session.id} ${session.userId} ${session.clientLabel} ${session.ipAddress ?? ''}`,
@@ -421,7 +457,13 @@ export class FixtureAdminDataClient implements AdminDataClient {
     const page = paginate(
       source,
       request,
-      'audit',
+      paginationSignature('audit', request, {
+        actorId: request?.actorId ?? '',
+        outcomes: [...(request?.outcomes ?? [])].sort(),
+        requestId: request?.requestId ?? '',
+        scope: request?.scope ? scopeKey(request.scope) : '',
+        targetId: request?.targetId ?? '',
+      }),
       requestId,
       (event) =>
         `${event.id} ${event.action} ${event.targetType} ${event.targetId ?? ''} ${event.requestId}`,
