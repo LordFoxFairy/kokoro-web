@@ -22,6 +22,7 @@
 
 ## 阶段 3：认证与前端契约
 
+- [x] 建立安全回跳、统一公开登录错误和严格 Session view model。
 - [ ] 接入 Auth.js 服务端 Session、登录、退出和路由保护。
 - [x] 定义临时 UI data interface、错误视图、能力投影和游标语义。
 - [x] 建立确定性 fixture client 基线，覆盖查询、筛选、分页和边界错误。
