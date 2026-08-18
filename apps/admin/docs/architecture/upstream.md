@@ -58,6 +58,17 @@ src/routeTree.gen.ts
 
 ## 差异审计
 
+冻结清单位于 `upstream.manifest.json`，逐项记录上游提交的 272 个文件、Git mode、blob SHA-1、
+当前分类和差异理由。执行以下门禁：
+
+```bash
+pnpm audit:upstream
+```
+
+门禁会拒绝：冻结清单缺项或重复、`unchanged` 文件内容漂移、文件未经 `removed` 分类便消失、
+非 `unchanged` 分类缺少理由，以及 `docs/` 之外未经登记的 Kokoro 新文件。适配上游文件时必须在
+同一个变更中更新其分类与理由；新增业务文件则登记到清单的 `additions`。
+
 后续维护上游文件分类表：
 
 | 分类 | 含义 |
