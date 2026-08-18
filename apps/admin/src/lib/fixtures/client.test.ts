@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { ADMIN_CONTRACT_VERSION } from '../contracts'
-import { FixtureAdminContractClient } from './client'
+import { ADMIN_FIXTURE_SCHEMA_VERSION } from '../view-models'
+import { FixtureAdminDataClient } from './client'
 import {
   FIXTURE_NOW,
   fixtureAudit,
@@ -21,10 +21,10 @@ const organizationScope = {
 } as const
 const siteScope = { type: 'site', id: 'site_aurora_us' } as const
 
-describe('FixtureAdminContractClient', () => {
+describe('FixtureAdminDataClient', () => {
   it('returns deterministic request metadata and fixture data', async () => {
-    const firstClient = new FixtureAdminContractClient()
-    const secondClient = new FixtureAdminContractClient()
+    const firstClient = new FixtureAdminDataClient()
+    const secondClient = new FixtureAdminDataClient()
 
     const first = await firstClient.getCurrentIdentity()
     const second = await firstClient.getDashboard(platformScope)
@@ -36,7 +36,7 @@ describe('FixtureAdminContractClient', () => {
     expect(first).toEqual(replay)
     expect(first).toMatchObject({
       requestId: 'req_fixture_0001',
-      contractVersion: ADMIN_CONTRACT_VERSION,
+      schemaVersion: ADMIN_FIXTURE_SCHEMA_VERSION,
       data: {
         id: 'usr_ada',
         displayName: 'Ada Chen',
@@ -46,7 +46,7 @@ describe('FixtureAdminContractClient', () => {
     })
     expect(second).toMatchObject({
       requestId: 'req_fixture_0002',
-      contractVersion: ADMIN_CONTRACT_VERSION,
+      schemaVersion: ADMIN_FIXTURE_SCHEMA_VERSION,
       data: { generatedAt: FIXTURE_NOW },
     })
     expect(
@@ -65,7 +65,7 @@ describe('FixtureAdminContractClient', () => {
   })
 
   it('paginates with an opaque resource-bound token', async () => {
-    const client = new FixtureAdminContractClient()
+    const client = new FixtureAdminDataClient()
     const first = await client.listUsers({ pageSize: 2 })
     const second = await client.listUsers({
       pageSize: 2,
@@ -74,7 +74,7 @@ describe('FixtureAdminContractClient', () => {
 
     expect(first.data).toEqual({
       items: fixtureUsers.slice(0, 2),
-      nextPageToken: `fixture:${ADMIN_CONTRACT_VERSION}:users:2`,
+      nextPageToken: `fixture:${ADMIN_FIXTURE_SCHEMA_VERSION}:users:2`,
       totalCount: fixtureUsers.length,
     })
     expect(second.data).toEqual({
@@ -86,14 +86,14 @@ describe('FixtureAdminContractClient', () => {
     await expect(
       client.listOrganizations({ pageToken: first.data.nextPageToken })
     ).rejects.toMatchObject({
-      kind: 'admin-contract-error',
+      kind: 'admin-data-error',
       code: 'INVALID_ARGUMENT',
       businessCode: 'INVALID_PAGE_TOKEN',
     })
   })
 
   it('filters lists by query, status, scope, and domain-specific fields', async () => {
-    const client = new FixtureAdminContractClient()
+    const client = new FixtureAdminDataClient()
 
     const users = await client.listUsers({
       query: '  NOAH  ',
@@ -136,7 +136,7 @@ describe('FixtureAdminContractClient', () => {
   })
 
   it('sorts supported fields in both directions and rejects unsupported fields', async () => {
-    const client = new FixtureAdminContractClient()
+    const client = new FixtureAdminDataClient()
 
     const ascending = await client.listUsers({
       sort: { field: 'displayName', direction: 'asc' },
@@ -168,10 +168,10 @@ describe('FixtureAdminContractClient', () => {
   it.each([0, -1, 101, 1.5, Number.NaN])(
     'rejects invalid page size %s',
     async (pageSize) => {
-      const client = new FixtureAdminContractClient()
+      const client = new FixtureAdminDataClient()
 
       await expect(client.listUsers({ pageSize })).rejects.toMatchObject({
-        kind: 'admin-contract-error',
+        kind: 'admin-data-error',
         code: 'INVALID_ARGUMENT',
         businessCode: 'INVALID_PAGE_SIZE',
         fieldViolations: [],
@@ -181,7 +181,7 @@ describe('FixtureAdminContractClient', () => {
   )
 
   it('returns each detail domain and reports NOT_FOUND consistently', async () => {
-    const client = new FixtureAdminContractClient()
+    const client = new FixtureAdminDataClient()
 
     await expect(client.getUser('usr_ada')).resolves.toMatchObject({
       data: fixtureUsers[0],
@@ -202,7 +202,7 @@ describe('FixtureAdminContractClient', () => {
       data: fixtureAudit[0],
     })
     await expect(client.getUser('usr_missing')).rejects.toMatchObject({
-      kind: 'admin-contract-error',
+      kind: 'admin-data-error',
       code: 'NOT_FOUND',
       requestId: 'req_fixture_0007',
       fieldViolations: [],
@@ -212,7 +212,7 @@ describe('FixtureAdminContractClient', () => {
   it('honors an already-aborted signal for result and detail methods', async () => {
     const controller = new AbortController()
     controller.abort()
-    const client = new FixtureAdminContractClient()
+    const client = new FixtureAdminDataClient()
 
     await expect(
       client.getDashboard(platformScope, { signal: controller.signal })
@@ -233,8 +233,8 @@ describe('FixtureAdminContractClient', () => {
     })
   })
 
-  it('exposes permissions and evaluates allowed and denied access diagnostics', async () => {
-    const client = new FixtureAdminContractClient()
+  it('returns predefined authoritative access diagnostics without evaluating policy', async () => {
+    const client = new FixtureAdminDataClient()
     const permissions = await client.listPermissions(organizationScope)
     const allowed = await client.checkAccess({
       subjectId: 'usr_ada',
@@ -257,18 +257,30 @@ describe('FixtureAdminContractClient', () => {
       action: 'read',
       allowed: true,
       checkedAt: FIXTURE_NOW,
-      reasonCode: 'FIXTURE_CAPABILITY_PRESENT',
-      evidence: ['users.read', 'platform'],
+      reasonCode: 'FIXTURE_POLICY_ALLOW',
+      evidence: ['policy:platform-user-reader'],
     })
     expect(denied.data).toMatchObject({
       allowed: false,
-      reasonCode: 'FIXTURE_CAPABILITY_ABSENT',
-      evidence: [],
+      reasonCode: 'FIXTURE_POLICY_DENY',
+      evidence: ['policy:organization-user-boundary'],
+    })
+
+    await expect(
+      client.checkAccess({
+        subjectId: 'usr_ada',
+        scope: platformScope,
+        resource: 'roles',
+        action: 'write',
+      })
+    ).rejects.toMatchObject({
+      code: 'NOT_FOUND',
+      businessCode: 'FIXTURE_ACCESS_SCENARIO_NOT_FOUND',
     })
   })
 
   it('covers every fixture collection through its list domain', async () => {
-    const client = new FixtureAdminContractClient()
+    const client = new FixtureAdminDataClient()
 
     const [users, organizations, sites, members, roles, sessions, audit] =
       await Promise.all([

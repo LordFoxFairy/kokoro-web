@@ -11,7 +11,7 @@
 | Admin 整体状态 | `NOT_READY` |
 | Skip / Todo / Retry | `0 / 0 / 0` |
 
-本报告只验收版本化前端契约 fixture 和导航能力投影，不代表 UI、Auth.js、RPC、真实 IAM 或完整
+本报告只验收临时前端 view model fixture 和导航能力投影，不代表 UI、Auth.js、RPC、真实 IAM 或完整
 Admin 业务已经完成。
 
 ## 自动化结果
@@ -35,7 +35,7 @@ Admin 业务已经完成。
 - Dashboard、用户、组织、Site、角色权限、权限诊断、会话和审计元数据完整。
 - `canAccessNavItem` 的允许、拒绝和空规则路径均有断言。
 
-### 契约 fixture client
+### View model fixture client
 
 - 固定数据、固定时钟和 request ID 行为。
 - 分页 token、跨资源无效 token、查询和状态筛选。
@@ -43,6 +43,13 @@ Admin 业务已经完成。
 - 允许排序、不支持排序和非法 page size。
 - `NOT_FOUND`、`INVALID_ARGUMENT` 和 aborted signal。
 - Dashboard、用户、Organization、Site、成员、角色、权限、会话、审计和权限诊断方法。
+
+## 边界纠正
+
+- 手写类型版本已明确为 `kokoro.admin.fixture.v1`，不再冒充 IAM Protobuf 契约版本。
+- `lib/contracts` 已改为 `lib/view-models`；生产 wire types 仍必须由 Protobuf-ES 生成。
+- 权限诊断只返回预置的允许/拒绝场景，未知组合返回错误，不根据 capability key 本地计算授权。
+- 正式 RPC 缺口记录在 `docs/architecture/contract-gaps.md`。
 
 ## 未验收项
 

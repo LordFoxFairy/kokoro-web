@@ -1,4 +1,5 @@
 import type {
+  AccessCheck,
   AuditEvent,
   Capability,
   Member,
@@ -8,9 +9,32 @@ import type {
   Session,
   Site,
   User,
-} from '../contracts'
+} from '../view-models'
 
 export const FIXTURE_NOW = '2026-08-18T14:00:00.000Z'
+
+export const fixtureAccessChecks: readonly AccessCheck[] = [
+  {
+    subjectId: 'usr_ada',
+    scope: { type: 'platform' },
+    resource: 'users',
+    action: 'read',
+    allowed: true,
+    checkedAt: FIXTURE_NOW,
+    reasonCode: 'FIXTURE_POLICY_ALLOW',
+    evidence: ['policy:platform-user-reader'],
+  },
+  {
+    subjectId: 'usr_ada',
+    scope: { type: 'organization', id: 'org_aurora' },
+    resource: 'users',
+    action: 'read',
+    allowed: false,
+    checkedAt: FIXTURE_NOW,
+    reasonCode: 'FIXTURE_POLICY_DENY',
+    evidence: ['policy:organization-user-boundary'],
+  },
+]
 
 export const fixtureCapabilities: readonly Capability[] = [
   { key: 'dashboard.read', scope: { type: 'platform' } },

@@ -1,6 +1,6 @@
-export const ADMIN_CONTRACT_VERSION = 'kokoro.admin.v1' as const
+export const ADMIN_FIXTURE_SCHEMA_VERSION = 'kokoro.admin.fixture.v1' as const
 
-export type AdminContractVersion = typeof ADMIN_CONTRACT_VERSION
+export type AdminFixtureSchemaVersion = typeof ADMIN_FIXTURE_SCHEMA_VERSION
 
 export type EntityId = string
 export type Instant = string
@@ -16,7 +16,7 @@ export type Capability = {
 }
 
 export type CapabilityProjection = {
-  readonly contractVersion: AdminContractVersion
+  readonly schemaVersion: AdminFixtureSchemaVersion
   readonly subjectId: EntityId
   readonly capabilities: readonly Capability[]
   readonly projectedAt: Instant
@@ -47,10 +47,10 @@ export type RequestContext = {
   readonly requestId?: string
 }
 
-export type ContractResult<T> = {
+export type DataResult<T> = {
   readonly data: T
   readonly requestId: string
-  readonly contractVersion: AdminContractVersion
+  readonly schemaVersion: AdminFixtureSchemaVersion
 }
 
 export type FieldViolation = {
@@ -71,7 +71,7 @@ export type AdminErrorCode =
   | 'UNKNOWN'
 
 export type AdminError = {
-  readonly kind: 'admin-contract-error'
+  readonly kind: 'admin-data-error'
   readonly code: AdminErrorCode
   readonly businessCode?: string
   readonly fieldViolations: readonly FieldViolation[]
@@ -85,6 +85,6 @@ export function isAdminError(value: unknown): value is AdminError {
     typeof value === 'object' &&
     value !== null &&
     'kind' in value &&
-    value.kind === 'admin-contract-error'
+    value.kind === 'admin-data-error'
   )
 }

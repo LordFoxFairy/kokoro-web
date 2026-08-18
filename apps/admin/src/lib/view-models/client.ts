@@ -1,6 +1,6 @@
 import type {
   CapabilityProjection,
-  ContractResult,
+  DataResult,
   EntityId,
   Page,
   PageRequest,
@@ -44,67 +44,67 @@ export type AuditPageRequest = PageRequest & {
 
 export type ScopePageRequest = PageRequest & { readonly scope: Scope }
 
-export interface AdminContractClient {
+export interface AdminDataClient {
   getCurrentIdentity(
     context?: RequestContext
-  ): Promise<ContractResult<CurrentIdentity>>
+  ): Promise<DataResult<CurrentIdentity>>
   getCapabilities(
     scope: Scope,
     context?: RequestContext
-  ): Promise<ContractResult<CapabilityProjection>>
+  ): Promise<DataResult<CapabilityProjection>>
   getDashboard(
     scope: Scope,
     context?: RequestContext
-  ): Promise<ContractResult<DashboardSummary>>
+  ): Promise<DataResult<DashboardSummary>>
   listUsers(
     request?: StatusPageRequest,
     context?: RequestContext
-  ): Promise<ContractResult<Page<User>>>
-  getUser(id: EntityId, context?: RequestContext): Promise<ContractResult<User>>
+  ): Promise<DataResult<Page<User>>>
+  getUser(id: EntityId, context?: RequestContext): Promise<DataResult<User>>
   listOrganizations(
     request?: StatusPageRequest,
     context?: RequestContext
-  ): Promise<ContractResult<Page<Organization>>>
+  ): Promise<DataResult<Page<Organization>>>
   getOrganization(
     id: EntityId,
     context?: RequestContext
-  ): Promise<ContractResult<Organization>>
+  ): Promise<DataResult<Organization>>
   listSites(
     request?: StatusPageRequest,
     context?: RequestContext
-  ): Promise<ContractResult<Page<Site>>>
-  getSite(id: EntityId, context?: RequestContext): Promise<ContractResult<Site>>
+  ): Promise<DataResult<Page<Site>>>
+  getSite(id: EntityId, context?: RequestContext): Promise<DataResult<Site>>
   listMembers(
     request: ScopePageRequest,
     context?: RequestContext
-  ): Promise<ContractResult<Page<Member>>>
+  ): Promise<DataResult<Page<Member>>>
   listRoles(
     request: ScopePageRequest,
     context?: RequestContext
-  ): Promise<ContractResult<Page<Role>>>
-  getRole(id: EntityId, context?: RequestContext): Promise<ContractResult<Role>>
+  ): Promise<DataResult<Page<Role>>>
+  getRole(id: EntityId, context?: RequestContext): Promise<DataResult<Role>>
   listPermissions(
     scope: Scope,
     context?: RequestContext
-  ): Promise<ContractResult<readonly Permission[]>>
+  ): Promise<DataResult<readonly Permission[]>>
   listSessions(
     request?: SessionPageRequest,
     context?: RequestContext
-  ): Promise<ContractResult<Page<Session>>>
+  ): Promise<DataResult<Page<Session>>>
   getSession(
     id: EntityId,
     context?: RequestContext
-  ): Promise<ContractResult<Session>>
+  ): Promise<DataResult<Session>>
   listAudit(
     request?: AuditPageRequest,
     context?: RequestContext
-  ): Promise<ContractResult<Page<AuditEvent>>>
+  ): Promise<DataResult<Page<AuditEvent>>>
   getAuditEvent(
     id: EntityId,
     context?: RequestContext
-  ): Promise<ContractResult<AuditEvent>>
+  ): Promise<DataResult<AuditEvent>>
   checkAccess(
     input: AccessCheckInput,
     context?: RequestContext
-  ): Promise<ContractResult<AccessCheck>>
+  ): Promise<DataResult<AccessCheck>>
 }

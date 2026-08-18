@@ -1,11 +1,10 @@
 import {
-  ADMIN_CONTRACT_VERSION,
-  type AccessCheck,
+  ADMIN_FIXTURE_SCHEMA_VERSION,
   type AccessCheckInput,
-  type AdminContractClient,
+  type AdminDataClient,
   type AdminError,
   type AuditPageRequest,
-  type ContractResult,
+  type DataResult,
   type DashboardSummary,
   type EntityId,
   type Page,
@@ -15,9 +14,10 @@ import {
   type ScopePageRequest,
   type SessionPageRequest,
   type StatusPageRequest,
-} from '../contracts'
+} from '../view-models'
 import {
   FIXTURE_NOW,
+  fixtureAccessChecks,
   fixtureAudit,
   fixtureCapabilities,
   fixtureMembers,
@@ -49,7 +49,7 @@ function contractError(
   businessCode?: string
 ): AdminError {
   return {
-    kind: 'admin-contract-error',
+    kind: 'admin-data-error',
     code,
     businessCode,
     fieldViolations: [],
@@ -63,7 +63,7 @@ function decodeOffset(
   requestId: string
 ): number {
   if (!token) return 0
-  const prefix = `fixture:${ADMIN_CONTRACT_VERSION}:${signature}:`
+  const prefix = `fixture:${ADMIN_FIXTURE_SCHEMA_VERSION}:${signature}:`
   if (!token.startsWith(prefix))
     throw contractError('INVALID_ARGUMENT', requestId, 'INVALID_PAGE_TOKEN')
   const offset = Number(token.slice(prefix.length))
@@ -119,7 +119,7 @@ function paginate<T>(
     items: items.slice(offset, nextOffset),
     nextPageToken:
       nextOffset < items.length
-        ? `fixture:${ADMIN_CONTRACT_VERSION}:${signature}:${nextOffset}`
+        ? `fixture:${ADMIN_FIXTURE_SCHEMA_VERSION}:${signature}:${nextOffset}`
         : undefined,
     totalCount: items.length,
   }
@@ -134,7 +134,7 @@ function withStatuses<T extends { readonly status: string }>(
     : source
 }
 
-export class FixtureAdminContractClient implements AdminContractClient {
+export class FixtureAdminDataClient implements AdminDataClient {
   private requestSequence = 0
 
   private requestId(context: RequestContext | undefined): string {
@@ -145,7 +145,7 @@ export class FixtureAdminContractClient implements AdminContractClient {
     )
   }
 
-  private result<T>(data: T, context?: RequestContext): ContractResult<T> {
+  private result<T>(data: T, context?: RequestContext): DataResult<T> {
     if (context?.signal?.aborted)
       throw contractError(
         'DEADLINE_EXCEEDED',
@@ -155,7 +155,7 @@ export class FixtureAdminContractClient implements AdminContractClient {
     return {
       data,
       requestId: this.requestId(context),
-      contractVersion: ADMIN_CONTRACT_VERSION,
+      schemaVersion: ADMIN_FIXTURE_SCHEMA_VERSION,
     }
   }
 
@@ -177,7 +177,7 @@ export class FixtureAdminContractClient implements AdminContractClient {
     )
     return this.result(
       {
-        contractVersion: ADMIN_CONTRACT_VERSION,
+        schemaVersion: ADMIN_FIXTURE_SCHEMA_VERSION,
         subjectId: 'usr_ada',
         capabilities,
         projectedAt: FIXTURE_NOW,
@@ -247,7 +247,11 @@ export class FixtureAdminContractClient implements AdminContractClient {
         updatedAt: (user) => user.updatedAt,
       }
     )
-    return { data: page, requestId, contractVersion: ADMIN_CONTRACT_VERSION }
+    return {
+      data: page,
+      requestId,
+      schemaVersion: ADMIN_FIXTURE_SCHEMA_VERSION,
+    }
   }
 
   async getUser(id: EntityId, context?: RequestContext) {
@@ -274,7 +278,11 @@ export class FixtureAdminContractClient implements AdminContractClient {
         updatedAt: (organization) => organization.updatedAt,
       }
     )
-    return { data: page, requestId, contractVersion: ADMIN_CONTRACT_VERSION }
+    return {
+      data: page,
+      requestId,
+      schemaVersion: ADMIN_FIXTURE_SCHEMA_VERSION,
+    }
   }
 
   async getOrganization(id: EntityId, context?: RequestContext) {
@@ -297,7 +305,11 @@ export class FixtureAdminContractClient implements AdminContractClient {
         updatedAt: (site) => site.updatedAt,
       }
     )
-    return { data: page, requestId, contractVersion: ADMIN_CONTRACT_VERSION }
+    return {
+      data: page,
+      requestId,
+      schemaVersion: ADMIN_FIXTURE_SCHEMA_VERSION,
+    }
   }
 
   async getSite(id: EntityId, context?: RequestContext) {
@@ -321,7 +333,11 @@ export class FixtureAdminContractClient implements AdminContractClient {
         userId: (member) => member.userId,
       }
     )
-    return { data: page, requestId, contractVersion: ADMIN_CONTRACT_VERSION }
+    return {
+      data: page,
+      requestId,
+      schemaVersion: ADMIN_FIXTURE_SCHEMA_VERSION,
+    }
   }
 
   async listRoles(request: ScopePageRequest, context?: RequestContext) {
@@ -342,7 +358,11 @@ export class FixtureAdminContractClient implements AdminContractClient {
         updatedAt: (role) => role.updatedAt,
       }
     )
-    return { data: page, requestId, contractVersion: ADMIN_CONTRACT_VERSION }
+    return {
+      data: page,
+      requestId,
+      schemaVersion: ADMIN_FIXTURE_SCHEMA_VERSION,
+    }
   }
 
   async getRole(id: EntityId, context?: RequestContext) {
@@ -375,7 +395,11 @@ export class FixtureAdminContractClient implements AdminContractClient {
         status: (session) => session.status,
       }
     )
-    return { data: page, requestId, contractVersion: ADMIN_CONTRACT_VERSION }
+    return {
+      data: page,
+      requestId,
+      schemaVersion: ADMIN_FIXTURE_SCHEMA_VERSION,
+    }
   }
 
   async getSession(id: EntityId, context?: RequestContext) {
@@ -407,7 +431,11 @@ export class FixtureAdminContractClient implements AdminContractClient {
         outcome: (event) => event.outcome,
       }
     )
-    return { data: page, requestId, contractVersion: ADMIN_CONTRACT_VERSION }
+    return {
+      data: page,
+      requestId,
+      schemaVersion: ADMIN_FIXTURE_SCHEMA_VERSION,
+    }
   }
 
   async getAuditEvent(id: EntityId, context?: RequestContext) {
@@ -415,20 +443,25 @@ export class FixtureAdminContractClient implements AdminContractClient {
   }
 
   async checkAccess(input: AccessCheckInput, context?: RequestContext) {
-    const capabilityKey = `${input.resource}.${input.action}`
-    const capability = fixtureCapabilities.find(
-      (item) => item.key === capabilityKey && sameScope(item.scope, input.scope)
+    const requestId = this.requestId(context)
+    const scenario = fixtureAccessChecks.find(
+      (candidate) =>
+        candidate.subjectId === input.subjectId &&
+        sameScope(candidate.scope, input.scope) &&
+        candidate.resource === input.resource &&
+        candidate.action === input.action
     )
-    const data: AccessCheck = {
-      ...input,
-      allowed: Boolean(capability),
-      checkedAt: FIXTURE_NOW,
-      reasonCode: capability
-        ? 'FIXTURE_CAPABILITY_PRESENT'
-        : 'FIXTURE_CAPABILITY_ABSENT',
-      evidence: capability ? [capability.key, scopeKey(capability.scope)] : [],
+    if (!scenario)
+      throw contractError(
+        'NOT_FOUND',
+        requestId,
+        'FIXTURE_ACCESS_SCENARIO_NOT_FOUND'
+      )
+    return {
+      data: scenario,
+      requestId,
+      schemaVersion: ADMIN_FIXTURE_SCHEMA_VERSION,
     }
-    return this.result(data, context)
   }
 
   private async find<T extends { readonly id: EntityId }>(
@@ -441,10 +474,14 @@ export class FixtureAdminContractClient implements AdminContractClient {
       throw contractError('DEADLINE_EXCEEDED', requestId, 'REQUEST_ABORTED')
     const item = source.find((candidate) => candidate.id === id)
     if (!item) throw contractError('NOT_FOUND', requestId)
-    return { data: item, requestId, contractVersion: ADMIN_CONTRACT_VERSION }
+    return {
+      data: item,
+      requestId,
+      schemaVersion: ADMIN_FIXTURE_SCHEMA_VERSION,
+    }
   }
 }
 
-export function createFixtureAdminContractClient(): AdminContractClient {
-  return new FixtureAdminContractClient()
+export function createFixtureAdminDataClient(): AdminDataClient {
+  return new FixtureAdminDataClient()
 }

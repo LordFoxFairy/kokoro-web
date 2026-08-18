@@ -75,9 +75,9 @@ apps/admin/
   src/lib/
     auth/                   # Auth.js 配置、session schema、route guard
     api/                    # BFF 调用入口、错误映射、分页适配
-    contracts/              # 生成客户端公开入口与边界校验
+    view-models/            # UI 消费模型；不得冒充 Protobuf wire types
     query/                  # TanStack Query 装配与稳定 query keys
-    fixtures/               # 仅 dev/test 使用的版本化契约 fixture
+    fixtures/               # 仅 dev/test 使用的确定性 UI 数据场景
     env/                    # 环境变量 schema；不暴露服务端 secret
   docs/
   tests/
