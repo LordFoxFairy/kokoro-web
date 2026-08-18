@@ -22,7 +22,7 @@ Admin 的路由、菜单、布局、组件或文案。任一方内部重构，�
 | 层级 | 固定选型 |
 |---|---|
 | 应用框架 | Next.js 16 App Router |
-| 视觉底座 | 官方 shadcn/ui CLI 与 Registry |
+| 视觉底座 | 官方 shadcn/ui `dashboard-01` Block + CLI/Registry 原语 |
 | UI | shadcn/ui + Radix UI |
 | 样式 | Tailwind CSS 4 |
 | 图标 | Lucide React |
@@ -47,6 +47,10 @@ Admin 的路由、菜单、布局、组件或文案。任一方内部重构，�
 
 组件增加或升级必须先通过官方 CLI 查看文档和 diff。页面只组合已登记原语；稳定且跨两个以上
 feature 重复的模式才提升到共享组件。项目不保留第三方模板、框架适配器或示例页面。
+
+`dashboard-01` 只提供官方 Shell 与组合结构，不提供 Kokoro 业务。其示例 JSON、图表指标、文档导航
+和行数据在加入后立即删除；DataTable 按官方说明结合每个真实列表的服务端筛选与游标语义配置，
+不抽象成包含所有领域行为的万能表格。
 
 ## 4. 目标目录
 

@@ -8,7 +8,7 @@
 - [x] 删除非 Next 应用入口、旧路由树、迁移适配器和上游审计机制。
 - [x] 建立唯一 Next.js 16 App Router 构建入口。
 - [x] 保留官方 `components.json` 作为组件配置事实来源。
-- [ ] 官方 Registry 可访问后，用 CLI 生成首批实际需要的原语并记录 diff。
+- [ ] 官方 Registry 可访问后，用 CLI 加入 `dashboard-01` 与实际需要的原语并记录 diff。
 - [ ] 完成依赖、类型、Lint 和生产构建门禁。
 
 ## 阶段 2：共享前端基建
