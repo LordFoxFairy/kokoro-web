@@ -1,4 +1,10 @@
-export type Capability = string
+import {
+  matchesCapabilityRule,
+  type Capability,
+  type CapabilityRule,
+} from '../lib/capabilities'
+
+export type { Capability, CapabilityRule } from '../lib/capabilities'
 
 export type NavItemId =
   | 'dashboard'
@@ -33,12 +39,6 @@ export interface NavGroup {
   readonly id: NavGroupId
   readonly label: string
   readonly items: readonly NavItem[]
-}
-
-/** Capability codes stay opaque and come from the versioned IAM contract. */
-export interface CapabilityRule {
-  readonly allOf?: readonly Capability[]
-  readonly anyOf?: readonly Capability[]
 }
 
 export type NavCapabilityRules = Readonly<Record<NavItemId, CapabilityRule>>
@@ -98,30 +98,13 @@ const NAV_GROUPS = [
   },
 ] as const satisfies readonly NavGroup[]
 
-function matchesRule(
-  granted: ReadonlySet<Capability>,
-  rule: CapabilityRule
-): boolean {
-  const allOf = rule.allOf ?? []
-  const anyOf = rule.anyOf ?? []
-
-  if (allOf.length === 0 && anyOf.length === 0) return false
-
-  return (
-    allOf.every((capability) => granted.has(capability)) &&
-    (anyOf.length === 0 || anyOf.some((capability) => granted.has(capability)))
-  )
-}
-
 export function projectNav(
   capabilities: readonly Capability[],
   rules: NavCapabilityRules
 ): readonly NavGroup[] {
-  const granted = new Set(capabilities)
-
   return NAV_GROUPS.flatMap((group) => {
     const items = group.items.filter((item) =>
-      matchesRule(granted, rules[item.id])
+      matchesCapabilityRule(capabilities, rules[item.id])
     )
 
     return items.length === 0 ? [] : [{ ...group, items }]
@@ -133,5 +116,5 @@ export function canAccessNavItem(
   capabilities: readonly Capability[],
   rules: NavCapabilityRules
 ): boolean {
-  return matchesRule(new Set(capabilities), rules[itemId])
+  return matchesCapabilityRule(capabilities, rules[itemId])
 }

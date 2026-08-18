@@ -62,10 +62,14 @@ Browser -> Admin Next.js BFF -> server-only Connect-ES client -> IAM gRPC -> Pos
       `loading/ready/empty/error/forbidden/not-found/partial` 七态。
 - [x] 权限投影纯函数按显式 capability key 控制导航可见性；空能力、`allOf`、`anyOf`、组合条件和
       缺失能力均有单元断言，权限诊断 fixture 只返回预置结果而不在前端求值策略。
+- [x] 通用 capability rule 供导航与命令复用，稀疏/畸形/访问器输入均 fail closed，不推导角色、
+      通配符或权限闭包。
 - [ ] DataTable 列定义、选择、批量操作资格和页码边界。
 - [x] DataTable 纯状态模型覆盖不透明游标前进/回退、query/page size 重置、稳定行选择、列顺序与
       至少保留一列；尚未证明 TanStack Table 组件、批量操作资格或页面接线。
 - [ ] 表单 schema、默认值、字段关联、提交转换和服务端错误映射。
+- [x] 通用表单纯状态模型覆盖编辑、提交、成功、冲突、禁止、字段/表单错误、输入保留和乱序响应；
+      尚未覆盖具体页面 Zod schema、RHF 组件和提交转换。
 - [x] provisional Session view model 严格解析用户、到期时间、capability 和 scope，拒绝未知字段、
       Token/凭据字段、非法 scope 与非法到期时间。
 - [x] 登录回跳纯函数只接受同源 HTTP/HTTPS 目标并降为相对路径；公开登录错误映射不泄露账号状态或
@@ -95,6 +99,8 @@ Browser -> Admin Next.js BFF -> server-only Connect-ES client -> IAM gRPC -> Pos
 
 - [ ] Admin 只导入生成的 ConnectRPC 类型和客户端，不手写重复 DTO。
 - [ ] 每个 query/mutation 的请求字段、响应字段、分页游标和枚举均校验。
+- [x] 查询缓存 key 强制包含 identity、Scope、契约版本、领域、操作和规范化参数；platform/
+      organization/site 严格隔离，拒绝敏感字段、getter、稀疏数组、循环和畸形运行时输入。
 - [ ] 错误码映射覆盖 unauthenticated、permission denied、not found、conflict、invalid argument、rate limited 和 unavailable。
 - [ ] generated-contract fixture 与当前契约版本建立版本锁定；契约变更必须使不兼容 fixture 测试
       失败。当前 `kokoro.admin.fixture.v1` provisional view-model fixture 不计为此项证据。
@@ -118,7 +124,7 @@ Browser -> Admin Next.js BFF -> server-only Connect-ES client -> IAM gRPC -> Pos
 - [ ] 完成源码边界审计，确认无新增显式/隐式 `any` 和宽泛边界对象。
 - [x] 已记录自动化批次的 ESLint 通过且为 0 warnings。
 - [ ] 本清单定义的单元和组件测试范围全部实现并全量通过。
-- [x] 当前已实现单元测试在本批次记录中 13 files、179 tests 全部通过，且
+- [x] 当前已实现单元测试在本批次记录中 19 files、281 tests 全部通过，且
       `skip/todo/retry = 0/0/0`；这不代表本清单要求的单元测试范围或任何组件测试已完成。
 - [ ] 为全量单元和组件测试配置并保存机器可读报告。
 - [x] 已记录自动化批次的 Next.js 16 production build 通过。
