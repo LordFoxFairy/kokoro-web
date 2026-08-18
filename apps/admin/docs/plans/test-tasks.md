@@ -55,19 +55,24 @@ Browser -> Admin Next.js BFF -> server-only Connect-ES client -> IAM gRPC -> Pos
 - [ ] URL 查询状态：页码/游标导航、详情 Tab 和返回路径可稳定序列化并在页面中回读。
 - [x] 路由 registry 纯函数覆盖 Dashboard、全部顶层管理路由、用户/Organization/Site 详情路由、
       静态 breadcrumb 元数据与未知路由；尚未覆盖实际 App Router 页面或 breadcrumb 组件。
-- [ ] 日期、数量、状态、标识符和错误码展示函数。
+- [x] 日期、相对时间、数量、状态和标识符展示函数使用显式 locale/timeZone/now，严格拒绝非法
+      公历日期、负数/非整数数量与未知状态，服务端与浏览器不依赖各自默认环境。
 - [x] provisional view-model error 到 `error/forbidden/not-found` 页面状态的纯函数映射覆盖全部当前
       错误码、requestId、字段错误和 retryable 元数据，且移除后端消息；页面状态 dispatcher 另行覆盖
       `loading/ready/empty/error/forbidden/not-found/partial` 七态。
 - [x] 权限投影纯函数按显式 capability key 控制导航可见性；空能力、`allOf`、`anyOf`、组合条件和
       缺失能力均有单元断言，权限诊断 fixture 只返回预置结果而不在前端求值策略。
 - [ ] DataTable 列定义、选择、批量操作资格和页码边界。
+- [x] DataTable 纯状态模型覆盖不透明游标前进/回退、query/page size 重置、稳定行选择、列顺序与
+      至少保留一列；尚未证明 TanStack Table 组件、批量操作资格或页面接线。
 - [ ] 表单 schema、默认值、字段关联、提交转换和服务端错误映射。
 - [x] provisional Session view model 严格解析用户、到期时间、capability 和 scope，拒绝未知字段、
       Token/凭据字段、非法 scope 与非法到期时间。
 - [x] 登录回跳纯函数只接受同源 HTTP/HTTPS 目标并降为相对路径；公开登录错误映射不泄露账号状态或
       后端消息。
 - [ ] Auth.js Session 映射、未登录重定向和退出后的状态清理。
+- [x] 纯路由访问决策覆盖公共/未知路由、缺失或过期 Session、安全 callback、已知页面能力和详情
+      路由继承，并明确不替代 Auth.js Route Handler 或 IAM RPC 最终授权。
 - [x] provisional view-model fixture client 的固定时钟/requestId、查询、筛选、排序、分页 token、
       详情、结构化错误、取消信号和预置权限诊断行为有单元断言。
 - [x] 数据源选择纯函数只在显式选择且为 development/test 时允许 provisional view-model fixture；
