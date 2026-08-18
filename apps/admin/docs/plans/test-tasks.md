@@ -95,6 +95,14 @@ Browser -> Admin Next.js BFF -> server-only Connect-ES client -> IAM gRPC -> Pos
       供后续 DataTable 呈现“无匹配结果”及分页边界。
 - [x] 用户、Organization、Site 详情 loader 精确调用对应 client method，opaque entity ID 原样传给
       权威后端，并覆盖结构化错误、未知错误 requestId 与独立 unauthenticated 页面状态。
+- [x] 角色 loader 仅在 scope 完整时请求数据，将 scope、query 与 opaque pageToken/pageSize 原样投影；
+      `includeDeleted` 在 provisional schema v2 无对应字段时显式拒绝，不在前端模拟删除项语义。
+- [x] 成员 loader 将权威 scope 与 query/sort/opaque pageToken/pageSize 原样投影，区分初始 empty 与
+      筛选或分页后的 ready 空 Page，并保留独立 unauthenticated 页面状态。
+- [x] 会话与审计 loader 仅投影 provisional schema v2 已表达的筛选和 opaque 分页字段；审计 scope
+      组合在请求前做结构校验，不复制 IAM 授权、生命周期或审计查询规则。
+- [x] 权限诊断 loader 仅在 subject、scope、resource、action 完整时提交预置 AccessCheckInput，直接呈现
+      data client 的权威结果，不在前端计算角色、权限闭包或允许/拒绝结论。
 - [x] 数据源选择纯函数只在显式选择且为 development/test 时允许 provisional view-model fixture；
       production、未配置 RPC 和未知数据源均稳定拒绝。
 - [ ] generated-contract fixture 必须符合生成契约，不允许任意对象或 `any` 绕过验证。
@@ -140,7 +148,7 @@ Browser -> Admin Next.js BFF -> server-only Connect-ES client -> IAM gRPC -> Pos
 - [ ] 完成源码边界审计，确认无新增显式/隐式 `any` 和宽泛边界对象。
 - [x] 已记录自动化批次的 ESLint 通过且为 0 warnings。
 - [ ] 本清单定义的单元和组件测试范围全部实现并全量通过。
-- [x] 当前已实现单元测试在页面 loader 批次记录中 25 files、387 tests 全部通过，且
+- [x] 当前已实现单元测试在访问与安全 loader 批次记录中 29 files、410 tests 全部通过，且
       `skip/todo/retry = 0/0/0`；这不代表本清单要求的单元测试范围或任何组件测试已完成。
 - [ ] 为全量单元和组件测试配置并保存机器可读报告。
 - [x] 已记录自动化批次的 Next.js 16 production build 通过。

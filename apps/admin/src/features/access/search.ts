@@ -5,7 +5,7 @@ export type SearchParamsInput = Readonly<Record<string, SearchParamValue>>
 export type SearchParamSource = SearchParamsInput | URLSearchParams
 
 const optionalSearchValue = z.string().trim().min(1).optional()
-const scopeTypeSchema = z.enum(['organization', 'site'])
+const scopeTypeSchema = z.enum(['platform', 'organization', 'site'])
 
 export const rolesSearchSchema = z.object({
   scopeType: scopeTypeSchema.optional(),
@@ -51,7 +51,9 @@ function scopeFrom(input: SearchParamSource) {
   const scopeType = scopeTypeSchema.safeParse(firstString(input, 'scopeType'))
   const scopeId = firstString(input, 'scopeId')
 
-  if (!scopeType.success || !scopeId) return {}
+  if (!scopeType.success) return {}
+  if (scopeType.data === 'platform') return { scopeType: 'platform' as const }
+  if (!scopeId) return {}
 
   return { scopeType: scopeType.data, scopeId }
 }
@@ -72,7 +74,9 @@ export function serializeRolesSearch(search: RolesSearch): URLSearchParams {
   const output = new URLSearchParams()
   if (!parsed.success) return output
 
-  if (parsed.data.scopeType && parsed.data.scopeId) {
+  if (parsed.data.scopeType === 'platform') {
+    output.set('scopeType', 'platform')
+  } else if (parsed.data.scopeType && parsed.data.scopeId) {
     output.set('scopeType', parsed.data.scopeType)
     output.set('scopeId', parsed.data.scopeId)
   }
@@ -99,7 +103,9 @@ export function serializeAccessSearch(search: AccessSearch): URLSearchParams {
   if (!parsed.success) return output
 
   if (parsed.data.subjectId) output.set('subjectId', parsed.data.subjectId)
-  if (parsed.data.scopeType && parsed.data.scopeId) {
+  if (parsed.data.scopeType === 'platform') {
+    output.set('scopeType', 'platform')
+  } else if (parsed.data.scopeType && parsed.data.scopeId) {
     output.set('scopeType', parsed.data.scopeType)
     output.set('scopeId', parsed.data.scopeId)
   }

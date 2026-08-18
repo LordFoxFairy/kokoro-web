@@ -55,6 +55,16 @@ describe('roles search state', () => {
     expect(parseRolesSearch(serializeRolesSearch(state))).toEqual(state)
   })
 
+  it('roundtrips platform scope without inventing a scope id', () => {
+    const state = {
+      scopeType: 'platform' as const,
+      includeDeleted: false,
+      q: 'operator',
+    }
+
+    expect(parseRolesSearch(serializeRolesSearch(state))).toEqual(state)
+  })
+
   it('omits defaults and incomplete scope during serialization', () => {
     expect(
       serializeRolesSearch({
@@ -100,6 +110,17 @@ describe('access search state', () => {
       scopeId: 'site-1',
       resource: 'sessions',
       action: 'revoke',
+    }
+
+    expect(parseAccessSearch(serializeAccessSearch(state))).toEqual(state)
+  })
+
+  it('roundtrips platform diagnostics without a scope id', () => {
+    const state = {
+      subjectId: 'user-1',
+      scopeType: 'platform' as const,
+      resource: 'users',
+      action: 'read',
     }
 
     expect(parseAccessSearch(serializeAccessSearch(state))).toEqual(state)
