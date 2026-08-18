@@ -50,6 +50,13 @@ Browser -> Admin Next.js BFF -> server-only Connect-ES client -> IAM gRPC
 - IAM 不控制 Admin 的页面布局、菜单文案和组件形态。
 - 任一方内部重构不得要求另一方同步修改；只有契约版本变化触发协作。
 
+## User Web 后续约束
+
+- 对外用户端后续统一迁移到官方 shadcn/ui，不再引入另一套 UI 体系。
+- User Web 与 Admin 是两个独立应用，分别构建、部署和迭代，不共享页面或业务 feature。
+- 两端只共享经过验证的设计 token、官方 UI 原语使用规范，以及确有复用价值的无业务基础组件。
+- 当前阶段只闭环 Admin；User Web 改造另立方案和任务，不进入本轮实现范围。
+
 ## 扩展规则
 
 新增管理能力通常只需要：
