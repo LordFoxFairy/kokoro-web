@@ -42,6 +42,13 @@
 
 Admin 不根据页面需要自行确定这些规则，也不把 fixture 场景提升为生产契约。
 
+### Provisional 传输宽度保护
+
+在 generated contract 冻结前，Admin provisional schema 对分页 `items` 使用 100 条上限，与当前
+`pageSize` 上限一致；对 capability、permission catalog、role permission keys 等未分页集合使用
+10,000 条高位响应宽度保护。后者不是 IAM 领域容量、授权数量或产品限制，Admin 不据此截断、分页或
+推导业务结论；超过上限视为异常响应。generated Protobuf 发布后必须以权威字段与传输限制替换。
+
 ## 前端可继续完成
 
 - Next.js 路由、页面结构、URL 筛选和响应式布局。

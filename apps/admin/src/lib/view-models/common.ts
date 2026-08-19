@@ -79,12 +79,3 @@ export type AdminError = {
   readonly retryAfterMs?: number
   readonly safeMessage?: string
 }
-
-export function isAdminError(value: unknown): value is AdminError {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'kind' in value &&
-    value.kind === 'admin-data-error'
-  )
-}

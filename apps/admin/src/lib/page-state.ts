@@ -1,5 +1,5 @@
 import {
-  isAdminError,
+  parseAdminError,
   type AdminError,
   type AdminErrorCode,
   type FieldViolation,
@@ -77,8 +77,9 @@ export function pageStateFromError<T>(
   error: unknown,
   fallbackRequestId: string
 ): PageState<T> {
-  const pageError = isAdminError(error)
-    ? toPageError(error)
+  const adminError = parseAdminError(error)
+  const pageError = adminError
+    ? toPageError(adminError)
     : toPageError({
         kind: 'admin-data-error',
         code: 'UNKNOWN',

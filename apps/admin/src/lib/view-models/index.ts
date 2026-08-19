@@ -1,3 +1,7 @@
 export * from './client'
 export * from './common'
+export * from './entities'
 export * from './models'
+export * from './requests'
+export * from './responses'
+export * from './schema'

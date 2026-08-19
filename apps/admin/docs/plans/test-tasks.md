@@ -49,7 +49,8 @@ Browser -> Admin Next.js BFF -> server-only Connect-ES client -> IAM gRPC -> Pos
 
 ### 3.1 单元测试
 
-- [ ] Zod 边界 schema：合法数据、缺字段、额外字段、错误枚举、空值和超界值。
+- [x] provisional v2 Zod 运行时边界：common、request、entity 和 response schema 均为 strict；覆盖
+      合法数据、缺字段、额外字段、错误枚举、空值、超界值、不透明 token、ISO instant、分页和错误信封。
 - [x] URL 查询状态：用户、Organization、Site、角色、权限诊断、会话和审计的已支持筛选、排序与
       scope 可稳定解析、序列化和 round-trip；非法值、默认值、重复参数及不透明分页 token 有单元断言。
 - [x] URL 查询状态：目录 pageToken/pageSize、详情 Tab 和安全返回路径可稳定解析、序列化及
@@ -84,6 +85,14 @@ Browser -> Admin Next.js BFF -> server-only Connect-ES client -> IAM gRPC -> Pos
       路由继承，并明确不替代 Auth.js Route Handler 或 IAM RPC 最终授权。
 - [x] provisional view-model fixture client 的固定时钟/requestId、查询、筛选、排序、分页 token、
       详情、结构化错误、取消信号和预置权限诊断行为有单元断言。
+- [x] provisional view-model fixture client 的 18 个 response methods 均由对应 strict response schema
+      解析验证，覆盖 identity、capability、Dashboard、目录、详情、权限目录、Session、审计和权限诊断。
+- [x] fixture client 的分页、scope、详情 ID 与权限诊断请求入口均执行 strict request schema；校验失败
+      映射为稳定 AdminError，不向页面泄露 Zod 内部错误。
+- [x] 审计 attributes schema 拒绝 Token、Cookie、密码、secret、Authorization、API key、private key
+      等敏感键及 `__proto__`/`prototype`/`constructor`，并限制键值长度和属性数量。
+- [x] 完整 AdminError envelope 使用 strict schema；页面控制字段使用前向兼容解析，仅含 `kind` 的畸形
+      对象和 hostile revoked Proxy 均 fail closed，且不会因 Proxy trap 抛出未处理异常。
 - [x] development/test fixture 场景按 operation 显式注入 ready/empty/forbidden/not-found/unavailable/
       partial，经 runtime-branded AdminEnv 与中央 data-source 门禁创建；production 和畸形配置 fail fast。
 - [x] Dashboard loader 透传 scope/request context，区分 ready、初始 empty、契约声明的 section partial
@@ -154,7 +163,7 @@ Browser -> Admin Next.js BFF -> server-only Connect-ES client -> IAM gRPC -> Pos
 - [ ] 完成源码边界审计，确认无新增显式/隐式 `any` 和宽泛边界对象。
 - [x] 已记录自动化批次的 ESLint 通过且为 0 warnings。
 - [ ] 本清单定义的单元和组件测试范围全部实现并全量通过。
-- [x] 当前已实现单元测试在核心读取 loader 批次记录中 32 files、431 tests 全部通过，且
+- [x] 当前已实现单元测试在运行时 Schema 批次记录中 36 files、497 tests 全部通过，且
       `skip/todo/retry = 0/0/0`；这不代表本清单要求的单元测试范围或任何组件测试已完成。
 - [ ] 为全量单元和组件测试配置并保存机器可读报告。
 - [x] 已记录自动化批次的 Next.js 16 production build 通过。

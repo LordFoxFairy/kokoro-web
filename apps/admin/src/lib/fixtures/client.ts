@@ -1,5 +1,31 @@
+import type { ZodType } from 'zod'
 import {
   ADMIN_FIXTURE_SCHEMA_VERSION,
+  accessCheckResultSchema,
+  accessCheckInputSchema,
+  auditPageRequestSchema,
+  auditEventResultSchema,
+  auditPageResultSchema,
+  capabilityResultSchema,
+  dashboardResultSchema,
+  entityIdSchema,
+  identityResultSchema,
+  memberPageResultSchema,
+  organizationPageResultSchema,
+  organizationResultSchema,
+  permissionListResultSchema,
+  rolePageResultSchema,
+  roleResultSchema,
+  scopePageRequestSchema,
+  scopeSchema,
+  sessionPageResultSchema,
+  sessionResultSchema,
+  sessionPageRequestSchema,
+  sitePageResultSchema,
+  siteResultSchema,
+  userPageResultSchema,
+  userResultSchema,
+  statusPageRequestSchema,
   type AccessCheckInput,
   type AdminDataClient,
   type AdminError,
@@ -84,6 +110,24 @@ function contractError(
   }
 }
 
+function parseRequest<T>(
+  schema: ZodType<T>,
+  value: unknown,
+  requestId: () => string
+): T {
+  let businessCode = 'INVALID_REQUEST'
+  try {
+    const result = schema.safeParse(value)
+    if (result.success) return result.data
+    if (result.error.issues.some((issue) => issue.path[0] === 'pageSize')) {
+      businessCode = 'INVALID_PAGE_SIZE'
+    }
+  } catch {
+    businessCode = 'INVALID_REQUEST'
+  }
+  throw contractError('INVALID_ARGUMENT', requestId(), businessCode)
+}
+
 function decodeOffset(
   token: string | undefined,
   signature: string,
@@ -166,10 +210,15 @@ export class FixtureAdminDataClient implements AdminDataClient {
 
   private requestId(context: RequestContext | undefined): string {
     this.requestSequence += 1
-    return (
-      context?.requestId ??
-      `req_fixture_${String(this.requestSequence).padStart(4, '0')}`
-    )
+    const fallback = `req_fixture_${String(this.requestSequence).padStart(4, '0')}`
+    try {
+      const supplied = context?.requestId
+      return supplied && entityIdSchema.safeParse(supplied).success
+        ? supplied
+        : fallback
+    } catch {
+      return fallback
+    }
   }
 
   private result<T>(data: T, context?: RequestContext): DataResult<T> {
@@ -187,29 +236,36 @@ export class FixtureAdminDataClient implements AdminDataClient {
   }
 
   async getCurrentIdentity(context?: RequestContext) {
-    return this.result(
-      {
-        id: 'usr_ada',
-        displayName: 'Ada Chen',
-        email: 'ada@example.test',
-        capabilities: fixtureCapabilities,
-      },
-      context
+    return identityResultSchema.parse(
+      this.result(
+        {
+          id: 'usr_ada',
+          displayName: 'Ada Chen',
+          email: 'ada@example.test',
+          capabilities: fixtureCapabilities,
+        },
+        context
+      )
     )
   }
 
   async getCapabilities(scope: Scope, context?: RequestContext) {
-    const capabilities = fixtureCapabilities.filter((capability) =>
-      sameScope(capability.scope, scope)
+    const parsedScope = parseRequest(scopeSchema, scope, () =>
+      this.requestId(context)
     )
-    return this.result(
-      {
-        schemaVersion: ADMIN_FIXTURE_SCHEMA_VERSION,
-        subjectId: 'usr_ada',
-        capabilities,
-        projectedAt: FIXTURE_NOW,
-      },
-      context
+    const capabilities = fixtureCapabilities.filter((capability) =>
+      sameScope(capability.scope, parsedScope)
+    )
+    return capabilityResultSchema.parse(
+      this.result(
+        {
+          schemaVersion: ADMIN_FIXTURE_SCHEMA_VERSION,
+          subjectId: 'usr_ada',
+          capabilities,
+          projectedAt: FIXTURE_NOW,
+        },
+        context
+      )
     )
   }
 
@@ -217,6 +273,7 @@ export class FixtureAdminDataClient implements AdminDataClient {
     _scope: Scope,
     context?: RequestContext
   ): Promise<DataResult<DashboardSummary>> {
+    parseRequest(scopeSchema, _scope, () => this.requestId(context))
     const metrics: DashboardSummary['metrics'] = [
       {
         key: 'users',
@@ -257,16 +314,21 @@ export class FixtureAdminDataClient implements AdminDataClient {
       metrics,
       recentAudit: fixtureAudit.slice(0, 3),
     }
-    return this.result(dashboard, context)
+    return dashboardResultSchema.parse(this.result(dashboard, context))
   }
 
   async listUsers(request?: StatusPageRequest, context?: RequestContext) {
+    const parsedRequest = request
+      ? parseRequest(statusPageRequestSchema, request, () =>
+          this.requestId(context)
+        )
+      : undefined
     const requestId = this.requestId(context)
     const page = paginate(
-      withStatuses(fixtureUsers, request),
-      request,
-      paginationSignature('users', request, {
-        statuses: [...(request?.statuses ?? [])].sort(),
+      withStatuses(fixtureUsers, parsedRequest),
+      parsedRequest,
+      paginationSignature('users', parsedRequest, {
+        statuses: [...(parsedRequest?.statuses ?? [])].sort(),
       }),
       requestId,
       (user) => `${user.id} ${user.displayName} ${user.email}`,
@@ -278,27 +340,32 @@ export class FixtureAdminDataClient implements AdminDataClient {
         updatedAt: (user) => user.updatedAt,
       }
     )
-    return {
+    return userPageResultSchema.parse({
       data: page,
       requestId,
       schemaVersion: ADMIN_FIXTURE_SCHEMA_VERSION,
-    }
+    })
   }
 
   async getUser(id: EntityId, context?: RequestContext) {
-    return this.find(fixtureUsers, id, context)
+    return userResultSchema.parse(await this.find(fixtureUsers, id, context))
   }
 
   async listOrganizations(
     request?: StatusPageRequest,
     context?: RequestContext
   ) {
+    const parsedRequest = request
+      ? parseRequest(statusPageRequestSchema, request, () =>
+          this.requestId(context)
+        )
+      : undefined
     const requestId = this.requestId(context)
     const page = paginate(
-      withStatuses(fixtureOrganizations, request),
-      request,
-      paginationSignature('organizations', request, {
-        statuses: [...(request?.statuses ?? [])].sort(),
+      withStatuses(fixtureOrganizations, parsedRequest),
+      parsedRequest,
+      paginationSignature('organizations', parsedRequest, {
+        statuses: [...(parsedRequest?.statuses ?? [])].sort(),
       }),
       requestId,
       (organization) =>
@@ -311,24 +378,31 @@ export class FixtureAdminDataClient implements AdminDataClient {
         updatedAt: (organization) => organization.updatedAt,
       }
     )
-    return {
+    return organizationPageResultSchema.parse({
       data: page,
       requestId,
       schemaVersion: ADMIN_FIXTURE_SCHEMA_VERSION,
-    }
+    })
   }
 
   async getOrganization(id: EntityId, context?: RequestContext) {
-    return this.find(fixtureOrganizations, id, context)
+    return organizationResultSchema.parse(
+      await this.find(fixtureOrganizations, id, context)
+    )
   }
 
   async listSites(request?: StatusPageRequest, context?: RequestContext) {
+    const parsedRequest = request
+      ? parseRequest(statusPageRequestSchema, request, () =>
+          this.requestId(context)
+        )
+      : undefined
     const requestId = this.requestId(context)
     const page = paginate(
-      withStatuses(fixtureSites, request),
-      request,
-      paginationSignature('sites', request, {
-        statuses: [...(request?.statuses ?? [])].sort(),
+      withStatuses(fixtureSites, parsedRequest),
+      parsedRequest,
+      paginationSignature('sites', parsedRequest, {
+        statuses: [...(parsedRequest?.statuses ?? [])].sort(),
       }),
       requestId,
       (site) => `${site.id} ${site.name} ${site.slug} ${site.organizationId}`,
@@ -340,26 +414,32 @@ export class FixtureAdminDataClient implements AdminDataClient {
         updatedAt: (site) => site.updatedAt,
       }
     )
-    return {
+    return sitePageResultSchema.parse({
       data: page,
       requestId,
       schemaVersion: ADMIN_FIXTURE_SCHEMA_VERSION,
-    }
+    })
   }
 
   async getSite(id: EntityId, context?: RequestContext) {
-    return this.find(fixtureSites, id, context)
+    return siteResultSchema.parse(await this.find(fixtureSites, id, context))
   }
 
   async listMembers(request: ScopePageRequest, context?: RequestContext) {
+    const parsedRequest = parseRequest(scopePageRequestSchema, request, () =>
+      this.requestId(context)
+    )
     const requestId = this.requestId(context)
     const source = fixtureMembers.filter((member) =>
-      sameScope(member.scope, request.scope)
+      sameScope(member.scope, parsedRequest.scope)
     )
     const page = paginate(
       source,
-      request,
-      paginationSignature(`members:${scopeKey(request.scope)}`, request),
+      parsedRequest,
+      paginationSignature(
+        `members:${scopeKey(parsedRequest.scope)}`,
+        parsedRequest
+      ),
       requestId,
       (member) => `${member.id} ${member.userId} ${member.roleIds.join(' ')}`,
       {
@@ -368,22 +448,28 @@ export class FixtureAdminDataClient implements AdminDataClient {
         userId: (member) => member.userId,
       }
     )
-    return {
+    return memberPageResultSchema.parse({
       data: page,
       requestId,
       schemaVersion: ADMIN_FIXTURE_SCHEMA_VERSION,
-    }
+    })
   }
 
   async listRoles(request: ScopePageRequest, context?: RequestContext) {
+    const parsedRequest = parseRequest(scopePageRequestSchema, request, () =>
+      this.requestId(context)
+    )
     const requestId = this.requestId(context)
     const source = fixtureRoles.filter((role) =>
-      sameScope(role.scope, request.scope)
+      sameScope(role.scope, parsedRequest.scope)
     )
     const page = paginate(
       source,
-      request,
-      paginationSignature(`roles:${scopeKey(request.scope)}`, request),
+      parsedRequest,
+      paginationSignature(
+        `roles:${scopeKey(parsedRequest.scope)}`,
+        parsedRequest
+      ),
       requestId,
       (role) => `${role.id} ${role.name} ${role.description ?? ''}`,
       {
@@ -393,35 +479,43 @@ export class FixtureAdminDataClient implements AdminDataClient {
         updatedAt: (role) => role.updatedAt,
       }
     )
-    return {
+    return rolePageResultSchema.parse({
       data: page,
       requestId,
       schemaVersion: ADMIN_FIXTURE_SCHEMA_VERSION,
-    }
+    })
   }
 
   async getRole(id: EntityId, context?: RequestContext) {
-    return this.find(fixtureRoles, id, context)
+    return roleResultSchema.parse(await this.find(fixtureRoles, id, context))
   }
 
   async listPermissions(_scope: Scope, context?: RequestContext) {
-    return this.result(fixturePermissions, context)
+    parseRequest(scopeSchema, _scope, () => this.requestId(context))
+    return permissionListResultSchema.parse(
+      this.result(fixturePermissions, context)
+    )
   }
 
   async listSessions(request?: SessionPageRequest, context?: RequestContext) {
+    const parsedRequest = request
+      ? parseRequest(sessionPageRequestSchema, request, () =>
+          this.requestId(context)
+        )
+      : undefined
     const requestId = this.requestId(context)
     const source = fixtureSessions.filter(
       (session) =>
-        (!request?.userId || session.userId === request.userId) &&
-        (!request?.statuses?.length ||
-          request.statuses.includes(session.status))
+        (!parsedRequest?.userId || session.userId === parsedRequest.userId) &&
+        (!parsedRequest?.statuses?.length ||
+          parsedRequest.statuses.includes(session.status))
     )
     const page = paginate(
       source,
-      request,
-      paginationSignature('sessions', request, {
-        statuses: [...(request?.statuses ?? [])].sort(),
-        userId: request?.userId ?? '',
+      parsedRequest,
+      paginationSignature('sessions', parsedRequest, {
+        statuses: [...(parsedRequest?.statuses ?? [])].sort(),
+        userId: parsedRequest?.userId ?? '',
       }),
       requestId,
       (session) =>
@@ -433,38 +527,47 @@ export class FixtureAdminDataClient implements AdminDataClient {
         status: (session) => session.status,
       }
     )
-    return {
+    return sessionPageResultSchema.parse({
       data: page,
       requestId,
       schemaVersion: ADMIN_FIXTURE_SCHEMA_VERSION,
-    }
+    })
   }
 
   async getSession(id: EntityId, context?: RequestContext) {
-    return this.find(fixtureSessions, id, context)
+    return sessionResultSchema.parse(
+      await this.find(fixtureSessions, id, context)
+    )
   }
 
   async listAudit(request?: AuditPageRequest, context?: RequestContext) {
+    const parsedRequest = request
+      ? parseRequest(auditPageRequestSchema, request, () =>
+          this.requestId(context)
+        )
+      : undefined
     const requestId = this.requestId(context)
     const source = fixtureAudit.filter(
       (event) =>
-        (!request?.actorId || event.actorId === request.actorId) &&
-        (!request?.targetId || event.targetId === request.targetId) &&
-        (!request?.requestId || event.requestId === request.requestId) &&
-        (!request?.outcomes?.length ||
-          request.outcomes.includes(event.outcome)) &&
-        (!request?.scope ||
-          (event.scope && sameScope(event.scope, request.scope)))
+        (!parsedRequest?.actorId || event.actorId === parsedRequest.actorId) &&
+        (!parsedRequest?.targetId ||
+          event.targetId === parsedRequest.targetId) &&
+        (!parsedRequest?.requestId ||
+          event.requestId === parsedRequest.requestId) &&
+        (!parsedRequest?.outcomes?.length ||
+          parsedRequest.outcomes.includes(event.outcome)) &&
+        (!parsedRequest?.scope ||
+          (event.scope && sameScope(event.scope, parsedRequest.scope)))
     )
     const page = paginate(
       source,
-      request,
-      paginationSignature('audit', request, {
-        actorId: request?.actorId ?? '',
-        outcomes: [...(request?.outcomes ?? [])].sort(),
-        requestId: request?.requestId ?? '',
-        scope: request?.scope ? scopeKey(request.scope) : '',
-        targetId: request?.targetId ?? '',
+      parsedRequest,
+      paginationSignature('audit', parsedRequest, {
+        actorId: parsedRequest?.actorId ?? '',
+        outcomes: [...(parsedRequest?.outcomes ?? [])].sort(),
+        requestId: parsedRequest?.requestId ?? '',
+        scope: parsedRequest?.scope ? scopeKey(parsedRequest.scope) : '',
+        targetId: parsedRequest?.targetId ?? '',
       }),
       requestId,
       (event) =>
@@ -475,25 +578,30 @@ export class FixtureAdminDataClient implements AdminDataClient {
         outcome: (event) => event.outcome,
       }
     )
-    return {
+    return auditPageResultSchema.parse({
       data: page,
       requestId,
       schemaVersion: ADMIN_FIXTURE_SCHEMA_VERSION,
-    }
+    })
   }
 
   async getAuditEvent(id: EntityId, context?: RequestContext) {
-    return this.find(fixtureAudit, id, context)
+    return auditEventResultSchema.parse(
+      await this.find(fixtureAudit, id, context)
+    )
   }
 
   async checkAccess(input: AccessCheckInput, context?: RequestContext) {
+    const parsedInput = parseRequest(accessCheckInputSchema, input, () =>
+      this.requestId(context)
+    )
     const requestId = this.requestId(context)
     const scenario = fixtureAccessChecks.find(
       (candidate) =>
-        candidate.subjectId === input.subjectId &&
-        sameScope(candidate.scope, input.scope) &&
-        candidate.resource === input.resource &&
-        candidate.action === input.action
+        candidate.subjectId === parsedInput.subjectId &&
+        sameScope(candidate.scope, parsedInput.scope) &&
+        candidate.resource === parsedInput.resource &&
+        candidate.action === parsedInput.action
     )
     if (!scenario)
       throw contractError(
@@ -501,11 +609,11 @@ export class FixtureAdminDataClient implements AdminDataClient {
         requestId,
         'FIXTURE_ACCESS_SCENARIO_NOT_FOUND'
       )
-    return {
+    return accessCheckResultSchema.parse({
       data: scenario,
       requestId,
       schemaVersion: ADMIN_FIXTURE_SCHEMA_VERSION,
-    }
+    })
   }
 
   private async find<T extends { readonly id: EntityId }>(
@@ -513,10 +621,13 @@ export class FixtureAdminDataClient implements AdminDataClient {
     id: EntityId,
     context?: RequestContext
   ) {
+    const parsedId = parseRequest(entityIdSchema, id, () =>
+      this.requestId(context)
+    )
     const requestId = this.requestId(context)
     if (context?.signal?.aborted)
       throw contractError('DEADLINE_EXCEEDED', requestId, 'REQUEST_ABORTED')
-    const item = source.find((candidate) => candidate.id === id)
+    const item = source.find((candidate) => candidate.id === parsedId)
     if (!item) throw contractError('NOT_FOUND', requestId)
     return {
       data: item,
