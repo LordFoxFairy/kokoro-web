@@ -1,0 +1,26 @@
+{
+  "round": 1,
+  "desktop": {
+    "activeUser": "AAda Chenada@example.test",
+    "bodyTextLength": 448,
+    "clientHeight": 1000,
+    "clientWidth": 1440,
+    "mainCount": 1,
+    "scrollHeight": 1000,
+    "scrollWidth": 1440,
+    "url": "http://127.0.0.1:3100/"
+  },
+  "mobile": {
+    "bodyTextLength": 151,
+    "clientHeight": 844,
+    "clientWidth": 390,
+    "innerHeight": 844,
+    "innerWidth": 390,
+    "mainCount": 1,
+    "scrollHeight": 844,
+    "scrollWidth": 390,
+    "url": "http://127.0.0.1:3100/users",
+    "visibleRowDetailButtons": 4,
+    "visibleTables": 0
+  }
+}

@@ -1,0 +1,20 @@
+import { fireEvent, render, screen } from '@testing-library/react'
+import { describe, expect, it } from 'vitest'
+import { SkipToMain } from './skip-to-main'
+
+describe('SkipToMain', () => {
+  it('moves focus to the main content target', () => {
+    render(
+      <>
+        <SkipToMain />
+        <main id='main-content' tabIndex={-1}>
+          内容
+        </main>
+      </>
+    )
+
+    fireEvent.click(screen.getByRole('link', { name: '跳到主要内容' }))
+
+    expect(document.activeElement).toBe(screen.getByRole('main'))
+  })
+})

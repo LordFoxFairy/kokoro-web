@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { resolveSafeCallbackUrl } from './redirect'
+import { resolveSafeAdminCallbackUrl, resolveSafeCallbackUrl } from './redirect'
 
 const APP_ORIGIN = 'https://admin.kokoro.test:8443'
 
@@ -60,5 +60,27 @@ describe('resolveSafeCallbackUrl', () => {
 
     expect(result).toBe('/sessions?status=active#current')
     expect(result).not.toContain('admin.kokoro.test')
+  })
+})
+
+describe('resolveSafeAdminCallbackUrl', () => {
+  it.each([
+    ['/users?page=2#results', '/users?page=2#results'],
+    ['/users/usr_ada', '/users/usr_ada'],
+    ['/forbidden', '/forbidden'],
+    ['https://admin.kokoro.test:8443/audit', '/audit'],
+  ])('allows a registered Admin route: %s', (callbackUrl, expected) => {
+    expect(resolveSafeAdminCallbackUrl(callbackUrl, APP_ORIGIN)).toBe(expected)
+  })
+
+  it.each([
+    '/login',
+    '/api/auth/callback/credentials',
+    '/_next/static/chunk.js',
+    '/unknown',
+    '/users/usr_ada/extra',
+    'https://evil.test/users',
+  ])('falls back for a non-Admin callback route: %s', (callbackUrl) => {
+    expect(resolveSafeAdminCallbackUrl(callbackUrl, APP_ORIGIN)).toBe('/')
   })
 })

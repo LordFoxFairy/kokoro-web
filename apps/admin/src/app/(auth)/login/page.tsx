@@ -1,9 +1,34 @@
+import { redirect } from 'next/navigation'
+import { auth } from '@/auth'
 import { Shield } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { loginAction } from '@/lib/auth/actions'
+import { parseAuthSessionView } from '@/lib/auth/auth-session'
+import { resolveSafeAdminCallbackUrl } from '@/lib/auth/redirect'
+import { getAdminEnv } from '@/lib/server/env'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
+import { LoginForm } from '@/components/auth/login-form'
 
-export default function LoginPage() {
+type LoginPageProps = {
+  searchParams: Promise<Record<string, string | string[] | undefined>>
+}
+
+export default async function LoginPage({ searchParams }: LoginPageProps) {
+  const env = readAdminEnv()
+
+  const params = await searchParams
+  const requestedCallback = params.callbackUrl
+  const callbackCandidate = Array.isArray(requestedCallback)
+    ? requestedCallback[0]
+    : requestedCallback
+  const appOrigin = env?.NEXT_PUBLIC_APP_URL ?? 'http://127.0.0.1:3100'
+  const callbackUrl = resolveSafeAdminCallbackUrl(callbackCandidate, appOrigin)
+
+  const currentSession = await readAuthSession()
+
+  if (parseAuthSessionView(currentSession) !== null) {
+    redirect(callbackUrl)
+  }
+
   return (
     <main className='grid min-h-svh place-items-center bg-muted/40 p-4'>
       <div className='w-full max-w-sm'>
@@ -18,31 +43,34 @@ export default function LoginPage() {
             <CardTitle className='text-lg'>登录</CardTitle>
           </CardHeader>
           <CardContent>
-            <form className='flex flex-col gap-4'>
-              <div className='flex flex-col gap-1.5'>
-                <label htmlFor='account' className='text-sm font-medium'>
-                  账号
-                </label>
-                <Input id='account' name='account' autoComplete='username' />
-              </div>
-              <div className='flex flex-col gap-1.5'>
-                <label htmlFor='password' className='text-sm font-medium'>
-                  密码
-                </label>
-                <Input
-                  id='password'
-                  name='password'
-                  type='password'
-                  autoComplete='current-password'
-                />
-              </div>
-              <Button type='submit' className='w-full'>
-                登录
-              </Button>
-            </form>
+            <LoginForm
+              action={loginAction}
+              callbackUrl={callbackUrl}
+              credentialsEnabled={
+                env !== null &&
+                env.NODE_ENV !== 'production' &&
+                env.AUTH_DEV_CREDENTIALS_ENABLED === 'true'
+              }
+            />
           </CardContent>
         </Card>
       </div>
     </main>
   )
+}
+
+function readAdminEnv(): Awaited<ReturnType<typeof getAdminEnv>> | null {
+  try {
+    return getAdminEnv()
+  } catch {
+    return null
+  }
+}
+
+async function readAuthSession() {
+  try {
+    return await auth()
+  } catch {
+    return null
+  }
 }

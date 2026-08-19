@@ -60,6 +60,85 @@ describe('parseAdminEnv', () => {
     ).toMatchObject({ NODE_ENV: 'production', ADMIN_DATA_SOURCE: 'rpc' })
   })
 
+  it.each(['development', 'test'] as const)(
+    'allows explicitly configured development credentials in %s',
+    (nodeEnv) => {
+      expect(
+        parseAdminEnv({
+          ...baseEnv,
+          NODE_ENV: nodeEnv,
+          AUTH_DEV_CREDENTIALS_ENABLED: 'true',
+          AUTH_SECRET: 'a-development-secret-with-32-characters',
+          AUTH_DEV_ACCOUNT: 'admin',
+          AUTH_DEV_PASSWORD: 'local-secret',
+          AUTH_DEV_USER_ID: 'usr_ada',
+          AUTH_DEV_DISPLAY_NAME: 'Ada Chen',
+          AUTH_DEV_EMAIL: 'ada@example.test',
+          AUTH_DEV_CAPABILITIES: 'dashboard.read,users.read',
+        })
+      ).toMatchObject({
+        AUTH_DEV_CREDENTIALS_ENABLED: 'true',
+        AUTH_DEV_ACCOUNT: 'admin',
+        AUTH_DEV_USER_ID: 'usr_ada',
+      })
+    }
+  )
+
+  it('rejects incomplete enabled development credentials', () => {
+    expect(() =>
+      parseAdminEnv({
+        ...baseEnv,
+        AUTH_DEV_CREDENTIALS_ENABLED: 'true',
+        AUTH_DEV_ACCOUNT: 'admin',
+      })
+    ).toThrow('Development credentials require all AUTH_DEV fields')
+  })
+
+  it('requires AUTH_SECRET when development credentials are enabled', () => {
+    expect(() =>
+      parseAdminEnv({
+        ...baseEnv,
+        AUTH_DEV_CREDENTIALS_ENABLED: 'true',
+        AUTH_DEV_ACCOUNT: 'admin',
+        AUTH_DEV_PASSWORD: 'local-secret',
+        AUTH_DEV_USER_ID: 'usr_ada',
+        AUTH_DEV_DISPLAY_NAME: 'Ada Chen',
+        AUTH_DEV_EMAIL: 'ada@example.test',
+        AUTH_DEV_CAPABILITIES: 'dashboard.read,users.read',
+      })
+    ).toThrow(
+      'AUTH_SECRET is required when development credentials are enabled'
+    )
+  })
+
+  it('rejects development credential values unless explicitly enabled', () => {
+    expect(() =>
+      parseAdminEnv({
+        ...baseEnv,
+        AUTH_DEV_ACCOUNT: 'admin',
+      })
+    ).toThrow('Development credentials must be explicitly enabled')
+  })
+
+  it('rejects all development credential configuration in production', () => {
+    expect(() =>
+      parseAdminEnv({
+        ...baseEnv,
+        NODE_ENV: 'production',
+        ADMIN_DATA_SOURCE: 'rpc',
+        AUTH_SECRET: 'a-production-secret-with-32-characters',
+        IAM_RPC_URL: 'https://iam.example.test',
+        AUTH_DEV_CREDENTIALS_ENABLED: 'true',
+        AUTH_DEV_ACCOUNT: 'admin',
+        AUTH_DEV_PASSWORD: 'local-secret',
+        AUTH_DEV_USER_ID: 'usr_ada',
+        AUTH_DEV_DISPLAY_NAME: 'Ada Chen',
+        AUTH_DEV_EMAIL: 'ada@example.test',
+        AUTH_DEV_CAPABILITIES: 'dashboard.read,users.read',
+      })
+    ).toThrow('Development credentials are forbidden in production')
+  })
+
   it('rejects fixture mode in production', () => {
     expect(() =>
       parseAdminEnv({

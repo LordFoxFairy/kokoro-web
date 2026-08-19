@@ -31,7 +31,7 @@ type NavUserProps = {
     fallback: string
   }
   accountSettings?: NavUserAction
-  onSignOut?: () => void
+  onSignOut?: () => void | Promise<void>
 }
 
 export function NavUser({ user, accountSettings, onSignOut }: NavUserProps) {
@@ -117,7 +117,10 @@ export function NavUser({ user, accountSettings, onSignOut }: NavUserProps) {
             {onSignOut && (
               <>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem variant='destructive' onSelect={onSignOut}>
+                <DropdownMenuItem
+                  variant='destructive'
+                  onSelect={() => void onSignOut()}
+                >
                   <LogOut aria-hidden='true' />
                   退出登录
                 </DropdownMenuItem>

@@ -4,10 +4,10 @@ import {
   type AdminRoute,
   type NavCapabilityRules,
 } from '../../config'
-import { resolveSafeCallbackUrl } from './redirect'
+import { resolveSafeAdminCallbackUrl } from './redirect'
 import { isSessionExpired, type SessionView } from './session'
 
-const PUBLIC_PATHS = new Set(['/login', '/forbidden'])
+const PUBLIC_PATHS = new Set(['/login'])
 
 export type RouteAccessDecision =
   | {
@@ -70,12 +70,15 @@ export function decideRouteAccess({
   if (!session || isSessionExpired(session, now)) {
     return {
       kind: 'login',
-      callbackUrl: resolveSafeCallbackUrl(requestedUrl ?? pathname, appOrigin),
+      callbackUrl: resolveSafeAdminCallbackUrl(
+        requestedUrl ?? pathname,
+        appOrigin
+      ),
     }
   }
 
   if (
-    route.navItemId === null ||
+    route.navItemId !== null &&
     !canAccessNavItem(route.navItemId, session.capabilities, capabilityRules)
   ) {
     return { kind: 'forbidden' }

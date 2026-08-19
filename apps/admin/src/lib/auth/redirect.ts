@@ -1,3 +1,5 @@
+import { matchAdminRoute } from '../../config'
+
 const FALLBACK_PATH = '/'
 
 function hasControlCharacter(value: string): boolean {
@@ -67,6 +69,20 @@ export function resolveSafeCallbackUrl(
     }
 
     return `${url.pathname}${url.search}${url.hash}`
+  } catch {
+    return FALLBACK_PATH
+  }
+}
+
+export function resolveSafeAdminCallbackUrl(
+  callbackUrl: string | null | undefined,
+  appOrigin: string
+): string {
+  const safePath = resolveSafeCallbackUrl(callbackUrl, appOrigin)
+
+  try {
+    const pathname = new URL(safePath, 'https://admin.invalid').pathname
+    return matchAdminRoute(pathname) === null ? FALLBACK_PATH : safePath
   } catch {
     return FALLBACK_PATH
   }

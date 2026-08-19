@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
+import { parseSessionView } from '@/lib/auth/session'
 import { AppShell } from './app-shell'
 import { Main } from './main'
 
@@ -16,9 +17,19 @@ vi.mock('@/context/search-provider', () => ({
 }))
 
 describe('AppShell', () => {
+  const session = parseSessionView({
+    user: {
+      id: 'usr_test',
+      displayName: 'Test User',
+      email: 'test@example.test',
+    },
+    expiresAt: '2099-08-19T13:00:00.000Z',
+    capabilities: [],
+  })
+
   it('uses SidebarInset as the single main landmark and skip target', () => {
     render(
-      <AppShell>
+      <AppShell session={session}>
         <Main>页面内容</Main>
       </AppShell>
     )

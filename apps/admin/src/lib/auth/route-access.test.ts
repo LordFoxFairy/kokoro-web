@@ -36,7 +36,7 @@ const baseInput = {
 } as const
 
 describe('decideRouteAccess', () => {
-  it.each(['/login', '/login/', '/forbidden', '/forbidden/'])(
+  it.each(['/login', '/login/'])(
     'allows the public route %s without a session',
     (pathname) => {
       expect(
@@ -45,6 +45,22 @@ describe('decideRouteAccess', () => {
         kind: 'allow',
         route: null,
         reason: 'public',
+      })
+    }
+  )
+
+  it.each(['/forbidden', '/forbidden/'])(
+    'requires a session for the non-capability route %s',
+    (pathname) => {
+      expect(
+        decideRouteAccess({ ...baseInput, pathname, session: null })
+      ).toEqual({ kind: 'login', callbackUrl: pathname })
+      expect(
+        decideRouteAccess({ ...baseInput, pathname, session })
+      ).toMatchObject({
+        kind: 'allow',
+        reason: 'authorized',
+        route: { pattern: '/forbidden', navItemId: null },
       })
     }
   )

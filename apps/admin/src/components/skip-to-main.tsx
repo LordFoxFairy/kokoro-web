@@ -1,9 +1,33 @@
+'use client'
+
 import type { ComponentProps } from 'react'
 import { cn } from '@/lib/utils'
 
 type SkipToMainProps = ComponentProps<'a'>
 
-export function SkipToMain({ className, ...props }: SkipToMainProps) {
+export function SkipToMain({ className, onClick, ...props }: SkipToMainProps) {
+  const focusMain = () => {
+    const target = document.getElementById('main-content')
+    if (!target) return false
+
+    target.focus()
+    window.setTimeout(() => target.focus(), 0)
+    return true
+  }
+
+  const handleMouseDown: React.MouseEventHandler<HTMLAnchorElement> = (
+    event
+  ) => {
+    event.preventDefault()
+    focusMain()
+  }
+
+  const handleClick: React.MouseEventHandler<HTMLAnchorElement> = (event) => {
+    onClick?.(event)
+    event.preventDefault()
+    focusMain()
+  }
+
   return (
     <a
       className={cn(
@@ -11,6 +35,8 @@ export function SkipToMain({ className, ...props }: SkipToMainProps) {
         className
       )}
       href='#main-content'
+      onMouseDown={handleMouseDown}
+      onClick={handleClick}
       {...props}
     >
       跳到主要内容

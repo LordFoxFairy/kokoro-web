@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { Shield } from 'lucide-react'
+import type { SessionView } from '@/lib/auth/session'
 import {
   Sidebar,
   SidebarContent,
@@ -17,7 +18,12 @@ import { consoleNav } from './nav-data'
 import { NavGroup } from './nav-group'
 import { NavUser } from './nav-user'
 
-export function AppSidebar() {
+type AppSidebarProps = {
+  readonly session: SessionView
+  readonly onSignOut?: () => void | Promise<void>
+}
+
+export function AppSidebar({ session, onSignOut }: AppSidebarProps) {
   const { setOpenMobile } = useSidebar()
 
   return (
@@ -49,10 +55,11 @@ export function AppSidebar() {
       <SidebarFooter>
         <NavUser
           user={{
-            name: '平台管理员',
-            email: 'admin@kokoro.local',
-            fallback: '管',
+            name: session.user.displayName,
+            email: session.user.email,
+            fallback: session.user.displayName.slice(0, 1),
           }}
+          onSignOut={onSignOut}
         />
       </SidebarFooter>
       <SidebarRail />
