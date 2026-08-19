@@ -5,8 +5,8 @@ import {
   type FieldViolation,
 } from './view-models'
 
-export type PageError = {
-  readonly code: AdminErrorCode
+export type PageError<Code extends AdminErrorCode = AdminErrorCode> = {
+  readonly code: Code
   readonly businessCode?: string
   readonly fieldViolations: readonly FieldViolation[]
   readonly requestId: string
@@ -19,9 +19,15 @@ export type PageState<T> =
   | { readonly status: 'ready'; readonly data: T }
   | { readonly status: 'empty' }
   | { readonly status: 'error'; readonly error: PageError }
-  | { readonly status: 'unauthenticated'; readonly error: PageError }
-  | { readonly status: 'forbidden'; readonly error: PageError }
-  | { readonly status: 'not-found'; readonly error: PageError }
+  | {
+      readonly status: 'unauthenticated'
+      readonly error: PageError<'UNAUTHENTICATED'>
+    }
+  | {
+      readonly status: 'forbidden'
+      readonly error: PageError<'PERMISSION_DENIED'>
+    }
+  | { readonly status: 'not-found'; readonly error: PageError<'NOT_FOUND'> }
   | {
       readonly status: 'partial'
       readonly data: T
@@ -33,9 +39,9 @@ export type PageStateHandlers<T, Result> = {
   readonly ready: (data: T) => Result
   readonly empty: () => Result
   readonly error: (error: PageError) => Result
-  readonly unauthenticated: (error: PageError) => Result
-  readonly forbidden: (error: PageError) => Result
-  readonly 'not-found': (error: PageError) => Result
+  readonly unauthenticated: (error: PageError<'UNAUTHENTICATED'>) => Result
+  readonly forbidden: (error: PageError<'PERMISSION_DENIED'>) => Result
+  readonly 'not-found': (error: PageError<'NOT_FOUND'>) => Result
   readonly partial: (data: T, error: PageError) => Result
 }
 
@@ -62,9 +68,12 @@ export function isRetryableAdminError(code: AdminErrorCode): boolean {
   }
 }
 
-function toPageError(error: AdminError): PageError {
+function toPageError<Code extends AdminErrorCode>(
+  error: AdminError,
+  code: Code
+): PageError<Code> {
   return {
-    code: error.code,
+    code,
     businessCode: error.businessCode,
     fieldViolations: error.fieldViolations,
     requestId: error.requestId,
@@ -78,22 +87,37 @@ export function pageStateFromError<T>(
   fallbackRequestId: string
 ): PageState<T> {
   const adminError = parseAdminError(error)
-  const pageError = adminError
-    ? toPageError(adminError)
-    : toPageError({
-        kind: 'admin-data-error',
-        code: 'UNKNOWN',
-        fieldViolations: [],
-        requestId: fallbackRequestId,
-      })
+  if (!adminError) {
+    return {
+      status: 'error',
+      error: toPageError(
+        {
+          kind: 'admin-data-error',
+          code: 'UNKNOWN',
+          fieldViolations: [],
+          requestId: fallbackRequestId,
+        },
+        'UNKNOWN'
+      ),
+    }
+  }
 
-  switch (pageError.code) {
+  switch (adminError.code) {
     case 'UNAUTHENTICATED':
-      return { status: 'unauthenticated', error: pageError }
+      return {
+        status: 'unauthenticated',
+        error: toPageError(adminError, 'UNAUTHENTICATED'),
+      }
     case 'PERMISSION_DENIED':
-      return { status: 'forbidden', error: pageError }
+      return {
+        status: 'forbidden',
+        error: toPageError(adminError, 'PERMISSION_DENIED'),
+      }
     case 'NOT_FOUND':
-      return { status: 'not-found', error: pageError }
+      return {
+        status: 'not-found',
+        error: toPageError(adminError, 'NOT_FOUND'),
+      }
     case 'INVALID_ARGUMENT':
     case 'ALREADY_EXISTS':
     case 'FAILED_PRECONDITION':
@@ -101,14 +125,17 @@ export function pageStateFromError<T>(
     case 'UNAVAILABLE':
     case 'DEADLINE_EXCEEDED':
     case 'UNKNOWN':
-      return { status: 'error', error: pageError }
+      return {
+        status: 'error',
+        error: toPageError(adminError, adminError.code),
+      }
     default:
-      return assertNever(pageError.code)
+      return assertNever(adminError.code)
   }
 }
 
 export function partialPageState<T>(data: T, error: AdminError): PageState<T> {
-  return { status: 'partial', data, error: toPageError(error) }
+  return { status: 'partial', data, error: toPageError(error, error.code) }
 }
 
 export function matchPageState<T, Result>(

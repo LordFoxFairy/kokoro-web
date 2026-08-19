@@ -83,6 +83,15 @@ Browser -> Admin Next.js BFF -> server-only Connect-ES client -> IAM gRPC -> Pos
 - [ ] Auth.js Session 映射、未登录重定向和退出后的状态清理。
 - [x] 纯路由访问决策覆盖公共/未知路由、缺失或过期 Session、安全 callback、已知页面能力和详情
       路由继承，并明确不替代 Auth.js Route Handler 或 IAM RPC 最终授权。
+- [x] App Router 文件系统契约冻结登录、Console 业务页、403 与 404 的 route group、URL、页面文件、
+      metadata 和 loader owner；受保护路由只能进入 Console group，文件路径必须由 URL 精确推导，
+      特殊页面保持唯一，新增或漂移的 route/loader 映射 fail closed。该契约不代表页面文件已经实现。
+- [x] 保护页面服务端编排先执行零 RPC 的路由终止决策，允许后并发加载当前身份、显式 scope 能力和
+      页面内容；三路共享相同 scope/request context，并验证 Session、身份和能力投影属于同一主体，
+      主体错配时清空全部载荷并 fail closed。租户数据隔离与 scope 授权由 IAM 保证，前端不复制规则。
+- [x] Server PageState 到 Client props 的投影使用精确 Zod schema，拒绝循环、访问器、稀疏数组、
+      非 JSON 值、危险原型/字段和凭据字段，输出深冻结；unauthenticated/forbidden/not-found 与固定
+      错误码在类型及运行时同时绑定，错误投影不携带后端 message、stack 或 cause。
 - [x] provisional view-model fixture client 的固定时钟/requestId、查询、筛选、排序、分页 token、
       详情、结构化错误、取消信号和预置权限诊断行为有单元断言。
 - [x] provisional view-model fixture client 的 18 个 response methods 均由对应 strict response schema
@@ -163,7 +172,7 @@ Browser -> Admin Next.js BFF -> server-only Connect-ES client -> IAM gRPC -> Pos
 - [ ] 完成源码边界审计，确认无新增显式/隐式 `any` 和宽泛边界对象。
 - [x] 已记录自动化批次的 ESLint 通过且为 0 warnings。
 - [ ] 本清单定义的单元和组件测试范围全部实现并全量通过。
-- [x] 当前已实现单元测试在运行时 Schema 批次记录中 36 files、497 tests 全部通过，且
+- [x] 当前已实现单元测试在页面基础编排批次记录中 39 files、570 tests 全部通过，且
       `skip/todo/retry = 0/0/0`；这不代表本清单要求的单元测试范围或任何组件测试已完成。
 - [ ] 为全量单元和组件测试配置并保存机器可读报告。
 - [x] 已记录自动化批次的 Next.js 16 production build 通过。

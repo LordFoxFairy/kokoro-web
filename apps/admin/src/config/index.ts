@@ -16,3 +16,9 @@ export {
   type AdminRoute,
   type BreadcrumbItem,
 } from './routes'
+export {
+  ADMIN_SEGMENTS,
+  assertSegmentContract,
+  type AdminSegment,
+  type SegmentGroup,
+} from './segments'
