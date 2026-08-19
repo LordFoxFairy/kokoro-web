@@ -46,11 +46,13 @@ server-only env 读取和 JWT Session。生产 Credentials provider 保持关闭
 - `auth-round1-mobile-login.png`：`390x844` 登录页。
 - `auth-round1-mobile-users.png`：安全回跳到用户列表，`390x844`，移动行详情按钮可见。
 - `auth-round1-metrics.json`：第一轮 desktop/mobile 主 landmark、溢出和主体摘要指标。
+- `auth-round2-users-desktop.jpg`：第二轮桌面复核，验证 callback 回跳与用户摘要。
+- `auth-round2-metrics.json`：第二轮 `main-content` 与 `scroll` 指标（desktop 已记录；mobile 待补）。
 
 ## 待办与限制
 
-- 隐藏 skip link 的内置浏览器 click 观测仍显示焦点为 `BODY`；组件单测已覆盖 `#main-content`
-  focus，需在第二轮 fresh 可见 E2E 中确认真实浏览器事件绑定。
+- Skip Link 的 Enter/Space 键盘逻辑已补齐并补充单测；当前仍保留可见复核待定状态（上一轮记录 Enter
+  触发后 active 为 `BODY`，需在新会话复测确认 `#main-content` 焦点）。
 - 当前 development provider 只服务本地 fixture；生产密码认证必须等待版本化 IAM 认证契约。
 - 用户、组织、Site、角色、权限树、会话和审计 mutations 及 generated ConnectRPC 尚未发布，继续
   保持 `NOT_READY`，不得使用 fixture 冒充真实契约。
