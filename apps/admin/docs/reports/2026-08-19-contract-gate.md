@@ -32,6 +32,12 @@ provisional fixture schema 冒充 generated contract。
 - Role 创建、权限树保存、生命周期和成员授权。
 - 任意管理员 Session 查询/撤销和 Audit 结构化详情 mutation 关联。
 
+## 当前外部状态核验（2026-08-19）
+
+- `../Kokoro/contract/consumers.yaml` 仍未新增 `kokoro-web-admin`（或等价命名）consumer。
+- `kokoro-iam` only exposes authentication/authorization + common types；未见用户、组织、Site、成员、角色、权限、审计等 Admin services。
+- 与上位 `contract` 仓库相比，当前 `../Kokoro/contract` 工作树同样处于脏状态，`contract` 生成工具仍处于 fail-closed，不可用于可信 BFF 生成。
+
 ## 下一阶段入口
 
 必须先由 Root contract 发布版本化 service/message/error/scope/etag/idempotency/audit 语义，声明
