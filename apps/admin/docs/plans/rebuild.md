@@ -2,20 +2,20 @@
 
 状态：执行中。
 
-## 阶段 1：清理与单一架构
+## 阶段 1：冻结上游与单一运行时
 
-- [x] 删除第三方后台模板源码、示例业务和示例数据。
-- [x] 删除非 Next 应用入口、旧路由树、迁移适配器和上游审计机制。
-- [x] 建立唯一 Next.js 16 App Router 构建入口。
+- [x] 冻结 `satnaing/shadcn-admin@e16c87f` 来源、Git tree 和 MIT 许可证。
+- [x] 建立唯一 Next.js 16 App Router 构建入口，不保留 Vite/TanStack Router 生产运行时。
+- [x] 从生产导航移除 Tasks、Chats、Apps 等示例业务和 Demo 数据入口。
 - [x] 保留官方 `components.json` 作为组件配置事实来源。
-- [ ] 官方 Registry 可访问后，用 CLI 加入 `dashboard-01` 与实际需要的原语并记录 diff。
+- [ ] 恢复上游差异审计，逐项分类 `adapted/productized/inactive/removed`。
 - [ ] 完成依赖、类型、Lint 和生产构建门禁。
 
 ## 阶段 2：共享前端基建
 
 - [x] 建立路由 registry、breadcrumb、统一页面状态和 production fixture 门禁。
-- [ ] 用官方原语组合 Sidebar、Header、Breadcrumb、主题和移动导航。
-- [ ] 建立 DataTable、筛选、游标分页、列设置和批量操作组合。
+- [ ] 迁入并适配上游 Sidebar、Header、Main、Breadcrumb、主题和移动导航模式。
+- [ ] 迁入并产品化上游 DataTable、筛选、游标分页、列设置和批量操作模式。
 - [ ] 建立 Field、FormDialog、ConfirmAction、Empty、Error、Forbidden 和 Skeleton 模式。
 - [ ] 建立稳定语义 Token、字体和首屏主题策略，消除刷新闪动。
 - [ ] 为共享模式补单元、组件、键盘、响应式和视觉测试。

@@ -1,6 +1,6 @@
 # Admin 冻结技术方案
 
-状态：已冻结。本文定义新 Admin 的目标架构；当前目录尚未包含应用实现，本文不代表功能已经交付。
+状态：已冻结。本文定义新 Admin 的目标架构；当前实现仍在迁移和产品化，本文不代表功能已经交付。
 
 ## 1. 目标与边界
 
@@ -22,7 +22,8 @@ Admin 的路由、菜单、布局、组件或文案。任一方内部重构，�
 | 层级 | 固定选型 |
 |---|---|
 | 应用框架 | Next.js 16 App Router |
-| 视觉底座 | 官方 shadcn/ui `dashboard-01` Block + CLI/Registry 原语 |
+| 视觉与组合底座 | `satnaing/shadcn-admin@e16c87f` |
+| UI 原语 | 官方 shadcn/ui CLI/Registry + Radix UI |
 | UI | shadcn/ui + Radix UI |
 | 样式 | Tailwind CSS 4 |
 | 图标 | Lucide React |
@@ -33,23 +34,25 @@ Admin 的路由、菜单、布局、组件或文案。任一方内部重构，�
 | 后端调用 | Protobuf-ES 生成描述符 + Connect-ES 客户端 + connect-node gRPC transport |
 | 测试 | Vitest、Testing Library、Playwright |
 
-第三方后台模板、旧 Admin UI 和旧兼容路径不得重新引入。
+除已冻结的 satnaing 上游外，第三方后台模板、旧 Admin UI 和旧兼容路径不得重新引入。
 
-## 3. 官方组件治理
+## 3. 上游适配与官方组件治理
 
 | 能力 | 来源 | Kokoro 规则 |
 |---|---|---|
-| Sidebar、Header、Dialog、Sheet、Command | 官方 shadcn/ui Registry | 通过 CLI 按需生成并保留可访问性结构 |
+| Sidebar、Header、Main、用户菜单、Command | satnaing 上游组合 + 官方原语 | 保留职责、层级、响应式和可访问性结构并适配 Next.js |
+| Dialog、Sheet、Field、Table | 官方 shadcn/ui Registry | 通过 CLI 按需生成并保留可访问性结构 |
 | 主题与颜色 | shadcn semantic tokens + Tailwind CSS 4 | 默认浅色；不在页面散落原始颜色 |
 | DataTable | 官方 Table 原语 + TanStack Table | 形成一个契约驱动的共享组合，不携带示例数据 |
 | 表单 | 官方 Field 原语 + React Hook Form + Zod | 只校验输入形状和交互约束，不复制后端裁决 |
 | 图标 | Lucide | 使用图标库已有图标；陌生图标操作提供 Tooltip |
 
-组件增加或升级必须先通过官方 CLI 查看文档和 diff。页面只组合已登记原语；稳定且跨两个以上
-feature 重复的模式才提升到共享组件。项目不保留第三方模板、框架适配器或示例页面。
+原语增加或升级必须先通过官方 CLI 查看文档和 diff。页面只组合已登记原语；稳定且跨两个以上
+feature 重复的模式才提升到共享组件。上游组合的适配边界记录在 `upstream.md`，项目不保留
+Vite/TanStack Router 运行时、框架适配器或生产示例页面。
 
-`dashboard-01` 只提供官方 Shell 与组合结构，不提供 Kokoro 业务。其示例 JSON、图表指标、文档导航
-和行数据在加入后立即删除；DataTable 按官方说明结合每个真实列表的服务端筛选与游标语义配置，
+satnaing 上游只提供成熟 Shell 与组合模式，不提供 Kokoro 业务。其 Tasks、Chats、Apps、示例 JSON、
+图表指标和示例导航不进入生产信息架构；DataTable 结合每个真实列表的服务端筛选与游标语义配置，
 不抽象成包含所有领域行为的万能表格。
 
 ## 4. 目标目录

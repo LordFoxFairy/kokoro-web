@@ -12,7 +12,8 @@ API 契约独立开发，后续联调只替换契约数据来源，不改变页�
 
 ## 2. 产品原则
 
-1. 以官方 shadcn/ui CLI、Registry 和组合规范为组件底座，不维护第三方后台模板分支。
+1. 以 `satnaing/shadcn-admin@e16c87f` 为视觉、布局和组件组织底座；shadcn/ui 原语仍由官方
+   CLI 与 Registry 管理。
 2. 使用 Next.js 16 App Router、Auth.js、shadcn/ui、Tailwind CSS 4、Radix UI、Lucide、
    TanStack Table、React Hook Form 和 Zod。
 3. 后端领域规则、授权和数据归 IAM；页面、交互和显示状态归 Admin；双方只通过生成的
@@ -22,6 +23,8 @@ API 契约独立开发，后续联调只替换契约数据来源，不改变页�
 6. 同一种管理任务只保留一套页面与组件实现。独立 Admin 和未来产品内管理入口仅改变入口、
    导航和数据范围，不复制业务组件。
 7. 界面隐藏不是授权边界。前端按服务端返回的能力投影展示操作，IAM 仍对每个命令最终授权。
+8. 上游 Tasks、Chats、Apps 等示例业务不进入生产导航，但其成熟的表格、Dialog、Sheet、表单、
+   搜索、响应式和可访问性模式可以适配到 Kokoro 真实功能。
 
 ## 3. 用户与范围
 

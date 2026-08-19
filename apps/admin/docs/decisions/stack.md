@@ -4,13 +4,13 @@
 
 ## 决策
 
-新 Admin 直接建立在 Next.js App Router 与官方 shadcn/ui 之上。组件只通过官方 CLI 或
-Registry 按需生成；项目不维护第三方后台模板快照、迁移层或双运行时。
+新 Admin 的视觉、布局和组件组织建立在冻结的
+`satnaing/shadcn-admin@e16c87f213a5ba5e45964e9b67c792105ec74d26` 之上，并适配到
+Next.js App Router。shadcn/ui 原语仍只通过官方 CLI 或 Registry 管理；项目不维护双运行时。
 
-Admin Shell 以官方 `dashboard-01` Block 为结构基线，通过
-`pnpm dlx shadcn@latest add dashboard-01` 加入。保留其 Sidebar、Header、响应式和 DataTable
-组合方式，删除示例数据、示例指标和示例导航，替换为 Kokoro 页面与 fixture。登录页采用官方
-Login Block 的表单组合规范，但不提供公开注册。
+Admin Shell 迁入并适配上游 Sidebar、Header、Main、Command、主题、响应式和 DataTable
+组合方式。删除示例数据、示例指标和示例导航，替换为 Kokoro 页面与契约 fixture。登录页采用
+shadcn/ui 表单组合规范，但不提供公开注册。
 
 ## 技术栈
 
@@ -30,7 +30,7 @@ Login Block 的表单组合规范，但不提供公开注册。
 ## 组件治理
 
 - `components.json` 是组件配置的唯一事实来源。
-- 官方 Blocks 与原语必须由 CLI 写入；不得根据截图重新实现或从非官方模板复制。
+- 官方原语必须由 CLI 写入；组合层按冻结上游提交适配，不根据截图重新实现。
 - 增加或升级组件前先运行官方 CLI 的 `info`、`docs`、`--dry-run` 与 `--diff`。
 - `components/ui` 只保存 CLI 生成的原语；领域组合放在 feature 或明确的共享模式目录。
 - 不包装每一个原语，不建立第二套设计系统，不复制示例业务代码。
@@ -73,7 +73,7 @@ Browser -> Admin Next.js BFF -> server-only Connect-ES client -> IAM gRPC
 
 - Ant Design 和 ProComponents。
 - 恢复已删除的旧 Admin 页面、组件、样式或兼容路径。
-- 第三方后台模板快照、示例数据和示例业务。
+- 除已冻结的 `satnaing/shadcn-admin@e16c87f` 外的后台模板、示例数据和示例业务。
 - 手写 SVG 图标替代 Lucide 已有图标。
 - 直接依赖 Radix 内部 DOM 或不稳定 CSS 选择器。
 - 在前端实现 IAM 授权或生命周期规则。
