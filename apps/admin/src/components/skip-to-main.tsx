@@ -28,6 +28,17 @@ export function SkipToMain({ className, onClick, ...props }: SkipToMainProps) {
     focusMain()
   }
 
+  const handleKeyDown: React.KeyboardEventHandler<HTMLAnchorElement> = (
+    event
+  ) => {
+    if (event.key !== 'Enter' && event.key !== ' ') {
+      return
+    }
+
+    event.preventDefault()
+    focusMain()
+  }
+
   return (
     <a
       className={cn(
@@ -37,6 +48,7 @@ export function SkipToMain({ className, onClick, ...props }: SkipToMainProps) {
       href='#main-content'
       onMouseDown={handleMouseDown}
       onClick={handleClick}
+      onKeyDown={handleKeyDown}
       {...props}
     >
       跳到主要内容

@@ -1,0 +1,50 @@
+{
+  "round": 2,
+  "environment": {
+    "app": "http://127.0.0.1:3100",
+    "browser": "Codex 内置浏览器（本地验证）",
+    "timestamp": "2026-08-19T06:40:00-04:00",
+    "note": "仅用于可见浏览器复核，不替代自动化回放。"
+  },
+  "desktop": {
+    "viewport": {
+      "innerWidth": 1280,
+      "innerHeight": 720,
+      "bodyScrollWidth": 1280,
+      "bodyScrollHeight": 720,
+      "scrollWidth": 1280,
+      "scrollHeight": 720,
+      "fontsReady": "loaded"
+    },
+    "routes": {
+      "start": "http://127.0.0.1:3100/login?callbackUrl=%2Fusers%3Fpage%3D2",
+      "final": "http://127.0.0.1:3100/users?page=2"
+    },
+    "user": "Ada Chen (ada@example.test)",
+    "screenshot": "auth-round2-users-desktop.jpg",
+    "skipToMain": {
+      "mouseFocusResult": {
+        "activeId": "main-content",
+        "activeTag": "DIV",
+        "hash": ""
+      },
+      "keyboardEnterPressResult": {
+        "activeId": "BODY",
+        "activeTag": "BODY",
+        "hash": ""
+      }
+    }
+  },
+  "mobile": {
+    "viewport": {
+      "innerWidth": 390,
+      "innerHeight": 844
+    },
+    "status": "round2_not_executed",
+    "reason": "内置浏览器视口设置在当前会话对该设备配置不稳定（仍保持 1280x720），沿用 round1 的 mobile 证据作补充。"
+  },
+  "requestEvidence": {
+    "apiAuthSession": "内置浏览器请求 https://127.0.0.1:3100/api/auth/session 时被浏览器策略拦截（ERR_BLOCKED_BY_CLIENT）。",
+    "authFirstRoundVerified": true
+  }
+}
