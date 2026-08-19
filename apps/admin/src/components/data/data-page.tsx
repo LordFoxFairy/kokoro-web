@@ -1,6 +1,8 @@
+import Link from 'next/link'
 import { Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { DataGrid, type GridRow } from '@/components/data/data-grid'
+import { Main } from '@/components/layout/main'
 
 type DataPageProps = {
   title: string
@@ -8,6 +10,8 @@ type DataPageProps = {
   columns: readonly string[]
   rows: readonly GridRow[]
   actionLabel?: string
+  actionHref?: string
+  onAction?: () => void
   searchPlaceholder?: string
 }
 
@@ -17,31 +21,37 @@ export function DataPage({
   columns,
   rows,
   actionLabel,
+  actionHref,
+  onAction,
   searchPlaceholder = '搜索...',
 }: DataPageProps) {
   return (
-    <main
-      id='content'
-      className='flex min-w-0 flex-1 flex-col gap-5 p-4 md:p-6'
-    >
+    <Main className='flex min-w-0 flex-1 flex-col gap-5'>
       <div className='flex flex-wrap items-start justify-between gap-3'>
         <div>
           <h1 className='text-2xl font-semibold'>{title}</h1>
           <p className='mt-1 text-sm text-muted-foreground'>{description}</p>
         </div>
-        {actionLabel && (
-          <Button size='sm'>
+        {actionLabel && actionHref ? (
+          <Button size='sm' asChild>
+            <Link href={actionHref}>
+              <Plus data-icon='inline-start' aria-hidden='true' />
+              {actionLabel}
+            </Link>
+          </Button>
+        ) : actionLabel && onAction ? (
+          <Button size='sm' onClick={onAction}>
             <Plus data-icon='inline-start' aria-hidden='true' />
             {actionLabel}
           </Button>
-        )}
+        ) : null}
       </div>
       <DataGrid
         columns={columns}
         rows={rows}
         searchPlaceholder={searchPlaceholder}
       />
-    </main>
+    </Main>
   )
 }
 

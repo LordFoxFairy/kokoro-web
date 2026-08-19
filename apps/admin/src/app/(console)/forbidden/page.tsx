@@ -1,13 +1,11 @@
 import Link from 'next/link'
 import { ShieldX } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Main } from '@/components/layout/main'
 
 export default function ForbiddenPage() {
   return (
-    <main
-      id='content'
-      className='grid flex-1 place-items-center p-6 text-center'
-    >
+    <Main fluid className='grid flex-1 place-items-center text-center'>
       <div className='max-w-md'>
         <ShieldX
           aria-hidden='true'
@@ -21,6 +19,6 @@ export default function ForbiddenPage() {
           <Link href='/'>返回概览</Link>
         </Button>
       </div>
-    </main>
+    </Main>
   )
 }

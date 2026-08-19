@@ -1,0 +1,156 @@
+[
+  {
+    "route": "/",
+    "bodyTextLength": 447,
+    "clientWidth": 1440,
+    "disabledButtons": [],
+    "fontFamily": "-apple-system, \"system-ui\", \"Segoe UI\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", sans-serif",
+    "h1": "管理概览",
+    "horizontalDocumentOverflow": false,
+    "mains": 1,
+    "scrollWidth": 1440
+  },
+  {
+    "route": "/login",
+    "bodyTextLength": 24,
+    "clientWidth": 1440,
+    "disabledButtons": [],
+    "fontFamily": "-apple-system, \"system-ui\", \"Segoe UI\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", sans-serif",
+    "h1": null,
+    "horizontalDocumentOverflow": false,
+    "mains": 1,
+    "scrollWidth": 1440
+  },
+  {
+    "route": "/users",
+    "bodyTextLength": 412,
+    "clientWidth": 1440,
+    "disabledButtons": [],
+    "fontFamily": "-apple-system, \"system-ui\", \"Segoe UI\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", sans-serif",
+    "h1": "用户管理",
+    "horizontalDocumentOverflow": false,
+    "mains": 1,
+    "scrollWidth": 1440
+  },
+  {
+    "route": "/users/usr_ada",
+    "bodyTextLength": 276,
+    "clientWidth": 1440,
+    "disabledButtons": [],
+    "fontFamily": "-apple-system, \"system-ui\", \"Segoe UI\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", sans-serif",
+    "h1": "Ada Chen",
+    "horizontalDocumentOverflow": false,
+    "mains": 1,
+    "scrollWidth": 1440
+  },
+  {
+    "route": "/organizations",
+    "bodyTextLength": 356,
+    "clientWidth": 1440,
+    "disabledButtons": [],
+    "fontFamily": "-apple-system, \"system-ui\", \"Segoe UI\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", sans-serif",
+    "h1": "组织管理",
+    "horizontalDocumentOverflow": false,
+    "mains": 1,
+    "scrollWidth": 1440
+  },
+  {
+    "route": "/organizations/org_aurora",
+    "bodyTextLength": 275,
+    "clientWidth": 1440,
+    "disabledButtons": [],
+    "fontFamily": "-apple-system, \"system-ui\", \"Segoe UI\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", sans-serif",
+    "h1": "Aurora Labs",
+    "horizontalDocumentOverflow": false,
+    "mains": 1,
+    "scrollWidth": 1440
+  },
+  {
+    "route": "/sites",
+    "bodyTextLength": 326,
+    "clientWidth": 1440,
+    "disabledButtons": [],
+    "fontFamily": "-apple-system, \"system-ui\", \"Segoe UI\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", sans-serif",
+    "h1": "Site 管理",
+    "horizontalDocumentOverflow": false,
+    "mains": 1,
+    "scrollWidth": 1440
+  },
+  {
+    "route": "/sites/site_aurora_us",
+    "bodyTextLength": 280,
+    "clientWidth": 1440,
+    "disabledButtons": [],
+    "fontFamily": "-apple-system, \"system-ui\", \"Segoe UI\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", sans-serif",
+    "h1": "Aurora US",
+    "horizontalDocumentOverflow": false,
+    "mains": 1,
+    "scrollWidth": 1440
+  },
+  {
+    "route": "/roles",
+    "bodyTextLength": 354,
+    "clientWidth": 1440,
+    "disabledButtons": [],
+    "fontFamily": "-apple-system, \"system-ui\", \"Segoe UI\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", sans-serif",
+    "h1": "角色与权限",
+    "horizontalDocumentOverflow": false,
+    "mains": 1,
+    "scrollWidth": 1440
+  },
+  {
+    "route": "/access",
+    "bodyTextLength": 257,
+    "clientWidth": 1440,
+    "disabledButtons": [],
+    "fontFamily": "-apple-system, \"system-ui\", \"Segoe UI\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", sans-serif",
+    "h1": "权限诊断",
+    "horizontalDocumentOverflow": false,
+    "mains": 1,
+    "scrollWidth": 1440
+  },
+  {
+    "route": "/sessions",
+    "bodyTextLength": 390,
+    "clientWidth": 1440,
+    "disabledButtons": [],
+    "fontFamily": "-apple-system, \"system-ui\", \"Segoe UI\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", sans-serif",
+    "h1": "会话管理",
+    "horizontalDocumentOverflow": false,
+    "mains": 1,
+    "scrollWidth": 1440
+  },
+  {
+    "route": "/audit",
+    "bodyTextLength": 391,
+    "clientWidth": 1440,
+    "disabledButtons": [],
+    "fontFamily": "-apple-system, \"system-ui\", \"Segoe UI\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", sans-serif",
+    "h1": "审计日志",
+    "horizontalDocumentOverflow": false,
+    "mains": 1,
+    "scrollWidth": 1440
+  },
+  {
+    "route": "/forbidden",
+    "bodyTextLength": 184,
+    "clientWidth": 1440,
+    "disabledButtons": [],
+    "fontFamily": "-apple-system, \"system-ui\", \"Segoe UI\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", sans-serif",
+    "h1": "无权访问",
+    "horizontalDocumentOverflow": false,
+    "mains": 1,
+    "scrollWidth": 1440
+  },
+  {
+    "route": "/missing",
+    "bodyTextLength": 36,
+    "clientWidth": 1440,
+    "disabledButtons": [],
+    "fontFamily": "-apple-system, \"system-ui\", \"Segoe UI\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", sans-serif",
+    "h1": "页面不存在",
+    "horizontalDocumentOverflow": false,
+    "mains": 1,
+    "scrollWidth": 1440
+  }
+]

@@ -15,6 +15,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { Main } from '@/components/layout/main'
 
 const metrics = [
   { label: '用户', value: '2,481', note: '2,316 个活跃账号', icon: Users },
@@ -32,7 +33,7 @@ const events = [
 
 export default function DashboardPage() {
   return (
-    <main id='content' className='flex flex-1 flex-col gap-6 p-4 md:p-6'>
+    <Main className='flex flex-1 flex-col gap-6'>
       <div className='flex flex-wrap items-start justify-between gap-3'>
         <div>
           <h1 className='text-2xl font-semibold tracking-normal'>管理概览</h1>
@@ -82,7 +83,33 @@ export default function DashboardPage() {
             </p>
           </div>
         </div>
-        <div className='overflow-hidden rounded-lg border bg-background'>
+        <ul
+          aria-label='最近审计'
+          className='divide-y rounded-lg border bg-background md:hidden'
+        >
+          {events.map(([action, actor, target, result, time]) => (
+            <li key={`${action}-${time}`} className='grid gap-2 p-3'>
+              <div className='flex items-start justify-between gap-3'>
+                <div className='min-w-0'>
+                  <p className='truncate text-sm font-medium'>{action}</p>
+                  <p className='truncate text-xs text-muted-foreground'>
+                    {target}
+                  </p>
+                </div>
+                <Badge
+                  variant={result === '成功' ? 'secondary' : 'destructive'}
+                >
+                  {result}
+                </Badge>
+              </div>
+              <div className='flex items-center justify-between gap-3 text-xs text-muted-foreground'>
+                <span className='truncate'>{actor}</span>
+                <span className='shrink-0'>{time}</span>
+              </div>
+            </li>
+          ))}
+        </ul>
+        <div className='hidden overflow-hidden rounded-lg border bg-background md:block'>
           <Table>
             <TableHeader>
               <TableRow>
@@ -117,6 +144,6 @@ export default function DashboardPage() {
           </Table>
         </div>
       </section>
-    </main>
+    </Main>
   )
 }

@@ -1,0 +1,157 @@
+[
+  {
+    "route": "/",
+    "clientWidth": 390,
+    "mains": 1,
+    "mobileAuditItems": 4,
+    "scrollWidth": 390,
+    "visibleTables": 0,
+    "h1": "管理概览",
+    "bodyTextLength": 364,
+    "horizontalDocumentOverflow": false,
+    "visibleRowDetailButtons": 0
+  },
+  {
+    "route": "/login",
+    "bodyTextLength": 24,
+    "clientWidth": 390,
+    "h1": null,
+    "horizontalDocumentOverflow": false,
+    "mains": 1,
+    "scrollWidth": 390,
+    "visibleRowDetailButtons": 0,
+    "visibleTables": 0
+  },
+  {
+    "route": "/users",
+    "bodyTextLength": 155,
+    "clientWidth": 390,
+    "h1": "用户管理",
+    "horizontalDocumentOverflow": false,
+    "mains": 1,
+    "scrollWidth": 390,
+    "visibleRowDetailButtons": 4,
+    "visibleTables": 0
+  },
+  {
+    "route": "/users/usr_ada",
+    "bodyTextLength": 198,
+    "clientWidth": 390,
+    "h1": "Ada Chen",
+    "horizontalDocumentOverflow": false,
+    "mains": 1,
+    "scrollWidth": 390,
+    "visibleRowDetailButtons": 0,
+    "visibleTables": 0
+  },
+  {
+    "route": "/organizations",
+    "bodyTextLength": 150,
+    "clientWidth": 390,
+    "h1": "组织管理",
+    "horizontalDocumentOverflow": false,
+    "mains": 1,
+    "scrollWidth": 390,
+    "visibleRowDetailButtons": 3,
+    "visibleTables": 0
+  },
+  {
+    "route": "/organizations/org_aurora",
+    "bodyTextLength": 197,
+    "clientWidth": 390,
+    "h1": "Aurora Labs",
+    "horizontalDocumentOverflow": false,
+    "mains": 1,
+    "scrollWidth": 390,
+    "visibleRowDetailButtons": 0,
+    "visibleTables": 0
+  },
+  {
+    "route": "/sites",
+    "bodyTextLength": 147,
+    "clientWidth": 390,
+    "h1": "Site 管理",
+    "horizontalDocumentOverflow": false,
+    "mains": 1,
+    "scrollWidth": 390,
+    "visibleRowDetailButtons": 3,
+    "visibleTables": 0
+  },
+  {
+    "route": "/sites/site_aurora_us",
+    "bodyTextLength": 202,
+    "clientWidth": 390,
+    "h1": "Aurora US",
+    "horizontalDocumentOverflow": false,
+    "mains": 1,
+    "scrollWidth": 390,
+    "visibleRowDetailButtons": 0,
+    "visibleTables": 0
+  },
+  {
+    "route": "/roles",
+    "bodyTextLength": 161,
+    "clientWidth": 390,
+    "h1": "角色与权限",
+    "horizontalDocumentOverflow": false,
+    "mains": 1,
+    "scrollWidth": 390,
+    "visibleRowDetailButtons": 3,
+    "visibleTables": 0
+  },
+  {
+    "route": "/access",
+    "bodyTextLength": 179,
+    "clientWidth": 390,
+    "h1": "权限诊断",
+    "horizontalDocumentOverflow": false,
+    "mains": 1,
+    "scrollWidth": 390,
+    "visibleRowDetailButtons": 0,
+    "visibleTables": 0
+  },
+  {
+    "route": "/sessions",
+    "bodyTextLength": 149,
+    "clientWidth": 390,
+    "h1": "会话管理",
+    "horizontalDocumentOverflow": false,
+    "mains": 1,
+    "scrollWidth": 390,
+    "visibleRowDetailButtons": 3,
+    "visibleTables": 0
+  },
+  {
+    "route": "/audit",
+    "bodyTextLength": 154,
+    "clientWidth": 390,
+    "h1": "审计日志",
+    "horizontalDocumentOverflow": false,
+    "mains": 1,
+    "scrollWidth": 390,
+    "visibleRowDetailButtons": 3,
+    "visibleTables": 0
+  },
+  {
+    "route": "/forbidden",
+    "bodyTextLength": 106,
+    "clientWidth": 390,
+    "h1": "无权访问",
+    "horizontalDocumentOverflow": false,
+    "mains": 1,
+    "scrollWidth": 390,
+    "visibleRowDetailButtons": 0,
+    "visibleTables": 0
+  },
+  {
+    "route": "/missing",
+    "bodyTextLength": 36,
+    "clientWidth": 390,
+    "h1": "页面不存在",
+    "horizontalDocumentOverflow": false,
+    "mains": 1,
+    "scrollWidth": 390,
+    "visibleRowDetailButtons": 0,
+    "visibleTables": 0
+  }
+]

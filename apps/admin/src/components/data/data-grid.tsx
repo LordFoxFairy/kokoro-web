@@ -12,7 +12,7 @@ import {
   type SortingState,
   type VisibilityState,
 } from '@tanstack/react-table'
-import { ArrowUpDown, Columns3, Search } from 'lucide-react'
+import { ArrowUpDown, ChevronRight, Columns3, Search } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -24,6 +24,15 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from '@/components/ui/sheet'
 import {
   Table,
   TableBody,
@@ -49,6 +58,26 @@ function StatusBadge({ status, text }: { status: string; text: string }) {
       {text}
     </Badge>
   )
+}
+
+function CellValue({
+  cell,
+  linked = true,
+}: {
+  cell: GridCell
+  linked?: boolean
+}) {
+  if (cell.status) return <StatusBadge status={cell.status} text={cell.text} />
+  if (cell.href && linked)
+    return (
+      <Link
+        href={cell.href}
+        className='font-medium underline-offset-4 hover:underline'
+      >
+        {cell.text}
+      </Link>
+    )
+  return cell.text
 }
 
 export function DataGrid({
@@ -77,8 +106,9 @@ export function DataGrid({
   )
   const tableColumns = useMemo<ColumnDef<GridRecord>[]>(
     () =>
-      columns.map((column) => ({
+      columns.map((column, index) => ({
         id: column,
+        enableHiding: index !== 0,
         accessorFn: (row) => row[column]?.text ?? '',
         header: ({ column: tableColumn }) => (
           <Button
@@ -96,18 +126,7 @@ export function DataGrid({
         cell: ({ row }) => {
           const cell = row.original[column]
           if (!cell) return null
-          if (cell.status)
-            return <StatusBadge status={cell.status} text={cell.text} />
-          if (cell.href)
-            return (
-              <Link
-                href={cell.href}
-                className='font-medium underline-offset-4 hover:underline'
-              >
-                {cell.text}
-              </Link>
-            )
-          return cell.text
+          return <CellValue cell={cell} />
         },
       })),
     [columns]
@@ -125,6 +144,7 @@ export function DataGrid({
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
   })
+  const emptyMessage = rows.length === 0 ? '暂无记录' : '没有匹配记录'
 
   return (
     <div className='flex min-w-0 flex-col gap-3'>
@@ -147,7 +167,11 @@ export function DataGrid({
         </Badge>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant='outline' size='sm' className='ml-auto'>
+            <Button
+              variant='outline'
+              size='sm'
+              className='ml-auto hidden md:inline-flex'
+            >
               <Columns3 data-icon='inline-start' aria-hidden='true' />
               列设置
             </Button>
@@ -155,21 +179,87 @@ export function DataGrid({
           <DropdownMenuContent align='end'>
             <DropdownMenuLabel>显示列</DropdownMenuLabel>
             <DropdownMenuSeparator />
-            {table.getAllLeafColumns().map((column) => (
-              <DropdownMenuCheckboxItem
-                key={column.id}
-                checked={column.getIsVisible()}
-                onCheckedChange={(value) =>
-                  column.toggleVisibility(Boolean(value))
-                }
-              >
-                {column.id}
-              </DropdownMenuCheckboxItem>
-            ))}
+            {table
+              .getAllLeafColumns()
+              .filter((column) => column.getCanHide())
+              .map((column) => (
+                <DropdownMenuCheckboxItem
+                  key={column.id}
+                  checked={column.getIsVisible()}
+                  onCheckedChange={(value) =>
+                    column.toggleVisibility(Boolean(value))
+                  }
+                >
+                  {column.id}
+                </DropdownMenuCheckboxItem>
+              ))}
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
-      <div className='min-w-0 overflow-hidden rounded-lg border bg-background'>
+      <div className='grid gap-2 md:hidden'>
+        {table.getRowModel().rows.length ? (
+          table.getRowModel().rows.map((row) => {
+            const primaryCell = row.original[columns[0]] ?? { text: row.id }
+            const detailHref = columns
+              .map((column) => row.original[column])
+              .find((cell) => cell?.href)?.href
+
+            return (
+              <Sheet key={row.id}>
+                <SheetTrigger asChild>
+                  <Button
+                    variant='outline'
+                    className='h-auto w-full justify-between px-3 py-3 text-left whitespace-normal'
+                    aria-label={`查看 ${primaryCell.text} 详情`}
+                  >
+                    <span className='min-w-0 truncate font-medium'>
+                      {primaryCell.text}
+                    </span>
+                    <ChevronRight aria-hidden='true' />
+                  </Button>
+                </SheetTrigger>
+                <SheetContent
+                  side='bottom'
+                  className='max-h-[85svh] overflow-y-auto rounded-t-lg'
+                >
+                  <SheetHeader>
+                    <SheetTitle>{primaryCell.text}</SheetTitle>
+                    <SheetDescription>{row.original.id.text}</SheetDescription>
+                  </SheetHeader>
+                  <dl className='grid gap-4 px-4 pb-4'>
+                    {columns.map((column) => {
+                      const cell = row.original[column]
+                      if (!cell) return null
+                      return (
+                        <div key={column} className='min-w-0'>
+                          <dt className='text-xs font-medium text-muted-foreground'>
+                            {column}
+                          </dt>
+                          <dd className='mt-1 text-sm break-words'>
+                            <CellValue cell={cell} linked={false} />
+                          </dd>
+                        </div>
+                      )
+                    })}
+                  </dl>
+                  {detailHref && (
+                    <SheetFooter>
+                      <Button asChild>
+                        <Link href={detailHref}>查看完整详情</Link>
+                      </Button>
+                    </SheetFooter>
+                  )}
+                </SheetContent>
+              </Sheet>
+            )
+          })
+        ) : (
+          <div className='rounded-lg border bg-background px-4 py-12 text-center text-sm text-muted-foreground'>
+            {emptyMessage}
+          </div>
+        )}
+      </div>
+      <div className='hidden min-w-0 overflow-hidden rounded-lg border bg-background md:block'>
         <div className='overflow-x-auto'>
           <Table>
             <TableHeader>
@@ -208,7 +298,7 @@ export function DataGrid({
                     colSpan={table.getVisibleLeafColumns().length}
                     className='h-28 text-center text-muted-foreground'
                   >
-                    没有匹配记录
+                    {emptyMessage}
                   </TableCell>
                 </TableRow>
               )}

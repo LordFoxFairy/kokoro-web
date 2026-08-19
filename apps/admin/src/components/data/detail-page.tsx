@@ -9,6 +9,15 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { statusLabel } from '@/components/data/data-page'
+import { Main } from '@/components/layout/main'
+
+type DetailAction = {
+  label: string
+  href?: string
+  onSelect?: () => void
+  variant?: 'default' | 'destructive'
+}
 
 type DetailPageProps = {
   backHref: string
@@ -17,6 +26,7 @@ type DetailPageProps = {
   subtitle: string
   status: string
   fields: readonly { label: string; value: React.ReactNode }[]
+  actions?: readonly DetailAction[]
 }
 
 export function DetailPage({
@@ -26,9 +36,14 @@ export function DetailPage({
   subtitle,
   status,
   fields,
+  actions = [],
 }: DetailPageProps) {
+  const executableActions = actions.filter(
+    (action) => action.href || action.onSelect
+  )
+
   return (
-    <main id='content' className='flex flex-1 flex-col gap-5 p-4 md:p-6'>
+    <Main className='flex flex-1 flex-col gap-5'>
       <div>
         <Button variant='ghost' size='sm' asChild className='mb-3 -ml-2'>
           <Link href={backHref}>
@@ -40,21 +55,40 @@ export function DetailPage({
           <div>
             <div className='flex items-center gap-2'>
               <h1 className='text-2xl font-semibold'>{title}</h1>
-              <Badge variant='secondary'>{status}</Badge>
+              <Badge variant='secondary'>{statusLabel(status)}</Badge>
             </div>
             <p className='mt-1 text-sm text-muted-foreground'>{subtitle}</p>
           </div>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant='outline' size='icon-sm' aria-label='更多操作'>
-                <MoreHorizontal aria-hidden='true' />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align='end'>
-              <DropdownMenuItem>编辑</DropdownMenuItem>
-              <DropdownMenuItem variant='destructive'>停用</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {executableActions.length > 0 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant='outline' size='icon-sm' aria-label='更多操作'>
+                  <MoreHorizontal aria-hidden='true' />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align='end'>
+                {executableActions.map((action) =>
+                  action.href ? (
+                    <DropdownMenuItem
+                      key={action.label}
+                      variant={action.variant}
+                      asChild
+                    >
+                      <Link href={action.href}>{action.label}</Link>
+                    </DropdownMenuItem>
+                  ) : (
+                    <DropdownMenuItem
+                      key={action.label}
+                      variant={action.variant}
+                      onSelect={action.onSelect}
+                    >
+                      {action.label}
+                    </DropdownMenuItem>
+                  )
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
       </div>
 
@@ -75,6 +109,6 @@ export function DetailPage({
           </dl>
         </CardContent>
       </Card>
-    </main>
+    </Main>
   )
 }

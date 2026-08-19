@@ -1,24 +1,11 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
-import { ChevronsUpDown, LogOut, Settings2, Shield } from 'lucide-react'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+import { Shield } from 'lucide-react'
 import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
-  SidebarGroup,
-  SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
@@ -27,14 +14,11 @@ import {
   useSidebar,
 } from '@/components/ui/sidebar'
 import { consoleNav } from './nav-data'
-
-function isActive(pathname: string, href: string) {
-  return href === '/' ? pathname === '/' : pathname.startsWith(href)
-}
+import { NavGroup } from './nav-group'
+import { NavUser } from './nav-user'
 
 export function AppSidebar() {
-  const pathname = usePathname()
-  const { isMobile, setOpenMobile } = useSidebar()
+  const { setOpenMobile } = useSidebar()
 
   return (
     <Sidebar collapsible='icon' variant='inset'>
@@ -59,70 +43,17 @@ export function AppSidebar() {
       </SidebarHeader>
 
       <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel>管理</SidebarGroupLabel>
-          <SidebarMenu>
-            {consoleNav.map((item) => (
-              <SidebarMenuItem key={item.href}>
-                <SidebarMenuButton
-                  asChild
-                  isActive={isActive(pathname, item.href)}
-                  tooltip={item.title}
-                >
-                  <Link href={item.href} onClick={() => setOpenMobile(false)}>
-                    <item.icon aria-hidden='true' />
-                    <span>{item.title}</span>
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            ))}
-          </SidebarMenu>
-        </SidebarGroup>
+        <NavGroup title='管理' items={consoleNav} />
       </SidebarContent>
 
       <SidebarFooter>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <SidebarMenuButton
-                  size='lg'
-                  className='data-[state=open]:bg-sidebar-accent'
-                >
-                  <Avatar className='size-8 rounded-md'>
-                    <AvatarFallback className='rounded-md'>管</AvatarFallback>
-                  </Avatar>
-                  <span className='grid flex-1 text-left text-sm leading-tight'>
-                    <span className='truncate font-medium'>平台管理员</span>
-                    <span className='truncate text-xs text-muted-foreground'>
-                      admin@kokoro.local
-                    </span>
-                  </span>
-                  <ChevronsUpDown aria-hidden='true' className='ml-auto' />
-                </SidebarMenuButton>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                side={isMobile ? 'bottom' : 'right'}
-                align='end'
-                className='min-w-56'
-              >
-                <DropdownMenuLabel>平台管理员</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuGroup>
-                  <DropdownMenuItem>
-                    <Settings2 aria-hidden='true' />
-                    账户设置
-                  </DropdownMenuItem>
-                </DropdownMenuGroup>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem variant='destructive'>
-                  <LogOut aria-hidden='true' />
-                  退出登录
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </SidebarMenuItem>
-        </SidebarMenu>
+        <NavUser
+          user={{
+            name: '平台管理员',
+            email: 'admin@kokoro.local',
+            fallback: '管',
+          }}
+        />
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>
