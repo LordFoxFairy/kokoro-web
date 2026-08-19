@@ -1,5 +1,5 @@
 import { fixtureRoles } from '@/lib/fixtures/data'
-import { DataPage, StatusBadge } from '@/components/data/data-page'
+import { DataPage, statusLabel } from '@/components/data/data-page'
 
 export default function RolesPage() {
   return (
@@ -12,13 +12,16 @@ export default function RolesPage() {
       rows={fixtureRoles.map((role) => ({
         id: role.id,
         cells: [
-          role.name,
-          role.scope.type === 'platform'
-            ? '平台'
-            : `${role.scope.type}: ${role.scope.id}`,
-          String(role.permissionKeys.length),
-          String(role.memberCount),
-          <StatusBadge key='status' status={role.status} />,
+          { text: role.name },
+          {
+            text:
+              role.scope.type === 'platform'
+                ? '平台'
+                : `${role.scope.type}: ${role.scope.id}`,
+          },
+          { text: String(role.permissionKeys.length) },
+          { text: String(role.memberCount) },
+          { text: statusLabel(role.status), status: role.status },
         ],
       }))}
     />

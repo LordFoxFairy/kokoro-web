@@ -1,5 +1,5 @@
 import { fixtureSessions } from '@/lib/fixtures/data'
-import { DataPage, StatusBadge } from '@/components/data/data-page'
+import { DataPage, statusLabel } from '@/components/data/data-page'
 
 export default function SessionsPage() {
   return (
@@ -11,11 +11,11 @@ export default function SessionsPage() {
       rows={fixtureSessions.map((session) => ({
         id: session.id,
         cells: [
-          session.id,
-          session.userId,
-          session.clientLabel,
-          <StatusBadge key='status' status={session.status} />,
-          new Date(session.lastActiveAt).toLocaleString('zh-CN'),
+          { text: session.id },
+          { text: session.userId },
+          { text: session.clientLabel },
+          { text: statusLabel(session.status), status: session.status },
+          { text: new Date(session.lastActiveAt).toLocaleString('zh-CN') },
         ],
       }))}
     />

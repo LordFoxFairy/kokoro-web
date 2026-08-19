@@ -1,5 +1,5 @@
 import { fixtureUsers } from '@/lib/fixtures/data'
-import { DataPage, StatusBadge } from '@/components/data/data-page'
+import { DataPage, statusLabel } from '@/components/data/data-page'
 
 export default function UsersPage() {
   return (
@@ -11,12 +11,11 @@ export default function UsersPage() {
       columns={['用户', '邮箱', '状态', '更新时间']}
       rows={fixtureUsers.map((user) => ({
         id: user.id,
-        href: `/users/${user.id}`,
         cells: [
-          user.displayName,
-          user.email,
-          <StatusBadge key='status' status={user.status} />,
-          new Date(user.updatedAt).toLocaleString('zh-CN'),
+          { text: user.displayName, href: `/users/${user.id}` },
+          { text: user.email },
+          { text: statusLabel(user.status), status: user.status },
+          { text: new Date(user.updatedAt).toLocaleString('zh-CN') },
         ],
       }))}
     />

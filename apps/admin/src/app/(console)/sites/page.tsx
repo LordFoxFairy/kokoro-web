@@ -1,5 +1,5 @@
 import { fixtureSites } from '@/lib/fixtures/data'
-import { DataPage, StatusBadge } from '@/components/data/data-page'
+import { DataPage, statusLabel } from '@/components/data/data-page'
 
 export default function SitesPage() {
   return (
@@ -11,12 +11,11 @@ export default function SitesPage() {
       columns={['Site', '标识', '所属组织', '状态']}
       rows={fixtureSites.map((site) => ({
         id: site.id,
-        href: `/sites/${site.id}`,
         cells: [
-          site.name,
-          site.slug,
-          site.organizationId,
-          <StatusBadge key='status' status={site.status} />,
+          { text: site.name, href: `/sites/${site.id}` },
+          { text: site.slug },
+          { text: site.organizationId },
+          { text: statusLabel(site.status), status: site.status },
         ],
       }))}
     />

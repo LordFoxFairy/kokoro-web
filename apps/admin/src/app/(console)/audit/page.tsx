@@ -1,5 +1,5 @@
 import { fixtureAudit } from '@/lib/fixtures/data'
-import { DataPage, StatusBadge } from '@/components/data/data-page'
+import { DataPage, statusLabel } from '@/components/data/data-page'
 
 export default function AuditPage() {
   return (
@@ -11,11 +11,13 @@ export default function AuditPage() {
       rows={fixtureAudit.map((event) => ({
         id: event.id,
         cells: [
-          event.action,
-          event.actorId ?? '系统',
-          `${event.targetType}${event.targetId ? `: ${event.targetId}` : ''}`,
-          <StatusBadge key='status' status={event.outcome} />,
-          new Date(event.occurredAt).toLocaleString('zh-CN'),
+          { text: event.action },
+          { text: event.actorId ?? '系统' },
+          {
+            text: `${event.targetType}${event.targetId ? `: ${event.targetId}` : ''}`,
+          },
+          { text: statusLabel(event.outcome), status: event.outcome },
+          { text: new Date(event.occurredAt).toLocaleString('zh-CN') },
         ],
       }))}
     />
