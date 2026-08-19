@@ -11,6 +11,7 @@ export function SkipToMain({ className, onClick, ...props }: SkipToMainProps) {
     if (!target) return false
 
     target.focus()
+    target.scrollIntoView({ block: 'start', inline: 'nearest' })
     window.setTimeout(() => target.focus(), 0)
     return true
   }
@@ -39,6 +40,16 @@ export function SkipToMain({ className, onClick, ...props }: SkipToMainProps) {
     focusMain()
   }
 
+  const handleKeyUp: React.KeyboardEventHandler<HTMLAnchorElement> = (
+    event
+  ) => {
+    if (event.key !== 'Enter' && event.key !== ' ') {
+      return
+    }
+
+    focusMain()
+  }
+
   return (
     <a
       className={cn(
@@ -49,6 +60,7 @@ export function SkipToMain({ className, onClick, ...props }: SkipToMainProps) {
       onMouseDown={handleMouseDown}
       onClick={handleClick}
       onKeyDown={handleKeyDown}
+      onKeyUp={handleKeyUp}
       {...props}
     >
       跳到主要内容

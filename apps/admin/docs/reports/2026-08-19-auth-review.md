@@ -6,7 +6,7 @@
 |---|---|
 | 批次 | Auth.js 登录、Session、保护、回跳与退出 |
 | 分支 | `codex/admin-web-iam-control-plane` |
-| 批次状态 | `AUTOMATION_PASS` / `VISIBLE_FOCUS_RECHECK_PENDING` |
+| 批次状态 | `AUTOMATION_PASS` / `VISIBLE_FOCUS_RECHECK_PASS` |
 | Admin 整体状态 | `NOT_READY` |
 
 本批次接入 Auth.js `5.0.0-beta.32`、Next 16 `proxy.ts`、App Router Route Handler、
@@ -47,12 +47,14 @@ server-only env 读取和 JWT Session。生产 Credentials provider 保持关闭
 - `auth-round1-mobile-users.png`：安全回跳到用户列表，`390x844`，移动行详情按钮可见。
 - `auth-round1-metrics.json`：第一轮 desktop/mobile 主 landmark、溢出和主体摘要指标。
 - `auth-round2-users-desktop.jpg`：第二轮桌面复核，验证 callback 回跳与用户摘要。
-- `auth-round2-metrics.json`：第二轮 `main-content` 与 `scroll` 指标（desktop 已记录；mobile 待补）。
+- `auth-round2-mobile-users.png`：第二轮移动端用户列表复核（`390x844`）。
+- `mobile/auth-round2-mobile-users-sheet.png`：第二轮移动端行详情 Sheet 复核。
+- `auth-round2-metrics.json`：第二轮 desktop/mobile `main-content` 与 `scroll` 指标、会话回写与 `SkipToMain`
+  Enter/Space 键盘焦点结果。
 
 ## 待办与限制
 
-- Skip Link 的 Enter/Space 键盘逻辑已补齐并补充单测；当前仍保留可见复核待定状态（上一轮记录 Enter
-  触发后 active 为 `BODY`，需在新会话复测确认 `#main-content` 焦点）。
+- Skip Link 的 Enter/Space 键盘逻辑已补齐并补充单测；桌面与移动复核均确认 Enter 键聚焦 `#main-content`。
 - 当前 development provider 只服务本地 fixture；生产密码认证必须等待版本化 IAM 认证契约。
 - 用户、组织、Site、角色、权限树、会话和审计 mutations 及 generated ConnectRPC 尚未发布，继续
   保持 `NOT_READY`，不得使用 fixture 冒充真实契约。
